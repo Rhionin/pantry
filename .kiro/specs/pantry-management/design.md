@@ -70,7 +70,7 @@ graph TD
 | Layer | Technology | Rationale |
 |---|---|---|
 | Frontend | React + TypeScript | Wide mobile browser support, rich component ecosystem, type safety |
-| Backend | Go | Performance, strong standard library, easy binary deployment |
+| Backend | Go + `net/http` (Go 1.22+) | Performance, strong standard library, easy binary deployment; Go 1.22's `ServeMux` supports method+path patterns like `GET /api/scans/{id}` with no third-party router needed |
 | Database | SQLite | Single-file, zero-config, no server process; sufficient for household-scale usage; trivial to back up (copy one file); runs on any home server hardware |
 | External UPC DB | Open Food Facts API | Free, open, comprehensive, no API key required |
 | UI Library | Mantine | Full-featured React component library with built-in date pickers (for expiration date entry), notification/toast system (for scan feedback and cart export errors), mobile-responsive components, clean modern aesthetic, zero CSS files required, intuitive API with excellent TypeScript support |
@@ -105,6 +105,76 @@ src/
       ShoppingListPage       # auto-generated + manual items; uses Mantine Table, Checkbox, Notification
       CartExportButton       # triggers cart export API call; cart export errors surfaced via Mantine notifications (toast-style)
 ```
+
+### Backend Structure
+
+The backend lives under `internal/` with the following top-level packages:
+
+```
+internal/
+  db/          # repository layer (SQLite queries, migration runner)
+  model/       # shared data types (structs used by both routes and services)
+  routes/      # one file per endpoint, each file contains one handler struct
+  service/     # business logic (scan commit, expiry, suggestions, shopping list)
+cmd/
+  server/
+    main.go    # wires ServeMux, opens DB, starts HTTP server
+```
+
+#### One-file-per-endpoint pattern with anonymous dependency interfaces
+
+Each file in `internal/routes/` contains exactly one exported struct that implements `http.Handler`. The struct declares its own anonymous interface(s) for every dependency it needs; no shared interface types are reused across route structs. This keeps each endpoint self-documenting and decoupled.
+
+```go
+// internal/routes/scan_create.go
+type ScanCreate struct {
+    scanner interface {
+        CreateScanEntry(ctx context.Context, entry model.ScanEntry) error
+    }
+    productLookup interface {
+        LookupByBarcode(ctx context.Context, barcode string) (*model.ProductSummary, []model.ProductSummary, error)
+    }
+}
+
+func (h *ScanCreate) ServeHTTP(w http.ResponseWriter, r *http.Request) { ... }
+```
+
+Routes are registered in `main.go` (or a top-level `internal/routes/register.go`) using Go 1.22+ `ServeMux` method+path patterns:
+
+```go
+mux := http.NewServeMux()
+mux.Handle("POST /api/scans",           &routes.ScanCreate{ ... })
+mux.Handle("GET /api/scans",            &routes.ScanList{ ... })
+mux.Handle("POST /api/scans/{id}/commit", &routes.ScanCommit{ ... })
+// etc.
+```
+
+Files in `internal/routes/` (one per endpoint, named after the resource + action):
+
+| File | Method + Path |
+|---|---|
+| `scan_create.go` | `POST /api/scans` |
+| `scan_list.go` | `GET /api/scans` |
+| `scan_history.go` | `GET /api/scans/history` |
+| `scan_update.go` | `PATCH /api/scans/{id}` |
+| `scan_commit.go` | `POST /api/scans/{id}/commit` |
+| `scan_batch_commit.go` | `POST /api/scans/batch-commit` |
+| `product_lookup.go` | `GET /api/products/lookup` |
+| `product_list.go` | `GET /api/products` |
+| `product_create.go` | `POST /api/products` |
+| `product_update.go` | `PUT /api/products/{id}` |
+| `product_override_create.go` | `POST /api/products/overrides` |
+| `inventory_list.go` | `GET /api/inventory` |
+| `inventory_instances_list.go` | `GET /api/inventory/{itemId}/instances` |
+| `inventory_instance_create.go` | `POST /api/inventory/{itemId}/instances` |
+| `inventory_instance_delete.go` | `DELETE /api/inventory/instances/{instanceId}` |
+| `suggestion_get.go` | `GET /api/suggestions/{itemId}` |
+| `target_quantity_set.go` | `POST /api/items/{itemId}/target-quantity` |
+| `shopping_list_get.go` | `GET /api/shopping-list` |
+| `shopping_list_item_create.go` | `POST /api/shopping-list/items` |
+| `shopping_list_item_delete.go` | `DELETE /api/shopping-list/items/{id}` |
+| `shopping_list_item_update.go` | `PATCH /api/shopping-list/items/{id}` |
+| `shopping_list_export.go` | `POST /api/shopping-list/export` |
 
 ### Backend API Endpoints
 
