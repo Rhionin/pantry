@@ -73,7 +73,7 @@ graph TD
 | Backend | Go | Performance, strong standard library, easy binary deployment |
 | Database | SQLite | Single-file, zero-config, no server process; sufficient for household-scale usage; trivial to back up (copy one file); runs on any home server hardware |
 | External UPC DB | Open Food Facts API | Free, open, comprehensive, no API key required |
-| CSS | Tailwind CSS | Responsive mobile-first design |
+| UI Library | Mantine | Full-featured React component library with built-in date pickers (for expiration date entry), notification/toast system (for scan feedback and cart export errors), mobile-responsive components, clean modern aesthetic, zero CSS files required, intuitive API with excellent TypeScript support |
 
 ---
 
@@ -90,20 +90,20 @@ src/
       ScanDirectionToggle    # pre-select stock-in / stock-out; auto-clears after 5 min idle
     queue/
       ScanQueuePage          # lists pending + flagged entries
-      ScanEntryCard          # single entry: product name, barcode, timestamp, direction, count, expiry
-      BatchReviewPanel       # select multiple entries, apply direction + expiry
-      FlaggedEntryResolver   # product search + create form for unrecognized barcodes
-      DisambiguationModal    # shown when barcode matches multiple products
+      ScanEntryCard          # single entry: product name, barcode, timestamp, direction, count, expiry; uses Mantine Card, Badge
+      BatchReviewPanel       # select multiple entries, apply direction + expiry; uses Mantine Checkbox, Select, DatePickerInput
+      FlaggedEntryResolver   # product search + create form for unrecognized barcodes; uses Mantine Autocomplete or Select with search
+      DisambiguationModal    # shown when barcode matches multiple products; uses Mantine Modal, Radio
     inventory/
-      InventoryPage          # grouped by item, Needs Attention section at top
+      InventoryPage          # grouped by item, Needs Attention section at top; uses Mantine Stack, Badge, Alert for Needs Attention section
       ItemRow                # item name, category, instance count, warning badge
       ItemInstanceList       # instances sorted use-oldest-first; per-instance expiry badge
-      AddInstanceModal       # manual instance add form
+      AddInstanceModal       # manual instance add form; uses Mantine Modal, DatePickerInput
     suggestions/
-      SuggestionPanel        # per-item suggestion card with reasoning text
+      SuggestionPanel        # per-item suggestion card with reasoning text; uses Mantine Card, Text, Button
     shopping/
-      ShoppingListPage       # auto-generated + manual items
-      CartExportButton       # triggers cart export API call
+      ShoppingListPage       # auto-generated + manual items; uses Mantine Table, Checkbox, Notification
+      CartExportButton       # triggers cart export API call; cart export errors surfaced via Mantine notifications (toast-style)
 ```
 
 ### Backend API Endpoints
