@@ -108,44 +108,57 @@ src/
 
 ### Backend Structure
 
-The backend lives under `internal/` with the following top-level packages:
+The backend follows a **feature-based (domain-driven) architecture**. All code related to a feature domain lives in a single package. Data types, repository (database access), business logic, and tests are colocated—not split across separate `model/`, `db/`, and `service/` packages.
 
 ```
 internal/
-  db/          # repository layer (SQLite queries, migration runner)
-  model/       # shared data types (structs used by both routes and services)
-  routes/      # one file per endpoint, each file contains one handler struct
-  service/     # business logic (scan commit, expiry, suggestions, shopping list)
-cmd/
-  server/
-    main.go    # wires ServeMux, opens DB, starts HTTP server
+  app/                  # Application initialization, shared infrastructure
+    │                   # (migrations, migration runner)
+    ├── migrate.go
+    ├── migrate_test.go
+    └── migrations/
+  │
+  └── product/          # Product feature domain (types + repo + tests colocated)
+      ├── product.go
+      └── product_test.go
+  
+  # Future feature packages will follow the same pattern:
+  # internal/scan/          — scan queue feature
+  # internal/inventory/     — inventory feature
+  # internal/suggestion/    — suggestion engine
+  # internal/shopping/      — shopping list feature
 ```
 
-#### One-file-per-endpoint pattern with anonymous dependency interfaces
+**Key principle**: Each feature package is self-contained. Types, repository methods, business logic, and handler functions all live in the same package. This makes the codebase highly discoverable—if you need to work on products, everything is in `internal/product/`.
 
-Each file in `internal/routes/` contains exactly one exported struct that implements `http.Handler`. The struct declares its own anonymous interface(s) for every dependency it needs; no shared interface types are reused across route structs. This keeps each endpoint self-documenting and decoupled.
+```
+cmd/
+  server/
+    main.go             # wires ServeMux, opens DB, starts HTTP server
+```
+
+#### Handler pattern with anonymous dependency interfaces
+
+Handlers live in feature packages (e.g., `internal/product/handlers.go` or as methods on repo structs). Each handler or handler struct declares its own anonymous interface(s) for every dependency it needs; no shared interface types are reused across handlers. This keeps each endpoint self-documenting and decoupled.
 
 ```go
-// internal/routes/scan_create.go
-type ScanCreate struct {
-    scanner interface {
-        CreateScanEntry(ctx context.Context, entry model.ScanEntry) error
-    }
-    productLookup interface {
-        LookupByBarcode(ctx context.Context, barcode string) (*model.ProductSummary, []model.ProductSummary, error)
+// internal/product/handlers.go
+type ProductCreateHandler struct {
+    repo interface {
+        CreateProduct(ctx context.Context, name, category string) (*Product, error)
     }
 }
 
-func (h *ScanCreate) ServeHTTP(w http.ResponseWriter, r *http.Request) { ... }
+func (h *ProductCreateHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) { ... }
 ```
 
-Routes are registered in `main.go` (or a top-level `internal/routes/register.go`) using Go 1.22+ `ServeMux` method+path patterns:
+Routes are registered in `main.go` using Go 1.22+ `ServeMux` method+path patterns:
 
 ```go
 mux := http.NewServeMux()
-mux.Handle("POST /api/scans",           &routes.ScanCreate{ ... })
-mux.Handle("GET /api/scans",            &routes.ScanList{ ... })
-mux.Handle("POST /api/scans/{id}/commit", &routes.ScanCommit{ ... })
+mux.Handle("POST /api/products",           &product.ProductCreateHandler{ ... })
+mux.Handle("GET /api/products",            &product.ProductListHandler{ ... })
+mux.Handle("GET /api/products/lookup",     &product.LookupHandler{ ... })
 // etc.
 ```
 

@@ -1,14 +1,13 @@
-package db_test
+package app_test
 
 import (
 	"database/sql"
 	"sort"
 	"testing"
 
-	// Register the pure-Go SQLite driver.
 	_ "modernc.org/sqlite"
 
-	"github.com/Rhionin/pantry/internal/db"
+	"github.com/Rhionin/pantry/internal/app"
 )
 
 // TestMigrationApplies verifies that RunMigrations applies the initial schema
@@ -20,7 +19,7 @@ func TestMigrationApplies(t *testing.T) {
 	}
 	defer conn.Close()
 
-	if err := db.RunMigrations(conn); err != nil {
+	if err := app.RunMigrations(conn); err != nil {
 		t.Fatalf("RunMigrations: %v", err)
 	}
 
@@ -80,10 +79,10 @@ func TestMigrationIsIdempotent(t *testing.T) {
 	}
 	defer conn.Close()
 
-	if err := db.RunMigrations(conn); err != nil {
+	if err := app.RunMigrations(conn); err != nil {
 		t.Fatalf("first RunMigrations: %v", err)
 	}
-	if err := db.RunMigrations(conn); err != nil {
+	if err := app.RunMigrations(conn); err != nil {
 		t.Fatalf("second RunMigrations (idempotency check): %v", err)
 	}
 

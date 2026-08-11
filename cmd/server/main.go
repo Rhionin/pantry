@@ -7,7 +7,7 @@ import (
 	"net/http"
 	"os"
 
-	"github.com/Rhionin/pantry/internal/db"
+	"github.com/Rhionin/pantry/internal/app"
 	_ "modernc.org/sqlite"
 )
 
@@ -26,7 +26,7 @@ func main() {
 	sqlDB.SetMaxOpenConns(1)
 
 	// Apply migrations.
-	if err := db.RunMigrations(sqlDB); err != nil {
+	if err := app.RunMigrations(sqlDB); err != nil {
 		log.Fatalf("run migrations: %v", err)
 	}
 	log.Println("migrations applied")

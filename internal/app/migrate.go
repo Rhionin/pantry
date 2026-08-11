@@ -1,5 +1,5 @@
-// Package db provides the database layer: migration runner and repository types.
-package db
+// Package app provides application initialization and database setup.
+package app
 
 import (
 	"database/sql"
