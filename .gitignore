@@ -1,0 +1,47 @@
+# SQLite databases
+*.db
+*.db-shm
+*.db-wal
+
+# Go build output
+/bin/
+/dist/
+*.exe
+*.test
+*.out
+
+# Go test cache and cover profiles
+coverage.out
+coverage.html
+
+# Frontend build output
+frontend/dist/
+frontend/dist-ssr/
+
+# Node / npm
+frontend/node_modules/
+frontend/.env
+frontend/.env.local
+frontend/.env.*.local
+
+# Logs
+frontend/logs/
+frontend/*.log
+frontend/npm-debug.log*
+frontend/yarn-debug.log*
+frontend/yarn-error.log*
+frontend/pnpm-debug.log*
+
+# Playwright
+frontend/playwright-report/
+frontend/test-results/
+
+# Editor / OS
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.swo
+*.suo
+*.sw?
