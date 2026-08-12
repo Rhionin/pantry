@@ -35,7 +35,7 @@ Implement the Pantry Management app as a Go REST API backend with a React + Type
     - Types and repository colocated in the same package — no separate `internal/model/` or `internal/db/` files for products
     - _Requirements: 1.15, 1.16, 1.17, 1.18, 1.19_
 
-  - [ ] 2.2 Implement Open Food Facts API client
+  - [x] 2.2 Implement Open Food Facts API client
     - Write `internal/product/openfoodfacts.go` with `LookupBarcode(ctx, barcode) (*ProductSummary, error)` using the Open Food Facts REST API (`https://world.openfoodfacts.org/api/v2/product/{barcode}`)
     - Implement retry with exponential backoff (max 3 attempts) for rate-limit and transient errors
     - Expose a `ProductLookupClient` interface so tests can inject a mock
