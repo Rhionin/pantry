@@ -52,7 +52,7 @@ Implement the Pantry Management app as a Go REST API backend with a React + Type
     - Test external fallback with a mock HTTP server
     - _Requirements: 1.15, 1.18, 1.19_
 
-  - [ ] 2.5 Wire product API endpoints
+  - [x] 2.5 Wire product API endpoints
     - Create handler functions in feature packages (e.g., `internal/product/handlers.go`), each implementing `http.Handler`:
       - `LookupHandler` — `GET /api/products/lookup?barcode={barcode}`
       - `ListHandler` — `GET /api/products`
@@ -60,6 +60,15 @@ Implement the Pantry Management app as a Go REST API backend with a React + Type
       - `UpdateHandler` — `PUT /api/products/{id}`
       - `OverrideCreateHandler` — `POST /api/products/overrides`
     - Register all routes in `main.go` using `mux.Handle("METHOD /path", &product.HandlerStruct{...})`
+    - _Requirements: 1.16, 1.17, 1.18, 1.19_
+
+  - [ ] 2.6 Rewrite handler tests using apitest framework
+    - Replace manual `httptest.NewRecorder()` and `httptest.NewRequest()` test setup with `github.com/steinfletcher/apitest` fluent API
+    - Tests should invoke the full `server.NewHandler()` to test the complete request/response cycle through the `http.ServeMux`
+    - Identify and extract reusable setup function logic into `internal/server/setup_test.go`
+    - Use `apitest.New().Handler(handler).Get("/api/products")...` pattern for all handler tests
+    - Each test should use apitest's `.Expect().Status(200).Body(...)` assertions instead of manual status checks and JSON unmarshaling
+    - Migrate all existing handler tests in `internal/server/handler_*_test.go`: lookup, list, create, update, override
     - _Requirements: 1.16, 1.17, 1.18, 1.19_
 
 - [ ] 3. Scan queue backend
@@ -356,7 +365,7 @@ Implement the Pantry Management app as a Go REST API backend with a React + Type
     { "id": 1, "tasks": ["2.1", "2.2", "9.1"] },
     { "id": 2, "tasks": ["2.3", "3.1", "6.1"] },
     { "id": 3, "tasks": ["2.4", "2.5", "3.2", "3.4", "3.6", "9.2", "9.4"] },
-    { "id": 4, "tasks": ["3.3", "3.5", "3.7", "3.8", "9.3", "9.5"] },
+    { "id": 4, "tasks": ["2.6", "3.3", "3.5", "3.7", "3.8", "9.3", "9.5"] },
     { "id": 5, "tasks": ["3.9", "3.10", "5.1", "6.2"] },
     { "id": 6, "tasks": ["5.2", "5.4", "6.3", "6.4", "7.1", "7.3"] },
     { "id": 7, "tasks": ["5.3", "5.5", "5.6", "7.2", "7.4", "7.5", "10.1", "10.2", "10.3"] },

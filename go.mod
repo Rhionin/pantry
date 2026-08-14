@@ -1,8 +1,9 @@
 module github.com/Rhionin/pantry
 
-go 1.23
+go 1.26
 
 require (
+	github.com/go-json-experiment/json v0.0.0-20260623181947-01eb4420fa68
 	github.com/google/uuid v1.6.0
 	github.com/justinrixx/retryhttp v1.1.1
 	modernc.org/sqlite v1.34.5

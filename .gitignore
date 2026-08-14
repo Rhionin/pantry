@@ -9,7 +9,7 @@
 *.exe
 *.test
 *.out
-server
+/server
 
 # Go test cache and cover profiles
 coverage.out

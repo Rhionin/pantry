@@ -3,13 +3,13 @@ package product
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"time"
 
+	"github.com/go-json-experiment/json"
 	"github.com/justinrixx/retryhttp"
 )
 
@@ -74,12 +74,10 @@ func (c *OpenFoodFactsClient) LookupBarcode(ctx context.Context, barcode string)
 	}
 	defer resp.Body.Close()
 
-	// 404 means product not found; return the sentinel error.
 	if resp.StatusCode == http.StatusNotFound {
 		return nil, ErrProductNotFound
 	}
 
-	// Other non-2xx status codes are not retryable.
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		body, err := io.ReadAll(resp.Body)
 		if err != nil {
@@ -88,39 +86,28 @@ func (c *OpenFoodFactsClient) LookupBarcode(ctx context.Context, barcode string)
 		return nil, fmt.Errorf("OpenFoodFacts returned status %d: %s", resp.StatusCode, string(body))
 	}
 
-	// Parse the JSON response.
 	var data offResponse
-	if err := json.NewDecoder(resp.Body).Decode(&data); err != nil {
+	if err := json.UnmarshalRead(resp.Body, &data); err != nil {
 		return nil, fmt.Errorf("failed to decode OpenFoodFacts response: %w", err)
 	}
 
-	// Check if product exists in response.
 	if data.Status != 1 || data.Product.Name == "" {
 		return nil, ErrProductNotFound
 	}
 
-	// Convert the response to ProductSummary.
-	// Product ID is the barcode itself as a placeholder.
 	ps := &ProductSummary{
 		ID:            barcode,
 		Name:          data.Product.Name,
 		Category:      data.Product.Category,
-		UnitOfMeasure: "", // OFF doesn't provide this; will be set by caller if needed.
+		UnitOfMeasure: "",
 	}
 	return ps, nil
 }
 
 // shouldRetryIncluding429 wraps the default retry logic and adds 429 (rate-limit) handling.
-// This ensures we retry on rate-limit errors in addition to the default retryable conditions.
 func shouldRetryIncluding429(attempt retryhttp.Attempt) bool {
-	// Always retry on 429 (Too Many Requests / rate-limit).
 	if attempt.Res != nil && attempt.Res.StatusCode == http.StatusTooManyRequests {
 		return true
 	}
-	// For everything else, use the library's default logic which handles:
-	// - DNS errors
-	// - Timeout errors (for idempotent methods)
-	// - 502 Bad Gateway and 503 Service Unavailable (for idempotent methods)
-	// - Retry-After header presence
 	return retryhttp.DefaultShouldRetryFn(attempt)
 }
