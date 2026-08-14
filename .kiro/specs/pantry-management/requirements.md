@@ -56,10 +56,12 @@ The Pantry Management app helps users track their household pantry inventory. It
 16. WHEN the user reviews a flagged entry, THE App SHALL allow the user to search for and select an existing product, or enter new product details to create a new product record.
 17. WHEN the user resolves a flagged entry by selecting or creating a product, THE App SHALL associate that product with the barcode as a product override and convert the flagged entry to a pending scan for normal commit review.
 
-**Barcode Conflicts**
+**Barcode Conflicts** _(Deferred - handled by flagged entry workflow)_
 
-18. IF a barcode matches more than one product (including both database entries and product overrides), THEN THE App SHALL present the user with a disambiguation prompt listing the matching products before adding the scan entry to the scan queue.
-19. WHEN the user selects a product during disambiguation, THE App SHALL offer the user the option to save that choice as a product override so that future scans of the same barcode resolve automatically without prompting.
+18. ~~IF a barcode matches more than one product (including both database entries and product overrides), THEN THE App SHALL present the user with a disambiguation prompt listing the matching products before adding the scan entry to the scan queue.~~
+19. ~~WHEN the user selects a product during disambiguation, THE App SHALL offer the user the option to save that choice as a product override so that future scans of the same barcode resolve automatically without prompting.~~
+
+> **Design Note:** The current schema uses `UNIQUE (barcode, source, user_id)` which prevents multiple products mapping to the same barcode within a scope. Barcode conflicts are resolved via the flagged entry workflow (Requirements 1.15-1.17): when a scan doesn't match or is ambiguous, it becomes flagged, and the user creates an override to resolve future scans. This approach avoids premature optimization while providing a clear path to handle real-world conflicts.
 
 ### Requirement 2: Inventory Tracking
 

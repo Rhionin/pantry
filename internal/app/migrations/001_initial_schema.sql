@@ -6,6 +6,9 @@ CREATE TABLE products (
     created_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
+-- Barcode-to-product mappings with two-tier precedence: user overrides and global entries.
+-- The UNIQUE constraint ensures one product per barcode within each scope (global or per-user override).
+-- Barcode conflicts are resolved via the flagged entry workflow where users create overrides.
 CREATE TABLE barcodes (
     barcode         TEXT NOT NULL,
     product_id      TEXT NOT NULL REFERENCES products(id),

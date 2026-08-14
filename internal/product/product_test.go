@@ -351,7 +351,7 @@ func TestUpsertBarcodeMapping(t *testing.T) {
 				t.Fatalf("UpsertBarcodeMapping (insert): %v", err)
 			}
 
-			single, _, err := repo.LookupByBarcode(ctx, tt.barcode, "user-123")
+			single, err := repo.LookupByBarcode(ctx, tt.barcode, "user-123")
 			if err != nil {
 				t.Fatalf("LookupByBarcode: %v", err)
 			}
@@ -365,7 +365,7 @@ func TestUpsertBarcodeMapping(t *testing.T) {
 					t.Fatalf("UpsertBarcodeMapping (replace): %v", err)
 				}
 
-				single, _, err = repo.LookupByBarcode(ctx, tt.barcode, "user-123")
+				single, err = repo.LookupByBarcode(ctx, tt.barcode, "user-123")
 				if err != nil {
 					t.Fatalf("LookupByBarcode after replace: %v", err)
 				}
@@ -381,6 +381,7 @@ func TestUpsertBarcodeMapping(t *testing.T) {
 // TestLookupByBarcode
 // --------------------------------------------------------------------------
 
+
 func TestLookupByBarcode(t *testing.T) {
 	tests := []struct {
 		name            string
@@ -389,7 +390,6 @@ func TestLookupByBarcode(t *testing.T) {
 		setupProducts   []product.Product
 		setupMappings   []struct{ barcode, productID, source, userID string }
 		expectSingle    *string // nil means expect nil single, otherwise product ID
-		expectListCount int
 	}{
 		{
 			name:            "no match",
@@ -398,7 +398,6 @@ func TestLookupByBarcode(t *testing.T) {
 			setupProducts:   []product.Product{},
 			setupMappings:   []struct{ barcode, productID, source, userID string }{},
 			expectSingle:    nil,
-			expectListCount: 0,
 		},
 		{
 			name:    "user override takes precedence over global",
@@ -412,8 +411,7 @@ func TestLookupByBarcode(t *testing.T) {
 				{"111222333444", "global-prod", "global", ""},
 				{"111222333444", "override-prod", "user_override", "user-abc"},
 			},
-			expectSingle:    stringPtr("override-prod"),
-			expectListCount: 0,
+			expectSingle: stringPtr("override-prod"),
 		},
 		{
 			name:    "different user sees global (not another user's override)",
@@ -427,8 +425,7 @@ func TestLookupByBarcode(t *testing.T) {
 				{"555666777888", "global-prod", "global", ""},
 				{"555666777888", "override-prod", "user_override", "user-A"},
 			},
-			expectSingle:    stringPtr("global-prod"),
-			expectListCount: 0,
+			expectSingle: stringPtr("global-prod"),
 		},
 		{
 			name:    "global-only lookup",
@@ -440,8 +437,7 @@ func TestLookupByBarcode(t *testing.T) {
 			setupMappings: []struct{ barcode, productID, source, userID string }{
 				{"999888777666", "p1", "global", ""},
 			},
-			expectSingle:    stringPtr("p1"),
-			expectListCount: 0,
+			expectSingle: stringPtr("p1"),
 		},
 	}
 
@@ -465,7 +461,7 @@ func TestLookupByBarcode(t *testing.T) {
 			}
 
 			// Lookup
-			single, list, err := repo.LookupByBarcode(ctx, tt.barcode, tt.userID)
+			single, err := repo.LookupByBarcode(ctx, tt.barcode, tt.userID)
 			if err != nil {
 				t.Fatalf("LookupByBarcode: %v", err)
 			}
@@ -482,11 +478,6 @@ func TestLookupByBarcode(t *testing.T) {
 				if single.ID != *tt.expectSingle {
 					t.Errorf("expected single ID %q, got %q", *tt.expectSingle, single.ID)
 				}
-			}
-
-			// Verify list
-			if len(list) != tt.expectListCount {
-				t.Errorf("expected list count %d, got %d", tt.expectListCount, len(list))
 			}
 		})
 	}

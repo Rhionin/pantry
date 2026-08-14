@@ -217,9 +217,3 @@ func TestShouldRetryIncluding429(t *testing.T) {
 	}
 }
 
-func TestProductLookupClientInterface(t *testing.T) {
-	var client ProductLookupClient = NewOpenFoodFactsClient()
-	if client == nil {
-		t.Fatal("OpenFoodFactsClient should implement ProductLookupClient")
-	}
-}

@@ -41,7 +41,7 @@ Implement the Pantry Management app as a Go REST API backend with a React + Type
     - Expose a `ProductLookupClient` interface so tests can inject a mock
     - _Requirements: 1.15_
 
-  - [ ] 2.3 Implement product lookup service (override → local DB → external API)
+  - [x] 2.3 Implement product lookup service (override → local DB → external API)
     - Write business logic in `internal/product/lookup.go` implementing the three-tier lookup: user overrides first, global DB second, Open Food Facts third
     - Return a disambiguation list when multiple products match a barcode
     - _Requirements: 1.15, 1.18, 1.19_

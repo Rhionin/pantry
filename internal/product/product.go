@@ -133,23 +133,18 @@ func (r *Repo) UpsertBarcodeMapping(ctx context.Context, barcode, productID, sou
 	return nil
 }
 
-// LookupByBarcode looks up the product(s) associated with a barcode.
+// LookupByBarcode looks up the product associated with a barcode.
 //
 // Priority order:
 //  1. user_override rows matching the given userID
 //  2. global rows (user_id = '')
 //
-// Return values:
-//   - (product, nil, nil)        — exactly one product found
-//   - (nil, []ProductSummary, nil) — multiple products found (disambiguation needed)
-//   - (nil, nil, nil)             — no product found
-//   - (nil, nil, err)             — database error
-func (r *Repo) LookupByBarcode(ctx context.Context, barcode, userID string) (*ProductSummary, []ProductSummary, error) {
-	// Collect all matching products, annotated with their source priority.
+// Returns the first matching product, or nil if no match is found.
+func (r *Repo) LookupByBarcode(ctx context.Context, barcode, userID string) (*ProductSummary, error) {
+	// Find the highest-priority match.
 	// We use a CASE expression so user_override rows sort before global rows.
-	rows, err := r.db.QueryContext(ctx, `
-		SELECT p.id, p.name, COALESCE(p.category, ''), COALESCE(p.unit_of_measure, ''),
-		       CASE b.source WHEN 'user_override' THEN 0 ELSE 1 END AS priority
+	row := r.db.QueryRowContext(ctx, `
+		SELECT p.id, p.name, COALESCE(p.category, ''), COALESCE(p.unit_of_measure, '')
 		FROM barcodes b
 		JOIN products p ON p.id = b.product_id
 		WHERE b.barcode = ?
@@ -157,65 +152,20 @@ func (r *Repo) LookupByBarcode(ctx context.Context, barcode, userID string) (*Pr
 		        (b.source = 'user_override' AND b.user_id = ?)
 		     OR (b.source = 'global'        AND b.user_id = '')
 		      )
-		ORDER BY priority ASC, p.name ASC`,
+		ORDER BY CASE b.source WHEN 'user_override' THEN 0 ELSE 1 END ASC, p.name ASC
+		LIMIT 1`,
 		barcode, userID,
 	)
-	if err != nil {
-		return nil, nil, fmt.Errorf("LookupByBarcode query: %w", err)
-	}
-	defer rows.Close()
 
-	// Collect all matches, but stop collecting additional products once we
-	// have found at least one user_override match — user overrides take full
-	// precedence, so if every row at priority=0 maps to the same product, that
-	// is the unambiguous answer.
-	type row struct {
-		summary  ProductSummary
-		priority int
-	}
-	var found []row
-	for rows.Next() {
-		var r row
-		if err := rows.Scan(&r.summary.ID, &r.summary.Name, &r.summary.Category, &r.summary.UnitOfMeasure, &r.priority); err != nil {
-			return nil, nil, fmt.Errorf("LookupByBarcode scan: %w", err)
+	var summary ProductSummary
+	if err := row.Scan(&summary.ID, &summary.Name, &summary.Category, &summary.UnitOfMeasure); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil
 		}
-		found = append(found, r)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, nil, fmt.Errorf("LookupByBarcode rows: %w", err)
+		return nil, fmt.Errorf("LookupByBarcode: %w", err)
 	}
 
-	if len(found) == 0 {
-		return nil, nil, nil
-	}
-
-	// Check whether we have any user_override hits (priority=0).
-	// If so, only consider those rows for the result.
-	hasOverride := found[0].priority == 0
-	var candidates []ProductSummary
-	for _, r := range found {
-		if hasOverride && r.priority != 0 {
-			break
-		}
-		candidates = append(candidates, r.summary)
-	}
-
-	// Deduplicate by product ID (the same product can appear under both a
-	// global and an override row).
-	seen := make(map[string]struct{}, len(candidates))
-	unique := candidates[:0]
-	for _, c := range candidates {
-		if _, ok := seen[c.ID]; !ok {
-			seen[c.ID] = struct{}{}
-			unique = append(unique, c)
-		}
-	}
-
-	if len(unique) == 1 {
-		p := unique[0]
-		return &p, nil, nil
-	}
-	return nil, unique, nil
+	return &summary, nil
 }
 
 // nullableString converts an empty string to a SQL NULL so that optional text

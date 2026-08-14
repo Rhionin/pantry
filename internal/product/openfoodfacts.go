@@ -15,13 +15,7 @@ import (
 
 var ErrProductNotFound = errors.New("product not found")
 
-// ProductLookupClient is an interface for looking up products by barcode.
-// This allows tests to inject a mock implementation.
-type ProductLookupClient interface {
-	LookupBarcode(ctx context.Context, barcode string) (*ProductSummary, error)
-}
-
-// OpenFoodFactsClient implements ProductLookupClient using the Open Food Facts API.
+// OpenFoodFactsClient queries the Open Food Facts API for product information.
 type OpenFoodFactsClient struct {
 	baseURL    string
 	httpClient *http.Client
