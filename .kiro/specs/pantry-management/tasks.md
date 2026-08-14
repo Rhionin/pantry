@@ -28,7 +28,7 @@ Implement the Pantry Management app as a Go REST API backend with a React + Type
     - Add Playwright as a dev dependency for end-to-end tests
     - _Requirements: all_
 
-- [ ] 2. Product lookup and override layer
+- [x] 2. Product lookup and override layer
   - [x] 2.1 Implement product repository and types (colocated in feature package)
     - Write `internal/product/product.go` with types: `Product` and `ProductSummary`
     - Implement repository methods: `CreateProduct`, `GetProductByID`, `ListProducts`, `UpdateProduct`, `UpsertBarcodeMapping`, `LookupByBarcode` (checks `user_override` rows before `global` rows)
@@ -46,7 +46,7 @@ Implement the Pantry Management app as a Go REST API backend with a React + Type
     - Return a disambiguation list when multiple products match a barcode
     - _Requirements: 1.15, 1.18, 1.19_
 
-  - [ ]* 2.4 Write integration tests for product lookup service
+  - [x] 2.4 Write integration tests for product lookup service
     - Test override precedence: user override beats global DB beats external API
     - Test disambiguation: multiple matches returns list, not single product
     - Test external fallback with a mock HTTP server
