@@ -62,7 +62,7 @@ Implement the Pantry Management app as a Go REST API backend with a React + Type
     - Register all routes in `main.go` using `mux.Handle("METHOD /path", &product.HandlerStruct{...})`
     - _Requirements: 1.16, 1.17, 1.18, 1.19_
 
-  - [ ] 2.6 Rewrite handler tests using apitest framework
+  - [x] 2.6 Rewrite handler tests using apitest framework
     - Replace manual `httptest.NewRecorder()` and `httptest.NewRequest()` test setup with `github.com/steinfletcher/apitest` fluent API
     - Tests should invoke the full `server.NewHandler()` to test the complete request/response cycle through the `http.ServeMux`
     - Identify and extract reusable setup function logic into `internal/server/setup_test.go`

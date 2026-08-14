@@ -1,60 +1,115 @@
 package server
 
 import (
-	"bytes"
 	"net/http"
-	"net/http/httptest"
 	"testing"
 
-	"github.com/Rhionin/pantry/internal/product"
-	"github.com/go-json-experiment/json"
 	_ "modernc.org/sqlite"
 )
 
 func TestCreateHandler(t *testing.T) {
-	db := setupTestDB(t)
-	defer db.Close()
-
-	repo := product.NewRepo(db)
-	handler := &CreateHandler{Repo: repo}
-
-	reqBody := bytes.NewBufferString(`{"name":"Orange","category":"Fruit","unitOfMeasure":"each"}`)
-	req := httptest.NewRequest(http.MethodPost, "/api/products", reqBody)
-	req.Pattern = "POST /api/products"
-	req.Header.Set("Content-Type", "application/json")
-	w := httptest.NewRecorder()
-
-	HandleJSON(handler.Handle)(w, req)
-
-	if w.Code != http.StatusCreated {
-		t.Errorf("expected status 201, got %d", w.Code)
+	tests := []handlerTestCase{
+		{
+			name: "successful create",
+			httpExchange: httpExchange{
+				method:         "POST",
+				path:           "/api/products",
+				body:           `{"name":"Orange","category":"Fruit","unitOfMeasure":"each"}`,
+				expectedStatus: http.StatusCreated,
+				assertions: []assertion{
+					{path: "$.Name", value: "Orange"},
+					{path: "$.Category", value: "Fruit"},
+					{path: "$.UnitOfMeasure", value: "each"},
+				},
+			},
+			// Verify via HTTP that the product was created
+			afterRequest: exchanges(httpExchange{
+				method:         "GET",
+				path:           "/api/products",
+				expectedStatus: http.StatusOK,
+				assertions: []assertion{
+					{path: "$[0].Name", value: "Orange"},
+					{path: "$[0].Category", value: "Fruit"},
+				},
+			}),
+		},
+		{
+			name: "missing name",
+			httpExchange: httpExchange{
+				method:         "POST",
+				path:           "/api/products",
+				body:           `{"category":"Fruit"}`,
+				expectedStatus: http.StatusBadRequest,
+			},
+		},
+		{
+			name: "empty JSON",
+			httpExchange: httpExchange{
+				method:         "POST",
+				path:           "/api/products",
+				body:           `{}`,
+				expectedStatus: http.StatusBadRequest,
+			},
+		},
+		{
+			name: "create flow - empty list, create, verify list",
+			httpExchange: httpExchange{
+				method:         "GET",
+				path:           "/api/products",
+				expectedStatus: http.StatusOK,
+			},
+			// Express the entire test as a series of HTTP exchanges using slice syntax
+			afterRequest: exchanges([]httpExchange{
+				// First exchange: verify list is empty initially
+				{
+					method:         "GET",
+					path:           "/api/products",
+					expectedStatus: http.StatusOK,
+					assertions: []assertion{
+						{path: "$", value: []interface{}{}},
+					},
+				},
+				// Second exchange: create a product
+				{
+					method:         "POST",
+					path:           "/api/products",
+					body:           `{"name":"Apple","category":"Fruit"}`,
+					expectedStatus: http.StatusCreated,
+					assertions: []assertion{
+						{path: "$.Name", value: "Apple"},
+						{path: "$.Category", value: "Fruit"},
+					},
+				},
+				// Third exchange: verify the product appears in the list
+				{
+					method:         "GET",
+					path:           "/api/products",
+					expectedStatus: http.StatusOK,
+					assertions: []assertion{
+						{path: "$[0].Name", value: "Apple"},
+						{path: "$[0].Category", value: "Fruit"},
+					},
+				},
+				// Fourth exchange: create another product
+				{
+					method:         "POST",
+					path:           "/api/products",
+					body:           `{"name":"Banana","category":"Fruit"}`,
+					expectedStatus: http.StatusCreated,
+				},
+				// Fifth exchange: verify both products in the list
+				{
+					method:         "GET",
+					path:           "/api/products",
+					expectedStatus: http.StatusOK,
+					assertions: []assertion{
+						{path: "$[0].Name", value: "Apple"},
+						{path: "$[1].Name", value: "Banana"},
+					},
+				},
+			}...),
+		},
 	}
 
-	var result product.Product
-	if err := json.UnmarshalRead(w.Body, &result); err != nil {
-		t.Fatalf("failed to decode response: %v", err)
-	}
-
-	if result.Name != "Orange" {
-		t.Errorf("expected name 'Orange', got %q", result.Name)
-	}
-	if result.Category != "Fruit" {
-		t.Errorf("expected category 'Fruit', got %q", result.Category)
-	}
-}
-
-func TestCreateHandler_MissingName(t *testing.T) {
-	handler := &CreateHandler{Repo: nil}
-
-	reqBody := bytes.NewBufferString(`{"category":"Fruit"}`)
-	req := httptest.NewRequest(http.MethodPost, "/api/products", reqBody)
-	req.Pattern = "POST /api/products"
-	req.Header.Set("Content-Type", "application/json")
-	w := httptest.NewRecorder()
-
-	HandleJSON(handler.Handle)(w, req)
-
-	if w.Code != http.StatusBadRequest {
-		t.Errorf("expected status 400, got %d", w.Code)
-	}
+	runHandlerTests(t, tests)
 }

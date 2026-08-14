@@ -1,48 +1,48 @@
 package server
 
 import (
-	"bytes"
-	"context"
 	"net/http"
-	"net/http/httptest"
 	"testing"
-
-	"github.com/Rhionin/pantry/internal/product"
-	"github.com/go-json-experiment/json"
 )
 
 func TestUpdateHandler(t *testing.T) {
-	db := setupTestDB(t)
-	defer db.Close()
-
-	repo := product.NewRepo(db)
-
-	prod := product.Product{ID: "prod-1", Name: "Old Name", Category: "Old Category"}
-	if err := repo.CreateProduct(context.Background(), prod); err != nil {
-		t.Fatalf("failed to create product: %v", err)
+	tests := []handlerTestCase{
+		{
+			name:  "successful update",
+			setup: setupProduct("prod-1", "Old Name", "Old Category"),
+			httpExchange: httpExchange{
+				method:         "PUT",
+				path:           "/api/products/prod-1",
+				body:           `{"name":"New Name","category":"New Category","unitOfMeasure":"kg"}`,
+				expectedStatus: http.StatusOK,
+				assertions: []assertion{
+					{path: "$.Name", value: "New Name"},
+					{path: "$.Category", value: "New Category"},
+					{path: "$.UnitOfMeasure", value: "kg"},
+					{path: "$.ID", value: "prod-1"},
+				},
+			},
+		},
+		{
+			name: "product not found",
+			httpExchange: httpExchange{
+				method:         "PUT",
+				path:           "/api/products/nonexistent",
+				body:           `{"name":"New Name"}`,
+				expectedStatus: http.StatusInternalServerError,
+			},
+		},
+		{
+			name:  "missing name",
+			setup: setupProduct("prod-1", "Old Name", ""),
+			httpExchange: httpExchange{
+				method:         "PUT",
+				path:           "/api/products/prod-1",
+				body:           `{"category":"New Category"}`,
+				expectedStatus: http.StatusBadRequest,
+			},
+		},
 	}
 
-	handler := &UpdateHandler{Repo: repo}
-
-	reqBody := bytes.NewBufferString(`{"name":"New Name","category":"New Category","unitOfMeasure":"kg"}`)
-	req := httptest.NewRequest(http.MethodPut, "/api/products/prod-1", reqBody)
-	req.SetPathValue("id", "prod-1")
-	req.Pattern = "PUT /api/products/{id}"
-	req.Header.Set("Content-Type", "application/json")
-	w := httptest.NewRecorder()
-
-	HandleJSON(handler.Handle)(w, req)
-
-	if w.Code != http.StatusOK {
-		t.Errorf("expected status 200, got %d", w.Code)
-	}
-
-	var result product.Product
-	if err := json.UnmarshalRead(w.Body, &result); err != nil {
-		t.Fatalf("failed to decode response: %v", err)
-	}
-
-	if result.Name != "New Name" {
-		t.Errorf("expected name 'New Name', got %q", result.Name)
-	}
+	runHandlerTests(t, tests)
 }
