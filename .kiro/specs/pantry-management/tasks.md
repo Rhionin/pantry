@@ -71,43 +71,43 @@ Implement the Pantry Management app as a Go REST API backend with a React + Type
     - Migrate all existing handler tests in `internal/server/handler_*_test.go`: lookup, list, create, update, override
     - _Requirements: 1.16, 1.17, 1.18, 1.19_
 
-- [ ] 3. Scan queue backend
-  - [ ] 3.1 Implement scan entry repository and types (colocated in feature package)
+- [x] 3. Scan queue backend
+  - [x] 3.1 Implement scan entry repository and types (colocated in feature package)
     - Write `internal/scan/scan.go` with types: `ScanEntry` and related models
     - Implement repository methods: `CreateScanEntry`, `GetScanEntry`, `ListScanEntries` (filter by status), `UpdateScanEntry` (direction, unit count, expiry, product_id, status), `CommitScanEntry`, `BatchUpdateScanEntries`
     - Enforce append-only semantics on `scan_entries`: repository functions MUST NOT issue UPDATE or DELETE SQL; status transitions are encoded as new column values via a single allowed UPDATE path (PATCH endpoint only)
     - Types and repository colocated in the feature package
     - _Requirements: 1.1, 1.2, 1.6, 1.7, 1.10, 1.14_
 
-  - [ ] 3.2 Implement scan commit service (stock-in path)
+  - [x] 3.2 Implement scan commit service (stock-in path)
     - Write business logic in `internal/scan/commit.go` with `CommitStockIn(scanEntry)` — creates exactly N `item_instances` rows (N = `unit_count`) with the scan entry's `stock_in_at` and `expires_at`, then marks the scan entry `committed`
     - _Requirements: 1.11_
 
-  - [ ]* 3.3 Write property test for Property 5 (stock-in creates exactly N instances)
+  - [x] 3.3 Write property test for Property 5 (stock-in creates exactly N instances)
     - **Property 5: Stock-in commit creates exactly N instances**
     - For any scan entry with direction `stock_in` and unit count N ≥ 1, committing creates exactly N new item instances and increases total instance count by N
     - Use `rapid` to generate arbitrary (barcode, unit count 1–20, optional expiry) combinations
     - **Validates: Requirements 1.11**
 
-  - [ ] 3.4 Implement scan commit service (stock-out path)
+  - [x] 3.4 Implement scan commit service (stock-out path)
     - Write `CommitStockOut(scanEntry, instanceID *string)` in `internal/scan/commit.go` — if `instanceID` is nil, select the use-oldest-first instance via `SELECT … ORDER BY expires_at ASC NULLS LAST LIMIT 1`; set `removed_at` and `removal_reason = 'consumed'`; insert a `consumption_events` row; mark scan entry `committed`
     - _Requirements: 1.12, 1.9, 2.3_
 
-  - [ ]* 3.5 Write property test for Property 6 (stock-out removes use-oldest-first)
+  - [x] 3.5 Write property test for Property 6 (stock-out removes use-oldest-first)
     - **Property 6: Stock-out commit removes the use-oldest-first instance**
     - For any item with a generated set of instances (varying expiry dates including nulls), committing a stock-out with no instance selected removes exactly the instance with the earliest non-null expiry date, or the lexicographically smallest id when all are null
     - **Validates: Requirements 1.12, 1.9, 2.3**
 
-  - [ ] 3.6 Implement scan commit service (flagged entry resolution)
+  - [x] 3.6 Implement scan commit service (flagged entry resolution)
     - Write `ResolveFlaggedEntry(scanEntryID, productID)` in `internal/scan/commit.go` — creates a `barcodes` row with `source='user_override'`, sets `product_id` on the scan entry, transitions status `flagged → pending`
     - _Requirements: 1.17, 1.19_
 
-  - [ ]* 3.7 Write property test for Property 8 (flagged entry resolution)
+  - [x] 3.7 Write property test for Property 8 (flagged entry resolution)
     - **Property 8: Flagged entry resolution creates override and transitions to pending**
     - For any flagged scan entry and any product, resolving it creates exactly one `user_override` barcode row and leaves the entry in `pending` status
     - **Validates: Requirements 1.17, 1.19**
 
-  - [ ] 3.8 Wire scan queue API endpoints
+  - [x] 3.8 Wire scan queue API endpoints
     - Create handler functions in `internal/scan/handlers.go`, each implementing `http.Handler`:
       - `CreateHandler` — `POST /api/scans`
       - `ListHandler` — `GET /api/scans?status=`
@@ -118,7 +118,7 @@ Implement the Pantry Management app as a Go REST API backend with a React + Type
     - Register all routes in `main.go` using Go 1.22+ `ServeMux` method+path patterns
     - _Requirements: 1.1, 1.2, 1.6, 1.7, 1.8, 1.9, 1.10, 1.11, 1.12, 1.13, 1.14_
 
-  - [ ]* 3.9 Write property tests for Properties 1, 2, 3, 4 (scan entry integrity, direction propagation, ordering, batch update)
+  - [x] 3.9 Write property tests for Properties 1, 2, 3, 4 (scan entry integrity, direction propagation, ordering, batch update)
     - **Property 1: Scan entry data integrity** — for any barcode and timestamp, the stored entry preserves them exactly with `status=pending`
     - **Property 2: Scan direction propagation** — scans within 5 min carry the pre-selected direction; scans after 5 min do not
     - **Property 3: Scan queue chronological ordering** — list result is always ascending by `scanned_at`
@@ -126,23 +126,23 @@ Implement the Pantry Management app as a Go REST API backend with a React + Type
     - Use `rapid` with generated barcode strings, timestamps, and direction values
     - **Validates: Requirements 1.1, 1.2, 1.4, 1.5, 1.7, 1.10**
 
-  - [ ]* 3.10 Write property test for Property 7 (committed entry in history)
+  - [x] 3.10 Write property test for Property 7 (committed entry in history)
     - **Property 7: Committed scan entry is preserved in history**
     - For any committed scan entry, it is absent from `pending` list and present in history with all original fields unchanged
     - **Validates: Requirements 1.14**
 
-- [ ] 4. Checkpoint — Ensure all scan queue tests pass
+- [~] 4. Checkpoint — Ensure all scan queue tests pass
   - Run `go test ./...` and confirm all scan queue unit and property tests pass. Ask the user if any questions arise before continuing.
 
 - [ ] 5. Inventory backend
-  - [ ] 5.1 Implement item and instance repository and types (colocated in feature package)
+  - [~] 5.1 Implement item and instance repository and types (colocated in feature package)
     - Write `internal/inventory/inventory.go` with types: `Item`, `ItemInstance` and related models
     - Implement repository methods: `GetOrCreateItem`, `ListItems`, `ListItemInstances`, `AddInstance`, `RemoveInstance`, `GetInstance`
     - `RemoveInstance` must check existence and return a typed `ErrInstanceNotFound` if missing
     - Types and repository colocated in the feature package
     - _Requirements: 2.1, 2.2, 2.3, 2.6, 2.7_
 
-  - [ ] 5.2 Implement expiry status calculation
+  - [~] 5.2 Implement expiry status calculation
     - Write `internal/inventory/expiry.go`: pure function `ComputeExpiryStatus(expiresAt *time.Time, now time.Time, warningDays int) ExpiryStatus` returning `ok`, `near_expiry`, or `expired`
     - _Requirements: 2.8, 2.9_
 
@@ -152,7 +152,7 @@ Implement the Pantry Management app as a Go REST API backend with a React + Type
     - Use `rapid` with generated time pairs and warning periods 1–30 days
     - **Validates: Requirements 2.8, 2.9**
 
-  - [ ] 5.4 Implement inventory aggregation service
+  - [~] 5.4 Implement inventory aggregation service
     - Write `internal/inventory/aggregate.go`: `GetInventoryList(userID)` — returns `InventoryItem` slice with `instanceCount`, `nearExpiryCount`, `expiredCount`, and `needsAttention` derived by calling `ComputeExpiryStatus` on each instance; applies use-oldest-first sort for instance lists
     - _Requirements: 2.2, 2.3, 2.10, 2.11_
 
@@ -161,7 +161,7 @@ Implement the Pantry Management app as a Go REST API backend with a React + Type
     - **Property 11: Inventory search filter returns exactly matching items** — for any query string and inventory, filtered result is exactly the case-insensitive subset
     - **Validates: Requirements 2.4, 2.10, 2.11**
 
-  - [ ] 5.6 Wire inventory API endpoints
+  - [~] 5.6 Wire inventory API endpoints
     - Create handler functions in `internal/inventory/handlers.go`, each implementing `http.Handler`:
       - `ListHandler` — `GET /api/inventory`
       - `InstancesListHandler` — `GET /api/inventory/{itemId}/instances`
@@ -172,13 +172,13 @@ Implement the Pantry Management app as a Go REST API backend with a React + Type
     - _Requirements: 2.1, 2.2, 2.3, 2.4, 2.5, 2.6, 2.7_
 
 - [ ] 6. Suggestion engine backend
-  - [ ] 6.1 Implement consumption event repository and types (colocated in feature package)
+  - [~] 6.1 Implement consumption event repository and types (colocated in feature package)
     - Write `internal/suggestion/suggestion.go` with types: `ConsumptionEvent`, `TargetQuantitySuggestion` and related models
     - Implement repository methods: `InsertConsumptionEvent` and `ListConsumptionEvents(itemID)` (sorted ascending by `consumed_at`)
     - Types and repository colocated in the feature package
     - _Requirements: 3.1_
 
-  - [ ] 6.2 Implement suggestion service
+  - [~] 6.2 Implement suggestion service
     - Write `internal/suggestion/engine.go`: `SuggestTargetQuantity(itemID, events []ConsumptionEvent) TargetQuantitySuggestion`
     - Return `dataInsufficient: true` when `len(events) < 3`; otherwise compute median inter-consumption interval, derive `ceil(restockHorizon / medianInterval) + 1`, and populate `reasoning` string
     - _Requirements: 3.1, 3.2, 3.5_
@@ -189,7 +189,7 @@ Implement the Pantry Management app as a Go REST API backend with a React + Type
     - Use `rapid` to generate event lists of length 0–10 with varying timestamps
     - **Validates: Requirements 3.1, 3.2, 3.5**
 
-  - [ ] 6.4 Wire suggestion and target-quantity API endpoints
+  - [~] 6.4 Wire suggestion and target-quantity API endpoints
     - Create handler functions in `internal/suggestion/handlers.go`, each implementing `http.Handler`:
       - `GetHandler` — `GET /api/suggestions/{itemId}`
       - `SetTargetQuantityHandler` — `POST /api/items/{itemId}/target-quantity`
@@ -197,7 +197,7 @@ Implement the Pantry Management app as a Go REST API backend with a React + Type
     - _Requirements: 3.1, 3.2, 3.3, 3.4, 3.5, 3.6_
 
 - [ ] 7. Shopping list backend
-  - [ ] 7.1 Implement shopping list derivation service
+  - [~] 7.1 Implement shopping list derivation service
     - Write `internal/shopping/derive.go`: `DeriveShoppingList(userID)` — for each item with a non-null `target_quantity` where `currentInstanceCount < target_quantity`, add a derived entry with `quantity = target_quantity − currentInstanceCount`; merge with manual `shopping_list_items` rows (manual overrides derived quantity for the same item)
     - _Requirements: 4.1, 4.2, 4.8_
 
@@ -207,7 +207,7 @@ Implement the Pantry Management app as a Go REST API backend with a React + Type
     - Use `rapid` to generate (T, C) pairs across a wide range
     - **Validates: Requirements 4.1, 4.2, 4.8**
 
-  - [ ] 7.3 Implement shopping list repository and types (colocated in feature package)
+  - [~] 7.3 Implement shopping list repository and types (colocated in feature package)
     - Write `internal/shopping/shopping.go` with types: `ShoppingListItem` and related models
     - Implement repository methods: `AddManualItem`, `RemoveItem`, `MarkPurchased`, `ListManualItems`
     - `MarkPurchased` sets `purchased_at` and does NOT modify any `item_instances` row
@@ -219,11 +219,11 @@ Implement the Pantry Management app as a Go REST API backend with a React + Type
     - For any inventory state and shopping list item marked as purchased, all `item_instances` row counts are identical before and after the mark-as-purchased call
     - **Validates: Requirements 4.6**
 
-  - [ ] 7.5 Implement cart export service stub
+  - [~] 7.5 Implement cart export service stub
     - Write `internal/shopping/export.go` with a `CartExporter` interface and a no-op implementation; return structured errors for partial failures
     - _Requirements: 4.9, 4.10_
 
-  - [ ] 7.6 Wire shopping list API endpoints
+  - [~] 7.6 Wire shopping list API endpoints
     - Create handler functions in `internal/shopping/handlers.go`, each implementing `http.Handler`:
       - `GetHandler` — `GET /api/shopping-list`
       - `ItemCreateHandler` — `POST /api/shopping-list/items`
@@ -233,16 +233,16 @@ Implement the Pantry Management app as a Go REST API backend with a React + Type
     - Register all routes in `main.go`
     - _Requirements: 4.1, 4.2, 4.3, 4.4, 4.5, 4.6, 4.7, 4.8, 4.9, 4.10_
 
-- [ ] 8. Checkpoint — Ensure all backend tests pass
+- [~] 8. Checkpoint — Ensure all backend tests pass
   - Run `go test ./...` and confirm all backend tests pass. Ask the user if any questions arise before continuing.
 
 - [ ] 9. Frontend — shared utilities and TypeScript types
-  - [ ] 9.1 Define shared TypeScript interfaces and API client
+  - [~] 9.1 Define shared TypeScript interfaces and API client
     - Create `src/types/index.ts` with all DTOs from the design: `ScanEntry`, `ProductSummary`, `InventoryItem`, `ItemInstance`, `ShoppingListEntry`, `TargetQuantitySuggestion`
     - Create `src/api/client.ts` with typed `fetch` wrappers for every backend endpoint
     - _Requirements: all_
 
-  - [ ] 9.2 Implement expiry status utility (TypeScript)
+  - [~] 9.2 Implement expiry status utility (TypeScript)
     - Create `src/utils/expiry.ts`: `computeExpiryStatus(expiresAt: string | null, now: Date, warningDays = 7): 'ok' | 'near_expiry' | 'expired'`
     - _Requirements: 2.8, 2.9_
 
@@ -251,7 +251,7 @@ Implement the Pantry Management app as a Go REST API backend with a React + Type
     - Use `fast-check` arbitraries for dates and warning periods; verify all three status branches
     - **Validates: Requirements 2.8, 2.9**
 
-  - [ ] 9.4 Implement shopping list derivation utility (TypeScript)
+  - [~] 9.4 Implement shopping list derivation utility (TypeScript)
     - Create `src/utils/shoppingList.ts`: `deriveShoppingListEntries(items: InventoryItem[]): ShoppingListEntry[]` — pure function computing gap quantities
     - _Requirements: 4.1, 4.2_
 
@@ -261,15 +261,15 @@ Implement the Pantry Management app as a Go REST API backend with a React + Type
     - **Validates: Requirements 4.1, 4.2, 4.8**
 
 - [ ] 10. Frontend — barcode scanning components
-  - [ ] 10.1 Implement `BarcodeInputField` component
+  - [~] 10.1 Implement `BarcodeInputField` component
     - Keyboard-capture `<input>` that auto-submits when a barcode terminator character (e.g. Enter) is detected; calls `onScan(barcode: string)` callback; renders as visually hidden when embedded in scanner page
     - _Requirements: 1.1_
 
-  - [ ] 10.2 Implement `CameraScanner` component
+  - [~] 10.2 Implement `CameraScanner` component
     - Uses `BarcodeDetector` API (`new BarcodeDetector({ formats: [...] })`); requests camera permission; shows live video feed with scan overlay; calls `onScan(barcode)` on detection; gracefully falls back when `BarcodeDetector` is unavailable
     - _Requirements: 1.1, 1.3_
 
-  - [ ] 10.3 Implement `ScanDirectionToggle` component and 5-minute auto-clear
+  - [~] 10.3 Implement `ScanDirectionToggle` component and 5-minute auto-clear
     - Toggle between `stock_in` / `stock_out` / unset; records `lastScanAt` in component state; sets a `setTimeout` for 5 minutes; clears direction when timer fires; resets timer on each new scan
     - _Requirements: 1.4, 1.5_
 
@@ -278,50 +278,50 @@ Implement the Pantry Management app as a Go REST API backend with a React + Type
     - _Requirements: 1.4, 1.5_
 
 - [ ] 11. Frontend — scan queue pages
-  - [ ] 11.1 Implement `ScanQueuePage` and `ScanEntryCard`
+  - [~] 11.1 Implement `ScanQueuePage` and `ScanEntryCard`
     - Fetches `GET /api/scans?status=pending` and `?status=flagged`; renders entries in chronological order using `ScanEntryCard`; shows flagged badge for flagged entries
     - _Requirements: 1.6, 1.7, 1.15_
 
-  - [ ] 11.2 Implement `BatchReviewPanel`
+  - [~] 11.2 Implement `BatchReviewPanel`
     - Multi-select checkboxes on `ScanEntryCard`; batch direction + expiry form; calls `POST /api/scans/batch-commit` on confirm
     - _Requirements: 1.10_
 
-  - [ ] 11.3 Implement `FlaggedEntryResolver`
+  - [~] 11.3 Implement `FlaggedEntryResolver`
     - Product search autocomplete calling `GET /api/products`; "Create new product" form; on selection calls `POST /api/products/overrides` then `PATCH /api/scans/{id}` to attach product and transition to pending
     - _Requirements: 1.16, 1.17_
 
-  - [ ] 11.4 Implement `DisambiguationModal`
+  - [~] 11.4 Implement `DisambiguationModal`
     - Shown when `GET /api/products/lookup` returns multiple products; lists matching products; on selection optionally saves override via `POST /api/products/overrides`
     - _Requirements: 1.18, 1.19_
 
-  - [ ] 11.5 Implement stock-out instance selection view
+  - [~] 11.5 Implement stock-out instance selection view
     - When reviewing a pending stock-out entry, fetches `GET /api/inventory/{itemId}/instances`; renders instances sorted use-oldest-first; allows selecting a specific instance before committing
     - _Requirements: 1.9, 2.3_
 
 - [ ] 12. Frontend — inventory pages
-  - [ ] 12.1 Implement `InventoryPage` and `ItemRow`
+  - [~] 12.1 Implement `InventoryPage` and `ItemRow`
     - Fetches `GET /api/inventory`; renders grouped list; places `needsAttention` items in "Needs Attention" section at top; includes search input that filters by name/category using `src/utils/inventoryFilter.ts` (local filter — no extra API call)
     - _Requirements: 2.2, 2.4, 2.10, 2.11_
 
-  - [ ] 12.2 Implement `ItemInstanceList` and expiry badges
+  - [~] 12.2 Implement `ItemInstanceList` and expiry badges
     - Fetches `GET /api/inventory/{itemId}/instances` on item selection; renders instances sorted use-oldest-first; shows `near_expiry` (yellow) and `expired` (red) badges using `computeExpiryStatus`
     - _Requirements: 2.3, 2.8, 2.9_
 
-  - [ ] 12.3 Implement `AddInstanceModal`
+  - [~] 12.3 Implement `AddInstanceModal`
     - Form with expiry date picker; on submit calls `POST /api/inventory/{itemId}/instances`; closes and refreshes instance list on success
     - _Requirements: 2.5_
 
 - [ ] 13. Frontend — suggestions and shopping list pages
-  - [ ] 13.1 Implement `SuggestionPanel`
+  - [~] 13.1 Implement `SuggestionPanel`
     - Fetches `GET /api/suggestions/{itemId}` on demand; displays suggested quantity and reasoning; "Accept" button calls `POST /api/items/{itemId}/target-quantity`; "Set manually" shows numeric input
     - _Requirements: 3.1, 3.2, 3.3, 3.4, 3.5_
 
-  - [ ] 13.2 Implement `ShoppingListPage` and `CartExportButton`
+  - [~] 13.2 Implement `ShoppingListPage` and `CartExportButton`
     - Fetches `GET /api/shopping-list`; renders derived and manual entries; marks items purchased via `PATCH /api/shopping-list/items/{id}`; manual add calls `POST /api/shopping-list/items`; export calls `POST /api/shopping-list/export`; shows partial-failure notification toast
     - _Requirements: 4.1, 4.2, 4.3, 4.4, 4.5, 4.6, 4.7, 4.8, 4.9, 4.10_
 
 - [ ] 14. End-to-end tests (Playwright)
-  - [ ] 14.1 Write Playwright test: scan → review → commit (stock-in) flow
+  - [~] 14.1 Write Playwright test: scan → review → commit (stock-in) flow
     - Simulate HID barcode input into `BarcodeInputField`; verify scan entry appears in queue; set direction and expiry; commit; verify inventory count increases
     - _Requirements: 1.1, 1.2, 1.8, 1.11, 2.2_
 
@@ -337,7 +337,7 @@ Implement the Pantry Management app as a Go REST API backend with a React + Type
     - Set target quantity; reduce inventory below target; verify item appears in shopping list with correct gap quantity; mark purchased; verify item leaves active list; verify inventory unchanged
     - _Requirements: 4.1, 4.2, 4.6, 4.8_
 
-- [ ] 15. Final checkpoint — Ensure all tests pass
+- [~] 15. Final checkpoint — Ensure all tests pass
   - Run `go test ./...` (backend) and `npm test -- --run` (frontend). Confirm all unit, property, and integration tests pass. Run `npx playwright test` for E2E. Ask the user if any questions arise.
 
 ---

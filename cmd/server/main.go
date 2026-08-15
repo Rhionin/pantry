@@ -36,7 +36,7 @@ func main() {
 		OpenFoodFacts: &product.OpenFoodFactsClient{},
 	}
 
-	handler := server.NewHandler(productRepo, lookupService)
+	handler := server.NewHandler(productRepo, lookupService, sqlDB)
 
 	log.Printf("listening on %s", addr)
 	if err := http.ListenAndServe(addr, handler); err != nil {

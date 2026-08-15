@@ -34,7 +34,7 @@ type handlerFunc[TBody, TPathParams, TResp any] func(req Request[TBody, TPathPar
 func HandleJSON[TBody, TPathParams, TResp any](fn handlerFunc[TBody, TPathParams, TResp]) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var body TBody
-		
+
 		if r.ContentLength > 0 {
 			if err := json.UnmarshalRead(r.Body, &body); err != nil {
 				writeError(w, http.StatusBadRequest, fmt.Sprintf("invalid request body: %v", err))
@@ -65,7 +65,7 @@ func HandleJSON[TBody, TPathParams, TResp any](fn handlerFunc[TBody, TPathParams
 
 		status := http.StatusOK
 		var respData any = resp
-		
+
 		if created, ok := any(resp).(Created); ok {
 			status = http.StatusCreated
 			respData = created.Value

@@ -38,7 +38,23 @@ func setupTest(t *testing.T) (http.Handler, *product.Repo, *fakeOpenFoodFacts) {
 		OpenFoodFacts: fake,
 	}
 
-	return NewHandler(productRepo, lookupService), productRepo, fake
+	return NewHandler(productRepo, lookupService, db), productRepo, fake
+}
+
+// setupTestWithDB creates a fully configured HTTP handler and returns the DB along with it.
+// Use this when setup functions need access to the DB for creating non-product entities.
+func setupTestWithDB(t *testing.T) (http.Handler, *product.Repo, *fakeOpenFoodFacts, *sql.DB) {
+	t.Helper()
+	db := setupTestDB(t)
+
+	productRepo := product.NewRepo(db)
+	fake := newFakeOpenFoodFacts()
+	lookupService := &product.LookupService{
+		Repo:          productRepo,
+		OpenFoodFacts: fake,
+	}
+
+	return NewHandler(productRepo, lookupService, db), productRepo, fake, db
 }
 
 func setupProduct(id, name, category string) func(t *testing.T, repo *product.Repo, fake *fakeOpenFoodFacts) {

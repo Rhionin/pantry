@@ -115,6 +115,385 @@
         "chatSessionId": "sess_af497a49-c564-4b9d-85ed-c606745eec60",
         "timestamp": 1786713732173
       }
+    ],
+    "3.1 Implement scan entry repository and types (colocated in feature package)": [
+      {
+        "executionId": "cc594311-b9ca-4f31-a05b-ecb7a2499005",
+        "chatSessionId": "sess_3c30d98d-912f-48ac-bcad-48fc4e44817c",
+        "timestamp": 1786714126601
+      },
+      {
+        "executionId": "cc594311-b9ca-4f31-a05b-ecb7a2499005",
+        "chatSessionId": "sess_3c30d98d-912f-48ac-bcad-48fc4e44817c",
+        "timestamp": 1786714165298
+      },
+      {
+        "executionId": "cc594311-b9ca-4f31-a05b-ecb7a2499005",
+        "chatSessionId": "sess_3c30d98d-912f-48ac-bcad-48fc4e44817c",
+        "timestamp": 1786714320394
+      }
+    ],
+    "3.2 Implement scan commit service (stock-in path)": [
+      {
+        "executionId": "cc594311-b9ca-4f31-a05b-ecb7a2499005",
+        "chatSessionId": "sess_3c30d98d-912f-48ac-bcad-48fc4e44817c",
+        "timestamp": 1786714126655
+      },
+      {
+        "executionId": "cc594311-b9ca-4f31-a05b-ecb7a2499005",
+        "chatSessionId": "sess_3c30d98d-912f-48ac-bcad-48fc4e44817c",
+        "timestamp": 1786714335695
+      },
+      {
+        "executionId": "cc594311-b9ca-4f31-a05b-ecb7a2499005",
+        "chatSessionId": "sess_3c30d98d-912f-48ac-bcad-48fc4e44817c",
+        "timestamp": 1786714493352
+      }
+    ],
+    "3.3 Write property test for Property 5 (stock-in creates exactly N instances)": [
+      {
+        "executionId": "cc594311-b9ca-4f31-a05b-ecb7a2499005",
+        "chatSessionId": "sess_3c30d98d-912f-48ac-bcad-48fc4e44817c",
+        "timestamp": 1786714126719
+      },
+      {
+        "executionId": "cc594311-b9ca-4f31-a05b-ecb7a2499005",
+        "chatSessionId": "sess_3c30d98d-912f-48ac-bcad-48fc4e44817c",
+        "timestamp": 1786723574725
+      }
+    ],
+    "3.4 Implement scan commit service (stock-out path)": [
+      {
+        "executionId": "cc594311-b9ca-4f31-a05b-ecb7a2499005",
+        "chatSessionId": "sess_3c30d98d-912f-48ac-bcad-48fc4e44817c",
+        "timestamp": 1786714126773
+      },
+      {
+        "executionId": "cc594311-b9ca-4f31-a05b-ecb7a2499005",
+        "chatSessionId": "sess_3c30d98d-912f-48ac-bcad-48fc4e44817c",
+        "timestamp": 1786714497994
+      },
+      {
+        "executionId": "cc594311-b9ca-4f31-a05b-ecb7a2499005",
+        "chatSessionId": "sess_3c30d98d-912f-48ac-bcad-48fc4e44817c",
+        "timestamp": 1786714664055
+      }
+    ],
+    "3.5 Write property test for Property 6 (stock-out removes use-oldest-first)": [
+      {
+        "executionId": "cc594311-b9ca-4f31-a05b-ecb7a2499005",
+        "chatSessionId": "sess_3c30d98d-912f-48ac-bcad-48fc4e44817c",
+        "timestamp": 1786714126822
+      },
+      {
+        "executionId": "cc594311-b9ca-4f31-a05b-ecb7a2499005",
+        "chatSessionId": "sess_3c30d98d-912f-48ac-bcad-48fc4e44817c",
+        "timestamp": 1786762594273
+      }
+    ],
+    "3.6 Implement scan commit service (flagged entry resolution)": [
+      {
+        "executionId": "cc594311-b9ca-4f31-a05b-ecb7a2499005",
+        "chatSessionId": "sess_3c30d98d-912f-48ac-bcad-48fc4e44817c",
+        "timestamp": 1786714126866
+      },
+      {
+        "executionId": "cc594311-b9ca-4f31-a05b-ecb7a2499005",
+        "chatSessionId": "sess_3c30d98d-912f-48ac-bcad-48fc4e44817c",
+        "timestamp": 1786714667620
+      },
+      {
+        "executionId": "cc594311-b9ca-4f31-a05b-ecb7a2499005",
+        "chatSessionId": "sess_3c30d98d-912f-48ac-bcad-48fc4e44817c",
+        "timestamp": 1786720506088
+      }
+    ],
+    "3.7 Write property test for Property 8 (flagged entry resolution)": [
+      {
+        "executionId": "cc594311-b9ca-4f31-a05b-ecb7a2499005",
+        "chatSessionId": "sess_3c30d98d-912f-48ac-bcad-48fc4e44817c",
+        "timestamp": 1786714126960
+      },
+      {
+        "executionId": "cc594311-b9ca-4f31-a05b-ecb7a2499005",
+        "chatSessionId": "sess_3c30d98d-912f-48ac-bcad-48fc4e44817c",
+        "timestamp": 1786762597767
+      }
+    ],
+    "3.8 Wire scan queue API endpoints": [
+      {
+        "executionId": "cc594311-b9ca-4f31-a05b-ecb7a2499005",
+        "chatSessionId": "sess_3c30d98d-912f-48ac-bcad-48fc4e44817c",
+        "timestamp": 1786714127015
+      },
+      {
+        "executionId": "cc594311-b9ca-4f31-a05b-ecb7a2499005",
+        "chatSessionId": "sess_3c30d98d-912f-48ac-bcad-48fc4e44817c",
+        "timestamp": 1786720511465
+      },
+      {
+        "executionId": "cc594311-b9ca-4f31-a05b-ecb7a2499005",
+        "chatSessionId": "sess_3c30d98d-912f-48ac-bcad-48fc4e44817c",
+        "timestamp": 1786723564606
+      }
+    ],
+    "3.9 Write property tests for Properties 1, 2, 3, 4 (scan entry integrity, direction propagation, ordering, batch update)": [
+      {
+        "executionId": "cc594311-b9ca-4f31-a05b-ecb7a2499005",
+        "chatSessionId": "sess_3c30d98d-912f-48ac-bcad-48fc4e44817c",
+        "timestamp": 1786714127063
+      },
+      {
+        "executionId": "cc594311-b9ca-4f31-a05b-ecb7a2499005",
+        "chatSessionId": "sess_3c30d98d-912f-48ac-bcad-48fc4e44817c",
+        "timestamp": 1786723579905
+      },
+      {
+        "executionId": "cc594311-b9ca-4f31-a05b-ecb7a2499005",
+        "chatSessionId": "sess_3c30d98d-912f-48ac-bcad-48fc4e44817c",
+        "timestamp": 1786762476032
+      }
+    ],
+    "3.10 Write property test for Property 7 (committed entry in history)": [
+      {
+        "executionId": "cc594311-b9ca-4f31-a05b-ecb7a2499005",
+        "chatSessionId": "sess_3c30d98d-912f-48ac-bcad-48fc4e44817c",
+        "timestamp": 1786714127113
+      },
+      {
+        "executionId": "cc594311-b9ca-4f31-a05b-ecb7a2499005",
+        "chatSessionId": "sess_3c30d98d-912f-48ac-bcad-48fc4e44817c",
+        "timestamp": 1786762479956
+      },
+      {
+        "executionId": "cc594311-b9ca-4f31-a05b-ecb7a2499005",
+        "chatSessionId": "sess_3c30d98d-912f-48ac-bcad-48fc4e44817c",
+        "timestamp": 1786762581631
+      }
+    ],
+    "4. Checkpoint — Ensure all scan queue tests pass": [
+      {
+        "executionId": "cc594311-b9ca-4f31-a05b-ecb7a2499005",
+        "chatSessionId": "sess_3c30d98d-912f-48ac-bcad-48fc4e44817c",
+        "timestamp": 1786714127154
+      }
+    ],
+    "5.1 Implement item and instance repository and types (colocated in feature package)": [
+      {
+        "executionId": "cc594311-b9ca-4f31-a05b-ecb7a2499005",
+        "chatSessionId": "sess_3c30d98d-912f-48ac-bcad-48fc4e44817c",
+        "timestamp": 1786714127205
+      }
+    ],
+    "5.2 Implement expiry status calculation": [
+      {
+        "executionId": "cc594311-b9ca-4f31-a05b-ecb7a2499005",
+        "chatSessionId": "sess_3c30d98d-912f-48ac-bcad-48fc4e44817c",
+        "timestamp": 1786714127247
+      }
+    ],
+    "5.4 Implement inventory aggregation service": [
+      {
+        "executionId": "cc594311-b9ca-4f31-a05b-ecb7a2499005",
+        "chatSessionId": "sess_3c30d98d-912f-48ac-bcad-48fc4e44817c",
+        "timestamp": 1786714127315
+      }
+    ],
+    "5.6 Wire inventory API endpoints": [
+      {
+        "executionId": "cc594311-b9ca-4f31-a05b-ecb7a2499005",
+        "chatSessionId": "sess_3c30d98d-912f-48ac-bcad-48fc4e44817c",
+        "timestamp": 1786714127358
+      }
+    ],
+    "6.1 Implement consumption event repository and types (colocated in feature package)": [
+      {
+        "executionId": "cc594311-b9ca-4f31-a05b-ecb7a2499005",
+        "chatSessionId": "sess_3c30d98d-912f-48ac-bcad-48fc4e44817c",
+        "timestamp": 1786714127403
+      }
+    ],
+    "6.2 Implement suggestion service": [
+      {
+        "executionId": "cc594311-b9ca-4f31-a05b-ecb7a2499005",
+        "chatSessionId": "sess_3c30d98d-912f-48ac-bcad-48fc4e44817c",
+        "timestamp": 1786714127447
+      }
+    ],
+    "6.4 Wire suggestion and target-quantity API endpoints": [
+      {
+        "executionId": "cc594311-b9ca-4f31-a05b-ecb7a2499005",
+        "chatSessionId": "sess_3c30d98d-912f-48ac-bcad-48fc4e44817c",
+        "timestamp": 1786714127488
+      }
+    ],
+    "7.1 Implement shopping list derivation service": [
+      {
+        "executionId": "cc594311-b9ca-4f31-a05b-ecb7a2499005",
+        "chatSessionId": "sess_3c30d98d-912f-48ac-bcad-48fc4e44817c",
+        "timestamp": 1786714127533
+      }
+    ],
+    "7.3 Implement shopping list repository and types (colocated in feature package)": [
+      {
+        "executionId": "cc594311-b9ca-4f31-a05b-ecb7a2499005",
+        "chatSessionId": "sess_3c30d98d-912f-48ac-bcad-48fc4e44817c",
+        "timestamp": 1786714127577
+      }
+    ],
+    "7.5 Implement cart export service stub": [
+      {
+        "executionId": "cc594311-b9ca-4f31-a05b-ecb7a2499005",
+        "chatSessionId": "sess_3c30d98d-912f-48ac-bcad-48fc4e44817c",
+        "timestamp": 1786714127634
+      }
+    ],
+    "7.6 Wire shopping list API endpoints": [
+      {
+        "executionId": "cc594311-b9ca-4f31-a05b-ecb7a2499005",
+        "chatSessionId": "sess_3c30d98d-912f-48ac-bcad-48fc4e44817c",
+        "timestamp": 1786714127697
+      }
+    ],
+    "8. Checkpoint — Ensure all backend tests pass": [
+      {
+        "executionId": "cc594311-b9ca-4f31-a05b-ecb7a2499005",
+        "chatSessionId": "sess_3c30d98d-912f-48ac-bcad-48fc4e44817c",
+        "timestamp": 1786714127736
+      }
+    ],
+    "9.1 Define shared TypeScript interfaces and API client": [
+      {
+        "executionId": "cc594311-b9ca-4f31-a05b-ecb7a2499005",
+        "chatSessionId": "sess_3c30d98d-912f-48ac-bcad-48fc4e44817c",
+        "timestamp": 1786714127776
+      }
+    ],
+    "9.2 Implement expiry status utility (TypeScript)": [
+      {
+        "executionId": "cc594311-b9ca-4f31-a05b-ecb7a2499005",
+        "chatSessionId": "sess_3c30d98d-912f-48ac-bcad-48fc4e44817c",
+        "timestamp": 1786714127821
+      }
+    ],
+    "9.4 Implement shopping list derivation utility (TypeScript)": [
+      {
+        "executionId": "cc594311-b9ca-4f31-a05b-ecb7a2499005",
+        "chatSessionId": "sess_3c30d98d-912f-48ac-bcad-48fc4e44817c",
+        "timestamp": 1786714127865
+      }
+    ],
+    "10.1 Implement `BarcodeInputField` component": [
+      {
+        "executionId": "cc594311-b9ca-4f31-a05b-ecb7a2499005",
+        "chatSessionId": "sess_3c30d98d-912f-48ac-bcad-48fc4e44817c",
+        "timestamp": 1786714127907
+      }
+    ],
+    "10.2 Implement `CameraScanner` component": [
+      {
+        "executionId": "cc594311-b9ca-4f31-a05b-ecb7a2499005",
+        "chatSessionId": "sess_3c30d98d-912f-48ac-bcad-48fc4e44817c",
+        "timestamp": 1786714127956
+      }
+    ],
+    "10.3 Implement `ScanDirectionToggle` component and 5-minute auto-clear": [
+      {
+        "executionId": "cc594311-b9ca-4f31-a05b-ecb7a2499005",
+        "chatSessionId": "sess_3c30d98d-912f-48ac-bcad-48fc4e44817c",
+        "timestamp": 1786714128021
+      }
+    ],
+    "11.1 Implement `ScanQueuePage` and `ScanEntryCard`": [
+      {
+        "executionId": "cc594311-b9ca-4f31-a05b-ecb7a2499005",
+        "chatSessionId": "sess_3c30d98d-912f-48ac-bcad-48fc4e44817c",
+        "timestamp": 1786714128076
+      }
+    ],
+    "11.2 Implement `BatchReviewPanel`": [
+      {
+        "executionId": "cc594311-b9ca-4f31-a05b-ecb7a2499005",
+        "chatSessionId": "sess_3c30d98d-912f-48ac-bcad-48fc4e44817c",
+        "timestamp": 1786714128126
+      }
+    ],
+    "11.3 Implement `FlaggedEntryResolver`": [
+      {
+        "executionId": "cc594311-b9ca-4f31-a05b-ecb7a2499005",
+        "chatSessionId": "sess_3c30d98d-912f-48ac-bcad-48fc4e44817c",
+        "timestamp": 1786714128167
+      }
+    ],
+    "11.4 Implement `DisambiguationModal`": [
+      {
+        "executionId": "cc594311-b9ca-4f31-a05b-ecb7a2499005",
+        "chatSessionId": "sess_3c30d98d-912f-48ac-bcad-48fc4e44817c",
+        "timestamp": 1786714128264
+      }
+    ],
+    "11.5 Implement stock-out instance selection view": [
+      {
+        "executionId": "cc594311-b9ca-4f31-a05b-ecb7a2499005",
+        "chatSessionId": "sess_3c30d98d-912f-48ac-bcad-48fc4e44817c",
+        "timestamp": 1786714128307
+      }
+    ],
+    "12.1 Implement `InventoryPage` and `ItemRow`": [
+      {
+        "executionId": "cc594311-b9ca-4f31-a05b-ecb7a2499005",
+        "chatSessionId": "sess_3c30d98d-912f-48ac-bcad-48fc4e44817c",
+        "timestamp": 1786714128353
+      }
+    ],
+    "12.2 Implement `ItemInstanceList` and expiry badges": [
+      {
+        "executionId": "cc594311-b9ca-4f31-a05b-ecb7a2499005",
+        "chatSessionId": "sess_3c30d98d-912f-48ac-bcad-48fc4e44817c",
+        "timestamp": 1786714128398
+      }
+    ],
+    "12.3 Implement `AddInstanceModal`": [
+      {
+        "executionId": "cc594311-b9ca-4f31-a05b-ecb7a2499005",
+        "chatSessionId": "sess_3c30d98d-912f-48ac-bcad-48fc4e44817c",
+        "timestamp": 1786714128445
+      }
+    ],
+    "13.1 Implement `SuggestionPanel`": [
+      {
+        "executionId": "cc594311-b9ca-4f31-a05b-ecb7a2499005",
+        "chatSessionId": "sess_3c30d98d-912f-48ac-bcad-48fc4e44817c",
+        "timestamp": 1786714128495
+      }
+    ],
+    "13.2 Implement `ShoppingListPage` and `CartExportButton`": [
+      {
+        "executionId": "cc594311-b9ca-4f31-a05b-ecb7a2499005",
+        "chatSessionId": "sess_3c30d98d-912f-48ac-bcad-48fc4e44817c",
+        "timestamp": 1786714128537
+      }
+    ],
+    "14.1 Write Playwright test: scan → review → commit (stock-in) flow": [
+      {
+        "executionId": "cc594311-b9ca-4f31-a05b-ecb7a2499005",
+        "chatSessionId": "sess_3c30d98d-912f-48ac-bcad-48fc4e44817c",
+        "timestamp": 1786714128577
+      }
+    ],
+    "15. Final checkpoint — Ensure all tests pass": [
+      {
+        "executionId": "cc594311-b9ca-4f31-a05b-ecb7a2499005",
+        "chatSessionId": "sess_3c30d98d-912f-48ac-bcad-48fc4e44817c",
+        "timestamp": 1786714128628
+      }
+    ],
+    "3. Scan queue backend": [
+      {
+        "executionId": "cc594311-b9ca-4f31-a05b-ecb7a2499005",
+        "chatSessionId": "sess_3c30d98d-912f-48ac-bcad-48fc4e44817c",
+        "timestamp": 1786762597825
+      }
     ]
   }
 }

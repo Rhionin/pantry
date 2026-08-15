@@ -93,6 +93,8 @@ func buildRequest(test *apitest.APITest, ex httpExchange) *apitest.Request {
 		req = test.Post(ex.path)
 	case "PUT":
 		req = test.Put(ex.path)
+	case "PATCH":
+		req = test.Patch(ex.path)
 	case "DELETE":
 		req = test.Delete(ex.path)
 	default:
@@ -152,11 +154,14 @@ func assert(checks ...func(t *testing.T, repo *product.Repo, fake *fakeOpenFoodF
 //	afterRequest: exchanges([]httpExchange{{...}, {...}}...)  // multiple exchanges with slice syntax
 func exchanges(exs ...httpExchange) func(t *testing.T, repo *product.Repo, fake *fakeOpenFoodFacts, res *http.Response) {
 	return func(t *testing.T, repo *product.Repo, fake *fakeOpenFoodFacts, res *http.Response) {
+		// Get the DB from setupTestDB (need to pass it through)
+		db := setupTestDB(t)
+
 		// Reuse the same handler from the parent test to preserve state
 		handler := NewHandler(repo, &product.LookupService{
 			Repo:          repo,
 			OpenFoodFacts: fake,
-		})
+		}, db)
 
 		for i, ex := range exs {
 			// Use a simple counter for sub-test names
