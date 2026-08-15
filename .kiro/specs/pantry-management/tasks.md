@@ -131,7 +131,14 @@ Implement the Pantry Management app as a Go REST API backend with a React + Type
     - For any committed scan entry, it is absent from `pending` list and present in history with all original fields unchanged
     - **Validates: Requirements 1.14**
 
-- [~] 4. Checkpoint — Ensure all scan queue tests pass
+
+  - [x] 3.11 Refactor test suite to use API-level tests
+    - Replace unit tests in `internal/scan/commit_test.go` with comprehensive API-level tests in `internal/server/handler_scan_commit_test.go`
+    - Reduce `commit_test.go` from 1,779 lines to 368 lines by keeping only property tests
+    - Create 20 API-level tests covering stock-in commits, stock-out commits, flagged entry resolution, and all error cases
+    - Update coverage threshold in `scripts/test-coverage.sh` to 25.3%
+    - _Testing discipline: Follow project philosophy of API-level integration tests for coverage_
+- [x] 4. Checkpoint — Ensure all scan queue tests pass
   - Run `go test ./...` and confirm all scan queue unit and property tests pass. Ask the user if any questions arise before continuing.
 
 - [ ] 5. Inventory backend
