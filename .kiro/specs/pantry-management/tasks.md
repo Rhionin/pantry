@@ -183,17 +183,20 @@ Implement the Pantry Management app as a Go REST API backend with a React + Type
     - Write `internal/suggestion/suggestion.go` with types: `ConsumptionEvent`, `TargetQuantitySuggestion` and related models
     - Implement repository methods: `InsertConsumptionEvent` and `ListConsumptionEvents(itemID)` (sorted ascending by `consumed_at`)
     - Types and repository colocated in the feature package
+    - Use `app.RunMigrations(conn)` for DB setup in tests — follow the `newTestRepo` pattern from `internal/inventory/inventory_test.go`
     - _Requirements: 3.1_
 
   - [~] 6.2 Implement suggestion service
     - Write `internal/suggestion/engine.go`: `SuggestTargetQuantity(itemID, events []ConsumptionEvent) TargetQuantitySuggestion`
     - Return `dataInsufficient: true` when `len(events) < 3`; otherwise compute median inter-consumption interval, derive `ceil(restockHorizon / medianInterval) + 1`, and populate `reasoning` string
+    - This is a pure function — unit tests are appropriate here; no DB needed
     - _Requirements: 3.1, 3.2, 3.5_
 
   - [ ]* 6.3 Write property test for Property 14 (data-insufficient threshold)
     - **Property 14: Suggestion returns data-insufficient for fewer than 3 consumption events**
     - For any item with 0, 1, or 2 events: `dataInsufficient = true`, no numeric suggestion. For any item with ≥3 events: numeric suggestion and non-empty reasoning.
     - Use `rapid` to generate event lists of length 0–10 with varying timestamps
+    - This tests a pure algorithm — keep in `internal/suggestion/` alongside the engine
     - **Validates: Requirements 3.1, 3.2, 3.5**
 
   - [~] 6.4 Wire suggestion and target-quantity API endpoints
@@ -201,17 +204,21 @@ Implement the Pantry Management app as a Go REST API backend with a React + Type
       - `GetHandler` — `GET /api/suggestions/{itemId}`
       - `SetTargetQuantityHandler` — `POST /api/items/{itemId}/target-quantity`
     - Register all routes in `main.go`
+    - Write API-level tests in `internal/server/` using the table-driven `scanHandlerTestCase` framework; use `afterRequest: exchanges()` to verify state through HTTP rather than direct DB queries
+    - Run `./scripts/test-coverage.sh` after completing this task and commit the updated script if the threshold increases
     - _Requirements: 3.1, 3.2, 3.3, 3.4, 3.5, 3.6_
 
 - [ ] 7. Shopping list backend
   - [~] 7.1 Implement shopping list derivation service
     - Write `internal/shopping/derive.go`: `DeriveShoppingList(userID)` — for each item with a non-null `target_quantity` where `currentInstanceCount < target_quantity`, add a derived entry with `quantity = target_quantity − currentInstanceCount`; merge with manual `shopping_list_items` rows (manual overrides derived quantity for the same item)
+    - This is a pure function — unit tests are appropriate here; no DB needed
     - _Requirements: 4.1, 4.2, 4.8_
 
   - [ ]* 7.2 Write property test for Property 12 (shopping list gap quantity)
     - **Property 12: Shopping list gap quantity is always correct**
     - For any item with target quantity T and instance count C: if C < T → item present with quantity T−C; if C ≥ T → item absent from auto-generated list
     - Use `rapid` to generate (T, C) pairs across a wide range
+    - This tests a pure algorithm — keep in `internal/shopping/` alongside the derivation logic
     - **Validates: Requirements 4.1, 4.2, 4.8**
 
   - [~] 7.3 Implement shopping list repository and types (colocated in feature package)
@@ -219,11 +226,13 @@ Implement the Pantry Management app as a Go REST API backend with a React + Type
     - Implement repository methods: `AddManualItem`, `RemoveItem`, `MarkPurchased`, `ListManualItems`
     - `MarkPurchased` sets `purchased_at` and does NOT modify any `item_instances` row
     - Types and repository colocated in the feature package
+    - Use `app.RunMigrations(conn)` for DB setup in tests — follow the `newTestRepo` pattern from `internal/inventory/inventory_test.go`
     - _Requirements: 4.4, 4.5, 4.6_
 
   - [ ]* 7.4 Write property test for Property 13 (marking purchased does not modify inventory)
     - **Property 13: Purchasing a shopping list item does not modify inventory**
     - For any inventory state and shopping list item marked as purchased, all `item_instances` row counts are identical before and after the mark-as-purchased call
+    - Verify the invariant through the API: use `afterRequest: exchanges()` to check instance counts via `GET /api/inventory/{itemId}/instances` rather than direct DB queries
     - **Validates: Requirements 4.6**
 
   - [~] 7.5 Implement cart export service stub
@@ -238,6 +247,8 @@ Implement the Pantry Management app as a Go REST API backend with a React + Type
       - `ItemUpdateHandler` — `PATCH /api/shopping-list/items/{id}`
       - `ExportHandler` — `POST /api/shopping-list/export`
     - Register all routes in `main.go`
+    - Write API-level tests in `internal/server/` using the table-driven `scanHandlerTestCase` framework; use `afterRequest: exchanges()` to verify state through HTTP rather than direct DB queries
+    - Run `./scripts/test-coverage.sh` after completing this task and commit the updated script if the threshold increases
     - _Requirements: 4.1, 4.2, 4.3, 4.4, 4.5, 4.6, 4.7, 4.8, 4.9, 4.10_
 
 - [~] 8. Checkpoint — Ensure all backend tests pass
@@ -355,13 +366,16 @@ Implement the Pantry Management app as a Go REST API backend with a React + Type
 - Each task references specific requirements for traceability.
 - Backend property tests use `pgregory.net/rapid`; frontend property tests use `fast-check`.
 - All property tests must include a comment: `// Feature: pantry-management, Property N: <property text>`.
-- Database integration tests use in-memory SQLite (`:memory:`) — no Docker needed.
+- Database integration tests use in-memory SQLite (`:memory:`) — no Docker needed. Always initialize with `app.RunMigrations(conn)`; never duplicate the schema inline.
 - The scan direction auto-clear (5-minute idle) is implemented entirely client-side; the timer is reset on every successful scan.
 - Append-only semantics on `scan_entries` are enforced at the application layer; repository functions must not issue bare UPDATE/DELETE SQL on that table.
 - **Routing**: Uses Go 1.22+ `net/http.ServeMux` with method+path patterns (e.g. `GET /api/scans/{id}`). No third-party router.
 - **Route structure**: Handlers are defined within feature packages (e.g., `internal/product/handlers.go`, `internal/scan/handlers.go`). Each handler or handler struct declares its own anonymous interface(s) for dependencies — no shared interface types are reused across handler structs.
 - **Feature-based organization**: All code for a domain (types, repository, business logic, tests) lives in a single feature package under `internal/`. This maximizes discoverability and reduces coupling. Shared infrastructure (`app/`, migrations) lives in `internal/app/`.
-- **Only third-party dependencies**: `modernc.org/sqlite` and `pgregory.net/rapid` for backend; `fast-check` for frontend property tests.
+- **Testing discipline**: Prefer API-level tests in `internal/server/` using the table-driven `scanHandlerTestCase` framework and `afterRequest: exchanges()`. Write unit tests only for pure functions and internal algorithms (e.g., `SuggestTargetQuantity`, `DeriveShoppingList`, property tests). Test the HTTP contract, not implementation details. Test reproducible errors (bad requests, validation failures); skip internal error paths API callers can't trigger.
+- **Coverage**: After each task that adds or modifies backend code, run `./scripts/test-coverage.sh`. Commit the updated script when the threshold increases.
+- **Error messages**: User-friendly without function names. No WHAT comments or numbered steps — only godoc and WHY comments.
+- **Third-party backend dependencies in use**: `modernc.org/sqlite`, `pgregory.net/rapid`, `github.com/steinfletcher/apitest`, `github.com/steinfletcher/apitest-jsonpath`, `github.com/go-json-experiment/json`, `github.com/google/uuid`, `github.com/justinrixx/retryhttp`. Frontend property tests use `fast-check`.
 
 ## Task Dependency Graph
 
