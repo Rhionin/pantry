@@ -141,34 +141,34 @@ Implement the Pantry Management app as a Go REST API backend with a React + Type
 - [x] 4. Checkpoint — Ensure all scan queue tests pass
   - Run `go test ./...` and confirm all scan queue unit and property tests pass. Ask the user if any questions arise before continuing.
 
-- [ ] 5. Inventory backend
-  - [~] 5.1 Implement item and instance repository and types (colocated in feature package)
+- [x] 5. Inventory backend
+  - [x] 5.1 Implement item and instance repository and types (colocated in feature package)
     - Write `internal/inventory/inventory.go` with types: `Item`, `ItemInstance` and related models
     - Implement repository methods: `GetOrCreateItem`, `ListItems`, `ListItemInstances`, `AddInstance`, `RemoveInstance`, `GetInstance`
     - `RemoveInstance` must check existence and return a typed `ErrInstanceNotFound` if missing
     - Types and repository colocated in the feature package
     - _Requirements: 2.1, 2.2, 2.3, 2.6, 2.7_
 
-  - [~] 5.2 Implement expiry status calculation
+  - [x] 5.2 Implement expiry status calculation
     - Write `internal/inventory/expiry.go`: pure function `ComputeExpiryStatus(expiresAt *time.Time, now time.Time, warningDays int) ExpiryStatus` returning `ok`, `near_expiry`, or `expired`
     - _Requirements: 2.8, 2.9_
 
-  - [ ]* 5.3 Write property test for Property 9 (expiry status consistency)
+  - [x] 5.3 Write property test for Property 9 (expiry status consistency)
     - **Property 9: Expiry status is consistent with dates and warning period**
     - For any expiry date, current time, and warning period, the returned status satisfies all three branches of the algorithm; instances with no expiry always return `ok`
     - Use `rapid` with generated time pairs and warning periods 1–30 days
     - **Validates: Requirements 2.8, 2.9**
 
-  - [~] 5.4 Implement inventory aggregation service
+  - [x] 5.4 Implement inventory aggregation service
     - Write `internal/inventory/aggregate.go`: `GetInventoryList(userID)` — returns `InventoryItem` slice with `instanceCount`, `nearExpiryCount`, `expiredCount`, and `needsAttention` derived by calling `ComputeExpiryStatus` on each instance; applies use-oldest-first sort for instance lists
     - _Requirements: 2.2, 2.3, 2.10, 2.11_
 
-  - [ ]* 5.5 Write property tests for Properties 10 and 11 (Needs Attention, search filter)
+  - [x] 5.5 Write property tests for Properties 10 and 11 (Needs Attention, search filter)
     - **Property 10: Needs Attention section contains exactly the right items** — generated inventory state produces Needs Attention list iff item has ≥1 non-ok instance
     - **Property 11: Inventory search filter returns exactly matching items** — for any query string and inventory, filtered result is exactly the case-insensitive subset
     - **Validates: Requirements 2.4, 2.10, 2.11**
 
-  - [~] 5.6 Wire inventory API endpoints
+  - [x] 5.6 Wire inventory API endpoints
     - Create handler functions in `internal/inventory/handlers.go`, each implementing `http.Handler`:
       - `ListHandler` — `GET /api/inventory`
       - `InstancesListHandler` — `GET /api/inventory/{itemId}/instances`
