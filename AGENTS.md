@@ -1,57 +1,15 @@
 # Agent Guidelines
 
-This document provides guidelines for AI coding assistants working on this project.
-
 ## Testing
 
-### Running Tests
+After each task, run `./scripts/test-coverage.sh` to enforce coverage thresholds. The script auto-updates its threshold when coverage increases—commit the updated script to lock in the improvement.
 
-Run tests with coverage across all packages:
+Prefer API tests using the apitest framework in `internal/server/`. These exercise behavior from the customer's perspective and often eliminate the need for lower-level unit tests. Write unit tests only when API tests are insufficient (e.g., testing internal algorithms, edge cases in pure functions).
 
-```bash
-go test -cover -coverpkg=./... ./...
-```
+Test reproducible errors (bad requests, validation failures) but skip internal error paths (database errors, network timeouts) that API callers can't trigger. Focus coverage on customer-facing behavior.
 
-This project heavily relies on API-level integration tests in `internal/server/` to provide coverage across the entire codebase, regardless of package boundaries.
+Handler tests use a declarative table-driven framework with HTTP exchanges. Use `afterRequest: exchanges()` to verify behavior through HTTP requests rather than direct database queries. Test the HTTP contract, not implementation details.
 
-### Test Framework
+## Code Style
 
-Handler tests use a declarative table-driven framework with HTTP exchanges:
-
-- **Primary exchange**: The main HTTP request/response to test (embedded in `handlerTestCase`)
-- **Setup functions**: Named with `setup` prefix (e.g., `setupProduct`, `setupProductWithBarcode`)
-- **Follow-up exchanges**: Use `exchanges()` for additional HTTP verification
-  - Single exchange: `exchanges(httpExchange{...})`
-  - Multiple exchanges: `exchanges([]httpExchange{{...}, {...}}...)`
-
-Example:
-```go
-{
-    name: "successful create",
-    httpExchange: httpExchange{
-        method:         "POST",
-        path:           "/api/products",
-        body:           `{"name":"Orange"}`,
-        expectedStatus: http.StatusCreated,
-    },
-    // Verify via HTTP that the product was created
-    afterRequest: exchanges(httpExchange{
-        method:         "GET",
-        path:           "/api/products",
-        expectedStatus: http.StatusOK,
-        assertions: []assertion{
-            {path: "$[0].Name", value: "Orange"},
-        },
-    }),
-}
-```
-
-### Test Philosophy
-
-- **Test the HTTP contract, not implementation details**: Use `afterRequest: exchanges()` to verify behavior through HTTP requests rather than direct database queries
-- **Prefer declarative over imperative**: Express tests as HTTP exchanges whenever possible
-- **Use slice syntax for multiple exchanges**: Makes test tables cleaner and less repetitive
-
-## Code Coverage
-
-Always run coverage with `-coverpkg=./...` to measure coverage across all packages, not just the package being tested. API-level tests in `internal/server/` are designed to cover functionality across multiple packages.
+Error messages should be user-friendly without function names. Avoid redundant comments that restate code—keep godoc and WHY comments, remove WHAT comments and numbered steps.
