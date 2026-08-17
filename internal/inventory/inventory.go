@@ -234,6 +234,31 @@ func (r *Repo) RemoveInstance(ctx context.Context, instanceID string, reason str
 	return nil
 }
 
+// UpdateTargetQuantity sets the target_quantity for the given item.
+// Returns ErrInstanceNotFound if no item with that ID exists.
+func (r *Repo) UpdateTargetQuantity(ctx context.Context, itemID string, qty int) error {
+	res, err := r.db.ExecContext(ctx,
+		`UPDATE items SET target_quantity = ? WHERE id = ?`,
+		qty, itemID,
+	)
+	if err != nil {
+		return fmt.Errorf("UpdateTargetQuantity: %w", err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("UpdateTargetQuantity rows affected: %w", err)
+	}
+	if n == 0 {
+		return ErrInstanceNotFound
+	}
+	return nil
+}
+
+// GetItem returns the item with the given ID, or nil if no such item exists.
+func (r *Repo) GetItem(ctx context.Context, itemID string) (*Item, error) {
+	return r.getItemByID(ctx, itemID)
+}
+
 // GetInstance returns the item instance with the given ID, or nil if no such
 // instance exists.
 func (r *Repo) GetInstance(ctx context.Context, instanceID string) (*ItemInstance, error) {

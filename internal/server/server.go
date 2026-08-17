@@ -9,6 +9,7 @@ import (
 	"github.com/Rhionin/pantry/internal/inventory"
 	"github.com/Rhionin/pantry/internal/product"
 	"github.com/Rhionin/pantry/internal/scan"
+	"github.com/Rhionin/pantry/internal/suggestion"
 )
 
 // NewHandler creates and configures the HTTP handler with all application routes.
@@ -67,6 +68,19 @@ func NewHandler(
 	mux.HandleFunc("GET /api/inventory/{itemId}/instances", HandleJSON(inventoryInstancesListHandler.Handle))
 	mux.HandleFunc("POST /api/inventory/{itemId}/instances", HandleJSON(inventoryInstanceCreateHandler.Handle))
 	mux.HandleFunc("DELETE /api/inventory/instances/{instanceId}", HandleJSON(inventoryInstanceDeleteHandler.Handle))
+
+	// Suggestion and target-quantity handlers
+	suggestionRepo := suggestion.NewRepo(db)
+	suggestionGetHandler := &SuggestionGetHandler{
+		SuggestionRepo: suggestionRepo,
+		InventoryRepo:  inventoryRepo,
+	}
+	setTargetQuantityHandler := &SetTargetQuantityHandler{
+		InventoryRepo: inventoryRepo,
+	}
+
+	mux.HandleFunc("GET /api/suggestions/{itemId}", HandleJSON(suggestionGetHandler.Handle))
+	mux.HandleFunc("POST /api/items/{itemId}/target-quantity", HandleJSON(setTargetQuantityHandler.Handle))
 
 	return mux
 }
