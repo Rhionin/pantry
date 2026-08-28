@@ -11,8 +11,8 @@ import (
 )
 
 func TestGetInventoryList_EmptyInventory(t *testing.T) {
-	repo, _, _ := newTestRepo(t)
-	items, err := repo.GetInventoryList(context.Background(), uuid.NewString(), time.Now(), 7, "")
+	pantry, _, _ := newTestPantry(t)
+	items, err := pantry.GetInventoryList(context.Background(), uuid.NewString(), time.Now(), 7, "")
 	if err != nil {
 		t.Fatalf("GetInventoryList failed: %v", err)
 	}
@@ -29,12 +29,12 @@ func TestGetInventoryList_SingleInstanceExpiryStates(t *testing.T) {
 	exp := func(d time.Duration) *time.Time { ts := now.Add(d); return &ts }
 
 	tests := []struct {
-		name             string
-		expiresAt        *time.Time
-		wantInstances    int
-		wantNearExpiry   int
-		wantExpired      int
-		wantNeedsAttn    bool
+		name           string
+		expiresAt      *time.Time
+		wantInstances  int
+		wantNearExpiry int
+		wantExpired    int
+		wantNeedsAttn  bool
 	}{
 		{
 			name:          "no instances",
@@ -64,17 +64,17 @@ func TestGetInventoryList_SingleInstanceExpiryStates(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			repo, productRepo, _ := newTestRepo(t)
+			pantry, catalog, _ := newTestPantry(t)
 			ctx := context.Background()
 			userID := uuid.NewString()
 
 			prodID := uuid.NewString()
-			if err := productRepo.CreateProduct(ctx, product.Product{
+			if err := catalog.CreateProduct(ctx, product.Product{
 				ID: prodID, Name: "TestProduct", Category: "TestCat", UnitOfMeasure: "unit",
 			}); err != nil {
 				t.Fatalf("CreateProduct: %v", err)
 			}
-			item, err := repo.GetOrCreateItem(ctx, userID, prodID)
+			item, err := pantry.GetOrCreateItem(ctx, userID, prodID)
 			if err != nil {
 				t.Fatalf("GetOrCreateItem: %v", err)
 			}
@@ -82,7 +82,7 @@ func TestGetInventoryList_SingleInstanceExpiryStates(t *testing.T) {
 			if tt.expiresAt != nil || tt.wantInstances > 0 {
 				// Only add an instance when the test wants one
 				if tt.wantInstances > 0 {
-					_, err = repo.AddInstance(ctx, inventory.ItemInstance{
+					_, err = pantry.AddInstance(ctx, inventory.ItemInstance{
 						ItemID:    item.ID,
 						StockInAt: now.Add(-24 * time.Hour),
 						ExpiresAt: tt.expiresAt,
@@ -93,7 +93,7 @@ func TestGetInventoryList_SingleInstanceExpiryStates(t *testing.T) {
 				}
 			}
 
-			items, err := repo.GetInventoryList(ctx, userID, now, 7, "")
+			items, err := pantry.GetInventoryList(ctx, userID, now, 7, "")
 			if err != nil {
 				t.Fatalf("GetInventoryList: %v", err)
 			}
@@ -118,42 +118,42 @@ func TestGetInventoryList_SingleInstanceExpiryStates(t *testing.T) {
 }
 
 func TestGetInventoryList_MixedExpiryStates(t *testing.T) {
-	repo, productRepo, _ := newTestRepo(t)
+	pantry, catalog, _ := newTestPantry(t)
 	ctx := context.Background()
 	userID := uuid.NewString()
 	now := time.Now()
 
 	prodID := uuid.NewString()
-	if err := productRepo.CreateProduct(ctx, product.Product{
+	if err := catalog.CreateProduct(ctx, product.Product{
 		ID: prodID, Name: "Eggs", Category: "Dairy", UnitOfMeasure: "dozen",
 	}); err != nil {
 		t.Fatalf("CreateProduct: %v", err)
 	}
-	item, err := repo.GetOrCreateItem(ctx, userID, prodID)
+	item, err := pantry.GetOrCreateItem(ctx, userID, prodID)
 	if err != nil {
 		t.Fatalf("GetOrCreateItem: %v", err)
 	}
 
 	for _, d := range []time.Duration{
-		30 * 24 * time.Hour,  // ok
-		3 * 24 * time.Hour,   // near expiry
-		-24 * time.Hour,      // expired
+		30 * 24 * time.Hour, // ok
+		3 * 24 * time.Hour,  // near expiry
+		-24 * time.Hour,     // expired
 	} {
 		ts := now.Add(d)
-		if _, err := repo.AddInstance(ctx, inventory.ItemInstance{
+		if _, err := pantry.AddInstance(ctx, inventory.ItemInstance{
 			ItemID: item.ID, StockInAt: now, ExpiresAt: &ts,
 		}); err != nil {
 			t.Fatalf("AddInstance: %v", err)
 		}
 	}
 	// one instance with no expiry
-	if _, err := repo.AddInstance(ctx, inventory.ItemInstance{
+	if _, err := pantry.AddInstance(ctx, inventory.ItemInstance{
 		ItemID: item.ID, StockInAt: now,
 	}); err != nil {
 		t.Fatalf("AddInstance (no expiry): %v", err)
 	}
 
-	items, err := repo.GetInventoryList(ctx, userID, now, 7, "")
+	items, err := pantry.GetInventoryList(ctx, userID, now, 7, "")
 	if err != nil {
 		t.Fatalf("GetInventoryList: %v", err)
 	}
@@ -176,7 +176,7 @@ func TestGetInventoryList_MixedExpiryStates(t *testing.T) {
 }
 
 func TestGetInventoryList_MultipleItems(t *testing.T) {
-	repo, productRepo, _ := newTestRepo(t)
+	pantry, catalog, _ := newTestPantry(t)
 	ctx := context.Background()
 	userID := uuid.NewString()
 	now := time.Now()
@@ -185,28 +185,28 @@ func TestGetInventoryList_MultipleItems(t *testing.T) {
 		name, cat string
 		offset    time.Duration
 	}{
-		{"Milk", "Dairy", -24 * time.Hour},          // expired
-		{"Bread", "Bakery", 30 * 24 * time.Hour},    // ok
+		{"Milk", "Dairy", -24 * time.Hour},       // expired
+		{"Bread", "Bakery", 30 * 24 * time.Hour}, // ok
 	} {
 		prodID := uuid.NewString()
-		if err := productRepo.CreateProduct(ctx, product.Product{
+		if err := catalog.CreateProduct(ctx, product.Product{
 			ID: prodID, Name: p.name, Category: p.cat, UnitOfMeasure: "unit",
 		}); err != nil {
 			t.Fatalf("CreateProduct %s: %v", p.name, err)
 		}
-		item, err := repo.GetOrCreateItem(ctx, userID, prodID)
+		item, err := pantry.GetOrCreateItem(ctx, userID, prodID)
 		if err != nil {
 			t.Fatalf("GetOrCreateItem %s: %v", p.name, err)
 		}
 		ts := now.Add(p.offset)
-		if _, err := repo.AddInstance(ctx, inventory.ItemInstance{
+		if _, err := pantry.AddInstance(ctx, inventory.ItemInstance{
 			ItemID: item.ID, StockInAt: now, ExpiresAt: &ts,
 		}); err != nil {
 			t.Fatalf("AddInstance %s: %v", p.name, err)
 		}
 	}
 
-	items, err := repo.GetInventoryList(ctx, userID, now, 7, "")
+	items, err := pantry.GetInventoryList(ctx, userID, now, 7, "")
 	if err != nil {
 		t.Fatalf("GetInventoryList: %v", err)
 	}
@@ -230,39 +230,39 @@ func TestGetInventoryList_MultipleItems(t *testing.T) {
 }
 
 func TestGetInventoryList_ExcludesRemovedInstances(t *testing.T) {
-	repo, productRepo, _ := newTestRepo(t)
+	pantry, catalog, _ := newTestPantry(t)
 	ctx := context.Background()
 	userID := uuid.NewString()
 	now := time.Now()
 
 	prodID := uuid.NewString()
-	if err := productRepo.CreateProduct(ctx, product.Product{
+	if err := catalog.CreateProduct(ctx, product.Product{
 		ID: prodID, Name: "Butter", Category: "Dairy", UnitOfMeasure: "stick",
 	}); err != nil {
 		t.Fatalf("CreateProduct: %v", err)
 	}
-	item, err := repo.GetOrCreateItem(ctx, userID, prodID)
+	item, err := pantry.GetOrCreateItem(ctx, userID, prodID)
 	if err != nil {
 		t.Fatalf("GetOrCreateItem: %v", err)
 	}
 
 	farFuture := now.Add(30 * 24 * time.Hour)
-	if _, err := repo.AddInstance(ctx, inventory.ItemInstance{
+	if _, err := pantry.AddInstance(ctx, inventory.ItemInstance{
 		ItemID: item.ID, StockInAt: now, ExpiresAt: &farFuture,
 	}); err != nil {
 		t.Fatalf("AddInstance (active): %v", err)
 	}
-	inst2, err := repo.AddInstance(ctx, inventory.ItemInstance{
+	inst2, err := pantry.AddInstance(ctx, inventory.ItemInstance{
 		ItemID: item.ID, StockInAt: now, ExpiresAt: &farFuture,
 	})
 	if err != nil {
 		t.Fatalf("AddInstance (to remove): %v", err)
 	}
-	if err := repo.RemoveInstance(ctx, inst2.ID, "consumed"); err != nil {
+	if err := pantry.RemoveInstance(ctx, inst2.ID, "consumed"); err != nil {
 		t.Fatalf("RemoveInstance: %v", err)
 	}
 
-	items, err := repo.GetInventoryList(ctx, userID, now, 7, "")
+	items, err := pantry.GetInventoryList(ctx, userID, now, 7, "")
 	if err != nil {
 		t.Fatalf("GetInventoryList: %v", err)
 	}
@@ -275,7 +275,7 @@ func TestGetInventoryList_ExcludesRemovedInstances(t *testing.T) {
 }
 
 func TestGetInventoryList_WithSearchFilter(t *testing.T) {
-	repo, productRepo, _ := newTestRepo(t)
+	pantry, catalog, _ := newTestPantry(t)
 	ctx := context.Background()
 	userID := uuid.NewString()
 	now := time.Now()
@@ -284,12 +284,12 @@ func TestGetInventoryList_WithSearchFilter(t *testing.T) {
 		{"Milk", "Dairy"}, {"Bread", "Bakery"}, {"Cheese", "Dairy"}, {"Rice", "Grain"},
 	} {
 		prodID := uuid.NewString()
-		if err := productRepo.CreateProduct(ctx, product.Product{
+		if err := catalog.CreateProduct(ctx, product.Product{
 			ID: prodID, Name: p.name, Category: p.category, UnitOfMeasure: "unit",
 		}); err != nil {
 			t.Fatalf("CreateProduct %s: %v", p.name, err)
 		}
-		if _, err := repo.GetOrCreateItem(ctx, userID, prodID); err != nil {
+		if _, err := pantry.GetOrCreateItem(ctx, userID, prodID); err != nil {
 			t.Fatalf("GetOrCreateItem %s: %v", p.name, err)
 		}
 	}
@@ -309,7 +309,7 @@ func TestGetInventoryList_WithSearchFilter(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.query, func(t *testing.T) {
-			items, err := repo.GetInventoryList(ctx, userID, now, 7, tt.query)
+			items, err := pantry.GetInventoryList(ctx, userID, now, 7, tt.query)
 			if err != nil {
 				t.Fatalf("GetInventoryList: %v", err)
 			}

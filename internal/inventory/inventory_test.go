@@ -14,9 +14,9 @@ import (
 	"github.com/Rhionin/pantry/internal/product"
 )
 
-// newTestRepo opens an in-memory SQLite database, applies all migrations,
-// and returns an inventory Repo.
-func newTestRepo(t *testing.T) (*inventory.Repo, *product.Repo, *sql.DB) {
+// newTestPantry opens an in-memory SQLite database, applies all migrations,
+// and returns an inventory Pantry.
+func newTestPantry(t *testing.T) (*inventory.Pantry, *product.Catalog, *sql.DB) {
 	t.Helper()
 	conn, err := sql.Open("sqlite", ":memory:")
 	if err != nil {
@@ -26,14 +26,14 @@ func newTestRepo(t *testing.T) (*inventory.Repo, *product.Repo, *sql.DB) {
 	if err := app.RunMigrations(conn); err != nil {
 		t.Fatalf("RunMigrations: %v", err)
 	}
-	return inventory.NewRepo(conn), product.NewRepo(conn), conn
+	return inventory.NewPantry(conn), product.NewCatalog(conn), conn
 }
 
 // createTestProduct is a helper that creates a product for testing.
-func createTestProduct(t *testing.T, prodRepo *product.Repo, ctx context.Context, id, name string) {
+func createTestProduct(t *testing.T, catalog *product.Catalog, ctx context.Context, id, name string) {
 	t.Helper()
 	p := product.Product{ID: id, Name: name, Category: "Test"}
-	if err := prodRepo.CreateProduct(ctx, p); err != nil {
+	if err := catalog.CreateProduct(ctx, p); err != nil {
 		t.Fatalf("CreateProduct: %v", err)
 	}
 }
@@ -47,15 +47,15 @@ func TestGetOrCreateItem(t *testing.T) {
 		name      string
 		userID    string
 		productID string
-		setup     func(t *testing.T, repo *inventory.Repo, prodRepo *product.Repo, ctx context.Context)
+		setup     func(t *testing.T, pantry *inventory.Pantry, catalog *product.Catalog, ctx context.Context)
 		wantNew   bool // true if we expect a new item to be created
 	}{
 		{
 			name:      "creates new item when none exists",
 			userID:    "user-1",
 			productID: "prod-1",
-			setup: func(t *testing.T, repo *inventory.Repo, prodRepo *product.Repo, ctx context.Context) {
-				createTestProduct(t, prodRepo, ctx, "prod-1", "Milk")
+			setup: func(t *testing.T, pantry *inventory.Pantry, catalog *product.Catalog, ctx context.Context) {
+				createTestProduct(t, catalog, ctx, "prod-1", "Milk")
 			},
 			wantNew: true,
 		},
@@ -63,10 +63,10 @@ func TestGetOrCreateItem(t *testing.T) {
 			name:      "returns existing item",
 			userID:    "user-1",
 			productID: "prod-1",
-			setup: func(t *testing.T, repo *inventory.Repo, prodRepo *product.Repo, ctx context.Context) {
-				createTestProduct(t, prodRepo, ctx, "prod-1", "Milk")
+			setup: func(t *testing.T, pantry *inventory.Pantry, catalog *product.Catalog, ctx context.Context) {
+				createTestProduct(t, catalog, ctx, "prod-1", "Milk")
 				// Create item first
-				_, err := repo.GetOrCreateItem(ctx, "user-1", "prod-1")
+				_, err := pantry.GetOrCreateItem(ctx, "user-1", "prod-1")
 				if err != nil {
 					t.Fatalf("GetOrCreateItem setup: %v", err)
 				}
@@ -77,12 +77,12 @@ func TestGetOrCreateItem(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			repo, prodRepo, _ := newTestRepo(t)
+			pantry, catalog, _ := newTestPantry(t)
 			ctx := context.Background()
-			tt.setup(t, repo, prodRepo, ctx)
+			tt.setup(t, pantry, catalog, ctx)
 
 			// First call
-			item1, err := repo.GetOrCreateItem(ctx, tt.userID, tt.productID)
+			item1, err := pantry.GetOrCreateItem(ctx, tt.userID, tt.productID)
 			if err != nil {
 				t.Fatalf("GetOrCreateItem (first): %v", err)
 			}
@@ -97,7 +97,7 @@ func TestGetOrCreateItem(t *testing.T) {
 			}
 
 			// Second call should return the same item
-			item2, err := repo.GetOrCreateItem(ctx, tt.userID, tt.productID)
+			item2, err := pantry.GetOrCreateItem(ctx, tt.userID, tt.productID)
 			if err != nil {
 				t.Fatalf("GetOrCreateItem (second): %v", err)
 			}
@@ -119,23 +119,23 @@ func TestListItems(t *testing.T) {
 	tests := []struct {
 		name        string
 		userID      string
-		setup       func(t *testing.T, repo *inventory.Repo, prodRepo *product.Repo, ctx context.Context)
+		setup       func(t *testing.T, pantry *inventory.Pantry, catalog *product.Catalog, ctx context.Context)
 		expectCount int
 		expectOrder []string // product names in expected order
 	}{
 		{
 			name:        "empty inventory",
 			userID:      "user-1",
-			setup:       func(t *testing.T, repo *inventory.Repo, prodRepo *product.Repo, ctx context.Context) {},
+			setup:       func(t *testing.T, pantry *inventory.Pantry, catalog *product.Catalog, ctx context.Context) {},
 			expectCount: 0,
 			expectOrder: []string{},
 		},
 		{
 			name:   "single item",
 			userID: "user-1",
-			setup: func(t *testing.T, repo *inventory.Repo, prodRepo *product.Repo, ctx context.Context) {
-				createTestProduct(t, prodRepo, ctx, "p1", "Apple Juice")
-				_, err := repo.GetOrCreateItem(ctx, "user-1", "p1")
+			setup: func(t *testing.T, pantry *inventory.Pantry, catalog *product.Catalog, ctx context.Context) {
+				createTestProduct(t, catalog, ctx, "p1", "Apple Juice")
+				_, err := pantry.GetOrCreateItem(ctx, "user-1", "p1")
 				if err != nil {
 					t.Fatalf("GetOrCreateItem: %v", err)
 				}
@@ -146,13 +146,13 @@ func TestListItems(t *testing.T) {
 		{
 			name:   "multiple items ordered by product name",
 			userID: "user-1",
-			setup: func(t *testing.T, repo *inventory.Repo, prodRepo *product.Repo, ctx context.Context) {
-				createTestProduct(t, prodRepo, ctx, "p1", "Cheese")
-				createTestProduct(t, prodRepo, ctx, "p2", "Apple Juice")
-				createTestProduct(t, prodRepo, ctx, "p3", "Butter")
+			setup: func(t *testing.T, pantry *inventory.Pantry, catalog *product.Catalog, ctx context.Context) {
+				createTestProduct(t, catalog, ctx, "p1", "Cheese")
+				createTestProduct(t, catalog, ctx, "p2", "Apple Juice")
+				createTestProduct(t, catalog, ctx, "p3", "Butter")
 
 				for _, pid := range []string{"p1", "p2", "p3"} {
-					_, err := repo.GetOrCreateItem(ctx, "user-1", pid)
+					_, err := pantry.GetOrCreateItem(ctx, "user-1", pid)
 					if err != nil {
 						t.Fatalf("GetOrCreateItem: %v", err)
 					}
@@ -164,18 +164,18 @@ func TestListItems(t *testing.T) {
 		{
 			name:   "filters by user",
 			userID: "user-1",
-			setup: func(t *testing.T, repo *inventory.Repo, prodRepo *product.Repo, ctx context.Context) {
-				createTestProduct(t, prodRepo, ctx, "p1", "Milk")
-				createTestProduct(t, prodRepo, ctx, "p2", "Bread")
+			setup: func(t *testing.T, pantry *inventory.Pantry, catalog *product.Catalog, ctx context.Context) {
+				createTestProduct(t, catalog, ctx, "p1", "Milk")
+				createTestProduct(t, catalog, ctx, "p2", "Bread")
 
 				// Create items for user-1
-				_, err := repo.GetOrCreateItem(ctx, "user-1", "p1")
+				_, err := pantry.GetOrCreateItem(ctx, "user-1", "p1")
 				if err != nil {
 					t.Fatalf("GetOrCreateItem user-1: %v", err)
 				}
 
 				// Create items for user-2 (should not be returned)
-				_, err = repo.GetOrCreateItem(ctx, "user-2", "p2")
+				_, err = pantry.GetOrCreateItem(ctx, "user-2", "p2")
 				if err != nil {
 					t.Fatalf("GetOrCreateItem user-2: %v", err)
 				}
@@ -187,11 +187,11 @@ func TestListItems(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			repo, prodRepo, _ := newTestRepo(t)
+			pantry, catalog, _ := newTestPantry(t)
 			ctx := context.Background()
-			tt.setup(t, repo, prodRepo, ctx)
+			tt.setup(t, pantry, catalog, ctx)
 
-			items, err := repo.ListItems(ctx, tt.userID)
+			items, err := pantry.ListItems(ctx, tt.userID)
 			if err != nil {
 				t.Fatalf("ListItems: %v", err)
 			}
@@ -219,16 +219,16 @@ func TestListItemInstances(t *testing.T) {
 	nextWeek := now.Add(7 * 24 * time.Hour)
 
 	tests := []struct {
-		name            string
-		setup           func(t *testing.T, repo *inventory.Repo, prodRepo *product.Repo, ctx context.Context) string // returns itemID
-		expectCount     int
+		name              string
+		setup             func(t *testing.T, pantry *inventory.Pantry, catalog *product.Catalog, ctx context.Context) string // returns itemID
+		expectCount       int
 		expectExpiryOrder []bool // true if expires_at is not nil, in expected order
 	}{
 		{
 			name: "empty",
-			setup: func(t *testing.T, repo *inventory.Repo, prodRepo *product.Repo, ctx context.Context) string {
-				createTestProduct(t, prodRepo, ctx, "p1", "Milk")
-				item, err := repo.GetOrCreateItem(ctx, "user-1", "p1")
+			setup: func(t *testing.T, pantry *inventory.Pantry, catalog *product.Catalog, ctx context.Context) string {
+				createTestProduct(t, catalog, ctx, "p1", "Milk")
+				item, err := pantry.GetOrCreateItem(ctx, "user-1", "p1")
 				if err != nil {
 					t.Fatalf("GetOrCreateItem: %v", err)
 				}
@@ -239,14 +239,14 @@ func TestListItemInstances(t *testing.T) {
 		},
 		{
 			name: "single instance",
-			setup: func(t *testing.T, repo *inventory.Repo, prodRepo *product.Repo, ctx context.Context) string {
-				createTestProduct(t, prodRepo, ctx, "p1", "Milk")
-				item, err := repo.GetOrCreateItem(ctx, "user-1", "p1")
+			setup: func(t *testing.T, pantry *inventory.Pantry, catalog *product.Catalog, ctx context.Context) string {
+				createTestProduct(t, catalog, ctx, "p1", "Milk")
+				item, err := pantry.GetOrCreateItem(ctx, "user-1", "p1")
 				if err != nil {
 					t.Fatalf("GetOrCreateItem: %v", err)
 				}
 
-				_, err = repo.AddInstance(ctx, inventory.ItemInstance{
+				_, err = pantry.AddInstance(ctx, inventory.ItemInstance{
 					ItemID:    item.ID,
 					StockInAt: now,
 					ExpiresAt: &tomorrow,
@@ -261,9 +261,9 @@ func TestListItemInstances(t *testing.T) {
 		},
 		{
 			name: "multiple instances ordered by expiry (use-oldest-first)",
-			setup: func(t *testing.T, repo *inventory.Repo, prodRepo *product.Repo, ctx context.Context) string {
-				createTestProduct(t, prodRepo, ctx, "p1", "Milk")
-				item, err := repo.GetOrCreateItem(ctx, "user-1", "p1")
+			setup: func(t *testing.T, pantry *inventory.Pantry, catalog *product.Catalog, ctx context.Context) string {
+				createTestProduct(t, catalog, ctx, "p1", "Milk")
+				item, err := pantry.GetOrCreateItem(ctx, "user-1", "p1")
 				if err != nil {
 					t.Fatalf("GetOrCreateItem: %v", err)
 				}
@@ -276,7 +276,7 @@ func TestListItemInstances(t *testing.T) {
 				}
 
 				for _, inst := range instances {
-					_, err = repo.AddInstance(ctx, inst)
+					_, err = pantry.AddInstance(ctx, inst)
 					if err != nil {
 						t.Fatalf("AddInstance: %v", err)
 					}
@@ -288,15 +288,15 @@ func TestListItemInstances(t *testing.T) {
 		},
 		{
 			name: "excludes removed instances",
-			setup: func(t *testing.T, repo *inventory.Repo, prodRepo *product.Repo, ctx context.Context) string {
-				createTestProduct(t, prodRepo, ctx, "p1", "Milk")
-				item, err := repo.GetOrCreateItem(ctx, "user-1", "p1")
+			setup: func(t *testing.T, pantry *inventory.Pantry, catalog *product.Catalog, ctx context.Context) string {
+				createTestProduct(t, catalog, ctx, "p1", "Milk")
+				item, err := pantry.GetOrCreateItem(ctx, "user-1", "p1")
 				if err != nil {
 					t.Fatalf("GetOrCreateItem: %v", err)
 				}
 
 				// Add two instances
-				inst1, err := repo.AddInstance(ctx, inventory.ItemInstance{
+				inst1, err := pantry.AddInstance(ctx, inventory.ItemInstance{
 					ItemID:    item.ID,
 					StockInAt: now,
 				})
@@ -304,7 +304,7 @@ func TestListItemInstances(t *testing.T) {
 					t.Fatalf("AddInstance 1: %v", err)
 				}
 
-				_, err = repo.AddInstance(ctx, inventory.ItemInstance{
+				_, err = pantry.AddInstance(ctx, inventory.ItemInstance{
 					ItemID:    item.ID,
 					StockInAt: now,
 				})
@@ -313,7 +313,7 @@ func TestListItemInstances(t *testing.T) {
 				}
 
 				// Remove the first instance
-				err = repo.RemoveInstance(ctx, inst1.ID, "manual")
+				err = pantry.RemoveInstance(ctx, inst1.ID, "manual")
 				if err != nil {
 					t.Fatalf("RemoveInstance: %v", err)
 				}
@@ -327,11 +327,11 @@ func TestListItemInstances(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			repo, prodRepo, _ := newTestRepo(t)
+			pantry, catalog, _ := newTestPantry(t)
 			ctx := context.Background()
-			itemID := tt.setup(t, repo, prodRepo, ctx)
+			itemID := tt.setup(t, pantry, catalog, ctx)
 
-			instances, err := repo.ListItemInstances(ctx, itemID)
+			instances, err := pantry.ListItemInstances(ctx, itemID)
 			if err != nil {
 				t.Fatalf("ListItemInstances: %v", err)
 			}
@@ -379,9 +379,9 @@ func TestAddInstance(t *testing.T) {
 	tomorrow := now.Add(24 * time.Hour)
 
 	tests := []struct {
-		name         string
-		instance     inventory.ItemInstance
-		wantID       bool // true if we expect ID to be generated
+		name          string
+		instance      inventory.ItemInstance
+		wantID        bool // true if we expect ID to be generated
 		wantExpiresAt bool // true if we expect ExpiresAt to be set
 	}{
 		{
@@ -415,12 +415,12 @@ func TestAddInstance(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			repo, prodRepo, _ := newTestRepo(t)
+			pantry, catalog, _ := newTestPantry(t)
 			ctx := context.Background()
 
 			// Setup: create product and item
-			createTestProduct(t, prodRepo, ctx, "p1", "Milk")
-			item, err := repo.GetOrCreateItem(ctx, "user-1", "p1")
+			createTestProduct(t, catalog, ctx, "p1", "Milk")
+			item, err := pantry.GetOrCreateItem(ctx, "user-1", "p1")
 			if err != nil {
 				t.Fatalf("GetOrCreateItem: %v", err)
 			}
@@ -428,7 +428,7 @@ func TestAddInstance(t *testing.T) {
 			tt.instance.ItemID = item.ID
 
 			// Add instance
-			added, err := repo.AddInstance(ctx, tt.instance)
+			added, err := pantry.AddInstance(ctx, tt.instance)
 			if err != nil {
 				t.Fatalf("AddInstance: %v", err)
 			}
@@ -458,7 +458,7 @@ func TestAddInstance(t *testing.T) {
 			}
 
 			// Roundtrip: verify GetInstance retrieves the same instance
-			retrieved, err := repo.GetInstance(ctx, added.ID)
+			retrieved, err := pantry.GetInstance(ctx, added.ID)
 			if err != nil {
 				t.Fatalf("GetInstance: %v", err)
 			}
@@ -481,19 +481,19 @@ func TestRemoveInstance(t *testing.T) {
 
 	tests := []struct {
 		name        string
-		setup       func(t *testing.T, repo *inventory.Repo, prodRepo *product.Repo, ctx context.Context) string // returns instanceID
+		setup       func(t *testing.T, pantry *inventory.Pantry, catalog *product.Catalog, ctx context.Context) string // returns instanceID
 		reason      string
 		expectError error
 	}{
 		{
 			name: "successfully removes existing instance",
-			setup: func(t *testing.T, repo *inventory.Repo, prodRepo *product.Repo, ctx context.Context) string {
-				createTestProduct(t, prodRepo, ctx, "p1", "Milk")
-				item, err := repo.GetOrCreateItem(ctx, "user-1", "p1")
+			setup: func(t *testing.T, pantry *inventory.Pantry, catalog *product.Catalog, ctx context.Context) string {
+				createTestProduct(t, catalog, ctx, "p1", "Milk")
+				item, err := pantry.GetOrCreateItem(ctx, "user-1", "p1")
 				if err != nil {
 					t.Fatalf("GetOrCreateItem: %v", err)
 				}
-				inst, err := repo.AddInstance(ctx, inventory.ItemInstance{
+				inst, err := pantry.AddInstance(ctx, inventory.ItemInstance{
 					ItemID:    item.ID,
 					StockInAt: now,
 				})
@@ -507,7 +507,7 @@ func TestRemoveInstance(t *testing.T) {
 		},
 		{
 			name: "returns error for non-existent instance",
-			setup: func(t *testing.T, repo *inventory.Repo, prodRepo *product.Repo, ctx context.Context) string {
+			setup: func(t *testing.T, pantry *inventory.Pantry, catalog *product.Catalog, ctx context.Context) string {
 				return "non-existent-id"
 			},
 			reason:      "manual",
@@ -517,11 +517,11 @@ func TestRemoveInstance(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			repo, prodRepo, _ := newTestRepo(t)
+			pantry, catalog, _ := newTestPantry(t)
 			ctx := context.Background()
-			instanceID := tt.setup(t, repo, prodRepo, ctx)
+			instanceID := tt.setup(t, pantry, catalog, ctx)
 
-			err := repo.RemoveInstance(ctx, instanceID, tt.reason)
+			err := pantry.RemoveInstance(ctx, instanceID, tt.reason)
 
 			if tt.expectError != nil {
 				if err == nil {
@@ -538,7 +538,7 @@ func TestRemoveInstance(t *testing.T) {
 			}
 
 			// Verify instance is marked as removed
-			inst, err := repo.GetInstance(ctx, instanceID)
+			inst, err := pantry.GetInstance(ctx, instanceID)
 			if err != nil {
 				t.Fatalf("GetInstance: %v", err)
 			}
@@ -564,18 +564,18 @@ func TestGetInstance(t *testing.T) {
 
 	tests := []struct {
 		name        string
-		setup       func(t *testing.T, repo *inventory.Repo, prodRepo *product.Repo, ctx context.Context) string // returns instanceID
+		setup       func(t *testing.T, pantry *inventory.Pantry, catalog *product.Catalog, ctx context.Context) string // returns instanceID
 		expectFound bool
 	}{
 		{
 			name: "found",
-			setup: func(t *testing.T, repo *inventory.Repo, prodRepo *product.Repo, ctx context.Context) string {
-				createTestProduct(t, prodRepo, ctx, "p1", "Milk")
-				item, err := repo.GetOrCreateItem(ctx, "user-1", "p1")
+			setup: func(t *testing.T, pantry *inventory.Pantry, catalog *product.Catalog, ctx context.Context) string {
+				createTestProduct(t, catalog, ctx, "p1", "Milk")
+				item, err := pantry.GetOrCreateItem(ctx, "user-1", "p1")
 				if err != nil {
 					t.Fatalf("GetOrCreateItem: %v", err)
 				}
-				inst, err := repo.AddInstance(ctx, inventory.ItemInstance{
+				inst, err := pantry.AddInstance(ctx, inventory.ItemInstance{
 					ItemID:    item.ID,
 					StockInAt: now,
 				})
@@ -588,7 +588,7 @@ func TestGetInstance(t *testing.T) {
 		},
 		{
 			name: "not found",
-			setup: func(t *testing.T, repo *inventory.Repo, prodRepo *product.Repo, ctx context.Context) string {
+			setup: func(t *testing.T, pantry *inventory.Pantry, catalog *product.Catalog, ctx context.Context) string {
 				return "non-existent-id"
 			},
 			expectFound: false,
@@ -597,11 +597,11 @@ func TestGetInstance(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			repo, prodRepo, _ := newTestRepo(t)
+			pantry, catalog, _ := newTestPantry(t)
 			ctx := context.Background()
-			instanceID := tt.setup(t, repo, prodRepo, ctx)
+			instanceID := tt.setup(t, pantry, catalog, ctx)
 
-			inst, err := repo.GetInstance(ctx, instanceID)
+			inst, err := pantry.GetInstance(ctx, instanceID)
 			if err != nil {
 				t.Fatalf("GetInstance: %v", err)
 			}

@@ -7,7 +7,7 @@ import (
 )
 
 type UpdateHandler struct {
-	Repo interface {
+	Catalog interface {
 		UpdateProduct(ctx context.Context, product product.Product) error
 	}
 }
@@ -38,7 +38,7 @@ func (h *UpdateHandler) Handle(req Request[updateProductRequest, updateProductPa
 		UnitOfMeasure: req.Body.UnitOfMeasure,
 	}
 
-	if err := h.Repo.UpdateProduct(req.Context, prod); err != nil {
+	if err := h.Catalog.UpdateProduct(req.Context, prod); err != nil {
 		return product.Product{}, err
 	}
 

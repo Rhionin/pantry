@@ -1,6 +1,7 @@
 package server
 
 import (
+	"database/sql"
 	"net/http"
 	"testing"
 
@@ -23,15 +24,15 @@ type httpExchange struct {
 type handlerTestCase struct {
 	name string
 
-	// Setup phase: optional function to seed database/fake before the request
-	setup func(t *testing.T, repo *product.Repo, fake *fakeOpenFoodFacts)
+	// setup seeds database state before the primary request.
+	setup func(env testEnv)
 
-	// The primary HTTP exchange to test
+	// The primary HTTP exchange to test.
 	httpExchange
 
-	// afterRequest is called after the HTTP request completes for additional verification.
-	// Can be a plain callback function or use the assert() or exchanges() helpers.
-	afterRequest func(t *testing.T, repo *product.Repo, fake *fakeOpenFoodFacts, res *http.Response)
+	// afterRequest verifies behavior after the primary request.
+	// Prefer exchanges() over direct DB queries.
+	afterRequest func(env testEnv)
 }
 
 // assertion wraps a JSONPath assertion for cleaner test tables.
@@ -40,26 +41,35 @@ type assertion struct {
 	value interface{}
 }
 
+// testEnv holds everything a setup or afterRequest callback needs.
+// All fields share the same underlying database, so writes in setup are
+// immediately visible to the handler and to afterRequest exchanges.
+type testEnv struct {
+	T             *testing.T
+	DB            *sql.DB
+	ProductStore  *product.Catalog
+	OpenFoodFacts *fakeOpenFoodFacts
+	Res           *http.Response // populated only inside afterRequest callbacks
+}
+
 // runHandlerTests executes a table of handler test cases.
 func runHandlerTests(t *testing.T, tests []handlerTestCase) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			handler, repo, fake := setupTest(t)
+			handler, catalog, fake, db := setupTestWithDB(t)
+			env := testEnv{T: t, DB: db, ProductStore: catalog, OpenFoodFacts: fake}
 
-			// Run optional setup phase
 			if tt.setup != nil {
-				tt.setup(t, repo, fake)
+				tt.setup(env)
 			}
 
-			// Execute the primary HTTP exchange and capture response
 			test := apitest.New().Handler(handler)
 			req := buildRequest(test, tt.httpExchange)
 			expect := buildExpectations(req, tt.httpExchange)
 
-			// Capture response if afterRequest callback is provided
 			var capturedRes *http.Response
 			if tt.afterRequest != nil {
-				expect = expect.Assert(func(res *http.Response, req *http.Request) error {
+				expect = expect.Assert(func(res *http.Response, _ *http.Request) error {
 					capturedRes = res
 					return nil
 				})
@@ -67,9 +77,9 @@ func runHandlerTests(t *testing.T, tests []handlerTestCase) {
 
 			expect.End()
 
-			// Run afterRequest callback if provided
 			if tt.afterRequest != nil && capturedRes != nil {
-				tt.afterRequest(t, repo, fake, capturedRes)
+				env.Res = capturedRes
+				tt.afterRequest(env)
 			}
 		})
 	}
@@ -101,12 +111,10 @@ func buildRequest(test *apitest.APITest, ex httpExchange) *apitest.Request {
 		panic("unsupported method: " + ex.method)
 	}
 
-	// Add query parameters
 	for key, val := range ex.query {
 		req = req.Query(key, val)
 	}
 
-	// Add body if present
 	if ex.body != "" {
 		req = req.JSON(ex.body)
 	}
@@ -118,7 +126,6 @@ func buildRequest(test *apitest.APITest, ex httpExchange) *apitest.Request {
 func buildExpectations(req *apitest.Request, ex httpExchange) *apitest.Response {
 	expect := req.Expect(nil).Status(ex.expectedStatus)
 
-	// Add JSONPath assertions
 	for _, a := range ex.assertions {
 		expect = expect.Assert(jsonpath.Equal(a.path, a.value))
 	}
@@ -126,52 +133,22 @@ func buildExpectations(req *apitest.Request, ex httpExchange) *apitest.Response 
 	return expect
 }
 
-// assert creates an afterRequest callback that performs declarative assertions.
-// Supports 0 or more assertion functions that can check database state, fake state, etc.
-//
-// Example usage:
-//
-//	afterRequest: assert(
-//	    func(t *testing.T, repo *product.Repo, fake *fakeOpenFoodFacts) {
-//	        // inline assertion logic
-//	    },
-//	)
-func assert(checks ...func(t *testing.T, repo *product.Repo, fake *fakeOpenFoodFacts)) func(t *testing.T, repo *product.Repo, fake *fakeOpenFoodFacts, res *http.Response) {
-	return func(t *testing.T, repo *product.Repo, fake *fakeOpenFoodFacts, res *http.Response) {
-		for _, check := range checks {
-			check(t, repo, fake)
-		}
-	}
-}
-
-// exchanges creates an afterRequest callback that executes a series of HTTP exchanges.
-// This allows tests to be expressed as a sequence of request/response pairs without imperative code.
-// All exchanges share the same handler/repo/fake, so state persists between exchanges.
-//
-// Example usage:
-//
-//	afterRequest: exchanges(httpExchange{...})  // single exchange
-//	afterRequest: exchanges([]httpExchange{{...}, {...}}...)  // multiple exchanges with slice syntax
-func exchanges(exs ...httpExchange) func(t *testing.T, repo *product.Repo, fake *fakeOpenFoodFacts, res *http.Response) {
-	return func(t *testing.T, repo *product.Repo, fake *fakeOpenFoodFacts, res *http.Response) {
-		// Get the DB from setupTestDB (need to pass it through)
-		db := setupTestDB(t)
-
-		// Reuse the same handler from the parent test to preserve state
-		handler := NewHandler(repo, &product.LookupService{
-			Repo:          repo,
-			OpenFoodFacts: fake,
-		}, db)
+// exchanges returns an afterRequest callback that fires a sequence of HTTP requests
+// against the same handler and database, verifying state through the HTTP contract.
+func exchanges(exs ...httpExchange) func(env testEnv) {
+	return func(env testEnv) {
+		handler := NewHandler(env.ProductStore, &product.LookupService{
+			Catalog:       env.ProductStore,
+			OpenFoodFacts: env.OpenFoodFacts,
+		}, env.DB)
 
 		for i, ex := range exs {
-			// Use a simple counter for sub-test names
-			t.Run("", func(t *testing.T) {
+			env.T.Run("", func(t *testing.T) {
 				executeExchange(t, handler, ex)
 			})
 
-			// Stop if a sub-test failed
-			if t.Failed() {
-				t.Logf("exchange %d failed, stopping sequence", i)
+			if env.T.Failed() {
+				env.T.Logf("exchange %d failed, stopping sequence", i)
 				break
 			}
 		}

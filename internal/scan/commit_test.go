@@ -24,7 +24,7 @@ import (
 // exactly N.
 
 func TestProperty_StockInCreatesExactlyNInstances(t *testing.T) {
-	repo, db := newTestRepo(t)
+	queue, db := newTestQueue(t)
 	ctx := context.Background()
 	now := time.Now()
 
@@ -43,7 +43,7 @@ func TestProperty_StockInCreatesExactlyNInstances(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(fmt.Sprintf("unit_count_%d", tc.unitCount), func(t *testing.T) {
 			// Create product
-			productRepo := product.NewRepo(db)
+			catalog := product.NewCatalog(db)
 			productID := uuid.NewString()
 			prod := product.Product{
 				ID:            productID,
@@ -51,7 +51,7 @@ func TestProperty_StockInCreatesExactlyNInstances(t *testing.T) {
 				Category:      "Test",
 				UnitOfMeasure: "unit",
 			}
-			if err := productRepo.CreateProduct(ctx, prod); err != nil {
+			if err := catalog.CreateProduct(ctx, prod); err != nil {
 				t.Fatalf("CreateProduct: %v", err)
 			}
 
@@ -69,7 +69,7 @@ func TestProperty_StockInCreatesExactlyNInstances(t *testing.T) {
 				ProductID: &productID,
 				Status:    scan.Pending,
 			}
-			created, err := repo.CreateScanEntry(ctx, scanEntry)
+			created, err := queue.CreateScanEntry(ctx, scanEntry)
 			if err != nil {
 				t.Fatalf("CreateScanEntry: %v", err)
 			}
@@ -88,7 +88,7 @@ func TestProperty_StockInCreatesExactlyNInstances(t *testing.T) {
 			}
 
 			// Commit stock-in
-			if err := repo.CommitStockIn(ctx, created); err != nil {
+			if err := queue.CommitStockIn(ctx, created); err != nil {
 				t.Fatalf("CommitStockIn: %v", err)
 			}
 
@@ -174,7 +174,7 @@ func TestProperty_StockInCreatesExactlyNInstances(t *testing.T) {
 // by exactly 1.
 
 func TestProperty_StockOutRemovesUseOldestFirst(t *testing.T) {
-	repo, db := newTestRepo(t)
+	queue, db := newTestQueue(t)
 	ctx := context.Background()
 	now := time.Now()
 
@@ -223,7 +223,7 @@ func TestProperty_StockOutRemovesUseOldestFirst(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			// Create product
-			productRepo := product.NewRepo(db)
+			catalog := product.NewCatalog(db)
 			productID := uuid.NewString()
 			prod := product.Product{
 				ID:            productID,
@@ -231,7 +231,7 @@ func TestProperty_StockOutRemovesUseOldestFirst(t *testing.T) {
 				Category:      "Test",
 				UnitOfMeasure: "unit",
 			}
-			if err := productRepo.CreateProduct(ctx, prod); err != nil {
+			if err := catalog.CreateProduct(ctx, prod); err != nil {
 				t.Fatalf("CreateProduct: %v", err)
 			}
 
@@ -283,12 +283,12 @@ func TestProperty_StockOutRemovesUseOldestFirst(t *testing.T) {
 				ProductID: &productID,
 				Status:    scan.Pending,
 			}
-			created, err := repo.CreateScanEntry(ctx, scanEntry)
+			created, err := queue.CreateScanEntry(ctx, scanEntry)
 			if err != nil {
 				t.Fatalf("CreateScanEntry: %v", err)
 			}
 
-			if err := repo.CommitStockOut(ctx, created, nil); err != nil {
+			if err := queue.CommitStockOut(ctx, created, nil); err != nil {
 				t.Fatalf("CommitStockOut: %v", err)
 			}
 

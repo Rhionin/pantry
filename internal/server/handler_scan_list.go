@@ -7,7 +7,7 @@ import (
 )
 
 type ScanListHandler struct {
-	Repo interface {
+	Queue interface {
 		ListScanEntries(ctx context.Context, userID string, status scan.ScanStatus) ([]scan.ScanEntry, error)
 	}
 }
@@ -26,7 +26,7 @@ func (h *ScanListHandler) Handle(req Request[struct{}, struct{}]) ([]scan.ScanEn
 		return nil, BadRequest("invalid status value")
 	}
 
-	entries, err := h.Repo.ListScanEntries(req.Context, userIDParam, status)
+	entries, err := h.Queue.ListScanEntries(req.Context, userIDParam, status)
 	if err != nil {
 		return nil, InternalError(err)
 	}

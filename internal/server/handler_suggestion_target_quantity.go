@@ -10,7 +10,7 @@ import (
 // SetTargetQuantityHandler handles POST /api/items/{itemId}/target-quantity.
 // It validates the requested quantity and persists it on the item.
 type SetTargetQuantityHandler struct {
-	InventoryRepo interface {
+	Pantry interface {
 		GetItem(ctx context.Context, itemID string) (*inventory.Item, error)
 		UpdateTargetQuantity(ctx context.Context, itemID string, qty int) error
 	}
@@ -40,7 +40,7 @@ func (h *SetTargetQuantityHandler) Handle(req Request[setTargetQuantityRequest, 
 		return nil, &HTTPError{Code: 422, Message: "targetQuantity must be 0 or greater"}
 	}
 
-	item, err := h.InventoryRepo.GetItem(req.Context, itemID)
+	item, err := h.Pantry.GetItem(req.Context, itemID)
 	if err != nil {
 		return nil, InternalError(err)
 	}
@@ -48,7 +48,7 @@ func (h *SetTargetQuantityHandler) Handle(req Request[setTargetQuantityRequest, 
 		return nil, NotFound("item not found")
 	}
 
-	if err := h.InventoryRepo.UpdateTargetQuantity(req.Context, itemID, qty); err != nil {
+	if err := h.Pantry.UpdateTargetQuantity(req.Context, itemID, qty); err != nil {
 		if errors.Is(err, inventory.ErrInstanceNotFound) {
 			return nil, NotFound("item not found")
 		}

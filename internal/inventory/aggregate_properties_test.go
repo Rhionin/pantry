@@ -20,7 +20,7 @@ import (
 // Validates: Requirements 2.10, 2.11
 func TestProperty10_NeedsAttentionExactMatch(t *testing.T) {
 	rapid.Check(t, func(rt *rapid.T) {
-		repo, productRepo, _ := newTestRepo(t)
+		pantry, catalog, _ := newTestPantry(t)
 		ctx := context.Background()
 		userID := uuid.NewString()
 		now := time.Date(2024, 1, 15, 12, 0, 0, 0, time.UTC)
@@ -42,7 +42,7 @@ func TestProperty10_NeedsAttentionExactMatch(t *testing.T) {
 			prodName := rapid.StringMatching(`[A-Z][a-z]+`).Draw(rt, "prodName")
 			category := rapid.StringMatching(`[A-Z][a-z]+`).Draw(rt, "category")
 
-			err := productRepo.CreateProduct(ctx, product.Product{
+			err := catalog.CreateProduct(ctx, product.Product{
 				ID:            prodID,
 				Name:          prodName,
 				Category:      category,
@@ -52,7 +52,7 @@ func TestProperty10_NeedsAttentionExactMatch(t *testing.T) {
 				rt.Fatalf("CreateProduct failed: %v", err)
 			}
 
-			item, err := repo.GetOrCreateItem(ctx, userID, prodID)
+			item, err := pantry.GetOrCreateItem(ctx, userID, prodID)
 			if err != nil {
 				rt.Fatalf("GetOrCreateItem failed: %v", err)
 			}
@@ -83,7 +83,7 @@ func TestProperty10_NeedsAttentionExactMatch(t *testing.T) {
 					expiresAt = nil
 				}
 
-				_, err := repo.AddInstance(ctx, inventory.ItemInstance{
+				_, err := pantry.AddInstance(ctx, inventory.ItemInstance{
 					ItemID:    item.ID,
 					StockInAt: now.Add(-24 * time.Hour),
 					ExpiresAt: expiresAt,
@@ -101,7 +101,7 @@ func TestProperty10_NeedsAttentionExactMatch(t *testing.T) {
 			})
 		}
 
-		invItems, err := repo.GetInventoryList(ctx, userID, now, warningDays, "")
+		invItems, err := pantry.GetInventoryList(ctx, userID, now, warningDays, "")
 		if err != nil {
 			rt.Fatalf("GetInventoryList failed: %v", err)
 		}
@@ -133,7 +133,7 @@ func TestProperty10_NeedsAttentionExactMatch(t *testing.T) {
 // Validates: Requirements 2.4
 func TestProperty11_SearchFilterExactMatch(t *testing.T) {
 	rapid.Check(t, func(rt *rapid.T) {
-		repo, productRepo, _ := newTestRepo(t)
+		pantry, catalog, _ := newTestPantry(t)
 		ctx := context.Background()
 		userID := uuid.NewString()
 		now := time.Date(2024, 1, 15, 12, 0, 0, 0, time.UTC)
@@ -156,7 +156,7 @@ func TestProperty11_SearchFilterExactMatch(t *testing.T) {
 			category := categoryFragments[rapid.IntRange(0, len(categoryFragments)-1).Draw(rt, "categoryIdx")]
 
 			prodID := uuid.NewString()
-			err := productRepo.CreateProduct(ctx, product.Product{
+			err := catalog.CreateProduct(ctx, product.Product{
 				ID:            prodID,
 				Name:          name,
 				Category:      category,
@@ -166,7 +166,7 @@ func TestProperty11_SearchFilterExactMatch(t *testing.T) {
 				rt.Fatalf("CreateProduct failed: %v", err)
 			}
 
-			item, err := repo.GetOrCreateItem(ctx, userID, prodID)
+			item, err := pantry.GetOrCreateItem(ctx, userID, prodID)
 			if err != nil {
 				rt.Fatalf("GetOrCreateItem failed: %v", err)
 			}
@@ -195,7 +195,7 @@ func TestProperty11_SearchFilterExactMatch(t *testing.T) {
 			}
 		}
 
-		invItems, err := repo.GetInventoryList(ctx, userID, now, warningDays, query)
+		invItems, err := pantry.GetInventoryList(ctx, userID, now, warningDays, query)
 		if err != nil {
 			rt.Fatalf("GetInventoryList failed: %v", err)
 		}

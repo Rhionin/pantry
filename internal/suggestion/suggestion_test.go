@@ -14,9 +14,9 @@ import (
 	"github.com/Rhionin/pantry/internal/suggestion"
 )
 
-// newTestRepo opens an in-memory SQLite database, applies all migrations,
-// and returns a suggestion Repo.
-func newTestRepo(t *testing.T) (*suggestion.Repo, *sql.DB) {
+// newTestConsumptionLog opens an in-memory SQLite database, applies all migrations,
+// and returns a suggestion ConsumptionLog.
+func newTestConsumptionLog(t *testing.T) (*suggestion.ConsumptionLog, *sql.DB) {
 	t.Helper()
 	conn, err := sql.Open("sqlite", ":memory:")
 	if err != nil {
@@ -26,19 +26,19 @@ func newTestRepo(t *testing.T) (*suggestion.Repo, *sql.DB) {
 	if err := app.RunMigrations(conn); err != nil {
 		t.Fatalf("RunMigrations: %v", err)
 	}
-	return suggestion.NewRepo(conn), conn
+	return suggestion.NewConsumptionLog(conn), conn
 }
 
 // createTestItem creates a product and item in the DB and returns the item ID.
 func createTestItem(t *testing.T, conn *sql.DB, ctx context.Context, userID, productID, productName string) string {
 	t.Helper()
-	prodRepo := product.NewRepo(conn)
+	catalog := product.NewCatalog(conn)
 	p := product.Product{ID: productID, Name: productName, Category: "Test"}
-	if err := prodRepo.CreateProduct(ctx, p); err != nil {
+	if err := catalog.CreateProduct(ctx, p); err != nil {
 		t.Fatalf("CreateProduct: %v", err)
 	}
-	invRepo := inventory.NewRepo(conn)
-	item, err := invRepo.GetOrCreateItem(ctx, userID, productID)
+	pantry := inventory.NewPantry(conn)
+	item, err := pantry.GetOrCreateItem(ctx, userID, productID)
 	if err != nil {
 		t.Fatalf("GetOrCreateItem: %v", err)
 	}
@@ -53,10 +53,10 @@ func TestInsertConsumptionEvent(t *testing.T) {
 	now := time.Now()
 
 	tests := []struct {
-		name              string
-		event             func(itemID string) suggestion.ConsumptionEvent
-		wantIDGenerated   bool
-		wantScanEntryID   bool
+		name            string
+		event           func(itemID string) suggestion.ConsumptionEvent
+		wantIDGenerated bool
+		wantScanEntryID bool
 	}{
 		{
 			name: "explicit ID, no scan entry",
@@ -98,14 +98,14 @@ func TestInsertConsumptionEvent(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			repo, conn := newTestRepo(t)
+			log, conn := newTestConsumptionLog(t)
 			ctx := context.Background()
 			itemID := createTestItem(t, conn, ctx, "user-1", "prod-1", "Milk")
 
 			evt := tt.event(itemID)
 			originalID := evt.ID
 
-			inserted, err := repo.InsertConsumptionEvent(ctx, evt)
+			inserted, err := log.InsertConsumptionEvent(ctx, evt)
 			if err != nil {
 				t.Fatalf("InsertConsumptionEvent: %v", err)
 			}
@@ -149,22 +149,22 @@ func TestListConsumptionEvents(t *testing.T) {
 
 	tests := []struct {
 		name        string
-		setup       func(t *testing.T, repo *suggestion.Repo, conn *sql.DB, ctx context.Context) string // returns itemID
+		setup       func(t *testing.T, log *suggestion.ConsumptionLog, conn *sql.DB, ctx context.Context) string // returns itemID
 		expectCount int
 		expectOrder []time.Time // consumed_at in expected ascending order
 	}{
 		{
 			name: "empty — no events",
-			setup: func(t *testing.T, repo *suggestion.Repo, conn *sql.DB, ctx context.Context) string {
+			setup: func(t *testing.T, log *suggestion.ConsumptionLog, conn *sql.DB, ctx context.Context) string {
 				return createTestItem(t, conn, ctx, "user-1", "prod-1", "Milk")
 			},
 			expectCount: 0,
 		},
 		{
 			name: "single event",
-			setup: func(t *testing.T, repo *suggestion.Repo, conn *sql.DB, ctx context.Context) string {
+			setup: func(t *testing.T, log *suggestion.ConsumptionLog, conn *sql.DB, ctx context.Context) string {
 				itemID := createTestItem(t, conn, ctx, "user-1", "prod-1", "Milk")
-				_, err := repo.InsertConsumptionEvent(ctx, suggestion.ConsumptionEvent{
+				_, err := log.InsertConsumptionEvent(ctx, suggestion.ConsumptionEvent{
 					ItemID:     itemID,
 					ConsumedAt: now,
 				})
@@ -178,7 +178,7 @@ func TestListConsumptionEvents(t *testing.T) {
 		},
 		{
 			name: "multiple events ordered ascending by consumed_at",
-			setup: func(t *testing.T, repo *suggestion.Repo, conn *sql.DB, ctx context.Context) string {
+			setup: func(t *testing.T, log *suggestion.ConsumptionLog, conn *sql.DB, ctx context.Context) string {
 				itemID := createTestItem(t, conn, ctx, "user-1", "prod-1", "Milk")
 				// Insert out of order intentionally
 				times := []time.Time{
@@ -187,7 +187,7 @@ func TestListConsumptionEvents(t *testing.T) {
 					now.Add(1 * 24 * time.Hour),
 				}
 				for _, ts := range times {
-					_, err := repo.InsertConsumptionEvent(ctx, suggestion.ConsumptionEvent{
+					_, err := log.InsertConsumptionEvent(ctx, suggestion.ConsumptionEvent{
 						ItemID:     itemID,
 						ConsumedAt: ts,
 					})
@@ -206,13 +206,13 @@ func TestListConsumptionEvents(t *testing.T) {
 		},
 		{
 			name: "filters by item — other item's events not returned",
-			setup: func(t *testing.T, repo *suggestion.Repo, conn *sql.DB, ctx context.Context) string {
+			setup: func(t *testing.T, log *suggestion.ConsumptionLog, conn *sql.DB, ctx context.Context) string {
 				itemID1 := createTestItem(t, conn, ctx, "user-1", "prod-1", "Milk")
 				itemID2 := createTestItem(t, conn, ctx, "user-1", "prod-2", "Bread")
 
 				// Add events to both items
 				for _, id := range []string{itemID1, itemID2} {
-					_, err := repo.InsertConsumptionEvent(ctx, suggestion.ConsumptionEvent{
+					_, err := log.InsertConsumptionEvent(ctx, suggestion.ConsumptionEvent{
 						ItemID:     id,
 						ConsumedAt: now,
 					})
@@ -228,11 +228,11 @@ func TestListConsumptionEvents(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			repo, conn := newTestRepo(t)
+			log, conn := newTestConsumptionLog(t)
 			ctx := context.Background()
-			itemID := tt.setup(t, repo, conn, ctx)
+			itemID := tt.setup(t, log, conn, ctx)
 
-			events, err := repo.ListConsumptionEvents(ctx, itemID)
+			events, err := log.ListConsumptionEvents(ctx, itemID)
 			if err != nil {
 				t.Fatalf("ListConsumptionEvents: %v", err)
 			}

@@ -12,11 +12,58 @@ Prefer API tests using the apitest framework in `internal/server/`. These exerci
 
 Test reproducible errors (bad requests, validation failures) but skip internal error paths (database errors, network timeouts) that API callers can't trigger. Focus coverage on customer-facing behavior.
 
-Handler tests use a declarative table-driven framework with HTTP exchanges. Use `afterRequest: exchanges()` to verify behavior through HTTP requests rather than direct database queries. Test the HTTP contract, not implementation details.
+Handler tests use a declarative table-driven framework with HTTP exchanges. Use `afterRequest: exchanges()` to verify behavior through subsequent HTTP requests rather than direct database queries. Test the HTTP contract, not implementation details. Direct DB queries in `afterRequest` are only acceptable when the data being verified is not exposed through any API endpoint.
+
+### Handler test framework
+
+Handler tests use `handlerTestCase` and `runHandlerTests` (defined in `test_runner_test.go`). Do not introduce separate test case types.
+
+The `setup` and `afterRequest` callbacks both receive a `testEnv` struct:
+
+```go
+type testEnv struct {
+    T             *testing.T
+    DB            *sql.DB
+    ProductStore  *product.Catalog
+    OpenFoodFacts *fakeOpenFoodFacts
+    Res           *http.Response // populated only inside afterRequest callbacks
+}
+```
+
+The `testEnv.DB` is the **same connection** the handler under test uses, so rows inserted in `setup` are immediately visible to the handler.
+
+```go
+handlerTestCase{
+    name: "example",
+    setup: func(env testEnv) {
+        // seed state — env.DB, env.ProductStore, env.T all available
+    },
+    httpExchange: httpExchange{...},
+    afterRequest: exchanges(
+        httpExchange{...}, // verify state through HTTP, not DB queries
+    ),
+}
+```
+
+Use `exchanges()` for `afterRequest` whenever the effect is observable via the HTTP API. Direct DB queries are a last resort for internal state that no endpoint exposes (e.g. timestamp precision checks).
 
 ## Database Setup in Tests
 
-Use `app.RunMigrations(conn)` to initialize test databases—never duplicate the schema inline. The `newTestRepo` helper in `internal/inventory/inventory_test.go` is the canonical pattern for the inventory package. Other packages follow the same convention (see `internal/product/product_test.go`, `internal/scan/scan_test.go`).
+Use `app.RunMigrations(conn)` to initialize test databases—never duplicate the schema inline. The `newTestPantry` helper in `internal/inventory/inventory_test.go` is the canonical pattern for the inventory package. Other packages follow the same convention (see `newTestCatalog` in `internal/product/product_test.go`, `newTestQueue` in `internal/scan/scan_test.go`, `newTestConsumptionLog` in `internal/suggestion/suggestion_test.go`).
+
+## Naming
+
+Data-access types are named for *what* they store, not *how* they store it — never `Repo` or generic `Store`. Each feature package has exactly one data-access type, named after its domain concept:
+
+| Package      | Type              | Constructor           |
+|---------------|--------------------|------------------------|
+| `product`     | `Catalog`          | `NewCatalog`           |
+| `inventory`   | `Pantry`           | `NewPantry`            |
+| `scan`        | `Queue`            | `NewQueue`             |
+| `suggestion`  | `ConsumptionLog`   | `NewConsumptionLog`    |
+| `shopping`    | `Store`            | `NewStore`             |
+
+`shopping.Store` is acceptable because it's namespaced by the `shopping` package (there's no ambiguity about what it stores) and that package has only one data-access type. Outside its own package, or in a handler struct field, disambiguate by what it holds — e.g. a handler depending on the shopping store names the field `ShoppingList`, not `Store`. Local variables follow the same rule: `catalog`, `pantry`, `scanQueue`, `consumptionLog`, `shoppingList` — never `repo` or generic `store`.
 
 ## Code Style
 

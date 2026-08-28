@@ -12,10 +12,10 @@ import (
 // It verifies the item exists, fetches its consumption events, and returns
 // a target-quantity suggestion produced by the suggestion engine.
 type SuggestionGetHandler struct {
-	SuggestionRepo interface {
+	ConsumptionLog interface {
 		ListConsumptionEvents(ctx context.Context, itemID string) ([]suggestion.ConsumptionEvent, error)
 	}
-	InventoryRepo interface {
+	Pantry interface {
 		GetItem(ctx context.Context, itemID string) (*inventory.Item, error)
 	}
 }
@@ -27,7 +27,7 @@ type suggestionGetPathParams struct {
 func (h *SuggestionGetHandler) Handle(req Request[struct{}, suggestionGetPathParams]) (*suggestion.TargetQuantitySuggestion, error) {
 	itemID := req.PathParams.ItemID
 
-	item, err := h.InventoryRepo.GetItem(req.Context, itemID)
+	item, err := h.Pantry.GetItem(req.Context, itemID)
 	if err != nil {
 		return nil, InternalError(err)
 	}
@@ -35,7 +35,7 @@ func (h *SuggestionGetHandler) Handle(req Request[struct{}, suggestionGetPathPar
 		return nil, NotFound("item not found")
 	}
 
-	events, err := h.SuggestionRepo.ListConsumptionEvents(req.Context, itemID)
+	events, err := h.ConsumptionLog.ListConsumptionEvents(req.Context, itemID)
 	if err != nil {
 		return nil, InternalError(err)
 	}
@@ -44,5 +44,5 @@ func (h *SuggestionGetHandler) Handle(req Request[struct{}, suggestionGetPathPar
 	return &result, nil
 }
 
-// ErrItemNotFound is returned by InventoryRepo when the item ID does not exist.
+// ErrItemNotFound is returned by Pantry when the item ID does not exist.
 var ErrItemNotFound = errors.New("item not found")

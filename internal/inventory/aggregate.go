@@ -22,7 +22,7 @@ type InventoryItem struct {
 // whose name or category contains the query string (case-insensitive) are returned.
 //
 // Validates Requirements 2.2, 2.3, 2.4, 2.10, 2.11
-func (r *Repo) GetInventoryList(ctx context.Context, userID string, now time.Time, warningDays int, query string) ([]InventoryItem, error) {
+func (r *Pantry) GetInventoryList(ctx context.Context, userID string, now time.Time, warningDays int, query string) ([]InventoryItem, error) {
 	// Get all items for the user
 	items, err := r.ListItems(ctx, userID)
 	if err != nil {

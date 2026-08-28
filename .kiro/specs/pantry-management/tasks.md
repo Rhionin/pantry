@@ -208,8 +208,8 @@ Implement the Pantry Management app as a Go REST API backend with a React + Type
     - Run `./scripts/test-coverage.sh` after completing this task and commit the updated script if the threshold increases
     - _Requirements: 3.1, 3.2, 3.3, 3.4, 3.5, 3.6_
 
-- [ ] 7. Shopping list backend
-  - [ ] 7.1 Implement shopping list derivation service
+- [x] 7. Shopping list backend
+  - [x] 7.1 Implement shopping list derivation service
     - Write `internal/shopping/derive.go`: `DeriveShoppingList(userID)` — for each item with a non-null `target_quantity` where `currentInstanceCount < target_quantity`, add a derived entry with `quantity = target_quantity − currentInstanceCount`; merge with manual `shopping_list_items` rows (manual overrides derived quantity for the same item)
     - This is a pure function — unit tests are appropriate here; no DB needed
     - _Requirements: 4.1, 4.2, 4.8_
@@ -221,7 +221,7 @@ Implement the Pantry Management app as a Go REST API backend with a React + Type
     - This tests a pure algorithm — keep in `internal/shopping/` alongside the derivation logic
     - **Validates: Requirements 4.1, 4.2, 4.8**
 
-  - [ ] 7.3 Implement shopping list repository and types (colocated in feature package)
+  - [x] 7.3 Implement shopping list repository and types (colocated in feature package)
     - Write `internal/shopping/shopping.go` with types: `ShoppingListItem` and related models
     - Implement repository methods: `AddManualItem`, `RemoveItem`, `MarkPurchased`, `ListManualItems`
     - `MarkPurchased` sets `purchased_at` and does NOT modify any `item_instances` row
@@ -235,11 +235,11 @@ Implement the Pantry Management app as a Go REST API backend with a React + Type
     - Verify the invariant through the API: use `afterRequest: exchanges()` to check instance counts via `GET /api/inventory/{itemId}/instances` rather than direct DB queries
     - **Validates: Requirements 4.6**
 
-  - [ ] 7.5 Implement cart export service stub
+  - [x] 7.5 Implement cart export service stub
     - Write `internal/shopping/export.go` with a `CartExporter` interface and a no-op implementation; return structured errors for partial failures
     - _Requirements: 4.9, 4.10_
 
-  - [ ] 7.6 Wire shopping list API endpoints
+  - [x] 7.6 Wire shopping list API endpoints
     - Create handler functions in `internal/shopping/handlers.go`, each implementing `http.Handler`:
       - `GetHandler` — `GET /api/shopping-list`
       - `ItemCreateHandler` — `POST /api/shopping-list/items`

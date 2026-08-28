@@ -23,7 +23,7 @@ func (r LookupResult) IsFound() bool {
 // LookupService orchestrates three-tier product lookup: user overrides first,
 // global DB second, Open Food Facts API third.
 type LookupService struct {
-	Repo interface {
+	Catalog interface {
 		LookupByBarcode(ctx context.Context, barcode, userID string) (*ProductSummary, error)
 	}
 	OpenFoodFacts interface {
@@ -56,8 +56,8 @@ func (s *LookupService) Lookup(ctx context.Context, barcode, userID string) (Loo
 		return LookupResult{}, fmt.Errorf("userID cannot be empty")
 	}
 
-	// Tier 1 & 2: Check user overrides and global DB (handled by repo in priority order).
-	product, err := s.Repo.LookupByBarcode(ctx, barcode, userID)
+	// Tier 1 & 2: Check user overrides and global DB (handled by the catalog in priority order).
+	product, err := s.Catalog.LookupByBarcode(ctx, barcode, userID)
 	if err != nil {
 		return LookupResult{}, fmt.Errorf("database lookup failed: %w", err)
 	}
@@ -66,7 +66,7 @@ func (s *LookupService) Lookup(ctx context.Context, barcode, userID string) (Loo
 	if product != nil {
 		return LookupResult{
 			Product: product,
-			Source:  "global", // Conservative default; repo prioritizes overrides internally
+			Source:  "global", // Conservative default; the catalog prioritizes overrides internally
 		}, nil
 	}
 

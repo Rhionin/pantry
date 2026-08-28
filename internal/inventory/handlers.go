@@ -7,7 +7,7 @@ import (
 
 // ListHandler handles GET /api/inventory requests.
 type ListHandler struct {
-	Repo interface {
+	Pantry interface {
 		GetInventoryList(ctx context.Context, userID string, now time.Time, warningDays int) ([]InventoryItem, error)
 	}
 	// In a real app, userID would come from auth middleware
@@ -29,12 +29,12 @@ func (h *ListHandler) Handle(req struct {
 		warningDays = h.WarningDays
 	}
 
-	return h.Repo.GetInventoryList(req.Context, h.UserID, now, warningDays)
+	return h.Pantry.GetInventoryList(req.Context, h.UserID, now, warningDays)
 }
 
 // InstancesListHandler handles GET /api/inventory/{itemId}/instances requests.
 type InstancesListHandler struct {
-	Repo interface {
+	Pantry interface {
 		ListItemInstances(ctx context.Context, itemID string) ([]ItemInstance, error)
 	}
 	Now         func() time.Time
@@ -55,7 +55,7 @@ func (h *InstancesListHandler) Handle(req struct {
 	Context    context.Context
 	PathParams instancesListPathParams
 }) ([]ItemInstanceWithStatus, error) {
-	instances, err := h.Repo.ListItemInstances(req.Context, req.PathParams.ItemID)
+	instances, err := h.Pantry.ListItemInstances(req.Context, req.PathParams.ItemID)
 	if err != nil {
 		return nil, err
 	}
@@ -83,7 +83,7 @@ func (h *InstancesListHandler) Handle(req struct {
 
 // InstanceCreateHandler handles POST /api/inventory/{itemId}/instances requests.
 type InstanceCreateHandler struct {
-	Repo interface {
+	Pantry interface {
 		AddInstance(ctx context.Context, instance ItemInstance) (*ItemInstance, error)
 	}
 }
@@ -107,12 +107,12 @@ func (h *InstanceCreateHandler) Handle(req struct {
 		ExpiresAt: req.Body.ExpiresAt,
 	}
 
-	return h.Repo.AddInstance(req.Context, instance)
+	return h.Pantry.AddInstance(req.Context, instance)
 }
 
 // InstanceDeleteHandler handles DELETE /api/inventory/instances/{instanceId} requests.
 type InstanceDeleteHandler struct {
-	Repo interface {
+	Pantry interface {
 		RemoveInstance(ctx context.Context, instanceID string, reason string) error
 	}
 }
@@ -125,7 +125,7 @@ func (h *InstanceDeleteHandler) Handle(req struct {
 	Context    context.Context
 	PathParams instanceDeletePathParams
 }) (struct{}, error) {
-	err := h.Repo.RemoveInstance(req.Context, req.PathParams.InstanceID, "manual")
+	err := h.Pantry.RemoveInstance(req.Context, req.PathParams.InstanceID, "manual")
 	if err != nil {
 		return struct{}{}, err
 	}

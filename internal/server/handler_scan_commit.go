@@ -7,7 +7,7 @@ import (
 )
 
 type ScanCommitHandler struct {
-	Repo interface {
+	Queue interface {
 		GetScanEntry(ctx context.Context, id string) (*scan.ScanEntry, error)
 		CommitStockIn(ctx context.Context, scanEntry *scan.ScanEntry) error
 		CommitStockOut(ctx context.Context, scanEntry *scan.ScanEntry, instanceID *string) error
@@ -28,7 +28,7 @@ func (h *ScanCommitHandler) Handle(req Request[commitScanRequest, commitScanPath
 	}
 
 	// Get the scan entry
-	entry, err := h.Repo.GetScanEntry(req.Context, req.PathParams.ID)
+	entry, err := h.Queue.GetScanEntry(req.Context, req.PathParams.ID)
 	if err != nil {
 		return nil, InternalError(err)
 	}
@@ -49,17 +49,17 @@ func (h *ScanCommitHandler) Handle(req Request[commitScanRequest, commitScanPath
 
 	// Commit based on direction
 	if *entry.Direction == scan.StockIn {
-		if err := h.Repo.CommitStockIn(req.Context, entry); err != nil {
+		if err := h.Queue.CommitStockIn(req.Context, entry); err != nil {
 			return nil, InternalError(err)
 		}
 	} else {
-		if err := h.Repo.CommitStockOut(req.Context, entry, req.Body.InstanceID); err != nil {
+		if err := h.Queue.CommitStockOut(req.Context, entry, req.Body.InstanceID); err != nil {
 			return nil, InternalError(err)
 		}
 	}
 
 	// Return the committed entry
-	committed, err := h.Repo.GetScanEntry(req.Context, req.PathParams.ID)
+	committed, err := h.Queue.GetScanEntry(req.Context, req.PathParams.ID)
 	if err != nil {
 		return nil, InternalError(err)
 	}

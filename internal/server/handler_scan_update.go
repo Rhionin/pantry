@@ -8,7 +8,7 @@ import (
 )
 
 type ScanUpdateHandler struct {
-	Repo interface {
+	Queue interface {
 		UpdateScanEntry(ctx context.Context, id string, direction *scan.ScanDirection, unitCount *int, expiresAt *time.Time, productID *string, status *scan.ScanStatus) error
 		GetScanEntry(ctx context.Context, id string) (*scan.ScanEntry, error)
 		ResolveFlaggedEntry(ctx context.Context, scanEntryID, productID string) error
@@ -51,7 +51,7 @@ func (h *ScanUpdateHandler) Handle(req Request[updateScanRequest, updateScanPath
 	// Check if this is a flagged entry resolution
 	// (updating productID and optionally status to pending on a flagged entry)
 	if req.Body.ProductID != nil {
-		entry, err := h.Repo.GetScanEntry(req.Context, req.PathParams.ID)
+		entry, err := h.Queue.GetScanEntry(req.Context, req.PathParams.ID)
 		if err != nil {
 			return nil, InternalError(err)
 		}
@@ -62,13 +62,13 @@ func (h *ScanUpdateHandler) Handle(req Request[updateScanRequest, updateScanPath
 		// If the entry is currently flagged and we're setting a productID,
 		// use ResolveFlaggedEntry which handles barcode override creation
 		if entry.Status == scan.Flagged {
-			err := h.Repo.ResolveFlaggedEntry(req.Context, req.PathParams.ID, *req.Body.ProductID)
+			err := h.Queue.ResolveFlaggedEntry(req.Context, req.PathParams.ID, *req.Body.ProductID)
 			if err != nil {
 				return nil, InternalError(err)
 			}
 
 			// Return the resolved entry
-			resolved, err := h.Repo.GetScanEntry(req.Context, req.PathParams.ID)
+			resolved, err := h.Queue.GetScanEntry(req.Context, req.PathParams.ID)
 			if err != nil {
 				return nil, InternalError(err)
 			}
@@ -77,7 +77,7 @@ func (h *ScanUpdateHandler) Handle(req Request[updateScanRequest, updateScanPath
 	}
 
 	// Standard update path for non-resolution updates
-	err := h.Repo.UpdateScanEntry(
+	err := h.Queue.UpdateScanEntry(
 		req.Context,
 		req.PathParams.ID,
 		req.Body.Direction,
@@ -91,7 +91,7 @@ func (h *ScanUpdateHandler) Handle(req Request[updateScanRequest, updateScanPath
 	}
 
 	// Return the updated entry
-	entry, err := h.Repo.GetScanEntry(req.Context, req.PathParams.ID)
+	entry, err := h.Queue.GetScanEntry(req.Context, req.PathParams.ID)
 	if err != nil {
 		return nil, InternalError(err)
 	}

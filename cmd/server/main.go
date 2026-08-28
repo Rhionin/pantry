@@ -30,13 +30,13 @@ func main() {
 	}
 	log.Println("migrations applied")
 
-	productRepo := product.NewRepo(sqlDB)
+	catalog := product.NewCatalog(sqlDB)
 	lookupService := &product.LookupService{
-		Repo:          productRepo,
+		Catalog:       catalog,
 		OpenFoodFacts: &product.OpenFoodFactsClient{},
 	}
 
-	handler := server.NewHandler(productRepo, lookupService, sqlDB)
+	handler := server.NewHandler(catalog, lookupService, sqlDB)
 
 	log.Printf("listening on %s", addr)
 	if err := http.ListenAndServe(addr, handler); err != nil {

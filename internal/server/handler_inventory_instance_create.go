@@ -8,7 +8,7 @@ import (
 )
 
 type InventoryInstanceCreateHandler struct {
-	Repo interface {
+	Pantry interface {
 		AddInstance(ctx context.Context, instance inventory.ItemInstance) (*inventory.ItemInstance, error)
 	}
 }
@@ -28,7 +28,7 @@ func (h *InventoryInstanceCreateHandler) Handle(req Request[inventoryInstanceCre
 		ExpiresAt: req.Body.ExpiresAt,
 	}
 
-	created, err := h.Repo.AddInstance(req.Context, instance)
+	created, err := h.Pantry.AddInstance(req.Context, instance)
 	if err != nil {
 		return Created{}, InternalError(err)
 	}

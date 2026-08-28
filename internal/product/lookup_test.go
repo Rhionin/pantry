@@ -39,7 +39,7 @@ func (m mockOpenFoodFacts) LookupBarcode(ctx context.Context, barcode string) (*
 func TestLookupService(t *testing.T) {
 	tests := []struct {
 		name              string
-		setupDB           func(t *testing.T, repo *Repo)
+		setupDB           func(t *testing.T, catalog *Catalog)
 		openFoodFacts     func(ctx context.Context, barcode string) (*ProductSummary, error)
 		barcode           string
 		userID            string
@@ -50,19 +50,19 @@ func TestLookupService(t *testing.T) {
 	}{
 		{
 			name: "user override takes precedence over global",
-			setupDB: func(t *testing.T, repo *Repo) {
+			setupDB: func(t *testing.T, catalog *Catalog) {
 				global := Product{ID: "prod-global", Name: "Global Product"}
 				override := Product{ID: "prod-override", Name: "Override Product"}
-				if err := repo.CreateProduct(context.Background(), global); err != nil {
+				if err := catalog.CreateProduct(context.Background(), global); err != nil {
 					t.Fatal(err)
 				}
-				if err := repo.CreateProduct(context.Background(), override); err != nil {
+				if err := catalog.CreateProduct(context.Background(), override); err != nil {
 					t.Fatal(err)
 				}
-				if err := repo.UpsertBarcodeMapping(context.Background(), "12345", global.ID, "global", ""); err != nil {
+				if err := catalog.UpsertBarcodeMapping(context.Background(), "12345", global.ID, "global", ""); err != nil {
 					t.Fatal(err)
 				}
-				if err := repo.UpsertBarcodeMapping(context.Background(), "12345", override.ID, "user_override", "user-1"); err != nil {
+				if err := catalog.UpsertBarcodeMapping(context.Background(), "12345", override.ID, "user_override", "user-1"); err != nil {
 					t.Fatal(err)
 				}
 			},
@@ -77,12 +77,12 @@ func TestLookupService(t *testing.T) {
 		},
 		{
 			name: "global DB used when no user override exists",
-			setupDB: func(t *testing.T, repo *Repo) {
+			setupDB: func(t *testing.T, catalog *Catalog) {
 				product := Product{ID: "prod-1", Name: "Milk"}
-				if err := repo.CreateProduct(context.Background(), product); err != nil {
+				if err := catalog.CreateProduct(context.Background(), product); err != nil {
 					t.Fatal(err)
 				}
-				if err := repo.UpsertBarcodeMapping(context.Background(), "11111", product.ID, "global", ""); err != nil {
+				if err := catalog.UpsertBarcodeMapping(context.Background(), "11111", product.ID, "global", ""); err != nil {
 					t.Fatal(err)
 				}
 			},
@@ -97,7 +97,7 @@ func TestLookupService(t *testing.T) {
 		},
 		{
 			name:    "external API fallback when no DB match",
-			setupDB: func(t *testing.T, repo *Repo) {},
+			setupDB: func(t *testing.T, catalog *Catalog) {},
 			openFoodFacts: func(ctx context.Context, barcode string) (*ProductSummary, error) {
 				if barcode == "99999" {
 					return &ProductSummary{ID: "99999", Name: "External Product", Category: "Food"}, nil
@@ -112,7 +112,7 @@ func TestLookupService(t *testing.T) {
 		},
 		{
 			name:    "not found in any tier",
-			setupDB: func(t *testing.T, repo *Repo) {},
+			setupDB: func(t *testing.T, catalog *Catalog) {},
 			openFoodFacts: func(ctx context.Context, barcode string) (*ProductSummary, error) {
 				return nil, ErrProductNotFound
 			},
@@ -122,7 +122,7 @@ func TestLookupService(t *testing.T) {
 		},
 		{
 			name:    "external API error treated as not found",
-			setupDB: func(t *testing.T, repo *Repo) {},
+			setupDB: func(t *testing.T, catalog *Catalog) {},
 			openFoodFacts: func(ctx context.Context, barcode string) (*ProductSummary, error) {
 				return nil, errors.New("network timeout")
 			},
@@ -132,7 +132,7 @@ func TestLookupService(t *testing.T) {
 		},
 		{
 			name:    "empty barcode returns error",
-			setupDB: func(t *testing.T, repo *Repo) {},
+			setupDB: func(t *testing.T, catalog *Catalog) {},
 			openFoodFacts: func(ctx context.Context, barcode string) (*ProductSummary, error) {
 				return nil, ErrProductNotFound
 			},
@@ -142,7 +142,7 @@ func TestLookupService(t *testing.T) {
 		},
 		{
 			name:    "empty userID returns error",
-			setupDB: func(t *testing.T, repo *Repo) {},
+			setupDB: func(t *testing.T, catalog *Catalog) {},
 			openFoodFacts: func(ctx context.Context, barcode string) (*ProductSummary, error) {
 				return nil, ErrProductNotFound
 			},
@@ -155,11 +155,11 @@ func TestLookupService(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			db := setupTestDB(t)
-			repo := NewRepo(db)
-			tt.setupDB(t, repo)
+			catalog := NewCatalog(db)
+			tt.setupDB(t, catalog)
 
 			service := &LookupService{
-				Repo:          repo,
+				Catalog:       catalog,
 				OpenFoodFacts: mockOpenFoodFacts{lookupFn: tt.openFoodFacts},
 			}
 			actual, err := service.Lookup(context.Background(), tt.barcode, tt.userID)

@@ -8,7 +8,7 @@ import (
 )
 
 type ScanBatchCommitHandler struct {
-	Repo interface {
+	Queue interface {
 		GetScanEntry(ctx context.Context, id string) (*scan.ScanEntry, error)
 		BatchUpdateScanEntries(ctx context.Context, ids []string, direction *scan.ScanDirection, unitCount *int, expiresAt *time.Time) error
 		CommitStockIn(ctx context.Context, scanEntry *scan.ScanEntry) error
@@ -46,7 +46,7 @@ func (h *ScanBatchCommitHandler) Handle(req Request[batchCommitRequest, struct{}
 
 	// Apply batch updates if any fields are provided
 	if req.Body.Direction != nil || req.Body.UnitCount != nil || req.Body.ExpiresAt != nil {
-		err := h.Repo.BatchUpdateScanEntries(
+		err := h.Queue.BatchUpdateScanEntries(
 			req.Context,
 			req.Body.ScanEntryIDs,
 			req.Body.Direction,
@@ -69,7 +69,7 @@ func (h *ScanBatchCommitHandler) Handle(req Request[batchCommitRequest, struct{}
 		failedReasons := []string{}
 
 		for _, id := range req.Body.ScanEntryIDs {
-			entry, err := h.Repo.GetScanEntry(req.Context, id)
+			entry, err := h.Queue.GetScanEntry(req.Context, id)
 			if err != nil || entry == nil {
 				failedIDs = append(failedIDs, id)
 				failedReasons = append(failedReasons, "scan entry not found")
@@ -96,9 +96,9 @@ func (h *ScanBatchCommitHandler) Handle(req Request[batchCommitRequest, struct{}
 
 			var commitErr error
 			if *entry.Direction == scan.StockIn {
-				commitErr = h.Repo.CommitStockIn(req.Context, entry)
+				commitErr = h.Queue.CommitStockIn(req.Context, entry)
 			} else {
-				commitErr = h.Repo.CommitStockOut(req.Context, entry, nil)
+				commitErr = h.Queue.CommitStockOut(req.Context, entry, nil)
 			}
 
 			if commitErr != nil {

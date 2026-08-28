@@ -39,19 +39,19 @@ type ItemInstance struct {
 	CreatedAt     time.Time
 }
 
-// Repo provides database operations for items and item instances.
-type Repo struct {
+// Pantry provides database operations for items and item instances.
+type Pantry struct {
 	db *sql.DB
 }
 
-// NewRepo creates a new Repo with the given database connection.
-func NewRepo(db *sql.DB) *Repo {
-	return &Repo{db: db}
+// NewPantry creates a new Pantry with the given database connection.
+func NewPantry(db *sql.DB) *Pantry {
+	return &Pantry{db: db}
 }
 
 // GetOrCreateItem returns the item for the given userID and productID.
 // If no such item exists, it creates one and returns it.
-func (r *Repo) GetOrCreateItem(ctx context.Context, userID, productID string) (*Item, error) {
+func (r *Pantry) GetOrCreateItem(ctx context.Context, userID, productID string) (*Item, error) {
 	// First try to get existing item
 	item, err := r.getItemByUserAndProduct(ctx, userID, productID)
 	if err != nil {
@@ -76,7 +76,7 @@ func (r *Repo) GetOrCreateItem(ctx context.Context, userID, productID string) (*
 }
 
 // getItemByUserAndProduct is a helper that returns the item for the given userID and productID.
-func (r *Repo) getItemByUserAndProduct(ctx context.Context, userID, productID string) (*Item, error) {
+func (r *Pantry) getItemByUserAndProduct(ctx context.Context, userID, productID string) (*Item, error) {
 	row := r.db.QueryRowContext(ctx, `
 		SELECT 
 			i.id, i.user_id, i.product_id, i.target_quantity, i.created_at,
@@ -98,7 +98,7 @@ func (r *Repo) getItemByUserAndProduct(ctx context.Context, userID, productID st
 }
 
 // getItemByID is a helper that returns the item with the given ID.
-func (r *Repo) getItemByID(ctx context.Context, itemID string) (*Item, error) {
+func (r *Pantry) getItemByID(ctx context.Context, itemID string) (*Item, error) {
 	row := r.db.QueryRowContext(ctx, `
 		SELECT 
 			i.id, i.user_id, i.product_id, i.target_quantity, i.created_at,
@@ -120,7 +120,7 @@ func (r *Repo) getItemByID(ctx context.Context, itemID string) (*Item, error) {
 }
 
 // ListItems returns all items for the given userID, ordered by product name.
-func (r *Repo) ListItems(ctx context.Context, userID string) ([]Item, error) {
+func (r *Pantry) ListItems(ctx context.Context, userID string) ([]Item, error) {
 	rows, err := r.db.QueryContext(ctx, `
 		SELECT 
 			i.id, i.user_id, i.product_id, i.target_quantity, i.created_at,
@@ -152,7 +152,7 @@ func (r *Repo) ListItems(ctx context.Context, userID string) ([]Item, error) {
 
 // ListItemInstances returns all item instances for the given itemID,
 // ordered by expiration date ascending (use-oldest-first).
-func (r *Repo) ListItemInstances(ctx context.Context, itemID string) ([]ItemInstance, error) {
+func (r *Pantry) ListItemInstances(ctx context.Context, itemID string) ([]ItemInstance, error) {
 	rows, err := r.db.QueryContext(ctx, `
 		SELECT id, item_id, stock_in_at, expires_at, removed_at, removal_reason, created_at
 		FROM item_instances
@@ -181,7 +181,7 @@ func (r *Repo) ListItemInstances(ctx context.Context, itemID string) ([]ItemInst
 
 // AddInstance adds a new item instance to the inventory.
 // If instance.ID is empty, a new UUID is generated.
-func (r *Repo) AddInstance(ctx context.Context, instance ItemInstance) (*ItemInstance, error) {
+func (r *Pantry) AddInstance(ctx context.Context, instance ItemInstance) (*ItemInstance, error) {
 	if instance.ID == "" {
 		instance.ID = uuid.NewString()
 	}
@@ -204,7 +204,7 @@ func (r *Repo) AddInstance(ctx context.Context, instance ItemInstance) (*ItemIns
 // RemoveInstance marks an item instance as removed by setting removed_at
 // and removal_reason. Returns ErrInstanceNotFound if the instance does not exist
 // or is already removed.
-func (r *Repo) RemoveInstance(ctx context.Context, instanceID string, reason string) error {
+func (r *Pantry) RemoveInstance(ctx context.Context, instanceID string, reason string) error {
 	// First check if the instance exists and is not already removed
 	existing, err := r.GetInstance(ctx, instanceID)
 	if err != nil {
@@ -236,7 +236,7 @@ func (r *Repo) RemoveInstance(ctx context.Context, instanceID string, reason str
 
 // UpdateTargetQuantity sets the target_quantity for the given item.
 // Returns ErrInstanceNotFound if no item with that ID exists.
-func (r *Repo) UpdateTargetQuantity(ctx context.Context, itemID string, qty int) error {
+func (r *Pantry) UpdateTargetQuantity(ctx context.Context, itemID string, qty int) error {
 	res, err := r.db.ExecContext(ctx,
 		`UPDATE items SET target_quantity = ? WHERE id = ?`,
 		qty, itemID,
@@ -255,13 +255,13 @@ func (r *Repo) UpdateTargetQuantity(ctx context.Context, itemID string, qty int)
 }
 
 // GetItem returns the item with the given ID, or nil if no such item exists.
-func (r *Repo) GetItem(ctx context.Context, itemID string) (*Item, error) {
+func (r *Pantry) GetItem(ctx context.Context, itemID string) (*Item, error) {
 	return r.getItemByID(ctx, itemID)
 }
 
 // GetInstance returns the item instance with the given ID, or nil if no such
 // instance exists.
-func (r *Repo) GetInstance(ctx context.Context, instanceID string) (*ItemInstance, error) {
+func (r *Pantry) GetInstance(ctx context.Context, instanceID string) (*ItemInstance, error) {
 	row := r.db.QueryRowContext(ctx,
 		`SELECT id, item_id, stock_in_at, expires_at, removed_at, removal_reason, created_at
 		 FROM item_instances WHERE id = ?`,

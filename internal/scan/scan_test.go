@@ -13,8 +13,8 @@ import (
 	"github.com/Rhionin/pantry/internal/scan"
 )
 
-// newTestRepo opens an in-memory SQLite database, applies all migrations, and returns a scan Repo.
-func newTestRepo(t *testing.T) (*scan.Repo, *sql.DB) {
+// newTestQueue opens an in-memory SQLite database, applies all migrations, and returns a scan Queue.
+func newTestQueue(t *testing.T) (*scan.Queue, *sql.DB) {
 	t.Helper()
 	conn, err := sql.Open("sqlite", ":memory:")
 	if err != nil {
@@ -24,7 +24,7 @@ func newTestRepo(t *testing.T) (*scan.Repo, *sql.DB) {
 	if err := app.RunMigrations(conn); err != nil {
 		t.Fatalf("RunMigrations: %v", err)
 	}
-	return scan.NewRepo(conn), conn
+	return scan.NewQueue(conn), conn
 }
 
 // --------------------------------------------------------------------------
@@ -83,11 +83,11 @@ func TestCreateScanEntry(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			repo, _ := newTestRepo(t)
+			queue, _ := newTestQueue(t)
 			ctx := context.Background()
 
 			// Create scan entry
-			created, err := repo.CreateScanEntry(ctx, tt.entry)
+			created, err := queue.CreateScanEntry(ctx, tt.entry)
 			if err != nil {
 				t.Fatalf("CreateScanEntry: %v", err)
 			}
@@ -133,13 +133,13 @@ func TestGetScanEntry(t *testing.T) {
 	tests := []struct {
 		name        string
 		id          string
-		setup       func(t *testing.T, repo *scan.Repo, ctx context.Context)
+		setup       func(t *testing.T, queue *scan.Queue, ctx context.Context)
 		expectFound bool
 	}{
 		{
 			name: "found",
 			id:   "scan-1",
-			setup: func(t *testing.T, repo *scan.Repo, ctx context.Context) {
+			setup: func(t *testing.T, queue *scan.Queue, ctx context.Context) {
 				entry := scan.ScanEntry{
 					ID:        "scan-1",
 					UserID:    "user-1",
@@ -147,7 +147,7 @@ func TestGetScanEntry(t *testing.T) {
 					ScannedAt: time.Now(),
 					UnitCount: 1,
 				}
-				_, err := repo.CreateScanEntry(ctx, entry)
+				_, err := queue.CreateScanEntry(ctx, entry)
 				if err != nil {
 					t.Fatalf("CreateScanEntry: %v", err)
 				}
@@ -157,18 +157,18 @@ func TestGetScanEntry(t *testing.T) {
 		{
 			name:        "not found",
 			id:          "no-such-id",
-			setup:       func(t *testing.T, repo *scan.Repo, ctx context.Context) {},
+			setup:       func(t *testing.T, queue *scan.Queue, ctx context.Context) {},
 			expectFound: false,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			repo, _ := newTestRepo(t)
+			queue, _ := newTestQueue(t)
 			ctx := context.Background()
-			tt.setup(t, repo, ctx)
+			tt.setup(t, queue, ctx)
 
-			got, err := repo.GetScanEntry(ctx, tt.id)
+			got, err := queue.GetScanEntry(ctx, tt.id)
 			if err != nil {
 				t.Fatalf("GetScanEntry: %v", err)
 			}
@@ -192,7 +192,7 @@ func TestListScanEntries(t *testing.T) {
 		name        string
 		userID      string
 		status      scan.ScanStatus
-		setup       func(t *testing.T, repo *scan.Repo, ctx context.Context)
+		setup       func(t *testing.T, queue *scan.Queue, ctx context.Context)
 		expectCount int
 		expectOrder []string // barcodes in expected chronological order
 	}{
@@ -200,7 +200,7 @@ func TestListScanEntries(t *testing.T) {
 			name:        "empty",
 			userID:      "user-1",
 			status:      scan.Pending,
-			setup:       func(t *testing.T, repo *scan.Repo, ctx context.Context) {},
+			setup:       func(t *testing.T, queue *scan.Queue, ctx context.Context) {},
 			expectCount: 0,
 			expectOrder: []string{},
 		},
@@ -208,7 +208,7 @@ func TestListScanEntries(t *testing.T) {
 			name:   "single entry",
 			userID: "user-1",
 			status: scan.Pending,
-			setup: func(t *testing.T, repo *scan.Repo, ctx context.Context) {
+			setup: func(t *testing.T, queue *scan.Queue, ctx context.Context) {
 				entry := scan.ScanEntry{
 					ID:        "scan-1",
 					UserID:    "user-1",
@@ -217,7 +217,7 @@ func TestListScanEntries(t *testing.T) {
 					UnitCount: 1,
 					Status:    scan.Pending,
 				}
-				_, err := repo.CreateScanEntry(ctx, entry)
+				_, err := queue.CreateScanEntry(ctx, entry)
 				if err != nil {
 					t.Fatalf("CreateScanEntry: %v", err)
 				}
@@ -229,7 +229,7 @@ func TestListScanEntries(t *testing.T) {
 			name:   "multiple entries ordered chronologically",
 			userID: "user-1",
 			status: scan.Pending,
-			setup: func(t *testing.T, repo *scan.Repo, ctx context.Context) {
+			setup: func(t *testing.T, queue *scan.Queue, ctx context.Context) {
 				entries := []scan.ScanEntry{
 					{
 						ID:        "scan-1",
@@ -257,7 +257,7 @@ func TestListScanEntries(t *testing.T) {
 					},
 				}
 				for _, e := range entries {
-					_, err := repo.CreateScanEntry(ctx, e)
+					_, err := queue.CreateScanEntry(ctx, e)
 					if err != nil {
 						t.Fatalf("CreateScanEntry: %v", err)
 					}
@@ -270,7 +270,7 @@ func TestListScanEntries(t *testing.T) {
 			name:   "filter by status",
 			userID: "user-1",
 			status: scan.Flagged,
-			setup: func(t *testing.T, repo *scan.Repo, ctx context.Context) {
+			setup: func(t *testing.T, queue *scan.Queue, ctx context.Context) {
 				entries := []scan.ScanEntry{
 					{
 						ID:        "scan-1",
@@ -298,7 +298,7 @@ func TestListScanEntries(t *testing.T) {
 					},
 				}
 				for _, e := range entries {
-					_, err := repo.CreateScanEntry(ctx, e)
+					_, err := queue.CreateScanEntry(ctx, e)
 					if err != nil {
 						t.Fatalf("CreateScanEntry: %v", err)
 					}
@@ -311,12 +311,12 @@ func TestListScanEntries(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			repo, _ := newTestRepo(t)
+			queue, _ := newTestQueue(t)
 			ctx := context.Background()
-			tt.setup(t, repo, ctx)
+			tt.setup(t, queue, ctx)
 
 			// List and verify
-			got, err := repo.ListScanEntries(ctx, tt.userID, tt.status)
+			got, err := queue.ListScanEntries(ctx, tt.userID, tt.status)
 			if err != nil {
 				t.Fatalf("ListScanEntries: %v", err)
 			}
@@ -418,7 +418,7 @@ func TestUpdateScanEntry(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			repo, _ := newTestRepo(t)
+			queue, _ := newTestQueue(t)
 			ctx := context.Background()
 
 			// Setup: create scan entry
@@ -431,14 +431,14 @@ func TestUpdateScanEntry(t *testing.T) {
 					UnitCount: 1,
 					Status:    scan.Pending,
 				}
-				_, err := repo.CreateScanEntry(ctx, entry)
+				_, err := queue.CreateScanEntry(ctx, entry)
 				if err != nil {
 					t.Fatalf("CreateScanEntry: %v", err)
 				}
 			}
 
 			// Update
-			err := repo.UpdateScanEntry(ctx, tt.id, tt.direction, tt.unitCount, tt.expiresAt, tt.productID, tt.status)
+			err := queue.UpdateScanEntry(ctx, tt.id, tt.direction, tt.unitCount, tt.expiresAt, tt.productID, tt.status)
 			if tt.expectError && err == nil {
 				t.Fatal("expected error, got nil")
 			}
@@ -448,7 +448,7 @@ func TestUpdateScanEntry(t *testing.T) {
 
 			// Verify if successful
 			if !tt.expectError {
-				got, err := repo.GetScanEntry(ctx, tt.id)
+				got, err := queue.GetScanEntry(ctx, tt.id)
 				if err != nil {
 					t.Fatalf("GetScanEntry: %v", err)
 				}
@@ -468,13 +468,13 @@ func TestCommitScanEntry(t *testing.T) {
 	tests := []struct {
 		name        string
 		id          string
-		setup       func(t *testing.T, repo *scan.Repo, ctx context.Context)
+		setup       func(t *testing.T, queue *scan.Queue, ctx context.Context)
 		expectError bool
 	}{
 		{
 			name: "commit successfully",
 			id:   "scan-1",
-			setup: func(t *testing.T, repo *scan.Repo, ctx context.Context) {
+			setup: func(t *testing.T, queue *scan.Queue, ctx context.Context) {
 				entry := scan.ScanEntry{
 					ID:        "scan-1",
 					UserID:    "user-1",
@@ -483,7 +483,7 @@ func TestCommitScanEntry(t *testing.T) {
 					UnitCount: 1,
 					Status:    scan.Pending,
 				}
-				_, err := repo.CreateScanEntry(ctx, entry)
+				_, err := queue.CreateScanEntry(ctx, entry)
 				if err != nil {
 					t.Fatalf("CreateScanEntry: %v", err)
 				}
@@ -493,19 +493,19 @@ func TestCommitScanEntry(t *testing.T) {
 		{
 			name:        "entry not found",
 			id:          "no-such-id",
-			setup:       func(t *testing.T, repo *scan.Repo, ctx context.Context) {},
+			setup:       func(t *testing.T, queue *scan.Queue, ctx context.Context) {},
 			expectError: false, // CommitScanEntry doesn't check for existence before updating
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			repo, _ := newTestRepo(t)
+			queue, _ := newTestQueue(t)
 			ctx := context.Background()
-			tt.setup(t, repo, ctx)
+			tt.setup(t, queue, ctx)
 
 			// Commit
-			err := repo.CommitScanEntry(ctx, tt.id)
+			err := queue.CommitScanEntry(ctx, tt.id)
 			if tt.expectError && err == nil {
 				t.Fatal("expected error, got nil")
 			}
@@ -515,7 +515,7 @@ func TestCommitScanEntry(t *testing.T) {
 
 			// Verify committed status
 			if !tt.expectError && tt.id == "scan-1" {
-				got, err := repo.GetScanEntry(ctx, tt.id)
+				got, err := queue.GetScanEntry(ctx, tt.id)
 				if err != nil {
 					t.Fatalf("GetScanEntry: %v", err)
 				}
@@ -547,16 +547,16 @@ func TestBatchUpdateScanEntries(t *testing.T) {
 		direction      *scan.ScanDirection
 		unitCount      *int
 		expiresAt      *time.Time
-		setup          func(t *testing.T, repo *scan.Repo, ctx context.Context)
+		setup          func(t *testing.T, queue *scan.Queue, ctx context.Context)
 		expectError    bool
-		verifyAllMatch func(t *testing.T, repo *scan.Repo, ctx context.Context, ids []string)
+		verifyAllMatch func(t *testing.T, queue *scan.Queue, ctx context.Context, ids []string)
 	}{
 		{
 			name:      "batch update direction and expiry",
 			ids:       []string{"scan-1", "scan-2", "scan-3"},
 			direction: ptrScanDirection(scan.StockIn),
 			expiresAt: &expiresAt,
-			setup: func(t *testing.T, repo *scan.Repo, ctx context.Context) {
+			setup: func(t *testing.T, queue *scan.Queue, ctx context.Context) {
 				for i, id := range []string{"scan-1", "scan-2", "scan-3"} {
 					entry := scan.ScanEntry{
 						ID:        id,
@@ -566,16 +566,16 @@ func TestBatchUpdateScanEntries(t *testing.T) {
 						UnitCount: 1,
 						Status:    scan.Pending,
 					}
-					_, err := repo.CreateScanEntry(ctx, entry)
+					_, err := queue.CreateScanEntry(ctx, entry)
 					if err != nil {
 						t.Fatalf("CreateScanEntry: %v", err)
 					}
 				}
 			},
 			expectError: false,
-			verifyAllMatch: func(t *testing.T, repo *scan.Repo, ctx context.Context, ids []string) {
+			verifyAllMatch: func(t *testing.T, queue *scan.Queue, ctx context.Context, ids []string) {
 				for _, id := range ids {
-					got, err := repo.GetScanEntry(ctx, id)
+					got, err := queue.GetScanEntry(ctx, id)
 					if err != nil {
 						t.Fatalf("GetScanEntry %s: %v", id, err)
 					}
@@ -592,8 +592,8 @@ func TestBatchUpdateScanEntries(t *testing.T) {
 			name:      "empty batch",
 			ids:       []string{},
 			direction: ptrScanDirection(scan.StockIn),
-			setup:     func(t *testing.T, repo *scan.Repo, ctx context.Context) {},
-			verifyAllMatch: func(t *testing.T, repo *scan.Repo, ctx context.Context, ids []string) {
+			setup:     func(t *testing.T, queue *scan.Queue, ctx context.Context) {},
+			verifyAllMatch: func(t *testing.T, queue *scan.Queue, ctx context.Context, ids []string) {
 				// Nothing to verify
 			},
 		},
@@ -601,12 +601,12 @@ func TestBatchUpdateScanEntries(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			repo, _ := newTestRepo(t)
+			queue, _ := newTestQueue(t)
 			ctx := context.Background()
-			tt.setup(t, repo, ctx)
+			tt.setup(t, queue, ctx)
 
 			// Batch update
-			err := repo.BatchUpdateScanEntries(ctx, tt.ids, tt.direction, tt.unitCount, tt.expiresAt)
+			err := queue.BatchUpdateScanEntries(ctx, tt.ids, tt.direction, tt.unitCount, tt.expiresAt)
 			if tt.expectError && err == nil {
 				t.Fatal("expected error, got nil")
 			}
@@ -616,7 +616,7 @@ func TestBatchUpdateScanEntries(t *testing.T) {
 
 			// Verify
 			if !tt.expectError {
-				tt.verifyAllMatch(t, repo, ctx, tt.ids)
+				tt.verifyAllMatch(t, queue, ctx, tt.ids)
 			}
 		})
 	}
@@ -629,18 +629,18 @@ func TestBatchUpdateScanEntries(t *testing.T) {
 func TestScanEntryWithProductJoin(t *testing.T) {
 	now := time.Now()
 
-	repo, db := newTestRepo(t)
+	queue, db := newTestQueue(t)
 	ctx := context.Background()
 
 	// Create a product
-	productRepo := product.NewRepo(db)
+	catalog := product.NewCatalog(db)
 	prod := product.Product{
 		ID:            "prod-1",
 		Name:          "Whole Milk",
 		Category:      "Dairy",
 		UnitOfMeasure: "gallon",
 	}
-	if err := productRepo.CreateProduct(ctx, prod); err != nil {
+	if err := catalog.CreateProduct(ctx, prod); err != nil {
 		t.Fatalf("CreateProduct: %v", err)
 	}
 
@@ -655,13 +655,13 @@ func TestScanEntryWithProductJoin(t *testing.T) {
 		ProductID: &productID,
 		Status:    scan.Pending,
 	}
-	_, err := repo.CreateScanEntry(ctx, entry)
+	_, err := queue.CreateScanEntry(ctx, entry)
 	if err != nil {
 		t.Fatalf("CreateScanEntry: %v", err)
 	}
 
 	// Retrieve and verify product join
-	got, err := repo.GetScanEntry(ctx, "scan-1")
+	got, err := queue.GetScanEntry(ctx, "scan-1")
 	if err != nil {
 		t.Fatalf("GetScanEntry: %v", err)
 	}

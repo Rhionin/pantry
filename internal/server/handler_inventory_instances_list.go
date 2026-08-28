@@ -8,7 +8,7 @@ import (
 )
 
 type InventoryInstancesListHandler struct {
-	Repo interface {
+	Pantry interface {
 		ListItemInstances(ctx context.Context, itemID string) ([]inventory.ItemInstance, error)
 	}
 }
@@ -24,7 +24,7 @@ type ItemInstanceWithStatus struct {
 }
 
 func (h *InventoryInstancesListHandler) Handle(req Request[struct{}, inventoryInstancesListPathParams]) ([]ItemInstanceWithStatus, error) {
-	instances, err := h.Repo.ListItemInstances(req.Context, req.PathParams.ItemID)
+	instances, err := h.Pantry.ListItemInstances(req.Context, req.PathParams.ItemID)
 	if err != nil {
 		return nil, err
 	}

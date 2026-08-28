@@ -1,0 +1,49 @@
+package server
+
+import (
+	"context"
+
+	"github.com/Rhionin/pantry/internal/inventory"
+	"github.com/Rhionin/pantry/internal/shopping"
+)
+
+// ShoppingListItemCreateHandler handles POST /api/shopping-list/items.
+type ShoppingListItemCreateHandler struct {
+	ShoppingList interface {
+		AddManualItem(ctx context.Context, userID, itemID string, quantity int) (*shopping.ShoppingListItem, error)
+	}
+	Pantry interface {
+		GetItem(ctx context.Context, itemID string) (*inventory.Item, error)
+	}
+}
+
+type shoppingListItemCreateRequest struct {
+	ItemID   string `json:"itemId"`
+	Quantity int    `json:"quantity"`
+}
+
+func (h *ShoppingListItemCreateHandler) Handle(req Request[shoppingListItemCreateRequest, struct{}]) (Created, error) {
+	if req.Body.ItemID == "" {
+		return Created{}, &HTTPError{Code: 422, Message: "itemId is required"}
+	}
+	if req.Body.Quantity < 1 {
+		return Created{}, &HTTPError{Code: 422, Message: "quantity must be 1 or greater"}
+	}
+
+	item, err := h.Pantry.GetItem(req.Context, req.Body.ItemID)
+	if err != nil {
+		return Created{}, InternalError(err)
+	}
+	if item == nil {
+		return Created{}, NotFound("item not found")
+	}
+
+	const userID = "user-1"
+	created, err := h.ShoppingList.AddManualItem(req.Context, userID, req.Body.ItemID, req.Body.Quantity)
+	if err != nil {
+		return Created{}, InternalError(err)
+	}
+
+	resp := shoppingListItemToResponse(created)
+	return Created{Value: resp}, nil
+}

@@ -46,19 +46,19 @@ type ScanEntry struct {
 	CreatedAt   time.Time
 }
 
-// Repo provides database operations for scan entries.
-type Repo struct {
+// Queue provides database operations for scan entries.
+type Queue struct {
 	db *sql.DB
 }
 
-// NewRepo creates a new Repo with the given database connection.
-func NewRepo(db *sql.DB) *Repo {
-	return &Repo{db: db}
+// NewQueue creates a new Queue with the given database connection.
+func NewQueue(db *sql.DB) *Queue {
+	return &Queue{db: db}
 }
 
 // CreateScanEntry inserts a new scan entry. If entry.ID is empty, a new UUID
 // is generated. Status defaults to "pending" if not set.
-func (r *Repo) CreateScanEntry(ctx context.Context, entry ScanEntry) (*ScanEntry, error) {
+func (r *Queue) CreateScanEntry(ctx context.Context, entry ScanEntry) (*ScanEntry, error) {
 	if entry.ID == "" {
 		entry.ID = uuid.NewString()
 	}
@@ -93,7 +93,7 @@ func (r *Repo) CreateScanEntry(ctx context.Context, entry ScanEntry) (*ScanEntry
 
 // GetScanEntry returns the scan entry with the given ID, or nil if no such
 // entry exists. Includes joined product information if available.
-func (r *Repo) GetScanEntry(ctx context.Context, id string) (*ScanEntry, error) {
+func (r *Queue) GetScanEntry(ctx context.Context, id string) (*ScanEntry, error) {
 	row := r.db.QueryRowContext(ctx, `
 		SELECT 
 			se.id, se.user_id, se.barcode, se.scanned_at, se.direction, se.unit_count, 
@@ -118,7 +118,7 @@ func (r *Repo) GetScanEntry(ctx context.Context, id string) (*ScanEntry, error) 
 // ListScanEntries returns scan entries filtered by status and ordered by
 // scanned_at ascending (chronological order). If status is empty, all entries
 // are returned.
-func (r *Repo) ListScanEntries(ctx context.Context, userID string, status ScanStatus) ([]ScanEntry, error) {
+func (r *Queue) ListScanEntries(ctx context.Context, userID string, status ScanStatus) ([]ScanEntry, error) {
 	query := `
 		SELECT 
 			se.id, se.user_id, se.barcode, se.scanned_at, se.direction, se.unit_count, 
@@ -163,7 +163,7 @@ func (r *Repo) ListScanEntries(ctx context.Context, userID string, status ScanSt
 //
 // Pass nil for fields that should not be updated. To clear a nullable field,
 // pass a pointer to a zero value (e.g., &time.Time{} for expires_at).
-func (r *Repo) UpdateScanEntry(ctx context.Context, id string, direction *ScanDirection, unitCount *int, expiresAt *time.Time, productID *string, status *ScanStatus) error {
+func (r *Queue) UpdateScanEntry(ctx context.Context, id string, direction *ScanDirection, unitCount *int, expiresAt *time.Time, productID *string, status *ScanStatus) error {
 	query := "UPDATE scan_entries SET"
 	args := []interface{}{}
 	updates := []string{}
@@ -221,7 +221,7 @@ func (r *Repo) UpdateScanEntry(ctx context.Context, id string, direction *ScanDi
 
 // CommitScanEntry marks a scan entry as committed and records the committed_at
 // timestamp. This is a convenience wrapper around UpdateScanEntry.
-func (r *Repo) CommitScanEntry(ctx context.Context, id string) error {
+func (r *Queue) CommitScanEntry(ctx context.Context, id string) error {
 	now := time.Now()
 	committed := Committed
 
@@ -238,7 +238,7 @@ func (r *Repo) CommitScanEntry(ctx context.Context, id string) error {
 
 // BatchUpdateScanEntries applies the same direction, unit_count, and expires_at
 // to multiple scan entries identified by their IDs.
-func (r *Repo) BatchUpdateScanEntries(ctx context.Context, ids []string, direction *ScanDirection, unitCount *int, expiresAt *time.Time) error {
+func (r *Queue) BatchUpdateScanEntries(ctx context.Context, ids []string, direction *ScanDirection, unitCount *int, expiresAt *time.Time) error {
 	if len(ids) == 0 {
 		return nil
 	}
@@ -264,7 +264,7 @@ func (r *Repo) BatchUpdateScanEntries(ctx context.Context, ids []string, directi
 }
 
 // updateScanEntryInTx is a helper that updates a scan entry within a transaction.
-func (r *Repo) updateScanEntryInTx(ctx context.Context, tx *sql.Tx, id string, direction *ScanDirection, unitCount *int, expiresAt *time.Time, productID *string, status *ScanStatus) error {
+func (r *Queue) updateScanEntryInTx(ctx context.Context, tx *sql.Tx, id string, direction *ScanDirection, unitCount *int, expiresAt *time.Time, productID *string, status *ScanStatus) error {
 	query := "UPDATE scan_entries SET"
 	args := []interface{}{}
 	updates := []string{}

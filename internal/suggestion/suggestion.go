@@ -29,19 +29,19 @@ type TargetQuantitySuggestion struct {
 	DataInsufficient      bool   `json:"dataInsufficient"`
 }
 
-// Repo provides database operations for consumption events.
-type Repo struct {
+// ConsumptionLog provides database operations for consumption events.
+type ConsumptionLog struct {
 	db *sql.DB
 }
 
-// NewRepo creates a new Repo with the given database connection.
-func NewRepo(db *sql.DB) *Repo {
-	return &Repo{db: db}
+// NewConsumptionLog creates a new ConsumptionLog with the given database connection.
+func NewConsumptionLog(db *sql.DB) *ConsumptionLog {
+	return &ConsumptionLog{db: db}
 }
 
 // InsertConsumptionEvent inserts a new consumption event record.
 // If event.ID is empty, a new UUID is generated.
-func (r *Repo) InsertConsumptionEvent(ctx context.Context, event ConsumptionEvent) (*ConsumptionEvent, error) {
+func (r *ConsumptionLog) InsertConsumptionEvent(ctx context.Context, event ConsumptionEvent) (*ConsumptionEvent, error) {
 	if event.ID == "" {
 		event.ID = uuid.NewString()
 	}
@@ -63,7 +63,7 @@ func (r *Repo) InsertConsumptionEvent(ctx context.Context, event ConsumptionEven
 
 // ListConsumptionEvents returns all consumption events for the given itemID,
 // ordered ascending by consumed_at (oldest first).
-func (r *Repo) ListConsumptionEvents(ctx context.Context, itemID string) ([]ConsumptionEvent, error) {
+func (r *ConsumptionLog) ListConsumptionEvents(ctx context.Context, itemID string) ([]ConsumptionEvent, error) {
 	rows, err := r.db.QueryContext(ctx,
 		`SELECT id, item_id, consumed_at, scan_entry_id
 		 FROM consumption_events
@@ -91,7 +91,7 @@ func (r *Repo) ListConsumptionEvents(ctx context.Context, itemID string) ([]Cons
 }
 
 // getByID fetches a single consumption event by its ID.
-func (r *Repo) getByID(ctx context.Context, id string) (*ConsumptionEvent, error) {
+func (r *ConsumptionLog) getByID(ctx context.Context, id string) (*ConsumptionEvent, error) {
 	row := r.db.QueryRowContext(ctx,
 		`SELECT id, item_id, consumed_at, scan_entry_id
 		 FROM consumption_events WHERE id = ?`,

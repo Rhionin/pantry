@@ -8,7 +8,7 @@ import (
 )
 
 type InventoryListHandler struct {
-	Repo interface {
+	Pantry interface {
 		GetInventoryList(ctx context.Context, userID string, now time.Time, warningDays int, query string) ([]inventory.InventoryItem, error)
 	}
 	// In a real app, userID would come from auth middleware
@@ -27,5 +27,5 @@ func (h *InventoryListHandler) Handle(req Request[struct{}, struct{}]) ([]invent
 	// Extract query parameter from raw request
 	query := req.RawRequest.URL.Query().Get("q")
 
-	return h.Repo.GetInventoryList(req.Context, userID, now, warningDays, query)
+	return h.Pantry.GetInventoryList(req.Context, userID, now, warningDays, query)
 }

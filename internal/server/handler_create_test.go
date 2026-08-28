@@ -22,7 +22,6 @@ func TestCreateHandler(t *testing.T) {
 					{path: "$.UnitOfMeasure", value: "each"},
 				},
 			},
-			// Verify via HTTP that the product was created
 			afterRequest: exchanges(httpExchange{
 				method:         "GET",
 				path:           "/api/products",
@@ -58,9 +57,7 @@ func TestCreateHandler(t *testing.T) {
 				path:           "/api/products",
 				expectedStatus: http.StatusOK,
 			},
-			// Express the entire test as a series of HTTP exchanges using slice syntax
 			afterRequest: exchanges([]httpExchange{
-				// First exchange: verify list is empty initially
 				{
 					method:         "GET",
 					path:           "/api/products",
@@ -69,7 +66,6 @@ func TestCreateHandler(t *testing.T) {
 						{path: "$", value: []interface{}{}},
 					},
 				},
-				// Second exchange: create a product
 				{
 					method:         "POST",
 					path:           "/api/products",
@@ -80,7 +76,6 @@ func TestCreateHandler(t *testing.T) {
 						{path: "$.Category", value: "Fruit"},
 					},
 				},
-				// Third exchange: verify the product appears in the list
 				{
 					method:         "GET",
 					path:           "/api/products",
@@ -90,14 +85,12 @@ func TestCreateHandler(t *testing.T) {
 						{path: "$[0].Category", value: "Fruit"},
 					},
 				},
-				// Fourth exchange: create another product
 				{
 					method:         "POST",
 					path:           "/api/products",
 					body:           `{"name":"Banana","category":"Fruit"}`,
 					expectedStatus: http.StatusCreated,
 				},
-				// Fifth exchange: verify both products in the list
 				{
 					method:         "GET",
 					path:           "/api/products",

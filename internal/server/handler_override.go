@@ -5,7 +5,7 @@ import (
 )
 
 type OverrideCreateHandler struct {
-	Repo interface {
+	Catalog interface {
 		UpsertBarcodeMapping(ctx context.Context, barcode, productID, source, userID string) error
 	}
 }
@@ -31,7 +31,7 @@ func (h *OverrideCreateHandler) Handle(req Request[createOverrideRequest, struct
 
 	userID := "default-user"
 
-	if err := h.Repo.UpsertBarcodeMapping(req.Context, req.Body.Barcode, req.Body.ProductID, "user_override", userID); err != nil {
+	if err := h.Catalog.UpsertBarcodeMapping(req.Context, req.Body.Barcode, req.Body.ProductID, "user_override", userID); err != nil {
 		return Created{}, err
 	}
 

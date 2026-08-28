@@ -7,7 +7,7 @@ import (
 )
 
 type CreateHandler struct {
-	Repo interface {
+	Catalog interface {
 		CreateProduct(ctx context.Context, product product.Product) error
 	}
 }
@@ -29,7 +29,7 @@ func (h *CreateHandler) Handle(req Request[createProductRequest, struct{}]) (Cre
 		UnitOfMeasure: req.Body.UnitOfMeasure,
 	}
 
-	if err := h.Repo.CreateProduct(req.Context, prod); err != nil {
+	if err := h.Catalog.CreateProduct(req.Context, prod); err != nil {
 		return Created{}, err
 	}
 

@@ -9,7 +9,7 @@ import (
 )
 
 type ScanCreateHandler struct {
-	Repo interface {
+	Queue interface {
 		CreateScanEntry(ctx context.Context, entry scan.ScanEntry) (*scan.ScanEntry, error)
 	}
 	LookupService interface {
@@ -64,7 +64,7 @@ func (h *ScanCreateHandler) Handle(req Request[createScanRequest, struct{}]) (Cr
 		ProductID: prodID,
 	}
 
-	created, err := h.Repo.CreateScanEntry(req.Context, entry)
+	created, err := h.Queue.CreateScanEntry(req.Context, entry)
 	if err != nil {
 		return Created{}, InternalError(err)
 	}

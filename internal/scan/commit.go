@@ -19,7 +19,7 @@ import (
 // 3. Marks the scan entry as committed
 //
 // All operations are performed within a transaction to ensure atomicity.
-func (r *Repo) CommitStockIn(ctx context.Context, scanEntry *ScanEntry) error {
+func (r *Queue) CommitStockIn(ctx context.Context, scanEntry *ScanEntry) error {
 	if scanEntry.Direction == nil || *scanEntry.Direction != StockIn {
 		return fmt.Errorf("scan entry direction must be stock_in, got %v", scanEntry.Direction)
 	}
@@ -78,7 +78,7 @@ func (r *Repo) CommitStockIn(ctx context.Context, scanEntry *ScanEntry) error {
 
 // findOrCreateItem retrieves the item ID for a user+product combination,
 // creating the item if it doesn't already exist.
-func (r *Repo) findOrCreateItem(ctx context.Context, tx *sql.Tx, userID, productID string) (string, error) {
+func (r *Queue) findOrCreateItem(ctx context.Context, tx *sql.Tx, userID, productID string) (string, error) {
 	var itemID string
 	err := tx.QueryRowContext(ctx, `
 		SELECT id FROM items 
@@ -122,7 +122,7 @@ func (r *Repo) findOrCreateItem(ctx context.Context, tx *sql.Tx, userID, product
 // 5. Marks the scan entry as committed
 //
 // All operations are performed within a transaction to ensure atomicity.
-func (r *Repo) CommitStockOut(ctx context.Context, scanEntry *ScanEntry, instanceID *string) error {
+func (r *Queue) CommitStockOut(ctx context.Context, scanEntry *ScanEntry, instanceID *string) error {
 	if scanEntry.Direction == nil || *scanEntry.Direction != StockOut {
 		return fmt.Errorf("scan entry direction must be stock_out, got %v", scanEntry.Direction)
 	}
@@ -235,7 +235,7 @@ func (r *Repo) CommitStockOut(ctx context.Context, scanEntry *ScanEntry, instanc
 // 4. Transitions the scan entry status from 'flagged' to 'pending'
 //
 // All operations are performed within a transaction to ensure atomicity.
-func (r *Repo) ResolveFlaggedEntry(ctx context.Context, scanEntryID, productID string) error {
+func (r *Queue) ResolveFlaggedEntry(ctx context.Context, scanEntryID, productID string) error {
 	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("begin transaction: %w", err)

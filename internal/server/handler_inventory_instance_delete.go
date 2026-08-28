@@ -8,7 +8,7 @@ import (
 )
 
 type InventoryInstanceDeleteHandler struct {
-	Repo interface {
+	Pantry interface {
 		RemoveInstance(ctx context.Context, instanceID string, reason string) error
 	}
 }
@@ -18,7 +18,7 @@ type inventoryInstanceDeletePathParams struct {
 }
 
 func (h *InventoryInstanceDeleteHandler) Handle(req Request[struct{}, inventoryInstanceDeletePathParams]) (struct{}, error) {
-	err := h.Repo.RemoveInstance(req.Context, req.PathParams.InstanceID, "manual")
+	err := h.Pantry.RemoveInstance(req.Context, req.PathParams.InstanceID, "manual")
 	if err != nil {
 		if errors.Is(err, inventory.ErrInstanceNotFound) {
 			return struct{}{}, NotFound("item instance not found")

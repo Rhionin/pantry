@@ -14,11 +14,11 @@ import (
 func TestSuggestionGet(t *testing.T) {
 	now := time.Now()
 
-	tests := []scanHandlerTestCase{
+	tests := []handlerTestCase{
 		{
 			name: "data insufficient with 0 events",
-			setup: func(t *testing.T, db *sql.DB, repo *product.Repo, _ *fakeOpenFoodFacts) {
-				createItemViaStockIn(t, db, repo, "user-sug-1", "prod-sug-1", "Milk", "item-sug-1")
+			setup: func(env testEnv) {
+				createItemViaStockIn(env.T, env.DB, env.ProductStore, "user-sug-1", "prod-sug-1", "Milk", "item-sug-1")
 			},
 			httpExchange: httpExchange{
 				method:         "GET",
@@ -32,10 +32,10 @@ func TestSuggestionGet(t *testing.T) {
 		},
 		{
 			name: "data insufficient with 2 events",
-			setup: func(t *testing.T, db *sql.DB, repo *product.Repo, _ *fakeOpenFoodFacts) {
-				createItemViaStockIn(t, db, repo, "user-sug-2", "prod-sug-2", "Butter", "item-sug-2")
-				insertConsumptionEvent(t, db, "ce-2a", "item-sug-2", now.Add(-14*24*time.Hour))
-				insertConsumptionEvent(t, db, "ce-2b", "item-sug-2", now.Add(-7*24*time.Hour))
+			setup: func(env testEnv) {
+				createItemViaStockIn(env.T, env.DB, env.ProductStore, "user-sug-2", "prod-sug-2", "Butter", "item-sug-2")
+				insertConsumptionEvent(env.T, env.DB, "ce-2a", "item-sug-2", now.Add(-14*24*time.Hour))
+				insertConsumptionEvent(env.T, env.DB, "ce-2b", "item-sug-2", now.Add(-7*24*time.Hour))
 			},
 			httpExchange: httpExchange{
 				method:         "GET",
@@ -49,11 +49,11 @@ func TestSuggestionGet(t *testing.T) {
 		{
 			// 3 events 7 days apart → median interval 7 days → ceil(14/7)+1 = 3
 			name: "returns numeric suggestion with 3 events",
-			setup: func(t *testing.T, db *sql.DB, repo *product.Repo, _ *fakeOpenFoodFacts) {
-				createItemViaStockIn(t, db, repo, "user-sug-3", "prod-sug-3", "Eggs", "item-sug-3")
-				insertConsumptionEvent(t, db, "ce-3a", "item-sug-3", now.Add(-14*24*time.Hour))
-				insertConsumptionEvent(t, db, "ce-3b", "item-sug-3", now.Add(-7*24*time.Hour))
-				insertConsumptionEvent(t, db, "ce-3c", "item-sug-3", now)
+			setup: func(env testEnv) {
+				createItemViaStockIn(env.T, env.DB, env.ProductStore, "user-sug-3", "prod-sug-3", "Eggs", "item-sug-3")
+				insertConsumptionEvent(env.T, env.DB, "ce-3a", "item-sug-3", now.Add(-14*24*time.Hour))
+				insertConsumptionEvent(env.T, env.DB, "ce-3b", "item-sug-3", now.Add(-7*24*time.Hour))
+				insertConsumptionEvent(env.T, env.DB, "ce-3c", "item-sug-3", now)
 			},
 			httpExchange: httpExchange{
 				method:         "GET",
@@ -76,15 +76,15 @@ func TestSuggestionGet(t *testing.T) {
 		},
 	}
 
-	runScanHandlerTests(t, tests)
+	runHandlerTests(t, tests)
 }
 
 // createItemViaStockIn creates a product and inserts an item row with the given
 // deterministic itemID, then seeds one committed stock-in so the item exists in inventory.
-func createItemViaStockIn(t *testing.T, db *sql.DB, repo *product.Repo, userID, productID, productName, itemID string) {
+func createItemViaStockIn(t *testing.T, db *sql.DB, catalog *product.Catalog, userID, productID, productName, itemID string) {
 	t.Helper()
 
-	if err := repo.CreateProduct(context.Background(), product.Product{
+	if err := catalog.CreateProduct(context.Background(), product.Product{
 		ID:            productID,
 		Name:          productName,
 		Category:      "Test",
@@ -100,7 +100,7 @@ func createItemViaStockIn(t *testing.T, db *sql.DB, repo *product.Repo, userID, 
 		t.Fatalf("insert item: %v", err)
 	}
 
-	scanRepo := scan.NewRepo(db)
+	scanQueue := scan.NewQueue(db)
 	direction := scan.StockIn
 	entry := scan.ScanEntry{
 		ID:        "seed-scan-" + productID,
@@ -112,10 +112,10 @@ func createItemViaStockIn(t *testing.T, db *sql.DB, repo *product.Repo, userID, 
 		ProductID: &productID,
 		Status:    scan.Pending,
 	}
-	if _, err := scanRepo.CreateScanEntry(context.Background(), entry); err != nil {
+	if _, err := scanQueue.CreateScanEntry(context.Background(), entry); err != nil {
 		t.Fatalf("CreateScanEntry: %v", err)
 	}
-	if err := scanRepo.CommitStockIn(context.Background(), &entry); err != nil {
+	if err := scanQueue.CommitStockIn(context.Background(), &entry); err != nil {
 		t.Fatalf("CommitStockIn: %v", err)
 	}
 }

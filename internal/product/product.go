@@ -30,20 +30,20 @@ type ProductSummary struct {
 	UnitOfMeasure string
 }
 
-// Repo provides database operations for products and barcodes.
-type Repo struct {
+// Catalog provides database operations for products and barcodes.
+type Catalog struct {
 	db *sql.DB
 }
 
-// NewRepo creates a new Repo with the given database connection.
-func NewRepo(db *sql.DB) *Repo {
-	return &Repo{db: db}
+// NewCatalog creates a new Catalog with the given database connection.
+func NewCatalog(db *sql.DB) *Catalog {
+	return &Catalog{db: db}
 }
 
 // CreateProduct inserts a new product row. If product.ID is empty a new UUID
 // is generated. The caller should set product.Name; Category and
 // UnitOfMeasure are optional.
-func (r *Repo) CreateProduct(ctx context.Context, product Product) error {
+func (r *Catalog) CreateProduct(ctx context.Context, product Product) error {
 	if product.ID == "" {
 		product.ID = uuid.NewString()
 	}
@@ -59,7 +59,7 @@ func (r *Repo) CreateProduct(ctx context.Context, product Product) error {
 
 // GetProductByID returns the product with the given ID, or nil if no such row
 // exists.
-func (r *Repo) GetProductByID(ctx context.Context, id string) (*Product, error) {
+func (r *Catalog) GetProductByID(ctx context.Context, id string) (*Product, error) {
 	row := r.db.QueryRowContext(ctx,
 		`SELECT id, name, COALESCE(category, ''), COALESCE(unit_of_measure, ''), created_at
 		 FROM products WHERE id = ?`, id)
@@ -75,7 +75,7 @@ func (r *Repo) GetProductByID(ctx context.Context, id string) (*Product, error) 
 }
 
 // ListProducts returns all products, ordered by name.
-func (r *Repo) ListProducts(ctx context.Context) ([]Product, error) {
+func (r *Catalog) ListProducts(ctx context.Context) ([]Product, error) {
 	rows, err := r.db.QueryContext(ctx,
 		`SELECT id, name, COALESCE(category, ''), COALESCE(unit_of_measure, ''), created_at
 		 FROM products ORDER BY name`)
@@ -100,7 +100,7 @@ func (r *Repo) ListProducts(ctx context.Context) ([]Product, error) {
 
 // UpdateProduct updates the name, category, and unit_of_measure of an existing
 // product identified by product.ID. It does not change created_at.
-func (r *Repo) UpdateProduct(ctx context.Context, product Product) error {
+func (r *Catalog) UpdateProduct(ctx context.Context, product Product) error {
 	res, err := r.db.ExecContext(ctx,
 		`UPDATE products SET name = ?, category = ?, unit_of_measure = ? WHERE id = ?`,
 		product.Name, nullableString(product.Category), nullableString(product.UnitOfMeasure), product.ID,
@@ -121,7 +121,7 @@ func (r *Repo) UpdateProduct(ctx context.Context, product Product) error {
 // UpsertBarcodeMapping inserts or replaces a row in the barcodes table.
 // source must be either "global" or "user_override".
 // For global entries pass userID = "".
-func (r *Repo) UpsertBarcodeMapping(ctx context.Context, barcode, productID, source, userID string) error {
+func (r *Catalog) UpsertBarcodeMapping(ctx context.Context, barcode, productID, source, userID string) error {
 	_, err := r.db.ExecContext(ctx,
 		`INSERT OR REPLACE INTO barcodes (barcode, product_id, source, user_id)
 		 VALUES (?, ?, ?, ?)`,
@@ -137,10 +137,10 @@ func (r *Repo) UpsertBarcodeMapping(ctx context.Context, barcode, productID, sou
 //
 // Priority order:
 //  1. user_override rows matching the given userID
-//  2. global rows (user_id = '')
+//  2. global rows (user_id = ”)
 //
 // Returns the first matching product, or nil if no match is found.
-func (r *Repo) LookupByBarcode(ctx context.Context, barcode, userID string) (*ProductSummary, error) {
+func (r *Catalog) LookupByBarcode(ctx context.Context, barcode, userID string) (*ProductSummary, error) {
 	// Find the highest-priority match.
 	// We use a CASE expression so user_override rows sort before global rows.
 	row := r.db.QueryRowContext(ctx, `

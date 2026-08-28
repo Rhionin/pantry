@@ -18,7 +18,7 @@ import (
 // with status `pending` and no pre-set scan direction unless one was explicitly provided.
 func TestProperty1_ScanEntryDataIntegrity(t *testing.T) {
 	rapid.Check(t, func(rt *rapid.T) {
-		repo, _ := newTestRepo(t)
+		queue, _ := newTestQueue(t)
 		ctx := context.Background()
 
 		// Generate arbitrary inputs
@@ -35,7 +35,7 @@ func TestProperty1_ScanEntryDataIntegrity(t *testing.T) {
 			UnitCount: 1,
 		}
 
-		created, err := repo.CreateScanEntry(ctx, entry)
+		created, err := queue.CreateScanEntry(ctx, entry)
 		if err != nil {
 			rt.Fatalf("CreateScanEntry failed: %v", err)
 		}
@@ -76,7 +76,7 @@ func TestProperty1_ScanEntryDataIntegrity(t *testing.T) {
 // direction SHALL NOT be applied automatically.
 func TestProperty2_ScanDirectionPropagation(t *testing.T) {
 	rapid.Check(t, func(rt *rapid.T) {
-		repo, _ := newTestRepo(t)
+		queue, _ := newTestQueue(t)
 		ctx := context.Background()
 
 		// Generate test data
@@ -123,7 +123,7 @@ func TestProperty2_ScanDirectionPropagation(t *testing.T) {
 				UnitCount: 1,
 			}
 
-			created, err := repo.CreateScanEntry(ctx, entry)
+			created, err := queue.CreateScanEntry(ctx, entry)
 			if err != nil {
 				rt.Fatalf("CreateScanEntry failed: %v", err)
 			}
@@ -164,7 +164,7 @@ func TestProperty2_ScanDirectionPropagation(t *testing.T) {
 // SHALL be ordered ascending by `scanned_at` timestamp (oldest first).
 func TestProperty3_ScanQueueChronologicalOrdering(t *testing.T) {
 	rapid.Check(t, func(rt *rapid.T) {
-		repo, _ := newTestRepo(t)
+		queue, _ := newTestQueue(t)
 		ctx := context.Background()
 
 		userID := rapid.String().Draw(rt, "userID")
@@ -186,14 +186,14 @@ func TestProperty3_ScanQueueChronologicalOrdering(t *testing.T) {
 				Status:    scan.Pending,
 			}
 
-			_, err := repo.CreateScanEntry(ctx, entry)
+			_, err := queue.CreateScanEntry(ctx, entry)
 			if err != nil {
 				rt.Fatalf("CreateScanEntry failed: %v", err)
 			}
 		}
 
 		// List all entries
-		entries, err := repo.ListScanEntries(ctx, userID, scan.Pending)
+		entries, err := queue.ListScanEntries(ctx, userID, scan.Pending)
 		if err != nil {
 			rt.Fatalf("ListScanEntries failed: %v", err)
 		}
@@ -221,7 +221,7 @@ func TestProperty3_ScanQueueChronologicalOrdering(t *testing.T) {
 // new values, and no entry outside the subset SHALL be modified.
 func TestProperty4_BatchUpdateApplies(t *testing.T) {
 	rapid.Check(t, func(rt *rapid.T) {
-		repo, _ := newTestRepo(t)
+		queue, _ := newTestQueue(t)
 		ctx := context.Background()
 
 		userID := rapid.String().Draw(rt, "userID")
@@ -239,7 +239,7 @@ func TestProperty4_BatchUpdateApplies(t *testing.T) {
 				Status:    scan.Pending,
 			}
 
-			created, err := repo.CreateScanEntry(ctx, entry)
+			created, err := queue.CreateScanEntry(ctx, entry)
 			if err != nil {
 				rt.Fatalf("CreateScanEntry failed: %v", err)
 			}
@@ -270,14 +270,14 @@ func TestProperty4_BatchUpdateApplies(t *testing.T) {
 		expiresAt := time.Now().Add(time.Duration(rapid.IntRange(1, 30).Draw(rt, "daysUntilExpiry")) * 24 * time.Hour)
 
 		// Perform batch update
-		err := repo.BatchUpdateScanEntries(ctx, selectedIDs, &direction, &unitCount, &expiresAt)
+		err := queue.BatchUpdateScanEntries(ctx, selectedIDs, &direction, &unitCount, &expiresAt)
 		if err != nil {
 			rt.Fatalf("BatchUpdateScanEntries failed: %v", err)
 		}
 
 		// Verify all entries
 		for i, id := range entryIDs {
-			entry, err := repo.GetScanEntry(ctx, id)
+			entry, err := queue.GetScanEntry(ctx, id)
 			if err != nil {
 				rt.Fatalf("GetScanEntry failed: %v", err)
 			}
@@ -321,7 +321,7 @@ func TestProperty4_BatchUpdateApplies(t *testing.T) {
 // original barcode, timestamp, direction, unit count, and expiration date all unchanged.
 func TestProperty7_CommittedEntryInHistory(t *testing.T) {
 	rapid.Check(t, func(rt *rapid.T) {
-		repo, _ := newTestRepo(t)
+		queue, _ := newTestQueue(t)
 		ctx := context.Background()
 
 		// Generate arbitrary scan entry data
@@ -364,7 +364,7 @@ func TestProperty7_CommittedEntryInHistory(t *testing.T) {
 			Status:    scan.Pending,
 		}
 
-		created, err := repo.CreateScanEntry(ctx, entry)
+		created, err := queue.CreateScanEntry(ctx, entry)
 		if err != nil {
 			rt.Fatalf("CreateScanEntry failed: %v", err)
 		}
@@ -378,7 +378,7 @@ func TestProperty7_CommittedEntryInHistory(t *testing.T) {
 		originalID := created.ID
 
 		// Verify entry is in pending list
-		pendingEntries, err := repo.ListScanEntries(ctx, userID, scan.Pending)
+		pendingEntries, err := queue.ListScanEntries(ctx, userID, scan.Pending)
 		if err != nil {
 			rt.Fatalf("ListScanEntries (pending) failed: %v", err)
 		}
@@ -394,13 +394,13 @@ func TestProperty7_CommittedEntryInHistory(t *testing.T) {
 		}
 
 		// Commit the scan entry
-		err = repo.CommitScanEntry(ctx, originalID)
+		err = queue.CommitScanEntry(ctx, originalID)
 		if err != nil {
 			rt.Fatalf("CommitScanEntry failed: %v", err)
 		}
 
 		// Verify entry is NO LONGER in pending list
-		pendingAfterCommit, err := repo.ListScanEntries(ctx, userID, scan.Pending)
+		pendingAfterCommit, err := queue.ListScanEntries(ctx, userID, scan.Pending)
 		if err != nil {
 			rt.Fatalf("ListScanEntries (pending after commit) failed: %v", err)
 		}
@@ -411,7 +411,7 @@ func TestProperty7_CommittedEntryInHistory(t *testing.T) {
 		}
 
 		// Verify entry IS in committed/history list
-		committedEntries, err := repo.ListScanEntries(ctx, userID, scan.Committed)
+		committedEntries, err := queue.ListScanEntries(ctx, userID, scan.Committed)
 		if err != nil {
 			rt.Fatalf("ListScanEntries (committed) failed: %v", err)
 		}

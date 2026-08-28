@@ -16,7 +16,6 @@ func TestOverrideCreateHandler(t *testing.T) {
 				body:           `{"barcode":"999888","productId":"prod-1"}`,
 				expectedStatus: http.StatusCreated,
 			},
-			// Verify via HTTP that the override was created by looking up the barcode
 			afterRequest: exchanges(httpExchange{
 				method:         "GET",
 				path:           "/api/products/lookup",

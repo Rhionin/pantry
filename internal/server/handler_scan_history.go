@@ -7,7 +7,7 @@ import (
 )
 
 type ScanHistoryHandler struct {
-	Repo interface {
+	Queue interface {
 		ListScanEntries(ctx context.Context, userID string, status scan.ScanStatus) ([]scan.ScanEntry, error)
 	}
 }
@@ -20,7 +20,7 @@ func (h *ScanHistoryHandler) Handle(req Request[struct{}, struct{}]) ([]scan.Sca
 	}
 
 	// Return only committed entries for history
-	entries, err := h.Repo.ListScanEntries(req.Context, userIDParam, scan.Committed)
+	entries, err := h.Queue.ListScanEntries(req.Context, userIDParam, scan.Committed)
 	if err != nil {
 		return nil, InternalError(err)
 	}

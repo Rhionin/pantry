@@ -9,12 +9,13 @@ import (
 	"github.com/Rhionin/pantry/internal/inventory"
 	"github.com/Rhionin/pantry/internal/product"
 	"github.com/Rhionin/pantry/internal/scan"
+	"github.com/Rhionin/pantry/internal/shopping"
 	"github.com/Rhionin/pantry/internal/suggestion"
 )
 
 // NewHandler creates and configures the HTTP handler with all application routes.
 func NewHandler(
-	productRepo *product.Repo,
+	catalog *product.Catalog,
 	lookupService *product.LookupService,
 	db *sql.DB,
 ) http.Handler {
@@ -27,10 +28,10 @@ func NewHandler(
 
 	// Product handlers
 	lookupHandler := &LookupHandler{Service: lookupService}
-	listHandler := &ListHandler{Repo: productRepo}
-	createHandler := &CreateHandler{Repo: productRepo}
-	updateHandler := &UpdateHandler{Repo: productRepo}
-	overrideHandler := &OverrideCreateHandler{Repo: productRepo}
+	listHandler := &ListHandler{Catalog: catalog}
+	createHandler := &CreateHandler{Catalog: catalog}
+	updateHandler := &UpdateHandler{Catalog: catalog}
+	overrideHandler := &OverrideCreateHandler{Catalog: catalog}
 
 	mux.HandleFunc("GET /api/products/lookup", HandleJSON(lookupHandler.Handle))
 	mux.HandleFunc("GET /api/products", HandleJSON(listHandler.Handle))
@@ -39,16 +40,16 @@ func NewHandler(
 	mux.HandleFunc("POST /api/products/overrides", HandleJSON(overrideHandler.Handle))
 
 	// Scan queue handlers
-	scanRepo := scan.NewRepo(db)
+	scanQueue := scan.NewQueue(db)
 	scanCreateHandler := &ScanCreateHandler{
-		Repo:          scanRepo,
+		Queue:         scanQueue,
 		LookupService: lookupService,
 	}
-	scanListHandler := &ScanListHandler{Repo: scanRepo}
-	scanHistoryHandler := &ScanHistoryHandler{Repo: scanRepo}
-	scanUpdateHandler := &ScanUpdateHandler{Repo: scanRepo}
-	scanCommitHandler := &ScanCommitHandler{Repo: scanRepo}
-	scanBatchCommitHandler := &ScanBatchCommitHandler{Repo: scanRepo}
+	scanListHandler := &ScanListHandler{Queue: scanQueue}
+	scanHistoryHandler := &ScanHistoryHandler{Queue: scanQueue}
+	scanUpdateHandler := &ScanUpdateHandler{Queue: scanQueue}
+	scanCommitHandler := &ScanCommitHandler{Queue: scanQueue}
+	scanBatchCommitHandler := &ScanBatchCommitHandler{Queue: scanQueue}
 
 	mux.HandleFunc("POST /api/scans", HandleJSON(scanCreateHandler.Handle))
 	mux.HandleFunc("GET /api/scans", HandleJSON(scanListHandler.Handle))
@@ -58,11 +59,11 @@ func NewHandler(
 	mux.HandleFunc("POST /api/scans/batch-commit", HandleJSON(scanBatchCommitHandler.Handle))
 
 	// Inventory handlers
-	inventoryRepo := inventory.NewRepo(db)
-	inventoryListHandler := &InventoryListHandler{Repo: inventoryRepo}
-	inventoryInstancesListHandler := &InventoryInstancesListHandler{Repo: inventoryRepo}
-	inventoryInstanceCreateHandler := &InventoryInstanceCreateHandler{Repo: inventoryRepo}
-	inventoryInstanceDeleteHandler := &InventoryInstanceDeleteHandler{Repo: inventoryRepo}
+	pantry := inventory.NewPantry(db)
+	inventoryListHandler := &InventoryListHandler{Pantry: pantry}
+	inventoryInstancesListHandler := &InventoryInstancesListHandler{Pantry: pantry}
+	inventoryInstanceCreateHandler := &InventoryInstanceCreateHandler{Pantry: pantry}
+	inventoryInstanceDeleteHandler := &InventoryInstanceDeleteHandler{Pantry: pantry}
 
 	mux.HandleFunc("GET /api/inventory", HandleJSON(inventoryListHandler.Handle))
 	mux.HandleFunc("GET /api/inventory/{itemId}/instances", HandleJSON(inventoryInstancesListHandler.Handle))
@@ -70,17 +71,45 @@ func NewHandler(
 	mux.HandleFunc("DELETE /api/inventory/instances/{instanceId}", HandleJSON(inventoryInstanceDeleteHandler.Handle))
 
 	// Suggestion and target-quantity handlers
-	suggestionRepo := suggestion.NewRepo(db)
+	consumptionLog := suggestion.NewConsumptionLog(db)
 	suggestionGetHandler := &SuggestionGetHandler{
-		SuggestionRepo: suggestionRepo,
-		InventoryRepo:  inventoryRepo,
+		ConsumptionLog: consumptionLog,
+		Pantry:         pantry,
 	}
 	setTargetQuantityHandler := &SetTargetQuantityHandler{
-		InventoryRepo: inventoryRepo,
+		Pantry: pantry,
 	}
 
 	mux.HandleFunc("GET /api/suggestions/{itemId}", HandleJSON(suggestionGetHandler.Handle))
 	mux.HandleFunc("POST /api/items/{itemId}/target-quantity", HandleJSON(setTargetQuantityHandler.Handle))
+
+	// Shopping list handlers
+	shoppingList := shopping.NewStore(db)
+	shoppingListGetHandler := &ShoppingListGetHandler{
+		ShoppingList: shoppingList,
+		Pantry:       pantry,
+	}
+	shoppingListItemCreateHandler := &ShoppingListItemCreateHandler{
+		ShoppingList: shoppingList,
+		Pantry:       pantry,
+	}
+	shoppingListItemDeleteHandler := &ShoppingListItemDeleteHandler{
+		ShoppingList: shoppingList,
+	}
+	shoppingListItemUpdateHandler := &ShoppingListItemUpdateHandler{
+		ShoppingList: shoppingList,
+	}
+	shoppingListExportHandler := &ShoppingListExportHandler{
+		ShoppingList: shoppingList,
+		Pantry:       pantry,
+		Exporter:     &shopping.NoOpExporter{},
+	}
+
+	mux.HandleFunc("GET /api/shopping-list", HandleJSON(shoppingListGetHandler.Handle))
+	mux.HandleFunc("POST /api/shopping-list/items", HandleJSON(shoppingListItemCreateHandler.Handle))
+	mux.HandleFunc("DELETE /api/shopping-list/items/{id}", HandleJSON(shoppingListItemDeleteHandler.Handle))
+	mux.HandleFunc("PATCH /api/shopping-list/items/{id}", HandleJSON(shoppingListItemUpdateHandler.Handle))
+	mux.HandleFunc("POST /api/shopping-list/export", HandleJSON(shoppingListExportHandler.Handle))
 
 	return mux
 }

@@ -11,8 +11,8 @@ import (
 	"github.com/Rhionin/pantry/internal/product"
 )
 
-// newTestRepo opens an in-memory SQLite database, applies all migrations, and returns a product Repo.
-func newTestRepo(t *testing.T) *product.Repo {
+// newTestCatalog opens an in-memory SQLite database, applies all migrations, and returns a product Catalog.
+func newTestCatalog(t *testing.T) *product.Catalog {
 	t.Helper()
 	conn, err := sql.Open("sqlite", ":memory:")
 	if err != nil {
@@ -22,7 +22,7 @@ func newTestRepo(t *testing.T) *product.Repo {
 	if err := app.RunMigrations(conn); err != nil {
 		t.Fatalf("RunMigrations: %v", err)
 	}
-	return product.NewRepo(conn)
+	return product.NewCatalog(conn)
 }
 
 // --------------------------------------------------------------------------
@@ -55,17 +55,17 @@ func TestCreateProduct(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			repo := newTestRepo(t)
+			catalog := newTestCatalog(t)
 			ctx := context.Background()
 
 			// Create product
-			if err := repo.CreateProduct(ctx, tt.product); err != nil {
+			if err := catalog.CreateProduct(ctx, tt.product); err != nil {
 				t.Fatalf("CreateProduct: %v", err)
 			}
 
 			// If UUID generation test, retrieve from list and verify ID was generated
 			if tt.wantIDEmpty {
-				products, err := repo.ListProducts(ctx)
+				products, err := catalog.ListProducts(ctx)
 				if err != nil {
 					t.Fatalf("ListProducts: %v", err)
 				}
@@ -80,7 +80,7 @@ func TestCreateProduct(t *testing.T) {
 
 			// Roundtrip test: verify GetProductByID retrieves the exact product
 			if tt.wantRoundtrip {
-				got, err := repo.GetProductByID(ctx, tt.id)
+				got, err := catalog.GetProductByID(ctx, tt.id)
 				if err != nil {
 					t.Fatalf("GetProductByID: %v", err)
 				}
@@ -112,15 +112,15 @@ func TestGetProductByID(t *testing.T) {
 	tests := []struct {
 		name        string
 		id          string
-		setup       func(t *testing.T, repo *product.Repo, ctx context.Context)
+		setup       func(t *testing.T, catalog *product.Catalog, ctx context.Context)
 		expectFound bool
 	}{
 		{
 			name: "found",
 			id:   "prod-1",
-			setup: func(t *testing.T, repo *product.Repo, ctx context.Context) {
+			setup: func(t *testing.T, catalog *product.Catalog, ctx context.Context) {
 				p := product.Product{ID: "prod-1", Name: "Whole Milk", Category: "Dairy"}
-				if err := repo.CreateProduct(ctx, p); err != nil {
+				if err := catalog.CreateProduct(ctx, p); err != nil {
 					t.Fatalf("CreateProduct: %v", err)
 				}
 			},
@@ -129,18 +129,18 @@ func TestGetProductByID(t *testing.T) {
 		{
 			name:        "not found",
 			id:          "no-such-id",
-			setup:       func(t *testing.T, repo *product.Repo, ctx context.Context) {},
+			setup:       func(t *testing.T, catalog *product.Catalog, ctx context.Context) {},
 			expectFound: false,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			repo := newTestRepo(t)
+			catalog := newTestCatalog(t)
 			ctx := context.Background()
-			tt.setup(t, repo, ctx)
+			tt.setup(t, catalog, ctx)
 
-			got, err := repo.GetProductByID(ctx, tt.id)
+			got, err := catalog.GetProductByID(ctx, tt.id)
 			if err != nil {
 				t.Fatalf("GetProductByID: %v", err)
 			}
@@ -193,18 +193,18 @@ func TestListProducts(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			repo := newTestRepo(t)
+			catalog := newTestCatalog(t)
 			ctx := context.Background()
 
 			// Add products
 			for _, p := range tt.productsToAdd {
-				if err := repo.CreateProduct(ctx, p); err != nil {
+				if err := catalog.CreateProduct(ctx, p); err != nil {
 					t.Fatalf("CreateProduct %q: %v", p.Name, err)
 				}
 			}
 
 			// List and verify
-			got, err := repo.ListProducts(ctx)
+			got, err := catalog.ListProducts(ctx)
 			if err != nil {
 				t.Fatalf("ListProducts: %v", err)
 			}
@@ -265,18 +265,18 @@ func TestUpdateProduct(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			repo := newTestRepo(t)
+			catalog := newTestCatalog(t)
 			ctx := context.Background()
 
 			// Setup
 			if tt.originalProd != nil {
-				if err := repo.CreateProduct(ctx, *tt.originalProd); err != nil {
+				if err := catalog.CreateProduct(ctx, *tt.originalProd); err != nil {
 					t.Fatalf("CreateProduct: %v", err)
 				}
 			}
 
 			// Update
-			err := repo.UpdateProduct(ctx, tt.updatedProd)
+			err := catalog.UpdateProduct(ctx, tt.updatedProd)
 			if tt.expectError && err == nil {
 				t.Fatal("expected error, got nil")
 			}
@@ -286,7 +286,7 @@ func TestUpdateProduct(t *testing.T) {
 
 			// Verify if successful
 			if !tt.expectError {
-				got, err := repo.GetProductByID(ctx, tt.id)
+				got, err := catalog.GetProductByID(ctx, tt.id)
 				if err != nil {
 					t.Fatalf("GetProductByID: %v", err)
 				}
@@ -334,24 +334,24 @@ func TestUpsertBarcodeMapping(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			repo := newTestRepo(t)
+			catalog := newTestCatalog(t)
 			ctx := context.Background()
 
 			// Create products
 			p1 := product.Product{ID: "p1", Name: "Product One"}
 			p2 := product.Product{ID: "p2", Name: "Product Two"}
 			for _, p := range []product.Product{p1, p2} {
-				if err := repo.CreateProduct(ctx, p); err != nil {
+				if err := catalog.CreateProduct(ctx, p); err != nil {
 					t.Fatalf("CreateProduct: %v", err)
 				}
 			}
 
 			// Insert mapping
-			if err := repo.UpsertBarcodeMapping(ctx, tt.barcode, tt.productID1, "global", ""); err != nil {
+			if err := catalog.UpsertBarcodeMapping(ctx, tt.barcode, tt.productID1, "global", ""); err != nil {
 				t.Fatalf("UpsertBarcodeMapping (insert): %v", err)
 			}
 
-			single, err := repo.LookupByBarcode(ctx, tt.barcode, "user-123")
+			single, err := catalog.LookupByBarcode(ctx, tt.barcode, "user-123")
 			if err != nil {
 				t.Fatalf("LookupByBarcode: %v", err)
 			}
@@ -361,11 +361,11 @@ func TestUpsertBarcodeMapping(t *testing.T) {
 
 			// If we're testing replace, do it now
 			if tt.productID2 != "" {
-				if err := repo.UpsertBarcodeMapping(ctx, tt.barcode, tt.productID2, "global", ""); err != nil {
+				if err := catalog.UpsertBarcodeMapping(ctx, tt.barcode, tt.productID2, "global", ""); err != nil {
 					t.Fatalf("UpsertBarcodeMapping (replace): %v", err)
 				}
 
-				single, err = repo.LookupByBarcode(ctx, tt.barcode, "user-123")
+				single, err = catalog.LookupByBarcode(ctx, tt.barcode, "user-123")
 				if err != nil {
 					t.Fatalf("LookupByBarcode after replace: %v", err)
 				}
@@ -381,23 +381,22 @@ func TestUpsertBarcodeMapping(t *testing.T) {
 // TestLookupByBarcode
 // --------------------------------------------------------------------------
 
-
 func TestLookupByBarcode(t *testing.T) {
 	tests := []struct {
-		name            string
-		barcode         string
-		userID          string
-		setupProducts   []product.Product
-		setupMappings   []struct{ barcode, productID, source, userID string }
-		expectSingle    *string // nil means expect nil single, otherwise product ID
+		name          string
+		barcode       string
+		userID        string
+		setupProducts []product.Product
+		setupMappings []struct{ barcode, productID, source, userID string }
+		expectSingle  *string // nil means expect nil single, otherwise product ID
 	}{
 		{
-			name:            "no match",
-			barcode:         "000000000000",
-			userID:          "user-1",
-			setupProducts:   []product.Product{},
-			setupMappings:   []struct{ barcode, productID, source, userID string }{},
-			expectSingle:    nil,
+			name:          "no match",
+			barcode:       "000000000000",
+			userID:        "user-1",
+			setupProducts: []product.Product{},
+			setupMappings: []struct{ barcode, productID, source, userID string }{},
+			expectSingle:  nil,
 		},
 		{
 			name:    "user override takes precedence over global",
@@ -443,25 +442,25 @@ func TestLookupByBarcode(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			repo := newTestRepo(t)
+			catalog := newTestCatalog(t)
 			ctx := context.Background()
 
 			// Create products
 			for _, p := range tt.setupProducts {
-				if err := repo.CreateProduct(ctx, p); err != nil {
+				if err := catalog.CreateProduct(ctx, p); err != nil {
 					t.Fatalf("CreateProduct: %v", err)
 				}
 			}
 
 			// Create mappings
 			for _, m := range tt.setupMappings {
-				if err := repo.UpsertBarcodeMapping(ctx, m.barcode, m.productID, m.source, m.userID); err != nil {
+				if err := catalog.UpsertBarcodeMapping(ctx, m.barcode, m.productID, m.source, m.userID); err != nil {
 					t.Fatalf("UpsertBarcodeMapping: %v", err)
 				}
 			}
 
 			// Lookup
-			single, err := repo.LookupByBarcode(ctx, tt.barcode, tt.userID)
+			single, err := catalog.LookupByBarcode(ctx, tt.barcode, tt.userID)
 			if err != nil {
 				t.Fatalf("LookupByBarcode: %v", err)
 			}
