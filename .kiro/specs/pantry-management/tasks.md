@@ -251,7 +251,7 @@ Implement the Pantry Management app as a Go REST API backend with a React + Type
     - Run `./scripts/test-coverage.sh` after completing this task and commit the updated script if the threshold increases
     - _Requirements: 4.1, 4.2, 4.3, 4.4, 4.5, 4.6, 4.7, 4.8, 4.9, 4.10_
 
-- [ ] 8. Checkpoint — Ensure all backend tests pass
+- [x] 8. Checkpoint — Ensure all backend tests pass
   - Run `go test ./...` and confirm all backend tests pass. Ask the user if any questions arise before continuing.
 
 - [ ] 9. Frontend — shared utilities and TypeScript types
