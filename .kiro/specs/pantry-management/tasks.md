@@ -319,16 +319,16 @@ cccccdfhffhntldlkcttglcnugbegjecbdjjdddileev
     - When reviewing a pending stock-out entry, fetches `GET /api/inventory/{itemId}/instances`; renders instances sorted use-oldest-first; allows selecting a specific instance before committing
     - _Requirements: 1.9, 2.3_
 
-- [ ] 12. Frontend — inventory pages
-  - [ ] 12.1 Implement `InventoryPage` and `ItemRow`
+- [x] 12. Frontend — inventory pages
+  - [x] 12.1 Implement `InventoryPage` and `ItemRow`
     - Fetches `GET /api/inventory`; renders grouped list; places `needsAttention` items in "Needs Attention" section at top; includes search input that filters by name/category using `src/utils/inventoryFilter.ts` (local filter — no extra API call)
     - _Requirements: 2.2, 2.4, 2.10, 2.11_
 
-  - [ ] 12.2 Implement `ItemInstanceList` and expiry badges
+  - [x] 12.2 Implement `ItemInstanceList` and expiry badges
     - Fetches `GET /api/inventory/{itemId}/instances` on item selection; renders instances sorted use-oldest-first; shows `near_expiry` (yellow) and `expired` (red) badges using `computeExpiryStatus`
     - _Requirements: 2.3, 2.8, 2.9_
 
-  - [ ] 12.3 Implement `AddInstanceModal`
+  - [x] 12.3 Implement `AddInstanceModal`
     - Form with expiry date picker; on submit calls `POST /api/inventory/{itemId}/instances`; closes and refreshes instance list on success
     - _Requirements: 2.5_
 

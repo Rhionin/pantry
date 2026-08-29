@@ -1,0 +1,110 @@
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Alert, Loader, Stack, Text, TextInput, Title } from '@mantine/core';
+import { getInventoryList } from '../../api/client';
+import type { InventoryItem } from '../../types';
+import { filterInventoryItems } from '../../utils/inventoryFilter';
+import { ItemInstanceList } from './ItemInstanceList';
+import { ItemRow } from './ItemRow';
+
+interface InventorySectionProps {
+  heading: string;
+  items: InventoryItem[];
+  selectedItemId: string | null;
+  onSelect: (itemId: string) => void;
+}
+
+const InventorySection = ({ heading, items, selectedItemId, onSelect }: InventorySectionProps) => (
+  <Stack component="section" aria-label={heading} gap="sm">
+    <Title order={2}>{heading}</Title>
+    {items.map((inventoryItem) => (
+      <ItemRow
+        key={inventoryItem.item.id}
+        inventoryItem={inventoryItem}
+        selected={selectedItemId === inventoryItem.item.id}
+        controlsId={`inventory-item-${inventoryItem.item.id}`}
+        onSelect={() => onSelect(inventoryItem.item.id)}
+      />
+    ))}
+  </Stack>
+);
+
+export const InventoryPage = () => {
+  const [inventoryItems, setInventoryItems] = useState<InventoryItem[]>([]);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+
+  const loadInventory = useCallback(async () => {
+    setLoading(true);
+    setError('');
+    try {
+      setInventoryItems(await getInventoryList());
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : 'Unable to load inventory.');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void Promise.resolve().then(loadInventory);
+  }, [loadInventory]);
+
+  const filteredItems = useMemo(
+    () => filterInventoryItems(inventoryItems, searchQuery),
+    [inventoryItems, searchQuery],
+  );
+  const needsAttentionItems = filteredItems.filter((item) => item.needsAttention);
+  const otherItems = filteredItems.filter((item) => !item.needsAttention);
+  const selectedItem = inventoryItems.find((item) => item.item.id === selectedItemId);
+
+  const selectItem = (itemId: string) => {
+    setSelectedItemId((current) => current === itemId ? null : itemId);
+  };
+
+  return (
+    <Stack gap="lg">
+      <Title order={1}>Inventory</Title>
+      <TextInput
+        label="Search inventory"
+        placeholder="Search by product name or category"
+        value={searchQuery}
+        onChange={(event) => setSearchQuery(event.currentTarget.value)}
+      />
+      {loading && <Loader aria-label="Loading inventory" />}
+      {error !== '' && <Alert color="red">{error}</Alert>}
+      {!loading && error === '' && inventoryItems.length === 0 && (
+        <Text c="dimmed">Your inventory is empty.</Text>
+      )}
+      {!loading && error === '' && inventoryItems.length > 0 && filteredItems.length === 0 && (
+        <Text c="dimmed">No inventory items match your search.</Text>
+      )}
+      {needsAttentionItems.length > 0 && (
+        <Alert color="yellow" title="Items expiring soon or already expired">
+          <InventorySection
+            heading="Needs Attention"
+            items={needsAttentionItems}
+            selectedItemId={selectedItemId}
+            onSelect={selectItem}
+          />
+        </Alert>
+      )}
+      {otherItems.length > 0 && (
+        <InventorySection
+          heading="Inventory items"
+          items={otherItems}
+          selectedItemId={selectedItemId}
+          onSelect={selectItem}
+        />
+      )}
+      {selectedItem !== undefined && (
+        <ItemInstanceList
+          itemId={selectedItem.item.id}
+          productName={selectedItem.item.product.name}
+          onInventoryChanged={() => void loadInventory()}
+        />
+      )}
+    </Stack>
+  );
+};

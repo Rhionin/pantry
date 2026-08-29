@@ -1,0 +1,68 @@
+import { useState, type FormEvent } from 'react';
+import { Alert, Button, Group, Modal, Stack, TextInput } from '@mantine/core';
+import { addItemInstance } from '../../api/client';
+
+export interface AddInstanceModalProps {
+  itemId: string;
+  opened: boolean;
+  onClose: () => void;
+  onAdded: () => void;
+}
+
+const expiryDateToISOString = (expiryDate: string): string =>
+  new Date(`${expiryDate}T00:00:00.000Z`).toISOString();
+
+export const AddInstanceModal = ({
+  itemId,
+  opened,
+  onClose,
+  onAdded,
+}: AddInstanceModalProps) => {
+  const [expiryDate, setExpiryDate] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState('');
+
+  const closeModal = () => {
+    setExpiryDate('');
+    setError('');
+    onClose();
+  };
+
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setSubmitting(true);
+    setError('');
+    try {
+      await addItemInstance(itemId, expiryDateToISOString(expiryDate));
+      closeModal();
+      onAdded();
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : 'Unable to add instance.');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <Modal opened={opened} onClose={closeModal} title="Add item instance">
+      <form onSubmit={(event) => void handleSubmit(event)}>
+        <Stack>
+          <TextInput
+            label="Expiration date"
+            type="date"
+            required
+            value={expiryDate}
+            onChange={(event) => setExpiryDate(event.currentTarget.value)}
+          />
+          {error !== '' && <Alert color="red">{error}</Alert>}
+          <Group justify="flex-end">
+            <Button variant="default" onClick={closeModal}>Cancel</Button>
+            <Button type="submit" loading={submitting} disabled={expiryDate === ''}>
+              Add instance
+            </Button>
+          </Group>
+        </Stack>
+      </form>
+    </Modal>
+  );
+};

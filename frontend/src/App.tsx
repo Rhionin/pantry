@@ -1,6 +1,7 @@
 import { BrowserRouter, Link, Route, Routes } from 'react-router-dom';
 import { AppShell, Group, Title } from '@mantine/core';
 import { ScanQueuePage } from './components/queue/ScanQueuePage';
+import { InventoryPage } from './components/inventory/InventoryPage';
 import './App.css';
 
 function App() {
@@ -20,7 +21,7 @@ function App() {
         <AppShell.Main>
           <Routes>
             <Route path="/" element={<ScanQueuePage />} />
-            <Route path="/inventory" element={<div>Inventory</div>} />
+            <Route path="/inventory" element={<InventoryPage />} />
             <Route path="/shopping" element={<div>Shopping List</div>} />
           </Routes>
         </AppShell.Main>

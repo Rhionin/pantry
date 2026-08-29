@@ -3,6 +3,10 @@
     "6.3 Write property test for Property 14 (data-insufficient threshold)": {
       "status": "passed",
       "lastRunTimestamp": 1786968028803
+    },
+    "5.5 Write property tests for Properties 10 and 11 (Needs Attention, search filter)": {
+      "status": "passed",
+      "lastRunTimestamp": 1788035966162
     }
   },
   "executionHistory": {
@@ -778,6 +782,18 @@
         "executionId": "940908de-b7cd-4a29-a3e6-8873e7d4d51d",
         "chatSessionId": "sess_c830512a-44e8-495d-9c5a-2465e6b22869",
         "timestamp": 1788034907477
+      }
+    ],
+    "12. Frontend — inventory pages": [
+      {
+        "executionId": "f2cee38f-1cd7-4bf6-9f4f-cfc44b94a516",
+        "chatSessionId": "sess_3453516b-880a-4fa0-83dd-7443f0ed4620",
+        "timestamp": 1788035829647
+      },
+      {
+        "executionId": "f2cee38f-1cd7-4bf6-9f4f-cfc44b94a516",
+        "chatSessionId": "sess_3453516b-880a-4fa0-83dd-7443f0ed4620",
+        "timestamp": 1788036031474
       }
     ]
   }
