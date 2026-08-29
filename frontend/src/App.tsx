@@ -1,10 +1,8 @@
-import { BrowserRouter, Link, Route, Routes } from 'react-router-dom'
-import { AppShell, Group, Title } from '@mantine/core'
-import './App.css'
+import { BrowserRouter, Link, Route, Routes } from 'react-router-dom';
+import { AppShell, Group, Title } from '@mantine/core';
+import { ScanQueuePage } from './components/queue/ScanQueuePage';
+import './App.css';
 
-// Top-level routing shell. Route elements are placeholders — the real page
-// components (ScanQueuePage, InventoryPage, ShoppingListPage) are built in
-// tasks 11.1, 12.1, and 13.2.
 function App() {
   return (
     <BrowserRouter>
@@ -21,7 +19,7 @@ function App() {
         </AppShell.Header>
         <AppShell.Main>
           <Routes>
-            <Route path="/" element={<div>Scan Queue</div>} />
+            <Route path="/" element={<ScanQueuePage />} />
             <Route path="/inventory" element={<div>Inventory</div>} />
             <Route path="/shopping" element={<div>Shopping List</div>} />
           </Routes>

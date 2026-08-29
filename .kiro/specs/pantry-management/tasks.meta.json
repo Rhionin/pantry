@@ -767,6 +767,18 @@
         "chatSessionId": "sess_15b6e16c-7ddc-4a73-b717-853debf2dbe1",
         "timestamp": 1788034323969
       }
+    ],
+    "11. Frontend — scan queue pages": [
+      {
+        "executionId": "940908de-b7cd-4a29-a3e6-8873e7d4d51d",
+        "chatSessionId": "sess_c830512a-44e8-495d-9c5a-2465e6b22869",
+        "timestamp": 1788034529576
+      },
+      {
+        "executionId": "940908de-b7cd-4a29-a3e6-8873e7d4d51d",
+        "chatSessionId": "sess_c830512a-44e8-495d-9c5a-2465e6b22869",
+        "timestamp": 1788034907477
+      }
     ]
   }
 }

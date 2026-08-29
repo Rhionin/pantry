@@ -298,24 +298,24 @@ cccccdfhffhntldlkcttglcnugbegjecbdjjdddileev
     - Use `vi.useFakeTimers()` (Vitest); confirm direction clears after 5 min idle; confirm direction is preserved if a scan occurs within 5 min
     - _Requirements: 1.4, 1.5_
 
-- [ ] 11. Frontend — scan queue pages
-  - [ ] 11.1 Implement `ScanQueuePage` and `ScanEntryCard`
+- [x] 11. Frontend — scan queue pages
+  - [x] 11.1 Implement `ScanQueuePage` and `ScanEntryCard`
     - Fetches `GET /api/scans?status=pending` and `?status=flagged`; renders entries in chronological order using `ScanEntryCard`; shows flagged badge for flagged entries
     - _Requirements: 1.6, 1.7, 1.15_
 
-  - [ ] 11.2 Implement `BatchReviewPanel`
+  - [x] 11.2 Implement `BatchReviewPanel`
     - Multi-select checkboxes on `ScanEntryCard`; batch direction + expiry form; calls `POST /api/scans/batch-commit` on confirm
     - _Requirements: 1.10_
 
-  - [ ] 11.3 Implement `FlaggedEntryResolver`
+  - [x] 11.3 Implement `FlaggedEntryResolver`
     - Product search autocomplete calling `GET /api/products`; "Create new product" form; on selection calls `POST /api/products/overrides` then `PATCH /api/scans/{id}` to attach product and transition to pending
     - _Requirements: 1.16, 1.17_
 
-  - [ ] 11.4 Implement `DisambiguationModal`
-    - Shown when `GET /api/products/lookup` returns multiple products; lists matching products; on selection optionally saves override via `POST /api/products/overrides`
-    - _Requirements: 1.18, 1.19_
+  - [ ]* 11.4 Deferred: integrate `DisambiguationModal` when multiple-match lookup is supported
+    - Optional/deferred because Requirements 1.18 and 1.19 are struck through and the current backend schema and `GET /api/products/lookup` response cannot return multiple matches. The existing modal component is retained but is not integrated into the live lookup flow.
+    - _Deferred Requirements: 1.18, 1.19_
 
-  - [ ] 11.5 Implement stock-out instance selection view
+  - [x] 11.5 Implement stock-out instance selection view
     - When reviewing a pending stock-out entry, fetches `GET /api/inventory/{itemId}/instances`; renders instances sorted use-oldest-first; allows selecting a specific instance before committing
     - _Requirements: 1.9, 2.3_
 

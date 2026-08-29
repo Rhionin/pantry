@@ -1,0 +1,142 @@
+import { describe, expect, it, vi } from 'vitest';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { MantineProvider } from '@mantine/core';
+import { FlaggedEntryResolver } from './FlaggedEntryResolver';
+import type { Product, ScanEntry } from '../../types';
+
+HTMLElement.prototype.scrollIntoView = vi.fn();
+
+const flaggedEntry: ScanEntry = {
+  id: 'scan-1',
+  userId: 'default-user',
+  barcode: '012345',
+  scannedAt: '2026-03-20T10:00:00Z',
+  direction: null,
+  unitCount: 1,
+  expiresAt: null,
+  status: 'flagged',
+  productId: null,
+  product: null,
+  committedAt: null,
+  createdAt: '2026-03-20T10:00:00Z',
+};
+
+const milk: Product = {
+  id: 'product-1',
+  name: 'Whole Milk',
+  category: 'Dairy',
+  unitOfMeasure: 'carton',
+  createdAt: '2026-03-20T10:00:00Z',
+};
+
+const yogurt: Product = {
+  id: 'product-2',
+  name: 'Greek Yogurt',
+  category: 'Dairy',
+  unitOfMeasure: 'tub',
+  createdAt: '2026-03-20T11:00:00Z',
+};
+
+const jsonResponse = (body: unknown, status = 200) =>
+  new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
+
+const renderResolver = (onResolved = vi.fn()) => {
+  render(
+    <MantineProvider>
+      <FlaggedEntryResolver entry={flaggedEntry} onResolved={onResolved} />
+    </MantineProvider>,
+  );
+  return onResolved;
+};
+
+describe('FlaggedEntryResolver', () => {
+  it('selects a filtered product with the keyboard, creates an override, and moves the scan to pending', async () => {
+    const resolvedEntry = { ...flaggedEntry, status: 'pending', productId: milk.id, product: milk };
+    const fetchMock = vi.fn((input: RequestInfo | URL, request?: RequestInit) => {
+      const url = String(input);
+      if (url === '/api/products' && request?.method === undefined) {
+        return Promise.resolve(jsonResponse([yogurt, milk]));
+      }
+      if (url === '/api/products/overrides') {
+        return Promise.resolve(
+          jsonResponse({ barcode: flaggedEntry.barcode, productId: milk.id }),
+        );
+      }
+      if (url === '/api/scans/scan-1') return Promise.resolve(jsonResponse(resolvedEntry));
+      throw new Error(`Unexpected request: ${url}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const onResolved = renderResolver();
+
+    const search = screen.getByRole('combobox', { name: 'Search products' });
+    fireEvent.change(search, { target: { value: 'whole' } });
+    expect(search).toHaveAttribute('aria-expanded', 'true');
+    expect(await screen.findByRole('option', { name: 'Whole Milk — Dairy' })).toBeInTheDocument();
+    expect(screen.queryByRole('option', { name: 'Greek Yogurt — Dairy' })).not.toBeInTheDocument();
+    fireEvent.keyDown(search, { key: 'ArrowDown', code: 'ArrowDown' });
+    fireEvent.keyDown(search, { key: 'Enter', code: 'Enter' });
+
+    expect(search).toHaveValue('Whole Milk — Dairy');
+    const resolveButton = screen.getByRole('button', { name: 'Use selected product' });
+    expect(resolveButton).toBeEnabled();
+    fireEvent.click(resolveButton);
+
+    await waitFor(() => expect(onResolved).toHaveBeenCalledWith(resolvedEntry));
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/products/overrides',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({ barcode: '012345', productId: 'product-1' }),
+      }),
+    );
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/scans/scan-1',
+      expect.objectContaining({
+        method: 'PATCH',
+        body: JSON.stringify({ productId: 'product-1', status: 'pending' }),
+      }),
+    );
+  });
+
+  it('clears the selected product when the search text changes', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse([milk])));
+    renderResolver();
+
+    const search = screen.getByRole('combobox', { name: 'Search products' });
+    fireEvent.click(search);
+    fireEvent.click(await screen.findByRole('option', { name: 'Whole Milk — Dairy' }));
+    expect(screen.getByRole('button', { name: 'Use selected product' })).toBeEnabled();
+
+    fireEvent.change(search, { target: { value: 'something else' } });
+
+    expect(screen.getByRole('button', { name: 'Use selected product' })).toBeDisabled();
+    expect(await screen.findByText('No matching products.')).toBeInTheDocument();
+  });
+
+  it('creates a product and reloads it when the create response omits its generated ID', async () => {
+    let productListCalls = 0;
+    const fetchMock = vi.fn((input: RequestInfo | URL, request?: RequestInit) => {
+      const url = String(input);
+      if (url === '/api/products' && request?.method === undefined) {
+        productListCalls += 1;
+        return Promise.resolve(jsonResponse(productListCalls === 1 ? [] : [milk]));
+      }
+      if (url === '/api/products' && request?.method === 'POST') {
+        return Promise.resolve(jsonResponse({ ...milk, id: '' }, 201));
+      }
+      if (url === '/api/products/overrides') return Promise.resolve(jsonResponse({}));
+      if (url === '/api/scans/scan-1') return Promise.resolve(jsonResponse({ ...flaggedEntry, status: 'pending' }));
+      throw new Error(`Unexpected request: ${url}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const onResolved = renderResolver();
+
+    fireEvent.change(screen.getByRole('textbox', { name: /^Product name/ }), { target: { value: milk.name } });
+    fireEvent.change(screen.getByLabelText('Category'), { target: { value: milk.category } });
+    fireEvent.change(screen.getByLabelText('Unit of measure'), { target: { value: milk.unitOfMeasure } });
+    fireEvent.click(screen.getByRole('button', { name: 'Create and use product' }));
+
+    await waitFor(() => expect(onResolved).toHaveBeenCalled());
+    expect(productListCalls).toBe(2);
+  });
+});
