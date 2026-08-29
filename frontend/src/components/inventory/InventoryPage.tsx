@@ -3,6 +3,7 @@ import { Alert, Loader, Stack, Text, TextInput, Title } from '@mantine/core';
 import { getInventoryList } from '../../api/client';
 import type { InventoryItem } from '../../types';
 import { filterInventoryItems } from '../../utils/inventoryFilter';
+import { SuggestionPanel } from '../suggestions/SuggestionPanel';
 import { ItemInstanceList } from './ItemInstanceList';
 import { ItemRow } from './ItemRow';
 
@@ -99,11 +100,18 @@ export const InventoryPage = () => {
         />
       )}
       {selectedItem !== undefined && (
-        <ItemInstanceList
-          itemId={selectedItem.item.id}
-          productName={selectedItem.item.product.name}
-          onInventoryChanged={() => void loadInventory()}
-        />
+        <Stack gap="lg">
+          <ItemInstanceList
+            itemId={selectedItem.item.id}
+            productName={selectedItem.item.product.name}
+            onInventoryChanged={() => void loadInventory()}
+          />
+          <SuggestionPanel
+            itemId={selectedItem.item.id}
+            productName={selectedItem.item.product.name}
+            onTargetQuantitySaved={() => void loadInventory()}
+          />
+        </Stack>
       )}
     </Stack>
   );

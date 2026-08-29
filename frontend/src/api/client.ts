@@ -224,8 +224,9 @@ export function markShoppingListItemPurchased(id: string): Promise<ShoppingListE
   });
 }
 
-interface ExportShoppingListResponse {
+export interface ExportShoppingListResponse {
   exported: number;
+  failedItems?: string[];
 }
 
 export function exportShoppingList(): Promise<ExportShoppingListResponse> {

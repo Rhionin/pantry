@@ -332,12 +332,12 @@ cccccdfhffhntldlkcttglcnugbegjecbdjjdddileev
     - Form with expiry date picker; on submit calls `POST /api/inventory/{itemId}/instances`; closes and refreshes instance list on success
     - _Requirements: 2.5_
 
-- [ ] 13. Frontend — suggestions and shopping list pages
-  - [ ] 13.1 Implement `SuggestionPanel`
+- [x] 13. Frontend — suggestions and shopping list pages
+  - [x] 13.1 Implement `SuggestionPanel`
     - Fetches `GET /api/suggestions/{itemId}` on demand; displays suggested quantity and reasoning; "Accept" button calls `POST /api/items/{itemId}/target-quantity`; "Set manually" shows numeric input
     - _Requirements: 3.1, 3.2, 3.3, 3.4, 3.5_
 
-  - [ ] 13.2 Implement `ShoppingListPage` and `CartExportButton`
+  - [x] 13.2 Implement `ShoppingListPage` and `CartExportButton`
     - Fetches `GET /api/shopping-list`; renders derived and manual entries; marks items purchased via `PATCH /api/shopping-list/items/{id}`; manual add calls `POST /api/shopping-list/items`; export calls `POST /api/shopping-list/export`; shows partial-failure notification toast
     - _Requirements: 4.1, 4.2, 4.3, 4.4, 4.5, 4.6, 4.7, 4.8, 4.9, 4.10_
 

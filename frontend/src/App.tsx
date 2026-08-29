@@ -2,6 +2,7 @@ import { BrowserRouter, Link, Route, Routes } from 'react-router-dom';
 import { AppShell, Group, Title } from '@mantine/core';
 import { ScanQueuePage } from './components/queue/ScanQueuePage';
 import { InventoryPage } from './components/inventory/InventoryPage';
+import { ShoppingListPage } from './components/shopping/ShoppingListPage';
 import './App.css';
 
 function App() {
@@ -22,7 +23,7 @@ function App() {
           <Routes>
             <Route path="/" element={<ScanQueuePage />} />
             <Route path="/inventory" element={<InventoryPage />} />
-            <Route path="/shopping" element={<div>Shopping List</div>} />
+            <Route path="/shopping" element={<ShoppingListPage />} />
           </Routes>
         </AppShell.Main>
       </AppShell>
