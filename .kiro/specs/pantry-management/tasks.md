@@ -24,8 +24,10 @@ Implement the Pantry Management app as a Go REST API backend with a React + Type
   - [x] 1.3 Initialize React + TypeScript frontend project
     - Bootstrap with Vite (`npm create vite@latest`) and create the top-level routing shell with React Router
     - Install Mantine v7: `@mantine/core`, `@mantine/hooks`, `@mantine/dates`, `@mantine/notifications`; import `@mantine/core/styles.css` in `main.tsx` and wrap the app in `<MantineProvider>`
-    - Add `fast-check` as a dev dependency for frontend property tests
+    - Add `fast-check` as a dev dependency for frontend property tests (already present)
     - Add Playwright as a dev dependency for end-to-end tests
+    - Add `@testing-library/react`, `@testing-library/jest-dom`, and `jsdom` as dev dependencies; configure Vitest's `test.environment: 'jsdom'` in `vite.config.ts` so component tests (10.1, 10.2, 10.4, 11.x, 12.x, 13.x) can run
+    - Remove the unmodified Vite template content from `App.tsx`
     - _Requirements: all_
 
 - [x] 2. Product lookup and override layer
@@ -255,6 +257,7 @@ Implement the Pantry Management app as a Go REST API backend with a React + Type
   - Run `go test ./...` and confirm all backend tests pass. Ask the user if any questions arise before continuing.
 
 - [x] 9. Frontend — shared utilities and TypeScript types
+cccccdfhffhntldlkcttglcnugbegjecbdjjdddileev
   - [x] 9.1 Define shared TypeScript interfaces and API client
     - Create `src/types/index.ts` with all DTOs from the design: `ScanEntry`, `ProductSummary`, `InventoryItem`, `ItemInstance`, `ShoppingListEntry`, `TargetQuantitySuggestion`
     - Create `src/api/client.ts` with typed `fetch` wrappers for every backend endpoint
