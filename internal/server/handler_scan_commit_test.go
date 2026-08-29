@@ -41,8 +41,8 @@ func TestScanCommitStockIn(t *testing.T) {
 				path:           "/api/scans/scan-1/commit",
 				expectedStatus: http.StatusOK,
 				assertions: []assertion{
-					{path: "$.Status", value: "committed"},
-					{path: "$.ID", value: "scan-1"},
+					{path: "$.status", value: "committed"},
+					{path: "$.id", value: "scan-1"},
 				},
 			},
 			afterRequest: func(env testEnv) {
@@ -93,8 +93,8 @@ func TestScanCommitStockIn(t *testing.T) {
 				path:           "/api/scans/scan-2/commit",
 				expectedStatus: http.StatusOK,
 				assertions: []assertion{
-					{path: "$.Status", value: "committed"},
-					{path: "$.UnitCount", value: float64(3)},
+					{path: "$.status", value: "committed"},
+					{path: "$.unitCount", value: float64(3)},
 				},
 			},
 		},
@@ -123,8 +123,8 @@ func TestScanCommitStockIn(t *testing.T) {
 				path:           "/api/scans/scan-3/commit",
 				expectedStatus: http.StatusOK,
 				assertions: []assertion{
-					{path: "$.Status", value: "committed"},
-					{path: "$.UnitCount", value: float64(2)},
+					{path: "$.status", value: "committed"},
+					{path: "$.unitCount", value: float64(2)},
 				},
 			},
 			afterRequest: exchanges(httpExchange{
@@ -134,8 +134,8 @@ func TestScanCommitStockIn(t *testing.T) {
 				expectedStatus: http.StatusOK,
 				assertions: []assertion{
 					// Committed scan with no expiry — verify it appears in history
-					{path: "$[0].ID", value: "scan-3"},
-					{path: "$[0].Status", value: "committed"},
+					{path: "$[0].id", value: "scan-3"},
+					{path: "$[0].status", value: "committed"},
 				},
 			}),
 		},
@@ -292,8 +292,8 @@ func TestScanCommitStockOut(t *testing.T) {
 				expectedStatus: http.StatusOK,
 				assertions: []assertion{
 					// inst-2 (earliest expiry) was consumed; inst-3 (no expiry, sorted last) and inst-1 remain
-					{path: "$[0].ID", value: "inst-1"},
-					{path: "$[1].ID", value: "inst-3"},
+					{path: "$[0].id", value: "inst-1"},
+					{path: "$[1].id", value: "inst-3"},
 				},
 			}),
 		},
@@ -346,7 +346,7 @@ func TestScanCommitStockOut(t *testing.T) {
 				expectedStatus: http.StatusOK,
 				assertions: []assertion{
 					// inst-specific-2 was explicitly consumed; inst-specific-1 remains
-					{path: "$[0].ID", value: "inst-specific-1"},
+					{path: "$[0].id", value: "inst-specific-1"},
 				},
 			}),
 		},
@@ -398,7 +398,7 @@ func TestScanCommitStockOut(t *testing.T) {
 				expectedStatus: http.StatusOK,
 				assertions: []assertion{
 					// inst-dated was consumed (expiry date sorts before NULL); inst-null remains
-					{path: "$[0].ID", value: "inst-null"},
+					{path: "$[0].id", value: "inst-null"},
 				},
 			}),
 		},
@@ -638,8 +638,8 @@ func TestScanResolveFlaggedEntry(t *testing.T) {
 				body:           `{"productId":"prod-resolve-1","status":"pending"}`,
 				expectedStatus: http.StatusOK,
 				assertions: []assertion{
-					{path: "$.Status", value: "pending"},
-					{path: "$.ProductID", value: "prod-resolve-1"},
+					{path: "$.status", value: "pending"},
+					{path: "$.productId", value: "prod-resolve-1"},
 				},
 			},
 			afterRequest: func(env testEnv) {

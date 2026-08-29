@@ -667,6 +667,47 @@
         "chatSessionId": "sess_6737e606-c895-4316-9636-0a6ec5a840c5",
         "timestamp": 1787282875358
       }
+    ],
+    "9.3 Write fast-check property test for expiry status utility (Property 9)": [
+      {
+        "executionId": "d297695e-6f32-4a4f-a3d2-627a6e6f5360",
+        "chatSessionId": "sess_fbfa338e-2cd1-41f0-8b80-7a3c9e21a1e9",
+        "timestamp": 1787891329785
+      },
+      {
+        "executionId": "79f4bf97-e45d-46be-9144-42fe25e7fa09",
+        "chatSessionId": "sess_0228bf39-f7dd-47d4-95d2-ed754a9b873c",
+        "timestamp": 1787930074455
+      },
+      {
+        "executionId": "79f4bf97-e45d-46be-9144-42fe25e7fa09",
+        "chatSessionId": "sess_0228bf39-f7dd-47d4-95d2-ed754a9b873c",
+        "timestamp": 1787975029808
+      }
+    ],
+    "9.5 Write fast-check property test for shopping list derivation utility (Property 12)": [
+      {
+        "executionId": "d297695e-6f32-4a4f-a3d2-627a6e6f5360",
+        "chatSessionId": "sess_fbfa338e-2cd1-41f0-8b80-7a3c9e21a1e9",
+        "timestamp": 1787891330907
+      },
+      {
+        "executionId": "1d2e4565-4544-4138-b4f5-77f5887f51b0",
+        "chatSessionId": "sess_e533f5e2-9ad5-4109-8825-e559cabf2166",
+        "timestamp": 1787975048254
+      },
+      {
+        "executionId": "1d2e4565-4544-4138-b4f5-77f5887f51b0",
+        "chatSessionId": "sess_e533f5e2-9ad5-4109-8825-e559cabf2166",
+        "timestamp": 1787975889042
+      }
+    ],
+    "9. Frontend — shared utilities and TypeScript types": [
+      {
+        "executionId": "1d2e4565-4544-4138-b4f5-77f5887f51b0",
+        "chatSessionId": "sess_e533f5e2-9ad5-4109-8825-e559cabf2166",
+        "timestamp": 1787975889102
+      }
     ]
   }
 }

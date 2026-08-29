@@ -22,8 +22,8 @@ func TestOverrideCreateHandler(t *testing.T) {
 				query:          map[string]string{"barcode": "999888"},
 				expectedStatus: http.StatusOK,
 				assertions: []assertion{
-					{path: "$.Product.Name", value: "Test Product"},
-					{path: "$.Product.ID", value: "prod-1"},
+					{path: "$.product.name", value: "Test Product"},
+					{path: "$.product.id", value: "prod-1"},
 				},
 			}),
 		},

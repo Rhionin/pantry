@@ -16,9 +16,9 @@ func TestLookupHandler(t *testing.T) {
 				query:          map[string]string{"barcode": "123456"},
 				expectedStatus: http.StatusOK,
 				assertions: []assertion{
-					{path: "$.Product.Name", value: "Test Product"},
-					{path: "$.Product.Category", value: "Test"},
-					{path: "$.Product.ID", value: "prod-1"},
+					{path: "$.product.name", value: "Test Product"},
+					{path: "$.product.category", value: "Test"},
+					{path: "$.product.id", value: "prod-1"},
 				},
 			},
 		},
@@ -38,7 +38,7 @@ func TestLookupHandler(t *testing.T) {
 				query:          map[string]string{"barcode": "nonexistent"},
 				expectedStatus: http.StatusOK,
 				assertions: []assertion{
-					{path: "$.Product", value: nil},
+					{path: "$.product", value: nil},
 				},
 			},
 		},

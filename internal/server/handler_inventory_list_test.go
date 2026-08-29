@@ -65,8 +65,8 @@ func TestInventoryListHandler(t *testing.T) {
 				path:           "/api/inventory",
 				expectedStatus: http.StatusOK,
 				assertions: []assertion{
-					{path: "$[0].Item.Product.Name", value: "Bread"},
-					{path: "$[1].Item.Product.Name", value: "Milk"},
+					{path: "$[0].item.product.name", value: "Bread"},
+					{path: "$[1].item.product.name", value: "Milk"},
 				},
 			},
 		},
@@ -102,9 +102,9 @@ func TestInventoryListHandler_WithSearchQuery(t *testing.T) {
 				path:           "/api/inventory",
 				expectedStatus: http.StatusOK,
 				assertions: []assertion{
-					{path: "$[0].Item.Product.Name", value: "Bread"},
-					{path: "$[1].Item.Product.Name", value: "Cheese"},
-					{path: "$[2].Item.Product.Name", value: "Milk"},
+					{path: "$[0].item.product.name", value: "Bread"},
+					{path: "$[1].item.product.name", value: "Cheese"},
+					{path: "$[2].item.product.name", value: "Milk"},
 				},
 			},
 		},
@@ -134,7 +134,7 @@ func TestInventoryListHandler_WithSearchQuery(t *testing.T) {
 				query:          map[string]string{"q": "milk"},
 				expectedStatus: http.StatusOK,
 				assertions: []assertion{
-					{path: "$[0].Item.Product.Name", value: "Milk"},
+					{path: "$[0].item.product.name", value: "Milk"},
 				},
 			},
 		},
@@ -164,8 +164,8 @@ func TestInventoryListHandler_WithSearchQuery(t *testing.T) {
 				query:          map[string]string{"q": "dairy"},
 				expectedStatus: http.StatusOK,
 				assertions: []assertion{
-					{path: "$[0].Item.Product.Name", value: "Cheese"},
-					{path: "$[1].Item.Product.Name", value: "Milk"},
+					{path: "$[0].item.product.name", value: "Cheese"},
+					{path: "$[1].item.product.name", value: "Milk"},
 				},
 			},
 		},

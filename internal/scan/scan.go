@@ -32,18 +32,18 @@ const (
 
 // ScanEntry represents a single item in the scan queue.
 type ScanEntry struct {
-	ID          string
-	UserID      string
-	Barcode     string
-	ScannedAt   time.Time
-	Direction   *ScanDirection // nil means not yet set
-	UnitCount   int
-	ExpiresAt   *time.Time
-	Status      ScanStatus
-	ProductID   *string
-	Product     *product.ProductSummary // populated by join queries
-	CommittedAt *time.Time
-	CreatedAt   time.Time
+	ID          string                  `json:"id"`
+	UserID      string                  `json:"userId"`
+	Barcode     string                  `json:"barcode"`
+	ScannedAt   time.Time               `json:"scannedAt"`
+	Direction   *ScanDirection          `json:"direction"` // nil means not yet set
+	UnitCount   int                     `json:"unitCount"`
+	ExpiresAt   *time.Time              `json:"expiresAt"`
+	Status      ScanStatus              `json:"status"`
+	ProductID   *string                 `json:"productId"`
+	Product     *product.ProductSummary `json:"product,omitempty"` // populated by join queries
+	CommittedAt *time.Time              `json:"committedAt"`
+	CreatedAt   time.Time               `json:"createdAt"`
 }
 
 // Queue provides database operations for scan entries.

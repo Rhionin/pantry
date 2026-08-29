@@ -13,10 +13,10 @@ import (
 
 // ConsumptionEvent records a single stock-out event for suggestion analytics.
 type ConsumptionEvent struct {
-	ID          string
-	ItemID      string
-	ConsumedAt  time.Time
-	ScanEntryID *string // optional: links back to the scan entry that caused the consumption
+	ID          string    `json:"id"`
+	ItemID      string    `json:"itemId"`
+	ConsumedAt  time.Time `json:"consumedAt"`
+	ScanEntryID *string   `json:"scanEntryId"` // optional: links back to the scan entry that caused the consumption
 }
 
 // TargetQuantitySuggestion holds a suggested target instance count for an item,

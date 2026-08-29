@@ -112,8 +112,8 @@ func TestInventoryInstanceDeleteHandler(t *testing.T) {
 				path:           "/api/inventory/item-multi/instances",
 				expectedStatus: http.StatusOK,
 				assertions: []assertion{
-					{path: "$[0].ID", value: "inst-multi-1"},
-					{path: "$[1].ID", value: "inst-multi-3"},
+					{path: "$[0].id", value: "inst-multi-1"},
+					{path: "$[1].id", value: "inst-multi-3"},
 				},
 			}),
 		},

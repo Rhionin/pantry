@@ -9,11 +9,11 @@ import (
 // InventoryItem represents an aggregated inventory item with instance counts
 // and attention flags derived from expiry status.
 type InventoryItem struct {
-	Item            Item
-	InstanceCount   int
-	NearExpiryCount int
-	ExpiredCount    int
-	NeedsAttention  bool
+	Item            Item `json:"item"`
+	InstanceCount   int  `json:"instanceCount"`
+	NearExpiryCount int  `json:"nearExpiryCount"`
+	ExpiredCount    int  `json:"expiredCount"`
+	NeedsAttention  bool `json:"needsAttention"`
 }
 
 // GetInventoryList returns all items for the given userID with aggregated

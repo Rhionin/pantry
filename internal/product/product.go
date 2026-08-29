@@ -14,20 +14,20 @@ import (
 // Product represents a type of pantry item identified by name and optionally
 // by one or more barcodes.
 type Product struct {
-	ID            string
-	Name          string
-	Category      string
-	UnitOfMeasure string
-	CreatedAt     time.Time
+	ID            string    `json:"id"`
+	Name          string    `json:"name"`
+	Category      string    `json:"category"`
+	UnitOfMeasure string    `json:"unitOfMeasure"`
+	CreatedAt     time.Time `json:"createdAt"`
 }
 
 // ProductSummary is a lightweight projection of Product used by API responses
 // and barcode-lookup results.
 type ProductSummary struct {
-	ID            string
-	Name          string
-	Category      string
-	UnitOfMeasure string
+	ID            string `json:"id"`
+	Name          string `json:"name"`
+	Category      string `json:"category"`
+	UnitOfMeasure string `json:"unitOfMeasure"`
 }
 
 // Catalog provides database operations for products and barcodes.

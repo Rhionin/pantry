@@ -34,7 +34,7 @@ func TestInventoryInstanceCreateHandler(t *testing.T) {
 				body:           `{"expiresAt":"` + expiresAt.Format(time.RFC3339) + `"}`,
 				expectedStatus: http.StatusCreated,
 				assertions: []assertion{
-					{path: "$.ItemID", value: "item-1"},
+					{path: "$.itemId", value: "item-1"},
 				},
 			},
 			afterRequest: exchanges(httpExchange{
@@ -42,7 +42,7 @@ func TestInventoryInstanceCreateHandler(t *testing.T) {
 				path:           "/api/inventory/item-1/instances",
 				expectedStatus: http.StatusOK,
 				assertions: []assertion{
-					{path: "$[0].ItemID", value: "item-1"},
+					{path: "$[0].itemId", value: "item-1"},
 				},
 			}),
 		},
@@ -65,7 +65,7 @@ func TestInventoryInstanceCreateHandler(t *testing.T) {
 				body:           `{}`,
 				expectedStatus: http.StatusCreated,
 				assertions: []assertion{
-					{path: "$.ItemID", value: "item-2"},
+					{path: "$.itemId", value: "item-2"},
 				},
 			},
 			afterRequest: exchanges(httpExchange{
@@ -73,7 +73,7 @@ func TestInventoryInstanceCreateHandler(t *testing.T) {
 				path:           "/api/inventory/item-2/instances",
 				expectedStatus: http.StatusOK,
 				assertions: []assertion{
-					{path: "$[0].ItemID", value: "item-2"},
+					{path: "$[0].itemId", value: "item-2"},
 				},
 			}),
 		},
@@ -107,8 +107,8 @@ func TestInventoryInstanceCreateHandler(t *testing.T) {
 				path:           "/api/inventory/item-multi/instances",
 				expectedStatus: http.StatusOK,
 				assertions: []assertion{
-					{path: "$[0].ItemID", value: "item-multi"},
-					{path: "$[1].ItemID", value: "item-multi"},
+					{path: "$[0].itemId", value: "item-multi"},
+					{path: "$[1].itemId", value: "item-multi"},
 				},
 			}),
 		},

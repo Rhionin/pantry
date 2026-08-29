@@ -72,9 +72,9 @@ func TestInventoryInstancesListHandler(t *testing.T) {
 				path:           "/api/inventory/item-sorted/instances",
 				expectedStatus: http.StatusOK,
 				assertions: []assertion{
-					{path: "$[0].ID", value: "inst-1"},
-					{path: "$[1].ID", value: "inst-2"},
-					{path: "$[2].ID", value: "inst-3"},
+					{path: "$[0].id", value: "inst-1"},
+					{path: "$[1].id", value: "inst-2"},
+					{path: "$[2].id", value: "inst-3"},
 				},
 			},
 		},

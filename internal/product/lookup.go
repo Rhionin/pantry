@@ -9,10 +9,10 @@ import (
 // LookupResult represents the outcome of a three-tier product lookup.
 type LookupResult struct {
 	// Product is the single matching product, or nil if not found.
-	Product *ProductSummary
+	Product *ProductSummary `json:"product"`
 
 	// Source indicates where the result came from: "user_override", "global", "external", or empty when not found.
-	Source string
+	Source string `json:"source"`
 }
 
 // IsFound returns true if the lookup found a product.

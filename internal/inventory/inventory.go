@@ -20,23 +20,23 @@ var (
 // Item represents a user's specific instance of interest in a product,
 // with an optional target quantity.
 type Item struct {
-	ID             string
-	UserID         string
-	ProductID      string
-	Product        *product.ProductSummary // populated by join queries
-	TargetQuantity *int
-	CreatedAt      time.Time
+	ID             string                  `json:"id"`
+	UserID         string                  `json:"userId"`
+	ProductID      string                  `json:"productId"`
+	Product        *product.ProductSummary `json:"product"` // populated by join queries
+	TargetQuantity *int                    `json:"targetQuantity"`
+	CreatedAt      time.Time               `json:"createdAt"`
 }
 
 // ItemInstance represents a single physical unit tracked in the pantry.
 type ItemInstance struct {
-	ID            string
-	ItemID        string
-	StockInAt     time.Time
-	ExpiresAt     *time.Time
-	RemovedAt     *time.Time
-	RemovalReason *string
-	CreatedAt     time.Time
+	ID            string     `json:"id"`
+	ItemID        string     `json:"itemId"`
+	StockInAt     time.Time  `json:"stockInAt"`
+	ExpiresAt     *time.Time `json:"expiresAt"`
+	RemovedAt     *time.Time `json:"removedAt"`
+	RemovalReason *string    `json:"removalReason"`
+	CreatedAt     time.Time  `json:"createdAt"`
 }
 
 // Pantry provides database operations for items and item instances.

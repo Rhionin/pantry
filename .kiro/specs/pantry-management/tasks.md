@@ -254,26 +254,26 @@ Implement the Pantry Management app as a Go REST API backend with a React + Type
 - [x] 8. Checkpoint — Ensure all backend tests pass
   - Run `go test ./...` and confirm all backend tests pass. Ask the user if any questions arise before continuing.
 
-- [ ] 9. Frontend — shared utilities and TypeScript types
-  - [ ] 9.1 Define shared TypeScript interfaces and API client
+- [x] 9. Frontend — shared utilities and TypeScript types
+  - [x] 9.1 Define shared TypeScript interfaces and API client
     - Create `src/types/index.ts` with all DTOs from the design: `ScanEntry`, `ProductSummary`, `InventoryItem`, `ItemInstance`, `ShoppingListEntry`, `TargetQuantitySuggestion`
     - Create `src/api/client.ts` with typed `fetch` wrappers for every backend endpoint
     - _Requirements: all_
 
-  - [ ] 9.2 Implement expiry status utility (TypeScript)
+  - [x] 9.2 Implement expiry status utility (TypeScript)
     - Create `src/utils/expiry.ts`: `computeExpiryStatus(expiresAt: string | null, now: Date, warningDays = 7): 'ok' | 'near_expiry' | 'expired'`
     - _Requirements: 2.8, 2.9_
 
-  - [ ]* 9.3 Write fast-check property test for expiry status utility (Property 9)
+  - [x] 9.3 Write fast-check property test for expiry status utility (Property 9)
     - **Property 9: Expiry status is consistent with dates and warning period** (frontend mirror)
     - Use `fast-check` arbitraries for dates and warning periods; verify all three status branches
     - **Validates: Requirements 2.8, 2.9**
 
-  - [ ] 9.4 Implement shopping list derivation utility (TypeScript)
+  - [x] 9.4 Implement shopping list derivation utility (TypeScript)
     - Create `src/utils/shoppingList.ts`: `deriveShoppingListEntries(items: InventoryItem[]): ShoppingListEntry[]` — pure function computing gap quantities
     - _Requirements: 4.1, 4.2_
 
-  - [ ]* 9.5 Write fast-check property test for shopping list derivation utility (Property 12)
+  - [x] 9.5 Write fast-check property test for shopping list derivation utility (Property 12)
     - **Property 12: Shopping list gap quantity is always correct** (frontend mirror)
     - Use `fast-check` to generate arbitrary `InventoryItem` arrays with varying `targetQuantity` and `instanceCount`
     - **Validates: Requirements 4.1, 4.2, 4.8**

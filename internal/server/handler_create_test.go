@@ -17,9 +17,9 @@ func TestCreateHandler(t *testing.T) {
 				body:           `{"name":"Orange","category":"Fruit","unitOfMeasure":"each"}`,
 				expectedStatus: http.StatusCreated,
 				assertions: []assertion{
-					{path: "$.Name", value: "Orange"},
-					{path: "$.Category", value: "Fruit"},
-					{path: "$.UnitOfMeasure", value: "each"},
+					{path: "$.name", value: "Orange"},
+					{path: "$.category", value: "Fruit"},
+					{path: "$.unitOfMeasure", value: "each"},
 				},
 			},
 			afterRequest: exchanges(httpExchange{
@@ -27,8 +27,8 @@ func TestCreateHandler(t *testing.T) {
 				path:           "/api/products",
 				expectedStatus: http.StatusOK,
 				assertions: []assertion{
-					{path: "$[0].Name", value: "Orange"},
-					{path: "$[0].Category", value: "Fruit"},
+					{path: "$[0].name", value: "Orange"},
+					{path: "$[0].category", value: "Fruit"},
 				},
 			}),
 		},
@@ -72,8 +72,8 @@ func TestCreateHandler(t *testing.T) {
 					body:           `{"name":"Apple","category":"Fruit"}`,
 					expectedStatus: http.StatusCreated,
 					assertions: []assertion{
-						{path: "$.Name", value: "Apple"},
-						{path: "$.Category", value: "Fruit"},
+						{path: "$.name", value: "Apple"},
+						{path: "$.category", value: "Fruit"},
 					},
 				},
 				{
@@ -81,8 +81,8 @@ func TestCreateHandler(t *testing.T) {
 					path:           "/api/products",
 					expectedStatus: http.StatusOK,
 					assertions: []assertion{
-						{path: "$[0].Name", value: "Apple"},
-						{path: "$[0].Category", value: "Fruit"},
+						{path: "$[0].name", value: "Apple"},
+						{path: "$[0].category", value: "Fruit"},
 					},
 				},
 				{
@@ -96,8 +96,8 @@ func TestCreateHandler(t *testing.T) {
 					path:           "/api/products",
 					expectedStatus: http.StatusOK,
 					assertions: []assertion{
-						{path: "$[0].Name", value: "Apple"},
-						{path: "$[1].Name", value: "Banana"},
+						{path: "$[0].name", value: "Apple"},
+						{path: "$[1].name", value: "Banana"},
 					},
 				},
 			}...),
