@@ -281,20 +281,20 @@ cccccdfhffhntldlkcttglcnugbegjecbdjjdddileev
     - Use `fast-check` to generate arbitrary `InventoryItem` arrays with varying `targetQuantity` and `instanceCount`
     - **Validates: Requirements 4.1, 4.2, 4.8**
 
-- [ ] 10. Frontend — barcode scanning components
-  - [ ] 10.1 Implement `BarcodeInputField` component
+- [x] 10. Frontend — barcode scanning components
+  - [x] 10.1 Implement `BarcodeInputField` component
     - Keyboard-capture `<input>` that auto-submits when a barcode terminator character (e.g. Enter) is detected; calls `onScan(barcode: string)` callback; renders as visually hidden when embedded in scanner page
     - _Requirements: 1.1_
 
-  - [ ] 10.2 Implement `CameraScanner` component
+  - [x] 10.2 Implement `CameraScanner` component
     - Uses `BarcodeDetector` API (`new BarcodeDetector({ formats: [...] })`); requests camera permission; shows live video feed with scan overlay; calls `onScan(barcode)` on detection; gracefully falls back when `BarcodeDetector` is unavailable
     - _Requirements: 1.1, 1.3_
 
-  - [ ] 10.3 Implement `ScanDirectionToggle` component and 5-minute auto-clear
+  - [x] 10.3 Implement `ScanDirectionToggle` component and 5-minute auto-clear
     - Toggle between `stock_in` / `stock_out` / unset; records `lastScanAt` in component state; sets a `setTimeout` for 5 minutes; clears direction when timer fires; resets timer on each new scan
     - _Requirements: 1.4, 1.5_
 
-  - [ ]* 10.4 Write unit tests for `ScanDirectionToggle` auto-clear with mocked timers
+  - [x] 10.4 Write unit tests for `ScanDirectionToggle` auto-clear with mocked timers
     - Use `vi.useFakeTimers()` (Vitest); confirm direction clears after 5 min idle; confirm direction is preserved if a scan occurs within 5 min
     - _Requirements: 1.4, 1.5_
 

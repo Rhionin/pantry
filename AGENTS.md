@@ -1,5 +1,8 @@
 # Agent Guidelines
 
+## Avoid Asking
+Be as independent as possible with the allowlisted actions you've been granted. If there's already a way to search for code using your built-in tools, use that instead of, for example, asking to use find. If there's already a way to modify code, use that instead of, for example, asking to use sed. I want to make as few approvals as possible.
+
 ## File Editing
 
 Use built-in file editing tools (read_file, write_file, str_replace) to read and modify code directly. Do not fall back to shell commands (cat, echo, heredocs, python -c, etc.) for file I/O — that requires unnecessary user approval and is more error-prone.

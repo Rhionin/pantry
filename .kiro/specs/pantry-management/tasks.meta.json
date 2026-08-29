@@ -533,6 +533,11 @@
         "executionId": "92462d15-9638-420c-8530-7c5dbb928b43",
         "chatSessionId": "sess_d75c55ca-7a5a-4ae9-b108-78695ca7b02a",
         "timestamp": 1787977671927
+      },
+      {
+        "executionId": "4351a71a-0c8a-40eb-9cd5-8854afd30f62",
+        "chatSessionId": "sess_05cdf5ff-0db2-4f03-bbeb-bfec953c2829",
+        "timestamp": 1787980037839
       }
     ],
     "10.2 Implement `CameraScanner` component": [
@@ -545,6 +550,11 @@
         "executionId": "92462d15-9638-420c-8530-7c5dbb928b43",
         "chatSessionId": "sess_d75c55ca-7a5a-4ae9-b108-78695ca7b02a",
         "timestamp": 1787977672684
+      },
+      {
+        "executionId": "4351a71a-0c8a-40eb-9cd5-8854afd30f62",
+        "chatSessionId": "sess_05cdf5ff-0db2-4f03-bbeb-bfec953c2829",
+        "timestamp": 1787980038878
       }
     ],
     "10.3 Implement `ScanDirectionToggle` component and 5-minute auto-clear": [
@@ -557,6 +567,11 @@
         "executionId": "92462d15-9638-420c-8530-7c5dbb928b43",
         "chatSessionId": "sess_d75c55ca-7a5a-4ae9-b108-78695ca7b02a",
         "timestamp": 1787977673743
+      },
+      {
+        "executionId": "4351a71a-0c8a-40eb-9cd5-8854afd30f62",
+        "chatSessionId": "sess_05cdf5ff-0db2-4f03-bbeb-bfec953c2829",
+        "timestamp": 1787980039736
       }
     ],
     "11.1 Implement `ScanQueuePage` and `ScanEntryCard`": [
@@ -732,6 +747,25 @@
         "executionId": "1d2e4565-4544-4138-b4f5-77f5887f51b0",
         "chatSessionId": "sess_e533f5e2-9ad5-4109-8825-e559cabf2166",
         "timestamp": 1787975889102
+      }
+    ],
+    "10.4 Write unit tests for `ScanDirectionToggle` auto-clear with mocked timers": [
+      {
+        "executionId": "fd28c9ba-8e58-4229-88b8-c67c068fce2c",
+        "chatSessionId": "sess_15b6e16c-7ddc-4a73-b717-853debf2dbe1",
+        "timestamp": 1788034187437
+      },
+      {
+        "executionId": "fd28c9ba-8e58-4229-88b8-c67c068fce2c",
+        "chatSessionId": "sess_15b6e16c-7ddc-4a73-b717-853debf2dbe1",
+        "timestamp": 1788034323839
+      }
+    ],
+    "10. Frontend — barcode scanning components": [
+      {
+        "executionId": "fd28c9ba-8e58-4229-88b8-c67c068fce2c",
+        "chatSessionId": "sess_15b6e16c-7ddc-4a73-b717-853debf2dbe1",
+        "timestamp": 1788034323969
       }
     ]
   }
