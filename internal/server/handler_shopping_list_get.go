@@ -14,6 +14,7 @@ import (
 type ShoppingListGetHandler struct {
 	ShoppingList interface {
 		ListManualItems(ctx context.Context, userID string) ([]shopping.ShoppingListItem, error)
+		SyncDerivedItems(ctx context.Context, userID string, derived []shopping.DerivedEntry) ([]shopping.ShoppingListItem, error)
 	}
 	Pantry interface {
 		ListItems(ctx context.Context, userID string) ([]inventory.Item, error)
@@ -47,6 +48,10 @@ func (h *ShoppingListGetHandler) Handle(req Request[struct{}, struct{}]) ([]Shop
 	}
 
 	derived := shopping.DeriveShoppingList(deriveInputs)
+	autoItems, err := h.ShoppingList.SyncDerivedItems(req.Context, userID, derived)
+	if err != nil {
+		return nil, InternalError(err)
+	}
 
 	manualItems, err := h.ShoppingList.ListManualItems(req.Context, userID)
 	if err != nil {
@@ -66,6 +71,10 @@ func (h *ShoppingListGetHandler) Handle(req Request[struct{}, struct{}]) ([]Shop
 	for _, m := range manualItems {
 		manualByItemID[m.ItemID] = m
 	}
+	autoByItemID := make(map[string]shopping.ShoppingListItem, len(autoItems))
+	for _, item := range autoItems {
+		autoByItemID[item.ItemID] = item
+	}
 
 	resp := make([]ShoppingListEntryResponse, 0, len(merged))
 	for _, entry := range merged {
@@ -84,7 +93,11 @@ func (h *ShoppingListGetHandler) Handle(req Request[struct{}, struct{}]) ([]Shop
 				e.PurchasedAt = &ts
 			}
 		} else {
-			e.ID = ""
+			autoRow, active := autoByItemID[entry.ItemID]
+			if !active {
+				continue
+			}
+			e.ID = autoRow.ID
 			e.Source = "auto"
 		}
 

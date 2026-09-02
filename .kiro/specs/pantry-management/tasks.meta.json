@@ -807,6 +807,23 @@
         "chatSessionId": "sess_0c0bca6a-e887-487a-8b3c-a4d0ca2dd878",
         "timestamp": 1788036665522
       }
+    ],
+    "14. End-to-end tests (Playwright)": [
+      {
+        "executionId": "6f1ae7e6-2fd0-4230-88ff-c67c43be0133",
+        "chatSessionId": "sess_c12aa90a-6df6-4be5-9a6b-4e9ad2d9b808",
+        "timestamp": 1788036759679
+      },
+      {
+        "executionId": "711c81fc-d868-4b67-bfdf-515ea35060ae",
+        "chatSessionId": "sess_2ff34105-5ebf-44d0-84a5-291ded7a1508",
+        "timestamp": 1788306524566
+      },
+      {
+        "executionId": "711c81fc-d868-4b67-bfdf-515ea35060ae",
+        "chatSessionId": "sess_2ff34105-5ebf-44d0-84a5-291ded7a1508",
+        "timestamp": 1788309371956
+      }
     ]
   }
 }

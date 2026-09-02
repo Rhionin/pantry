@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Alert, Loader, Stack, Text, Title } from '@mantine/core';
-import { getInventoryList, listScanEntries } from '../../api/client';
+import { createScanEntry, getInventoryList, listScanEntries } from '../../api/client';
 import type { InventoryItem, ScanEntry } from '../../types';
+import { BarcodeInputField } from '../scanner/BarcodeInputField';
 import { BatchReviewPanel } from './BatchReviewPanel';
 import { ScanEntryCard } from './ScanEntryCard';
 import { sortScansChronologically } from './queueUtils';
 
-const DEFAULT_USER_ID = 'default-user';
+const DEFAULT_USER_ID = 'user-1';
 
 export interface ScanQueuePageProps {
   userId?: string;
@@ -18,6 +19,7 @@ export const ScanQueuePage = ({ userId = DEFAULT_USER_ID }: ScanQueuePageProps) 
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [scanError, setScanError] = useState('');
 
   const loadQueue = useCallback(async () => {
     setLoading(true);
@@ -46,6 +48,16 @@ export const ScanQueuePage = ({ userId = DEFAULT_USER_ID }: ScanQueuePageProps) 
     [inventory],
   );
 
+  const captureBarcode = async (barcode: string) => {
+    setScanError('');
+    try {
+      await createScanEntry({ barcode, userId });
+      await loadQueue();
+    } catch (requestError) {
+      setScanError(requestError instanceof Error ? requestError.message : 'Unable to add the scan.');
+    }
+  };
+
   const setEntrySelected = (entryId: string, selected: boolean) => {
     setSelectedIds((current) =>
       selected ? [...new Set([...current, entryId])] : current.filter((id) => id !== entryId),
@@ -55,6 +67,8 @@ export const ScanQueuePage = ({ userId = DEFAULT_USER_ID }: ScanQueuePageProps) 
   return (
     <Stack gap="lg">
       <Title order={1}>Scan queue</Title>
+      <BarcodeInputField onScan={(barcode) => void captureBarcode(barcode)} />
+      {scanError !== '' && <Alert color="red">{scanError}</Alert>}
       <BatchReviewPanel
         selectedIds={selectedIds}
         onComplete={() => {

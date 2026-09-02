@@ -1,7 +1,7 @@
 // Pre-selects the scan direction applied to new scan entries. Tracks the
 // timestamp of the last recorded scan so the pre-selected direction can
 // auto-clear after a period of scanner inactivity (Requirement 1.5).
-import { useEffect, useImperativeHandle, useRef, useState, type Ref } from 'react';
+import { useCallback, useEffect, useImperativeHandle, useRef, useState, type Ref } from 'react';
 import { SegmentedControl } from '@mantine/core';
 import type { ScanDirection } from '../../types';
 
@@ -26,24 +26,27 @@ export function ScanDirectionToggle({ onDirectionChange, ref }: ScanDirectionTog
   const [direction, setDirection] = useState<ScanDirection | null>(null);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const onDirectionChangeRef = useRef(onDirectionChange);
-  onDirectionChangeRef.current = onDirectionChange;
 
-  function clearIdleTimer() {
+  useEffect(() => {
+    onDirectionChangeRef.current = onDirectionChange;
+  }, [onDirectionChange]);
+
+  const clearIdleTimer = useCallback(() => {
     if (timerRef.current !== null) {
       clearTimeout(timerRef.current);
       timerRef.current = null;
     }
-  }
+  }, []);
 
-  function scheduleAutoClear() {
+  const scheduleAutoClear = useCallback(() => {
     clearIdleTimer();
     timerRef.current = setTimeout(() => {
       setDirection(null);
       onDirectionChangeRef.current?.(null);
     }, AUTO_CLEAR_IDLE_MS);
-  }
+  }, [clearIdleTimer]);
 
-  useEffect(() => clearIdleTimer, []);
+  useEffect(() => clearIdleTimer, [clearIdleTimer]);
 
   useImperativeHandle(
     ref,
@@ -54,7 +57,7 @@ export function ScanDirectionToggle({ onDirectionChange, ref }: ScanDirectionTog
         }
       },
     }),
-    [direction],
+    [direction, scheduleAutoClear],
   );
 
   function handleChange(value: string) {

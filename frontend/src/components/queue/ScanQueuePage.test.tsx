@@ -6,7 +6,7 @@ import type { ScanEntry } from '../../types';
 
 const scanEntry = (overrides: Partial<ScanEntry>): ScanEntry => ({
   id: 'scan-1',
-  userId: 'default-user',
+  userId: 'user-1',
   barcode: '111',
   scannedAt: '2026-03-20T10:00:00Z',
   direction: null,
@@ -55,11 +55,11 @@ describe('ScanQueuePage', () => {
     expect(within(cards[0]).getByText('Flagged')).toBeInTheDocument();
     expect(within(cards[1]).getByText('Barcode: 222')).toBeInTheDocument();
     expect(fetchMock).toHaveBeenCalledWith(
-      '/api/scans?userId=default-user&status=pending',
+      '/api/scans?userId=user-1&status=pending',
       expect.any(Object),
     );
     expect(fetchMock).toHaveBeenCalledWith(
-      '/api/scans?userId=default-user&status=flagged',
+      '/api/scans?userId=user-1&status=flagged',
       expect.any(Object),
     );
   });

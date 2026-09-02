@@ -18,7 +18,7 @@ func (h *LookupHandler) Handle(req Request[struct{}, struct{}]) (product.LookupR
 		return product.LookupResult{}, BadRequest("barcode query parameter is required")
 	}
 
-	userID := "default-user"
+	userID := "user-1"
 
 	return h.Service.Lookup(req.Context, barcode, userID)
 }

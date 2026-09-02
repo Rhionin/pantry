@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"database/sql"
 	"log"
 	"net/http"
@@ -31,9 +32,15 @@ func main() {
 	log.Println("migrations applied")
 
 	catalog := product.NewCatalog(sqlDB)
+	var externalProducts interface {
+		LookupBarcode(context.Context, string) (*product.ProductSummary, error)
+	} = product.NewOpenFoodFactsClient()
+	if os.Getenv("DISABLE_EXTERNAL_PRODUCT_LOOKUP") == "true" {
+		externalProducts = disabledProductLookup{}
+	}
 	lookupService := &product.LookupService{
 		Catalog:       catalog,
-		OpenFoodFacts: &product.OpenFoodFactsClient{},
+		OpenFoodFacts: externalProducts,
 	}
 
 	handler := server.NewHandler(catalog, lookupService, sqlDB)
@@ -42,6 +49,12 @@ func main() {
 	if err := http.ListenAndServe(addr, handler); err != nil {
 		log.Fatalf("listen: %v", err)
 	}
+}
+
+type disabledProductLookup struct{}
+
+func (disabledProductLookup) LookupBarcode(context.Context, string) (*product.ProductSummary, error) {
+	return nil, product.ErrProductNotFound
 }
 
 func envOrDefault(key, defaultVal string) string {

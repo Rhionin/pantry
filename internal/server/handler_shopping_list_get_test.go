@@ -52,7 +52,6 @@ func TestShoppingListGet(t *testing.T) {
 					{path: "$[0].itemId", value: "item-sl-2"},
 					{path: "$[0].quantity", value: float64(2)},
 					{path: "$[0].source", value: "auto"},
-					{path: "$[0].id", value: ""},
 				},
 			},
 		},

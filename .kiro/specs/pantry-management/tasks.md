@@ -341,20 +341,20 @@ cccccdfhffhntldlkcttglcnugbegjecbdjjdddileev
     - Fetches `GET /api/shopping-list`; renders derived and manual entries; marks items purchased via `PATCH /api/shopping-list/items/{id}`; manual add calls `POST /api/shopping-list/items`; export calls `POST /api/shopping-list/export`; shows partial-failure notification toast
     - _Requirements: 4.1, 4.2, 4.3, 4.4, 4.5, 4.6, 4.7, 4.8, 4.9, 4.10_
 
-- [ ] 14. End-to-end tests (Playwright)
-  - [ ] 14.1 Write Playwright test: scan → review → commit (stock-in) flow
+- [x] 14. End-to-end tests (Playwright)
+  - [x] 14.1 Write Playwright test: scan → review → commit (stock-in) flow
     - Simulate HID barcode input into `BarcodeInputField`; verify scan entry appears in queue; set direction and expiry; commit; verify inventory count increases
     - _Requirements: 1.1, 1.2, 1.8, 1.11, 2.2_
 
-  - [ ]* 14.2 Write Playwright test: flagged barcode resolution flow
+  - [x] 14.2 Write Playwright test: flagged barcode resolution flow
     - Scan unknown barcode; verify flagged badge; resolve via `FlaggedEntryResolver`; verify entry transitions to pending; commit
     - _Requirements: 1.15, 1.16, 1.17_
 
-  - [ ]* 14.3 Write Playwright test: stock-out use-oldest-first flow
+  - [x] 14.3 Write Playwright test: stock-out use-oldest-first flow
     - Stock in two instances with different expiry dates; stock out once with no instance selected; verify the earlier-expiry instance is removed
     - _Requirements: 1.9, 1.12, 2.3_
 
-  - [ ]* 14.4 Write Playwright test: shopping list derivation and purchase flow
+  - [x] 14.4 Write Playwright test: shopping list derivation and purchase flow
     - Set target quantity; reduce inventory below target; verify item appears in shopping list with correct gap quantity; mark purchased; verify item leaves active list; verify inventory unchanged
     - _Requirements: 4.1, 4.2, 4.6, 4.8_
 
