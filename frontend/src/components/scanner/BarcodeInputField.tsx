@@ -27,9 +27,14 @@ export function BarcodeInputField({ onScan }: BarcodeInputFieldProps) {
 
   return (
     <VisuallyHidden>
+      {/* Prevent password-manager autofill (1Password, LastPass) from
+          stealing focus from the scanner field or injecting autofill UI. */}
       <input
         aria-label="Barcode scanner input"
         autoFocus
+        data-1p-ignore
+        data-lpignore="true"
+        autoComplete="off"
         value={value}
         onChange={(event) => setValue(event.currentTarget.value)}
         onKeyDown={handleKeyDown}
