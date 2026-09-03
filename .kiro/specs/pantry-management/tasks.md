@@ -358,7 +358,7 @@ cccccdfhffhntldlkcttglcnugbegjecbdjjdddileev
     - Set target quantity; reduce inventory below target; verify item appears in shopping list with correct gap quantity; mark purchased; verify item leaves active list; verify inventory unchanged
     - _Requirements: 4.1, 4.2, 4.6, 4.8_
 
-- [ ] 15. Final checkpoint — Ensure all tests pass
+- [x] 15. Final checkpoint — Ensure all tests pass
   - Run `go test ./...` (backend) and `npm test -- --run` (frontend). Confirm all unit, property, and integration tests pass. Run `npx playwright test` for E2E. Ask the user if any questions arise.
 
 ---
