@@ -25,6 +25,9 @@ func (r LookupResult) IsFound() bool {
 type LookupService struct {
 	Catalog interface {
 		LookupByBarcode(ctx context.Context, barcode, userID string) (*ProductSummary, error)
+		GetProductByID(ctx context.Context, id string) (*Product, error)
+		CreateProduct(ctx context.Context, product Product) error
+		UpsertBarcodeMapping(ctx context.Context, barcode, productID, source, userID string) error
 	}
 	OpenFoodFacts interface {
 		LookupBarcode(ctx context.Context, barcode string) (*ProductSummary, error)
@@ -82,9 +85,43 @@ func (s *LookupService) Lookup(ctx context.Context, barcode, userID string) (Loo
 		return LookupResult{}, nil
 	}
 
-	// External API returned a product.
+	// External API returned a product. Persist it so the returned ID references a
+	// real products row and a subsequent scan resolves at Tier 2.
+	if err := s.persistExternalProduct(ctx, product); err != nil {
+		return LookupResult{}, err
+	}
+
 	return LookupResult{
 		Product: product,
 		Source:  "external",
 	}, nil
+}
+
+// persistExternalProduct idempotently stores an externally-resolved product and
+// its barcode mapping. For external results product.ID equals the barcode, so
+// the products row and the barcodes mapping share that value. Repeated calls for
+// the same barcode create no duplicate rows.
+func (s *LookupService) persistExternalProduct(ctx context.Context, product *ProductSummary) error {
+	existing, err := s.Catalog.GetProductByID(ctx, product.ID)
+	if err != nil {
+		return fmt.Errorf("could not check for existing product: %w", err)
+	}
+	if existing == nil {
+		err = s.Catalog.CreateProduct(ctx, Product{
+			ID:            product.ID,
+			Name:          product.Name,
+			Category:      product.Category,
+			UnitOfMeasure: product.UnitOfMeasure,
+		})
+		if err != nil {
+			return fmt.Errorf("could not save product: %w", err)
+		}
+	}
+
+	// External products are stored as global catalog entries; the barcodes.source
+	// CHECK permits only "global" and "user_override".
+	if err := s.Catalog.UpsertBarcodeMapping(ctx, product.ID, product.ID, "global", ""); err != nil {
+		return fmt.Errorf("could not save barcode mapping: %w", err)
+	}
+	return nil
 }

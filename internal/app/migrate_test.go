@@ -86,11 +86,107 @@ func TestMigrationIsIdempotent(t *testing.T) {
 		t.Fatalf("second RunMigrations (idempotency check): %v", err)
 	}
 
+	// One schema_migrations row per applied .sql file; the second RunMigrations
+	// must not re-apply any file, so the count equals the number of migration
+	// files (currently 001_initial_schema.sql and 002_backfill_orphaned_products.sql).
 	var count int
 	if err := conn.QueryRow(`SELECT COUNT(*) FROM schema_migrations`).Scan(&count); err != nil {
 		t.Fatalf("count schema_migrations: %v", err)
 	}
-	if count != 1 {
-		t.Errorf("schema_migrations should have 1 row after two runs, got %d", count)
+	if count != 2 {
+		t.Errorf("schema_migrations should have 2 rows after two runs, got %d", count)
 	}
+}
+
+// Feature: external-product-persistence, Property 4: Data Repair — Pre-existing Orphans Become Visible
+//
+// For any items row whose product_id has no products row at the time the repair
+// runs, migration 002 SHALL insert a backing products row (placeholder name) so
+// the item references an existing product, and re-running RunMigrations SHALL stay
+// idempotent (no duplicate products rows, unchanged schema_migrations count).
+//
+// This exercises logic not reachable through the HTTP API: the backfill is a
+// one-time startup repair against orphans that already exist in the DB. The
+// migration runs once at construction against an empty DB, so to simulate the
+// repair against a pre-existing orphan we seed the orphan, clear the 002 record,
+// and re-run — mirroring the pattern in
+// internal/server/handler_external_persistence_test.go's orphan case.
+func TestMigration002BackfillsOrphanedProducts(t *testing.T) {
+	conn, err := sql.Open("sqlite", ":memory:")
+	if err != nil {
+		t.Fatalf("open in-memory SQLite: %v", err)
+	}
+	defer conn.Close()
+
+	// Create the schema (and record 002 as applied against the empty DB).
+	if err := app.RunMigrations(conn); err != nil {
+		t.Fatalf("RunMigrations (create schema): %v", err)
+	}
+
+	const orphanProductID = "011110728227" // barcode with no products row
+
+	// Seed an orphaned items row whose product_id has no matching products row.
+	if _, err := conn.Exec(
+		`INSERT INTO items (id, user_id, product_id) VALUES ('orphan-item', 'user-1', ?)`,
+		orphanProductID,
+	); err != nil {
+		t.Fatalf("seed orphan item: %v", err)
+	}
+
+	// Clear the 002 record so RunMigrations re-applies the backfill against the
+	// now-seeded orphan (simulating startup repair with a pre-existing orphan).
+	if _, err := conn.Exec(
+		`DELETE FROM schema_migrations WHERE filename = '002_backfill_orphaned_products.sql'`,
+	); err != nil {
+		t.Fatalf("reset migration 002 record: %v", err)
+	}
+
+	if err := app.RunMigrations(conn); err != nil {
+		t.Fatalf("RunMigrations (repair against orphan): %v", err)
+	}
+
+	// The backfilled products row exists with the placeholder name.
+	var name string
+	if err := conn.QueryRow(`SELECT name FROM products WHERE id = ?`, orphanProductID).Scan(&name); err != nil {
+		t.Fatalf("expected backfilled products row for %q: %v", orphanProductID, err)
+	}
+	if want := "Product " + orphanProductID; name != want {
+		t.Errorf("backfilled product name: want %q, got %q", want, name)
+	}
+
+	// Capture state before re-running to assert idempotency.
+	migrationsBefore := countMigrations(t, conn)
+	productsBefore := countProducts(t, conn, orphanProductID)
+
+	if err := app.RunMigrations(conn); err != nil {
+		t.Fatalf("RunMigrations (idempotent re-run): %v", err)
+	}
+
+	if got := countMigrations(t, conn); got != migrationsBefore {
+		t.Errorf("schema_migrations count changed on re-run: before %d, after %d", migrationsBefore, got)
+	}
+	if got := countProducts(t, conn, orphanProductID); got != productsBefore {
+		t.Errorf("duplicate products row created on re-run: before %d, after %d", productsBefore, got)
+	}
+	if got := countProducts(t, conn, orphanProductID); got != 1 {
+		t.Errorf("products rows for %q: want 1, got %d", orphanProductID, got)
+	}
+}
+
+func countMigrations(t *testing.T, conn *sql.DB) int {
+	t.Helper()
+	var count int
+	if err := conn.QueryRow(`SELECT COUNT(*) FROM schema_migrations`).Scan(&count); err != nil {
+		t.Fatalf("count schema_migrations: %v", err)
+	}
+	return count
+}
+
+func countProducts(t *testing.T, conn *sql.DB, id string) int {
+	t.Helper()
+	var count int
+	if err := conn.QueryRow(`SELECT COUNT(*) FROM products WHERE id = ?`, id).Scan(&count); err != nil {
+		t.Fatalf("count products: %v", err)
+	}
+	return count
 }

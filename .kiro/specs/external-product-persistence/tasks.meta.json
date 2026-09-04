@@ -1,0 +1,171 @@
+{
+  "pbtResults": {
+    "1. Write bug condition exploration tests (BEFORE implementing the fix)": {
+      "status": "passed",
+      "failingExample": "All four exploration cases FAILED on the UNFIXED code (expected — confirms the bug). Counterexamples:\n1. external scan → commit → inventory (primary): committing an externally-resolved stock-in of barcode 011110728227 yields GET /api/inventory == [] — the item is dropped by the inner JOIN products because no products row was written on Tier-3 resolution. (Req 1.1, 1.2, 1.3)\n2. product not retrievable by ID: after the external scan, product 011110728227 is absent from GET /api/products — Tier-3 lookup returned it without persisting a products row. (Req 1.1, 2.5 gap)\n3. inventory vs instances inconsistency: after commit, GET /api/inventory/{itemId}/instances returns the live instance while GET /api/inventory omits the parent item ([]). (Req 1.4)\n4. pre-existing orphan: an items row ('orphan-item') whose product_id 011110728227 has no products row is omitted from GET /api/inventory ([]). (Req 1.5, 2.6)",
+      "lastRunTimestamp": 1788409874987
+    }
+  },
+  "executionHistory": {
+    "1. Write bug condition exploration tests (BEFORE implementing the fix)": [
+      {
+        "executionId": "d0e7547b-ad72-4556-8680-42733f1338fc",
+        "chatSessionId": "sess_02602332-ad46-43d9-96b2-0368846bfa9a",
+        "timestamp": 1788409569468
+      },
+      {
+        "executionId": "d0e7547b-ad72-4556-8680-42733f1338fc",
+        "chatSessionId": "sess_02602332-ad46-43d9-96b2-0368846bfa9a",
+        "timestamp": 1788409577496
+      },
+      {
+        "executionId": "d0e7547b-ad72-4556-8680-42733f1338fc",
+        "chatSessionId": "sess_02602332-ad46-43d9-96b2-0368846bfa9a",
+        "timestamp": 1788409895925
+      }
+    ],
+    "2. Write preservation property tests (BEFORE implementing the fix)": [
+      {
+        "executionId": "d0e7547b-ad72-4556-8680-42733f1338fc",
+        "chatSessionId": "sess_02602332-ad46-43d9-96b2-0368846bfa9a",
+        "timestamp": 1788409569536
+      },
+      {
+        "executionId": "d0e7547b-ad72-4556-8680-42733f1338fc",
+        "chatSessionId": "sess_02602332-ad46-43d9-96b2-0368846bfa9a",
+        "timestamp": 1788409899514
+      },
+      {
+        "executionId": "d0e7547b-ad72-4556-8680-42733f1338fc",
+        "chatSessionId": "sess_02602332-ad46-43d9-96b2-0368846bfa9a",
+        "timestamp": 1788410115302
+      }
+    ],
+    "3.1 Widen the LookupService Catalog interface and persist the external product": [
+      {
+        "executionId": "d0e7547b-ad72-4556-8680-42733f1338fc",
+        "chatSessionId": "sess_02602332-ad46-43d9-96b2-0368846bfa9a",
+        "timestamp": 1788409569581
+      },
+      {
+        "executionId": "d0e7547b-ad72-4556-8680-42733f1338fc",
+        "chatSessionId": "sess_02602332-ad46-43d9-96b2-0368846bfa9a",
+        "timestamp": 1788410119843
+      },
+      {
+        "executionId": "d0e7547b-ad72-4556-8680-42733f1338fc",
+        "chatSessionId": "sess_02602332-ad46-43d9-96b2-0368846bfa9a",
+        "timestamp": 1788410194886
+      }
+    ],
+    "3.2 Persist the external barcode mapping as source \"global\"": [
+      {
+        "executionId": "d0e7547b-ad72-4556-8680-42733f1338fc",
+        "chatSessionId": "sess_02602332-ad46-43d9-96b2-0368846bfa9a",
+        "timestamp": 1788409569627
+      },
+      {
+        "executionId": "d0e7547b-ad72-4556-8680-42733f1338fc",
+        "chatSessionId": "sess_02602332-ad46-43d9-96b2-0368846bfa9a",
+        "timestamp": 1788410203315
+      },
+      {
+        "executionId": "d0e7547b-ad72-4556-8680-42733f1338fc",
+        "chatSessionId": "sess_02602332-ad46-43d9-96b2-0368846bfa9a",
+        "timestamp": 1788410275994
+      }
+    ],
+    "3.3 Add the data-repair migration for pre-existing orphans": [
+      {
+        "executionId": "d0e7547b-ad72-4556-8680-42733f1338fc",
+        "chatSessionId": "sess_02602332-ad46-43d9-96b2-0368846bfa9a",
+        "timestamp": 1788409569677
+      },
+      {
+        "executionId": "d0e7547b-ad72-4556-8680-42733f1338fc",
+        "chatSessionId": "sess_02602332-ad46-43d9-96b2-0368846bfa9a",
+        "timestamp": 1788410279310
+      },
+      {
+        "executionId": "d0e7547b-ad72-4556-8680-42733f1338fc",
+        "chatSessionId": "sess_02602332-ad46-43d9-96b2-0368846bfa9a",
+        "timestamp": 1788410573581
+      }
+    ],
+    "3.4 Verify bug condition exploration tests now pass": [
+      {
+        "executionId": "d0e7547b-ad72-4556-8680-42733f1338fc",
+        "chatSessionId": "sess_02602332-ad46-43d9-96b2-0368846bfa9a",
+        "timestamp": 1788409569721
+      },
+      {
+        "executionId": "d0e7547b-ad72-4556-8680-42733f1338fc",
+        "chatSessionId": "sess_02602332-ad46-43d9-96b2-0368846bfa9a",
+        "timestamp": 1788410581113
+      },
+      {
+        "executionId": "d0e7547b-ad72-4556-8680-42733f1338fc",
+        "chatSessionId": "sess_02602332-ad46-43d9-96b2-0368846bfa9a",
+        "timestamp": 1788410616067
+      }
+    ],
+    "3.5 Verify preservation tests still pass": [
+      {
+        "executionId": "d0e7547b-ad72-4556-8680-42733f1338fc",
+        "chatSessionId": "sess_02602332-ad46-43d9-96b2-0368846bfa9a",
+        "timestamp": 1788409569771
+      },
+      {
+        "executionId": "d0e7547b-ad72-4556-8680-42733f1338fc",
+        "chatSessionId": "sess_02602332-ad46-43d9-96b2-0368846bfa9a",
+        "timestamp": 1788410619016
+      },
+      {
+        "executionId": "d0e7547b-ad72-4556-8680-42733f1338fc",
+        "chatSessionId": "sess_02602332-ad46-43d9-96b2-0368846bfa9a",
+        "timestamp": 1788410653831
+      }
+    ],
+    "4. Add idempotency and migration coverage (logic not reachable through the API)": [
+      {
+        "executionId": "d0e7547b-ad72-4556-8680-42733f1338fc",
+        "chatSessionId": "sess_02602332-ad46-43d9-96b2-0368846bfa9a",
+        "timestamp": 1788409569818
+      },
+      {
+        "executionId": "d0e7547b-ad72-4556-8680-42733f1338fc",
+        "chatSessionId": "sess_02602332-ad46-43d9-96b2-0368846bfa9a",
+        "timestamp": 1788410657664
+      },
+      {
+        "executionId": "d0e7547b-ad72-4556-8680-42733f1338fc",
+        "chatSessionId": "sess_02602332-ad46-43d9-96b2-0368846bfa9a",
+        "timestamp": 1788410784933
+      }
+    ],
+    "5. Checkpoint - Ensure all tests pass and coverage is enforced": [
+      {
+        "executionId": "d0e7547b-ad72-4556-8680-42733f1338fc",
+        "chatSessionId": "sess_02602332-ad46-43d9-96b2-0368846bfa9a",
+        "timestamp": 1788409569863
+      },
+      {
+        "executionId": "d0e7547b-ad72-4556-8680-42733f1338fc",
+        "chatSessionId": "sess_02602332-ad46-43d9-96b2-0368846bfa9a",
+        "timestamp": 1788410788680
+      },
+      {
+        "executionId": "d0e7547b-ad72-4556-8680-42733f1338fc",
+        "chatSessionId": "sess_02602332-ad46-43d9-96b2-0368846bfa9a",
+        "timestamp": 1788410848344
+      }
+    ],
+    "3. Fix for missing external-product persistence on Tier-3 resolution": [
+      {
+        "executionId": "d0e7547b-ad72-4556-8680-42733f1338fc",
+        "chatSessionId": "sess_02602332-ad46-43d9-96b2-0368846bfa9a",
+        "timestamp": 1788410653884
+      }
+    ]
+  }
+}
