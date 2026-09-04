@@ -112,6 +112,7 @@ func (s *LookupService) persistExternalProduct(ctx context.Context, product *Pro
 			Name:          product.Name,
 			Category:      product.Category,
 			UnitOfMeasure: product.UnitOfMeasure,
+			ImageURL:      product.ImageURL,
 		})
 		if err != nil {
 			return fmt.Errorf("could not save product: %w", err)

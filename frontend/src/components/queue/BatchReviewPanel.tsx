@@ -34,10 +34,11 @@ export const BatchReviewPanel = ({ selectedIds, onComplete }: BatchReviewPanelPr
   };
 
   return (
-    <Stack component="section" aria-labelledby="batch-review-heading" gap="sm">
+    <Stack component="section" aria-labelledby="batch-review-heading" gap="xs">
       <h2 id="batch-review-heading">Batch review</h2>
-      <Group align="end">
+      <Group align="end" gap="xs">
         <NativeSelect
+          size="xs"
           label="Direction"
           value={direction}
           onChange={(event) => setDirection(event.currentTarget.value as ScanDirection)}
@@ -47,6 +48,7 @@ export const BatchReviewPanel = ({ selectedIds, onComplete }: BatchReviewPanelPr
           ]}
         />
         <TextInput
+          size="xs"
           label="Expiration date"
           type="date"
           value={expiryDate}
@@ -54,6 +56,7 @@ export const BatchReviewPanel = ({ selectedIds, onComplete }: BatchReviewPanelPr
           onChange={(event) => setExpiryDate(event.currentTarget.value)}
         />
         <Button
+          size="xs"
           onClick={() => void handleConfirm()}
           disabled={selectedIds.length === 0}
           loading={submitting}
@@ -61,7 +64,11 @@ export const BatchReviewPanel = ({ selectedIds, onComplete }: BatchReviewPanelPr
           Commit {selectedIds.length} selected
         </Button>
       </Group>
-      {error !== '' && <Alert color="red">{error}</Alert>}
+      {error !== '' && (
+        <Alert color="red" py="xs">
+          {error}
+        </Alert>
+      )}
     </Stack>
   );
 };

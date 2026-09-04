@@ -6,6 +6,7 @@ import (
 	"embed"
 	"fmt"
 	"io/fs"
+	"log"
 	"sort"
 	"strings"
 )
@@ -39,6 +40,7 @@ func RunMigrations(db *sql.DB) error {
 	}
 	sort.Strings(files)
 
+	applied := 0
 	for _, name := range files {
 		// Check if already applied.
 		var count int
@@ -63,6 +65,13 @@ func RunMigrations(db *sql.DB) error {
 		if _, err := db.Exec(`INSERT INTO schema_migrations (filename) VALUES (?)`, name); err != nil {
 			return fmt.Errorf("record migration %q: %w", name, err)
 		}
+
+		log.Printf("applied migration: %s", name)
+		applied++
+	}
+
+	if applied == 0 {
+		log.Println("schema up to date, no migrations applied")
 	}
 
 	return nil

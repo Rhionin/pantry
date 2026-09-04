@@ -60,49 +60,60 @@ export const SuggestionPanel = ({
   const manualTargetIsValid = manualQuantity !== '' && Number.isInteger(manualTarget) && manualTarget >= 0;
 
   return (
-    <Card component="section" withBorder aria-labelledby={`suggestion-${itemId}`}>
-      <Stack gap="sm">
-        <Title id={`suggestion-${itemId}`} order={3}>Target quantity for {productName}</Title>
+    <Card component="section" withBorder padding="sm" aria-labelledby={`suggestion-${itemId}`}>
+      <Stack gap="xs">
+        <Title id={`suggestion-${itemId}`} order={3} size="h5">Target quantity for {productName}</Title>
         {suggestion === null && !loading && (
-          <Button onClick={() => void requestSuggestion()}>Get suggestion</Button>
+          <Button size="xs" onClick={() => void requestSuggestion()}>Get suggestion</Button>
         )}
         {loading && <Loader aria-label="Loading target quantity suggestion" />}
-        {error !== '' && <Alert color="red">{error}</Alert>}
-        {confirmation !== '' && <Alert color="green">{confirmation}</Alert>}
+        {error !== '' && (
+          <Alert color="red" py="xs">
+            {error}
+          </Alert>
+        )}
+        {confirmation !== '' && (
+          <Alert color="green" py="xs">
+            {confirmation}
+          </Alert>
+        )}
         {suggestion !== null && suggestion.dataInsufficient && (
-          <Alert color="yellow" title="Not enough consumption history">
+          <Alert color="yellow" title="Not enough consumption history" py="xs">
             Only {suggestion.consumptionEventCount} consumption events are recorded. Set a target manually for now.
           </Alert>
         )}
         {suggestion !== null && !suggestion.dataInsufficient && (
           <Stack gap="xs">
-            <Text fw={600}>Suggested target: {suggestion.suggestedQuantity}</Text>
-            <Text>{suggestion.reasoning}</Text>
-            <Group>
+            <Text fw={600} size="sm">Suggested target: {suggestion.suggestedQuantity}</Text>
+            <Text size="sm">{suggestion.reasoning}</Text>
+            <Group gap="xs">
               <Button
+                size="xs"
                 loading={saving}
                 onClick={() => void saveTargetQuantity(suggestion.suggestedQuantity)}
               >
                 Accept
               </Button>
-              <Button variant="default" onClick={() => setManualMode(true)}>Set manually</Button>
+              <Button size="xs" variant="default" onClick={() => setManualMode(true)}>Set manually</Button>
             </Group>
           </Stack>
         )}
         {manualMode && (
-          <Stack component="form" gap="sm" onSubmit={(event) => {
+          <Stack component="form" gap="xs" onSubmit={(event) => {
             event.preventDefault();
             if (manualTargetIsValid) void saveTargetQuantity(manualTarget);
           }}>
             <NumberInput
+              size="xs"
               label="Manual target quantity"
               min={0}
               step={1}
               allowDecimal={false}
               value={manualQuantity}
               onChange={setManualQuantity}
+              w={160}
             />
-            <Button type="submit" loading={saving} disabled={!manualTargetIsValid}>
+            <Button size="xs" type="submit" loading={saving} disabled={!manualTargetIsValid}>
               Save manual target
             </Button>
           </Stack>

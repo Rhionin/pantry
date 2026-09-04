@@ -49,9 +49,10 @@ func NewOpenFoodFactsClientWithClient(client *http.Client) *OpenFoodFactsClient 
 // offResponse represents the JSON response structure from Open Food Facts API.
 type offResponse struct {
 	Product struct {
-		Name     string `json:"product_name"`
-		Category string `json:"categories"`
-		Code     string `json:"code"`
+		Name          string `json:"product_name"`
+		Category      string `json:"categories"`
+		Code          string `json:"code"`
+		ImageThumbURL string `json:"image_front_small_url"`
 	} `json:"product"`
 	Status int `json:"status"`
 }
@@ -100,6 +101,7 @@ func (c *OpenFoodFactsClient) LookupBarcode(ctx context.Context, barcode string)
 		Name:          data.Product.Name,
 		Category:      data.Product.Category,
 		UnitOfMeasure: "",
+		ImageURL:      data.Product.ImageThumbURL,
 	}
 	return ps, nil
 }

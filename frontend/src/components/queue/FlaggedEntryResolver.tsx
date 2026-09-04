@@ -138,10 +138,11 @@ export const FlaggedEntryResolver = ({ entry, onResolved }: FlaggedEntryResolver
   ));
 
   return (
-    <Stack gap="sm">
+    <Stack gap="xs">
       <Combobox store={combobox} onOptionSubmit={selectProduct} withinPortal={false}>
         <Combobox.Target withExpandedAttribute>
           <TextInput
+            size="xs"
             label="Search products"
             placeholder="Type a product name or category"
             value={query}
@@ -169,6 +170,7 @@ export const FlaggedEntryResolver = ({ entry, onResolved }: FlaggedEntryResolver
         </Combobox.Dropdown>
       </Combobox>
       <Button
+        size="xs"
         variant="light"
         disabled={selectedProductId === ''}
         loading={submitting}
@@ -176,25 +178,29 @@ export const FlaggedEntryResolver = ({ entry, onResolved }: FlaggedEntryResolver
       >
         Use selected product
       </Button>
-      <Fieldset legend="Create new product">
+      <Fieldset legend="Create new product" p="xs">
         <Stack gap="xs">
           <TextInput
+            size="xs"
             label="Product name"
             required
             value={draft.name}
             onChange={(event) => setDraft({ ...draft, name: event.currentTarget.value })}
           />
           <TextInput
+            size="xs"
             label="Category"
             value={draft.category}
             onChange={(event) => setDraft({ ...draft, category: event.currentTarget.value })}
           />
           <TextInput
+            size="xs"
             label="Unit of measure"
             value={draft.unitOfMeasure}
             onChange={(event) => setDraft({ ...draft, unitOfMeasure: event.currentTarget.value })}
           />
           <Button
+            size="xs"
             disabled={draft.name.trim() === ''}
             loading={submitting}
             onClick={() => void handleCreate()}
@@ -203,7 +209,11 @@ export const FlaggedEntryResolver = ({ entry, onResolved }: FlaggedEntryResolver
           </Button>
         </Stack>
       </Fieldset>
-      {error !== '' && <Alert color="red">{error}</Alert>}
+      {error !== '' && (
+        <Alert color="red" py="xs">
+          {error}
+        </Alert>
+      )}
     </Stack>
   );
 };

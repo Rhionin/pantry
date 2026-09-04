@@ -27,6 +27,53 @@ func newTestQueue(t *testing.T) (*scan.Queue, *sql.DB) {
 	return scan.NewQueue(conn), conn
 }
 
+// TestGetScanEntry_ProductImageURL locks in that ScanEntry.Product.ImageURL is
+// projected through the scan_entries-products join, not silently dropped like
+// the other product columns would be if a join query omitted it.
+func TestGetScanEntry_ProductImageURL(t *testing.T) {
+	queue, db := newTestQueue(t)
+	ctx := context.Background()
+
+	catalog := product.NewCatalog(db)
+	const wantImageURL = "https://images.openfoodfacts.org/thumb.jpg"
+	if err := catalog.CreateProduct(ctx, product.Product{
+		ID: "prod-1", Name: "Milk", Category: "Dairy", ImageURL: wantImageURL,
+	}); err != nil {
+		t.Fatalf("CreateProduct: %v", err)
+	}
+
+	productID := "prod-1"
+	created, err := queue.CreateScanEntry(ctx, scan.ScanEntry{
+		UserID:    "user-1",
+		Barcode:   "000000000001",
+		ScannedAt: time.Now(),
+		UnitCount: 1,
+		ProductID: &productID,
+	})
+	if err != nil {
+		t.Fatalf("CreateScanEntry: %v", err)
+	}
+	if created.Product == nil || created.Product.ImageURL != wantImageURL {
+		t.Errorf("CreateScanEntry: want Product.ImageURL %q, got %+v", wantImageURL, created.Product)
+	}
+
+	got, err := queue.GetScanEntry(ctx, created.ID)
+	if err != nil {
+		t.Fatalf("GetScanEntry: %v", err)
+	}
+	if got.Product == nil || got.Product.ImageURL != wantImageURL {
+		t.Errorf("GetScanEntry: want Product.ImageURL %q, got %+v", wantImageURL, got.Product)
+	}
+
+	entries, err := queue.ListScanEntries(ctx, "user-1", "")
+	if err != nil {
+		t.Fatalf("ListScanEntries: %v", err)
+	}
+	if len(entries) != 1 || entries[0].Product == nil || entries[0].Product.ImageURL != wantImageURL {
+		t.Fatalf("ListScanEntries: want 1 entry with Product.ImageURL %q, got %+v", wantImageURL, entries)
+	}
+}
+
 // --------------------------------------------------------------------------
 // TestCreateScanEntry
 // --------------------------------------------------------------------------

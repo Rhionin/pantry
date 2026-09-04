@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Alert, Badge, Button, Card, Checkbox, Group, Stack, Text, Title } from '@mantine/core';
+import { Alert, Avatar, Badge, Button, Card, Checkbox, Group, Stack, Text, Title } from '@mantine/core';
 import { commitScanEntry } from '../../api/client';
 import type { ScanEntry } from '../../types';
 import { FlaggedEntryResolver } from './FlaggedEntryResolver';
@@ -45,17 +45,21 @@ export const ScanEntryCard = ({
   };
 
   return (
-    <Card component="article" withBorder aria-label={`Scan ${entry.barcode}`}>
-      <Stack gap="sm">
-        <Group justify="space-between" align="flex-start">
-          <div>
-            <Title order={3}>{entry.product?.name ?? 'Unknown product'}</Title>
-            <Text size="sm">Barcode: {entry.barcode}</Text>
-          </div>
-          <Group>
+    <Card component="article" withBorder padding="sm" aria-label={`Scan ${entry.barcode}`}>
+      <Stack gap="xs">
+        <Group justify="space-between" align="flex-start" wrap="nowrap">
+          <Group gap="xs" wrap="nowrap" align="flex-start">
+            <Avatar src={entry.product?.imageUrl} name={entry.product?.name ?? '?'} radius="sm" />
+            <div>
+              <Title order={3} size="h5">{entry.product?.name ?? 'Unknown product'}</Title>
+              <Text size="xs" c="dimmed">Barcode: {entry.barcode}</Text>
+            </div>
+          </Group>
+          <Group gap="xs" wrap="nowrap">
             {entry.status === 'flagged' && <Badge color="orange">Flagged</Badge>}
             {entry.status === 'pending' && (
               <Checkbox
+                size="xs"
                 label="Select for batch review"
                 checked={selected}
                 onChange={(event) => onSelectedChange(event.currentTarget.checked)}
@@ -63,12 +67,11 @@ export const ScanEntryCard = ({
             )}
           </Group>
         </Group>
-        <Text size="sm">Scanned: {new Date(entry.scannedAt).toLocaleString()}</Text>
-        <Text size="sm">Direction: {directionLabel(entry)}</Text>
-        <Text size="sm">Unit count: {entry.unitCount}</Text>
-        {entry.expiresAt !== null && (
-          <Text size="sm">Expires: {formatExpiryDate(entry.expiresAt)}</Text>
-        )}
+        <Text size="xs" c="dimmed">
+          Scanned: {new Date(entry.scannedAt).toLocaleString()} · Direction: {directionLabel(entry)} · Unit
+          count: {entry.unitCount}
+          {entry.expiresAt !== null && ` · Expires: ${formatExpiryDate(entry.expiresAt)}`}
+        </Text>
         {entry.status === 'flagged' && (
           <FlaggedEntryResolver entry={entry} onResolved={onChanged} />
         )}
@@ -76,14 +79,14 @@ export const ScanEntryCard = ({
           <StockOutInstanceSelector itemId={itemId} value={instanceId} onChange={setInstanceId} />
         )}
         {entry.status === 'pending' && entry.direction === 'stock_out' && itemId === undefined && (
-          <Alert color="yellow">No inventory item is available for this product.</Alert>
+          <Alert color="yellow" py="xs">No inventory item is available for this product.</Alert>
         )}
         {entry.status === 'pending' && entry.direction !== null && (
-          <Button loading={committing} onClick={() => void handleCommit()}>
+          <Button size="xs" loading={committing} onClick={() => void handleCommit()}>
             Commit scan
           </Button>
         )}
-        {commitError !== '' && <Alert color="red">{commitError}</Alert>}
+        {commitError !== '' && <Alert color="red" py="xs">{commitError}</Alert>}
       </Stack>
     </Card>
   );

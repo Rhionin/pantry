@@ -40,7 +40,8 @@ func TestLookupBarcode(t *testing.T) {
 				"product": {
 					"product_name": "Coca-Cola",
 					"categories": "Beverages",
-					"code": "012345678905"
+					"code": "012345678905",
+					"image_front_small_url": "https://images.openfoodfacts.org/images/products/012/345/678/905/front_en.200.jpg"
 				}
 			}`,
 			checkProduct: func(t *testing.T, ps *ProductSummary) {
@@ -55,6 +56,30 @@ func TestLookupBarcode(t *testing.T) {
 				}
 				if ps.ID != "012345678905" {
 					t.Errorf("expected ID '012345678905', got %q", ps.ID)
+				}
+				if want := "https://images.openfoodfacts.org/images/products/012/345/678/905/front_en.200.jpg"; ps.ImageURL != want {
+					t.Errorf("expected ImageURL %q, got %q", want, ps.ImageURL)
+				}
+			},
+		},
+		{
+			name:       "success without image",
+			barcode:    "012345678906",
+			statusCode: 200,
+			responseBody: `{
+				"status": 1,
+				"product": {
+					"product_name": "Generic Snack",
+					"categories": "Snacks",
+					"code": "012345678906"
+				}
+			}`,
+			checkProduct: func(t *testing.T, ps *ProductSummary) {
+				if ps == nil {
+					t.Fatal("expected ProductSummary, got nil")
+				}
+				if ps.ImageURL != "" {
+					t.Errorf("expected empty ImageURL, got %q", ps.ImageURL)
 				}
 			},
 		},
@@ -216,4 +241,3 @@ func TestShouldRetryIncluding429(t *testing.T) {
 		})
 	}
 }
-

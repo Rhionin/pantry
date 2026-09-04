@@ -399,3 +399,38 @@ func TestProperty3_ExternalPersistenceIdempotent(t *testing.T) {
 		}
 	})
 }
+
+// TestExternalLookupPersistsImageURL locks in that persistExternalProduct
+// copies ImageURL from the OpenFoodFacts-resolved ProductSummary into the
+// persisted Product row. Regression test for a bug where the CreateProduct
+// call in persistExternalProduct omitted ImageURL, so every OpenFoodFacts
+// thumbnail was silently dropped on the very first (persisting) scan.
+func TestExternalLookupPersistsImageURL(t *testing.T) {
+	db := setupTestDB(t)
+	catalog := NewCatalog(db)
+	ctx := context.Background()
+
+	const barcode = "012345678905"
+	const wantImageURL = "https://images.openfoodfacts.org/thumb.jpg"
+
+	external := mockOpenFoodFacts{lookupFn: func(ctx context.Context, b string) (*ProductSummary, error) {
+		return &ProductSummary{ID: barcode, Name: "Coca-Cola", Category: "Beverages", ImageURL: wantImageURL}, nil
+	}}
+
+	service := &LookupService{Catalog: catalog, OpenFoodFacts: external}
+	result, err := service.Lookup(ctx, barcode, "user-1")
+	if err != nil {
+		t.Fatalf("Lookup: %v", err)
+	}
+	if !result.IsFound() || result.Product.ImageURL != wantImageURL {
+		t.Fatalf("Lookup result: want ImageURL %q, got %+v", wantImageURL, result.Product)
+	}
+
+	stored, err := catalog.GetProductByID(ctx, barcode)
+	if err != nil {
+		t.Fatalf("GetProductByID: %v", err)
+	}
+	if stored == nil || stored.ImageURL != wantImageURL {
+		t.Fatalf("persisted product: want ImageURL %q, got %+v", wantImageURL, stored)
+	}
+}

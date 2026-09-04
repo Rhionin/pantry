@@ -1,0 +1,101 @@
+{
+  "pbtResults": {},
+  "executionHistory": {
+    "1.1 Add the `log` import and per-file/summary log lines to `internal/app/migrate.go`": [
+      {
+        "executionId": "3e7e40cb-c8d5-4b76-90cd-ecb77680e9a7",
+        "chatSessionId": "sess_96e96222-c684-4e3a-9d9c-bb309bcbc09c",
+        "timestamp": 1788495641567
+      },
+      {
+        "executionId": "3e7e40cb-c8d5-4b76-90cd-ecb77680e9a7",
+        "chatSessionId": "sess_96e96222-c684-4e3a-9d9c-bb309bcbc09c",
+        "timestamp": 1788495651918
+      },
+      {
+        "executionId": "3e7e40cb-c8d5-4b76-90cd-ecb77680e9a7",
+        "chatSessionId": "sess_96e96222-c684-4e3a-9d9c-bb309bcbc09c",
+        "timestamp": 1788495701897
+      }
+    ],
+    "2.1 Add `TestRunMigrations_LogsAppliedMigrationsOnFreshDB` to `internal/app/migrate_test.go`": [
+      {
+        "executionId": "3e7e40cb-c8d5-4b76-90cd-ecb77680e9a7",
+        "chatSessionId": "sess_96e96222-c684-4e3a-9d9c-bb309bcbc09c",
+        "timestamp": 1788495641599
+      },
+      {
+        "executionId": "3e7e40cb-c8d5-4b76-90cd-ecb77680e9a7",
+        "chatSessionId": "sess_96e96222-c684-4e3a-9d9c-bb309bcbc09c",
+        "timestamp": 1788495707539
+      },
+      {
+        "executionId": "3e7e40cb-c8d5-4b76-90cd-ecb77680e9a7",
+        "chatSessionId": "sess_96e96222-c684-4e3a-9d9c-bb309bcbc09c",
+        "timestamp": 1788495757686
+      }
+    ],
+    "2.2 Add `TestRunMigrations_LogsSummaryWhenAlreadyMigrated` to `internal/app/migrate_test.go`": [
+      {
+        "executionId": "3e7e40cb-c8d5-4b76-90cd-ecb77680e9a7",
+        "chatSessionId": "sess_96e96222-c684-4e3a-9d9c-bb309bcbc09c",
+        "timestamp": 1788495641638
+      },
+      {
+        "executionId": "3e7e40cb-c8d5-4b76-90cd-ecb77680e9a7",
+        "chatSessionId": "sess_96e96222-c684-4e3a-9d9c-bb309bcbc09c",
+        "timestamp": 1788495762388
+      },
+      {
+        "executionId": "3e7e40cb-c8d5-4b76-90cd-ecb77680e9a7",
+        "chatSessionId": "sess_96e96222-c684-4e3a-9d9c-bb309bcbc09c",
+        "timestamp": 1788495832719
+      }
+    ],
+    "3. Checkpoint - run the full test suite and enforce coverage": [
+      {
+        "executionId": "3e7e40cb-c8d5-4b76-90cd-ecb77680e9a7",
+        "chatSessionId": "sess_96e96222-c684-4e3a-9d9c-bb309bcbc09c",
+        "timestamp": 1788495641673
+      },
+      {
+        "executionId": "3e7e40cb-c8d5-4b76-90cd-ecb77680e9a7",
+        "chatSessionId": "sess_96e96222-c684-4e3a-9d9c-bb309bcbc09c",
+        "timestamp": 1788495963608
+      },
+      {
+        "executionId": "3e7e40cb-c8d5-4b76-90cd-ecb77680e9a7",
+        "chatSessionId": "sess_96e96222-c684-4e3a-9d9c-bb309bcbc09c",
+        "timestamp": 1788496071929
+      }
+    ],
+    "4.1 Stop the server, delete the disposable DB, and restart": [
+      {
+        "executionId": "3e7e40cb-c8d5-4b76-90cd-ecb77680e9a7",
+        "chatSessionId": "sess_96e96222-c684-4e3a-9d9c-bb309bcbc09c",
+        "timestamp": 1788495641714
+      }
+    ],
+    "4.2 Manually confirm `image_url` is populated and the UI renders the real thumbnail": [
+      {
+        "executionId": "3e7e40cb-c8d5-4b76-90cd-ecb77680e9a7",
+        "chatSessionId": "sess_96e96222-c684-4e3a-9d9c-bb309bcbc09c",
+        "timestamp": 1788495641765
+      }
+    ],
+    "1. Log applied migrations in `RunMigrations` (Concern A)": [
+      {
+        "executionId": "3e7e40cb-c8d5-4b76-90cd-ecb77680e9a7",
+        "chatSessionId": "sess_96e96222-c684-4e3a-9d9c-bb309bcbc09c",
+        "timestamp": 1788495701928
+      }
+    ],
+    "2. Add unit test coverage for migration logging (Concern A)": [
+      {
+        "executionId": "3e7e40cb-c8d5-4b76-90cd-ecb77680e9a7",
+        "chatSessionId": "sess_96e96222-c684-4e3a-9d9c-bb309bcbc09c",
+        "timestamp": 1788495832763
+      }
+    ]
+  }
+}

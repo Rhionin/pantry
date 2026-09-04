@@ -46,7 +46,7 @@ export const AddInstanceModal = ({
   return (
     <Modal opened={opened} onClose={closeModal} title="Add item instance">
       <form onSubmit={(event) => void handleSubmit(event)}>
-        <Stack>
+        <Stack gap="sm">
           <TextInput
             label="Expiration date"
             type="date"
@@ -54,10 +54,14 @@ export const AddInstanceModal = ({
             value={expiryDate}
             onChange={(event) => setExpiryDate(event.currentTarget.value)}
           />
-          {error !== '' && <Alert color="red">{error}</Alert>}
+          {error !== '' && (
+            <Alert color="red" py="xs">
+              {error}
+            </Alert>
+          )}
           <Group justify="flex-end">
-            <Button variant="default" onClick={closeModal}>Cancel</Button>
-            <Button type="submit" loading={submitting} disabled={expiryDate === ''}>
+            <Button size="xs" variant="default" onClick={closeModal}>Cancel</Button>
+            <Button size="xs" type="submit" loading={submitting} disabled={expiryDate === ''}>
               Add instance
             </Button>
           </Group>

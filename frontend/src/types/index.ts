@@ -8,6 +8,9 @@ export interface ProductSummary {
   name: string;
   category: string;
   unitOfMeasure: string;
+  // Thumbnail sourced from Open Food Facts. Omitted from the JSON response
+  // (via omitempty) when no image is available.
+  imageUrl?: string;
 }
 
 export interface Product extends ProductSummary {

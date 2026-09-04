@@ -91,46 +91,56 @@ export const ShoppingListPage = () => {
   };
 
   return (
-    <Stack gap="lg">
+    <Stack gap="sm">
       <Group justify="space-between">
-        <Title order={1}>Shopping list</Title>
+        <Title order={1} size="h3">Shopping list</Title>
         <CartExportButton disabled={entries.length === 0} />
       </Group>
-      <Stack component="form" gap="sm" onSubmit={(event) => {
+      <Stack component="form" gap="xs" onSubmit={(event) => {
         event.preventDefault();
         void addManualItem();
       }}>
-        <Title order={2}>Add an item</Title>
-        <NativeSelect
-          label="Pantry item"
-          value={selectedItemId}
-          onChange={(event) => setSelectedItemId(event.currentTarget.value)}
-          data={[
-            { value: '', label: 'Choose an item' },
-            ...inventory.map((inventoryItem) => ({
-              value: inventoryItem.item.id,
-              label: inventoryItem.item.product.name,
-            })),
-          ]}
-        />
-        <NumberInput
-          label="Quantity"
-          min={1}
-          step={1}
-          allowDecimal={false}
-          value={quantity}
-          onChange={setQuantity}
-        />
-        <Button
-          type="submit"
-          loading={saving}
-          disabled={selectedItemId === '' || !manualQuantityIsValid}
-        >
-          Add to shopping list
-        </Button>
+        <Title order={2} size="h5">Add an item</Title>
+        <Group align="end" gap="xs" wrap="wrap">
+          <NativeSelect
+            size="xs"
+            label="Pantry item"
+            value={selectedItemId}
+            onChange={(event) => setSelectedItemId(event.currentTarget.value)}
+            data={[
+              { value: '', label: 'Choose an item' },
+              ...inventory.map((inventoryItem) => ({
+                value: inventoryItem.item.id,
+                label: inventoryItem.item.product.name,
+              })),
+            ]}
+          />
+          <NumberInput
+            size="xs"
+            label="Quantity"
+            min={1}
+            step={1}
+            allowDecimal={false}
+            value={quantity}
+            onChange={setQuantity}
+            w={100}
+          />
+          <Button
+            size="xs"
+            type="submit"
+            loading={saving}
+            disabled={selectedItemId === '' || !manualQuantityIsValid}
+          >
+            Add to shopping list
+          </Button>
+        </Group>
       </Stack>
       {loading && <Loader aria-label="Loading shopping list" />}
-      {error !== '' && <Alert color="red">{error}</Alert>}
+      {error !== '' && (
+        <Alert color="red" py="xs">
+          {error}
+        </Alert>
+      )}
       {!loading && error === '' && entries.length === 0 && (
         <Text c="dimmed">Your shopping list is empty.</Text>
       )}

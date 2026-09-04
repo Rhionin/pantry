@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Alert, Loader, Stack, Text, TextInput, Title } from '@mantine/core';
+import { Alert, Loader, SimpleGrid, Stack, Text, TextInput, Title } from '@mantine/core';
 import { getInventoryList } from '../../api/client';
 import type { InventoryItem } from '../../types';
 import { filterInventoryItems } from '../../utils/inventoryFilter';
@@ -15,17 +15,19 @@ interface InventorySectionProps {
 }
 
 const InventorySection = ({ heading, items, selectedItemId, onSelect }: InventorySectionProps) => (
-  <Stack component="section" aria-label={heading} gap="sm">
-    <Title order={2}>{heading}</Title>
-    {items.map((inventoryItem) => (
-      <ItemRow
-        key={inventoryItem.item.id}
-        inventoryItem={inventoryItem}
-        selected={selectedItemId === inventoryItem.item.id}
-        controlsId={`inventory-item-${inventoryItem.item.id}`}
-        onSelect={() => onSelect(inventoryItem.item.id)}
-      />
-    ))}
+  <Stack component="section" aria-label={heading} gap="xs">
+    <Title order={2} size="h4">{heading}</Title>
+    <SimpleGrid cols={{ base: 1, xs: 2, sm: 3, md: 4 }} spacing="xs">
+      {items.map((inventoryItem) => (
+        <ItemRow
+          key={inventoryItem.item.id}
+          inventoryItem={inventoryItem}
+          selected={selectedItemId === inventoryItem.item.id}
+          controlsId={`inventory-item-${inventoryItem.item.id}`}
+          onSelect={() => onSelect(inventoryItem.item.id)}
+        />
+      ))}
+    </SimpleGrid>
   </Stack>
 );
 
@@ -65,16 +67,21 @@ export const InventoryPage = () => {
   };
 
   return (
-    <Stack gap="lg">
-      <Title order={1}>Inventory</Title>
+    <Stack gap="sm">
+      <Title order={1} size="h3">Inventory</Title>
       <TextInput
+        size="xs"
         label="Search inventory"
         placeholder="Search by product name or category"
         value={searchQuery}
         onChange={(event) => setSearchQuery(event.currentTarget.value)}
       />
       {loading && <Loader aria-label="Loading inventory" />}
-      {error !== '' && <Alert color="red">{error}</Alert>}
+      {error !== '' && (
+        <Alert color="red" py="xs">
+          {error}
+        </Alert>
+      )}
       {!loading && error === '' && inventoryItems.length === 0 && (
         <Text c="dimmed">Your inventory is empty.</Text>
       )}
@@ -100,7 +107,7 @@ export const InventoryPage = () => {
         />
       )}
       {selectedItem !== undefined && (
-        <Stack gap="lg">
+        <Stack gap="sm">
           <ItemInstanceList
             itemId={selectedItem.item.id}
             productName={selectedItem.item.product.name}

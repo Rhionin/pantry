@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Alert, Loader, Stack, Text, Title } from '@mantine/core';
+import { Alert, Loader, SimpleGrid, Stack, Text, Title } from '@mantine/core';
 import { createScanEntry, getInventoryList, listScanEntries } from '../../api/client';
 import type { InventoryItem, ScanEntry } from '../../types';
 import { BarcodeInputField } from '../scanner/BarcodeInputField';
@@ -65,10 +65,14 @@ export const ScanQueuePage = ({ userId = DEFAULT_USER_ID }: ScanQueuePageProps) 
   };
 
   return (
-    <Stack gap="lg">
-      <Title order={1}>Scan queue</Title>
+    <Stack gap="sm">
+      <Title order={1} size="h3">Scan queue</Title>
       <BarcodeInputField onScan={(barcode) => void captureBarcode(barcode)} />
-      {scanError !== '' && <Alert color="red">{scanError}</Alert>}
+      {scanError !== '' && (
+        <Alert color="red" py="xs">
+          {scanError}
+        </Alert>
+      )}
       <BatchReviewPanel
         selectedIds={selectedIds}
         onComplete={() => {
@@ -77,20 +81,26 @@ export const ScanQueuePage = ({ userId = DEFAULT_USER_ID }: ScanQueuePageProps) 
         }}
       />
       {loading && <Loader aria-label="Loading scan queue" />}
-      {error !== '' && <Alert color="red">{error}</Alert>}
+      {error !== '' && (
+        <Alert color="red" py="xs">
+          {error}
+        </Alert>
+      )}
       {!loading && error === '' && entries.length === 0 && (
         <Text c="dimmed">No pending scans.</Text>
       )}
-      {entries.map((entry) => (
-        <ScanEntryCard
-          key={entry.id}
-          entry={entry}
-          itemId={entry.productId === null ? undefined : itemIdByProductId.get(entry.productId)}
-          selected={selectedIds.includes(entry.id)}
-          onSelectedChange={(selected) => setEntrySelected(entry.id, selected)}
-          onChanged={() => void loadQueue()}
-        />
-      ))}
+      <SimpleGrid cols={{ base: 1, sm: 2, lg: 3 }} spacing="xs">
+        {entries.map((entry) => (
+          <ScanEntryCard
+            key={entry.id}
+            entry={entry}
+            itemId={entry.productId === null ? undefined : itemIdByProductId.get(entry.productId)}
+            selected={selectedIds.includes(entry.id)}
+            onSelectedChange={(selected) => setEntrySelected(entry.id, selected)}
+            onChanged={() => void loadQueue()}
+          />
+        ))}
+      </SimpleGrid>
     </Stack>
   );
 };

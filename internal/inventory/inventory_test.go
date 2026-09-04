@@ -29,6 +29,37 @@ func newTestPantry(t *testing.T) (*inventory.Pantry, *product.Catalog, *sql.DB) 
 	return inventory.NewPantry(conn), product.NewCatalog(conn), conn
 }
 
+// TestGetOrCreateItem_ProductImageURL locks in that Item.Product.ImageURL is
+// projected through the items-products join, not silently dropped like the
+// other product columns would be if a join query omitted it.
+func TestGetOrCreateItem_ProductImageURL(t *testing.T) {
+	pantry, catalog, _ := newTestPantry(t)
+	ctx := context.Background()
+
+	const wantImageURL = "https://images.openfoodfacts.org/thumb.jpg"
+	if err := catalog.CreateProduct(ctx, product.Product{
+		ID: "prod-1", Name: "Milk", Category: "Dairy", ImageURL: wantImageURL,
+	}); err != nil {
+		t.Fatalf("CreateProduct: %v", err)
+	}
+
+	item, err := pantry.GetOrCreateItem(ctx, "user-1", "prod-1")
+	if err != nil {
+		t.Fatalf("GetOrCreateItem: %v", err)
+	}
+	if item.Product == nil || item.Product.ImageURL != wantImageURL {
+		t.Errorf("GetOrCreateItem: want Product.ImageURL %q, got %+v", wantImageURL, item.Product)
+	}
+
+	items, err := pantry.ListItems(ctx, "user-1")
+	if err != nil {
+		t.Fatalf("ListItems: %v", err)
+	}
+	if len(items) != 1 || items[0].Product.ImageURL != wantImageURL {
+		t.Fatalf("ListItems: want 1 item with Product.ImageURL %q, got %+v", wantImageURL, items)
+	}
+}
+
 // createTestProduct is a helper that creates a product for testing.
 func createTestProduct(t *testing.T, catalog *product.Catalog, ctx context.Context, id, name string) {
 	t.Helper()

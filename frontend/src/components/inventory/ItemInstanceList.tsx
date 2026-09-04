@@ -67,29 +67,33 @@ export const ItemInstanceList = ({
   );
 
   return (
-    <Stack id={`inventory-item-${itemId}`} component="section" aria-labelledby={`instances-${itemId}`}>
+    <Stack id={`inventory-item-${itemId}`} component="section" aria-labelledby={`instances-${itemId}`} gap="xs">
       <Group justify="space-between">
-        <Title id={`instances-${itemId}`} order={3}>{productName} instances</Title>
-        <Button onClick={() => setAddModalOpened(true)}>Add instance</Button>
+        <Title id={`instances-${itemId}`} order={3} size="h5">{productName} instances</Title>
+        <Button size="xs" onClick={() => setAddModalOpened(true)}>Add instance</Button>
       </Group>
       {loading && <Loader aria-label="Loading item instances" />}
-      {error !== '' && <Alert color="red">{error}</Alert>}
+      {error !== '' && (
+        <Alert color="red" py="xs">
+          {error}
+        </Alert>
+      )}
       {!loading && error === '' && instances.length === 0 && (
         <Text c="dimmed">No item instances.</Text>
       )}
       {!loading && error === '' && instances.length > 0 && (
-        <Stack component="ol" gap="sm">
+        <Stack component="ol" gap="xs">
           {instances.map((instance) => (
-            <Paper component="li" key={instance.id} withBorder p="sm">
-              <Group justify="space-between" align="flex-start">
-                <Stack gap={2}>
-                  <Text>Stocked in {formatDate(instance.stockInAt)}</Text>
-                  <Text>
+            <Paper component="li" key={instance.id} withBorder p="xs">
+              <Group justify="space-between" align="center" wrap="nowrap">
+                <Group gap="xs">
+                  <Text size="sm">Stocked in {formatDate(instance.stockInAt)}</Text>
+                  <Text size="sm" c="dimmed">
                     {instance.expiresAt === null
                       ? 'No expiration date'
                       : `Expires ${formatDate(instance.expiresAt)}`}
                   </Text>
-                </Stack>
+                </Group>
                 {expiryBadge(instanceStatuses.get(instance.id) ?? 'ok')}
               </Group>
             </Paper>

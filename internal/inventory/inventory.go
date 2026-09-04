@@ -80,7 +80,7 @@ func (r *Pantry) getItemByUserAndProduct(ctx context.Context, userID, productID 
 	row := r.db.QueryRowContext(ctx, `
 		SELECT 
 			i.id, i.user_id, i.product_id, i.target_quantity, i.created_at,
-			p.id, p.name, COALESCE(p.category, ''), COALESCE(p.unit_of_measure, '')
+			p.id, p.name, COALESCE(p.category, ''), COALESCE(p.unit_of_measure, ''), COALESCE(p.image_url, '')
 		FROM items i
 		JOIN products p ON p.id = i.product_id
 		WHERE i.user_id = ? AND i.product_id = ?`,
@@ -102,7 +102,7 @@ func (r *Pantry) getItemByID(ctx context.Context, itemID string) (*Item, error) 
 	row := r.db.QueryRowContext(ctx, `
 		SELECT 
 			i.id, i.user_id, i.product_id, i.target_quantity, i.created_at,
-			p.id, p.name, COALESCE(p.category, ''), COALESCE(p.unit_of_measure, '')
+			p.id, p.name, COALESCE(p.category, ''), COALESCE(p.unit_of_measure, ''), COALESCE(p.image_url, '')
 		FROM items i
 		JOIN products p ON p.id = i.product_id
 		WHERE i.id = ?`,
@@ -124,7 +124,7 @@ func (r *Pantry) ListItems(ctx context.Context, userID string) ([]Item, error) {
 	rows, err := r.db.QueryContext(ctx, `
 		SELECT 
 			i.id, i.user_id, i.product_id, i.target_quantity, i.created_at,
-			p.id, p.name, COALESCE(p.category, ''), COALESCE(p.unit_of_measure, '')
+			p.id, p.name, COALESCE(p.category, ''), COALESCE(p.unit_of_measure, ''), COALESCE(p.image_url, '')
 		FROM items i
 		JOIN products p ON p.id = i.product_id
 		WHERE i.user_id = ?
@@ -287,7 +287,7 @@ type scanner interface {
 func scanItem(row scanner) (*Item, error) {
 	var item Item
 	var targetQuantity sql.NullInt64
-	var productID, productName, productCategory, productUnitOfMeasure string
+	var productID, productName, productCategory, productUnitOfMeasure, productImageURL string
 
 	err := row.Scan(
 		&item.ID,
@@ -299,6 +299,7 @@ func scanItem(row scanner) (*Item, error) {
 		&productName,
 		&productCategory,
 		&productUnitOfMeasure,
+		&productImageURL,
 	)
 	if err != nil {
 		return nil, err
@@ -314,6 +315,7 @@ func scanItem(row scanner) (*Item, error) {
 		Name:          productName,
 		Category:      productCategory,
 		UnitOfMeasure: productUnitOfMeasure,
+		ImageURL:      productImageURL,
 	}
 
 	return &item, nil

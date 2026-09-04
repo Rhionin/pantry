@@ -38,9 +38,12 @@ func TestCreateProduct(t *testing.T) {
 		wantRoundtrip bool
 	}{
 		{
-			name:          "explicit ID persisted",
-			id:            "prod-1",
-			product:       product.Product{ID: "prod-1", Name: "Whole Milk", Category: "Dairy", UnitOfMeasure: "gallon"},
+			name: "explicit ID persisted",
+			id:   "prod-1",
+			product: product.Product{
+				ID: "prod-1", Name: "Whole Milk", Category: "Dairy", UnitOfMeasure: "gallon",
+				ImageURL: "https://images.openfoodfacts.org/milk.jpg",
+			},
 			wantIDEmpty:   false,
 			wantRoundtrip: true,
 		},
@@ -98,6 +101,9 @@ func TestCreateProduct(t *testing.T) {
 				}
 				if got.UnitOfMeasure != tt.product.UnitOfMeasure {
 					t.Errorf("UnitOfMeasure: want %q, got %q", tt.product.UnitOfMeasure, got.UnitOfMeasure)
+				}
+				if got.ImageURL != tt.product.ImageURL {
+					t.Errorf("ImageURL: want %q, got %q", tt.product.ImageURL, got.ImageURL)
 				}
 			}
 		})
@@ -243,12 +249,14 @@ func TestUpdateProduct(t *testing.T) {
 				Name:          "Whole Milk",
 				Category:      "Dairy",
 				UnitOfMeasure: "gallon",
+				ImageURL:      "https://images.openfoodfacts.org/old.jpg",
 			},
 			updatedProd: product.Product{
 				ID:            "p1",
 				Name:          "Skim Milk",
 				Category:      "Dairy",
 				UnitOfMeasure: "half-gallon",
+				ImageURL:      "https://images.openfoodfacts.org/new.jpg",
 			},
 			expectError:     false,
 			expectNameAfter: "Skim Milk",
@@ -295,6 +303,9 @@ func TestUpdateProduct(t *testing.T) {
 				}
 				if got.UnitOfMeasure != tt.updatedProd.UnitOfMeasure {
 					t.Errorf("UnitOfMeasure: want %q, got %q", tt.updatedProd.UnitOfMeasure, got.UnitOfMeasure)
+				}
+				if got.ImageURL != tt.updatedProd.ImageURL {
+					t.Errorf("ImageURL: want %q, got %q", tt.updatedProd.ImageURL, got.ImageURL)
 				}
 			}
 		})
@@ -431,7 +442,7 @@ func TestLookupByBarcode(t *testing.T) {
 			barcode: "999888777666",
 			userID:  "user-xyz",
 			setupProducts: []product.Product{
-				{ID: "p1", Name: "Product A"},
+				{ID: "p1", Name: "Product A", ImageURL: "https://images.openfoodfacts.org/a.jpg"},
 			},
 			setupMappings: []struct{ barcode, productID, source, userID string }{
 				{"999888777666", "p1", "global", ""},
@@ -476,6 +487,9 @@ func TestLookupByBarcode(t *testing.T) {
 				}
 				if single.ID != *tt.expectSingle {
 					t.Errorf("expected single ID %q, got %q", *tt.expectSingle, single.ID)
+				}
+				if tt.name == "global-only lookup" && single.ImageURL != "https://images.openfoodfacts.org/a.jpg" {
+					t.Errorf("expected ImageURL to round-trip through LookupByBarcode, got %q", single.ImageURL)
 				}
 			}
 		})

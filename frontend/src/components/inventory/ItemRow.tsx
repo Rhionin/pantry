@@ -1,5 +1,5 @@
 import { memo } from 'react';
-import { Badge, Button, Card, Group, Stack, Text, Title } from '@mantine/core';
+import { Avatar, Badge, Button, Card, Group, Stack, Text, Title } from '@mantine/core';
 import type { InventoryItem } from '../../types';
 
 export interface ItemRowProps {
@@ -18,20 +18,25 @@ export const ItemRow = memo(({
   const { item, instanceCount, nearExpiryCount, expiredCount } = inventoryItem;
 
   return (
-    <Card component="article" withBorder>
-      <Group justify="space-between" align="flex-start" wrap="nowrap">
-        <Stack gap={2}>
-          <Title order={3}>{item.product.name}</Title>
-          <Text c="dimmed">{item.product.category}</Text>
-          <Text size="sm">{instanceCount} {item.product.unitOfMeasure}</Text>
-          <Group gap="xs">
-            {nearExpiryCount > 0 && (
-              <Badge color="yellow">{nearExpiryCount} near expiry</Badge>
-            )}
-            {expiredCount > 0 && <Badge color="red">{expiredCount} expired</Badge>}
-          </Group>
-        </Stack>
+    <Card component="article" withBorder padding="sm" h="100%">
+      <Stack gap="xs" justify="space-between" h="100%">
+        <Group gap="xs" wrap="nowrap" align="flex-start">
+          <Avatar src={item.product.imageUrl} name={item.product.name} radius="sm" size="lg" />
+          <Stack gap={2}>
+            <Title order={3} size="h5">{item.product.name}</Title>
+            <Text size="sm" c="dimmed">{item.product.category}</Text>
+            <Text size="sm">{instanceCount} {item.product.unitOfMeasure}</Text>
+          </Stack>
+        </Group>
+        <Group gap="xs">
+          {nearExpiryCount > 0 && (
+            <Badge size="sm" color="yellow">{nearExpiryCount} near expiry</Badge>
+          )}
+          {expiredCount > 0 && <Badge size="sm" color="red">{expiredCount} expired</Badge>}
+        </Group>
         <Button
+          size="xs"
+          fullWidth
           variant={selected ? 'filled' : 'light'}
           aria-expanded={selected}
           aria-controls={controlsId}
@@ -39,7 +44,7 @@ export const ItemRow = memo(({
         >
           {selected ? 'Hide instances' : 'View instances'}
         </Button>
-      </Group>
+      </Stack>
     </Card>
   );
 });

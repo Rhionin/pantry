@@ -18,6 +18,7 @@ type Product struct {
 	Name          string    `json:"name"`
 	Category      string    `json:"category"`
 	UnitOfMeasure string    `json:"unitOfMeasure"`
+	ImageURL      string    `json:"imageUrl,omitempty"`
 	CreatedAt     time.Time `json:"createdAt"`
 }
 
@@ -28,6 +29,7 @@ type ProductSummary struct {
 	Name          string `json:"name"`
 	Category      string `json:"category"`
 	UnitOfMeasure string `json:"unitOfMeasure"`
+	ImageURL      string `json:"imageUrl,omitempty"`
 }
 
 // Catalog provides database operations for products and barcodes.
@@ -48,8 +50,9 @@ func (r *Catalog) CreateProduct(ctx context.Context, product Product) error {
 		product.ID = uuid.NewString()
 	}
 	_, err := r.db.ExecContext(ctx,
-		`INSERT INTO products (id, name, category, unit_of_measure) VALUES (?, ?, ?, ?)`,
+		`INSERT INTO products (id, name, category, unit_of_measure, image_url) VALUES (?, ?, ?, ?, ?)`,
 		product.ID, product.Name, nullableString(product.Category), nullableString(product.UnitOfMeasure),
+		nullableString(product.ImageURL),
 	)
 	if err != nil {
 		return fmt.Errorf("CreateProduct: %w", err)
@@ -61,11 +64,11 @@ func (r *Catalog) CreateProduct(ctx context.Context, product Product) error {
 // exists.
 func (r *Catalog) GetProductByID(ctx context.Context, id string) (*Product, error) {
 	row := r.db.QueryRowContext(ctx,
-		`SELECT id, name, COALESCE(category, ''), COALESCE(unit_of_measure, ''), created_at
+		`SELECT id, name, COALESCE(category, ''), COALESCE(unit_of_measure, ''), COALESCE(image_url, ''), created_at
 		 FROM products WHERE id = ?`, id)
 
 	var p Product
-	if err := row.Scan(&p.ID, &p.Name, &p.Category, &p.UnitOfMeasure, &p.CreatedAt); err != nil {
+	if err := row.Scan(&p.ID, &p.Name, &p.Category, &p.UnitOfMeasure, &p.ImageURL, &p.CreatedAt); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, nil
 		}
@@ -77,7 +80,7 @@ func (r *Catalog) GetProductByID(ctx context.Context, id string) (*Product, erro
 // ListProducts returns all products, ordered by name.
 func (r *Catalog) ListProducts(ctx context.Context) ([]Product, error) {
 	rows, err := r.db.QueryContext(ctx,
-		`SELECT id, name, COALESCE(category, ''), COALESCE(unit_of_measure, ''), created_at
+		`SELECT id, name, COALESCE(category, ''), COALESCE(unit_of_measure, ''), COALESCE(image_url, ''), created_at
 		 FROM products ORDER BY name`)
 	if err != nil {
 		return nil, fmt.Errorf("ListProducts: %w", err)
@@ -87,7 +90,7 @@ func (r *Catalog) ListProducts(ctx context.Context) ([]Product, error) {
 	var products []Product
 	for rows.Next() {
 		var p Product
-		if err := rows.Scan(&p.ID, &p.Name, &p.Category, &p.UnitOfMeasure, &p.CreatedAt); err != nil {
+		if err := rows.Scan(&p.ID, &p.Name, &p.Category, &p.UnitOfMeasure, &p.ImageURL, &p.CreatedAt); err != nil {
 			return nil, fmt.Errorf("ListProducts scan: %w", err)
 		}
 		products = append(products, p)
@@ -98,12 +101,13 @@ func (r *Catalog) ListProducts(ctx context.Context) ([]Product, error) {
 	return products, nil
 }
 
-// UpdateProduct updates the name, category, and unit_of_measure of an existing
-// product identified by product.ID. It does not change created_at.
+// UpdateProduct updates the name, category, unit_of_measure, and image_url of
+// an existing product identified by product.ID. It does not change created_at.
 func (r *Catalog) UpdateProduct(ctx context.Context, product Product) error {
 	res, err := r.db.ExecContext(ctx,
-		`UPDATE products SET name = ?, category = ?, unit_of_measure = ? WHERE id = ?`,
-		product.Name, nullableString(product.Category), nullableString(product.UnitOfMeasure), product.ID,
+		`UPDATE products SET name = ?, category = ?, unit_of_measure = ?, image_url = ? WHERE id = ?`,
+		product.Name, nullableString(product.Category), nullableString(product.UnitOfMeasure),
+		nullableString(product.ImageURL), product.ID,
 	)
 	if err != nil {
 		return fmt.Errorf("UpdateProduct: %w", err)
@@ -144,7 +148,7 @@ func (r *Catalog) LookupByBarcode(ctx context.Context, barcode, userID string) (
 	// Find the highest-priority match.
 	// We use a CASE expression so user_override rows sort before global rows.
 	row := r.db.QueryRowContext(ctx, `
-		SELECT p.id, p.name, COALESCE(p.category, ''), COALESCE(p.unit_of_measure, '')
+		SELECT p.id, p.name, COALESCE(p.category, ''), COALESCE(p.unit_of_measure, ''), COALESCE(p.image_url, '')
 		FROM barcodes b
 		JOIN products p ON p.id = b.product_id
 		WHERE b.barcode = ?
@@ -158,7 +162,7 @@ func (r *Catalog) LookupByBarcode(ctx context.Context, barcode, userID string) (
 	)
 
 	var summary ProductSummary
-	if err := row.Scan(&summary.ID, &summary.Name, &summary.Category, &summary.UnitOfMeasure); err != nil {
+	if err := row.Scan(&summary.ID, &summary.Name, &summary.Category, &summary.UnitOfMeasure, &summary.ImageURL); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, nil
 		}
