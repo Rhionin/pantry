@@ -725,6 +725,75 @@ func TestScanEntryWithProductJoin(t *testing.T) {
 }
 
 // --------------------------------------------------------------------------
+// TestNewEntryFromLookup
+// --------------------------------------------------------------------------
+
+func TestNewEntryFromLookup(t *testing.T) {
+	now := time.Now()
+	direction := ptrScanDirection(scan.StockOut)
+
+	tests := []struct {
+		name          string
+		lookup        product.LookupResult
+		wantProductID *string
+		wantStatus    scan.ScanStatus
+	}{
+		{
+			name: "found product",
+			lookup: product.LookupResult{
+				Product: &product.ProductSummary{ID: "prod-1", Name: "Milk"},
+			},
+			wantProductID: ptrString("prod-1"),
+			wantStatus:    scan.Pending,
+		},
+		{
+			name:          "not found",
+			lookup:        product.LookupResult{},
+			wantProductID: nil,
+			wantStatus:    scan.Flagged,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			entry := scan.NewEntryFromLookup("user-1", "123456789012", tt.lookup, direction, now)
+
+			if tt.wantProductID == nil && entry.ProductID != nil {
+				t.Errorf("ProductID: want nil, got %v", *entry.ProductID)
+			}
+			if tt.wantProductID != nil {
+				if entry.ProductID == nil {
+					t.Error("ProductID: want non-nil, got nil")
+				} else if *entry.ProductID != *tt.wantProductID {
+					t.Errorf("ProductID: want %q, got %q", *tt.wantProductID, *entry.ProductID)
+				}
+			}
+
+			if entry.Status != tt.wantStatus {
+				t.Errorf("Status: want %q, got %q", tt.wantStatus, entry.Status)
+			}
+			if entry.UnitCount != 1 {
+				t.Errorf("UnitCount: want 1, got %d", entry.UnitCount)
+			}
+
+			// UserID, Barcode, ScannedAt, and Direction are carried through unchanged.
+			if entry.UserID != "user-1" {
+				t.Errorf("UserID: want %q, got %q", "user-1", entry.UserID)
+			}
+			if entry.Barcode != "123456789012" {
+				t.Errorf("Barcode: want %q, got %q", "123456789012", entry.Barcode)
+			}
+			if !entry.ScannedAt.Equal(now) {
+				t.Errorf("ScannedAt: want %v, got %v", now, entry.ScannedAt)
+			}
+			if entry.Direction == nil || *entry.Direction != *direction {
+				t.Errorf("Direction: want %v, got %v", *direction, entry.Direction)
+			}
+		})
+	}
+}
+
+// --------------------------------------------------------------------------
 // Helper functions
 // --------------------------------------------------------------------------
 

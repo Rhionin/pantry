@@ -1,0 +1,362 @@
+{
+  "pbtResults": {},
+  "executionHistory": {
+    "1.1 Create `internal/scanlistener/device.go` with `KeyEvent` (`Code uint16`,": [
+      {
+        "executionId": "e39fc696-1fc1-4367-b7b4-42d268792add",
+        "chatSessionId": "sess_37145344-198f-477d-ac7f-46d256386843",
+        "timestamp": 1789099739248
+      },
+      {
+        "executionId": "e39fc696-1fc1-4367-b7b4-42d268792add",
+        "chatSessionId": "sess_37145344-198f-477d-ac7f-46d256386843",
+        "timestamp": 1789099748150
+      },
+      {
+        "executionId": "e39fc696-1fc1-4367-b7b4-42d268792add",
+        "chatSessionId": "sess_37145344-198f-477d-ac7f-46d256386843",
+        "timestamp": 1789099817925
+      }
+    ],
+    "2.1 Create `internal/scanlistener/keymap.go` with the `keycodeToChar` map,": [
+      {
+        "executionId": "e39fc696-1fc1-4367-b7b4-42d268792add",
+        "chatSessionId": "sess_37145344-198f-477d-ac7f-46d256386843",
+        "timestamp": 1789099739294
+      },
+      {
+        "executionId": "e39fc696-1fc1-4367-b7b4-42d268792add",
+        "chatSessionId": "sess_37145344-198f-477d-ac7f-46d256386843",
+        "timestamp": 1789099749254
+      },
+      {
+        "executionId": "e39fc696-1fc1-4367-b7b4-42d268792add",
+        "chatSessionId": "sess_37145344-198f-477d-ac7f-46d256386843",
+        "timestamp": 1789099819017
+      }
+    ],
+    "2.2 Write unit tests for `decodeKeyEvent`": [
+      {
+        "executionId": "e39fc696-1fc1-4367-b7b4-42d268792add",
+        "chatSessionId": "sess_37145344-198f-477d-ac7f-46d256386843",
+        "timestamp": 1789099739355
+      },
+      {
+        "executionId": "e39fc696-1fc1-4367-b7b4-42d268792add",
+        "chatSessionId": "sess_37145344-198f-477d-ac7f-46d256386843",
+        "timestamp": 1789099826415
+      },
+      {
+        "executionId": "e39fc696-1fc1-4367-b7b4-42d268792add",
+        "chatSessionId": "sess_37145344-198f-477d-ac7f-46d256386843",
+        "timestamp": 1789099911573
+      }
+    ],
+    "3.1 Create `internal/scanlistener/buffer.go` with `maxBarcodeLength = 128`,": [
+      {
+        "executionId": "e39fc696-1fc1-4367-b7b4-42d268792add",
+        "chatSessionId": "sess_37145344-198f-477d-ac7f-46d256386843",
+        "timestamp": 1789099739398
+      },
+      {
+        "executionId": "e39fc696-1fc1-4367-b7b4-42d268792add",
+        "chatSessionId": "sess_37145344-198f-477d-ac7f-46d256386843",
+        "timestamp": 1789099750353
+      },
+      {
+        "executionId": "e39fc696-1fc1-4367-b7b4-42d268792add",
+        "chatSessionId": "sess_37145344-198f-477d-ac7f-46d256386843",
+        "timestamp": 1789099820133
+      }
+    ],
+    "3.2 Write unit tests for `scanBuffer.assemble`": [
+      {
+        "executionId": "e39fc696-1fc1-4367-b7b4-42d268792add",
+        "chatSessionId": "sess_37145344-198f-477d-ac7f-46d256386843",
+        "timestamp": 1789099739448
+      },
+      {
+        "executionId": "e39fc696-1fc1-4367-b7b4-42d268792add",
+        "chatSessionId": "sess_37145344-198f-477d-ac7f-46d256386843",
+        "timestamp": 1789099827526
+      },
+      {
+        "executionId": "e39fc696-1fc1-4367-b7b4-42d268792add",
+        "chatSessionId": "sess_37145344-198f-477d-ac7f-46d256386843",
+        "timestamp": 1789099912617
+      }
+    ],
+    "3.3 Write a property test for buffer assembly and discard rules": [
+      {
+        "executionId": "e39fc696-1fc1-4367-b7b4-42d268792add",
+        "chatSessionId": "sess_37145344-198f-477d-ac7f-46d256386843",
+        "timestamp": 1789099739487
+      },
+      {
+        "executionId": "e39fc696-1fc1-4367-b7b4-42d268792add",
+        "chatSessionId": "sess_37145344-198f-477d-ac7f-46d256386843",
+        "timestamp": 1789099918651
+      },
+      {
+        "executionId": "62121316-74ba-4b8d-8444-e02802a8e2b1",
+        "chatSessionId": "sess_37145344-198f-477d-ac7f-46d256386843",
+        "timestamp": 1789100058814
+      }
+    ],
+    "4.1 Create `internal/scanlistener/mode.go` with `modeState` (`mu": [
+      {
+        "executionId": "e39fc696-1fc1-4367-b7b4-42d268792add",
+        "chatSessionId": "sess_37145344-198f-477d-ac7f-46d256386843",
+        "timestamp": 1789099739538
+      },
+      {
+        "executionId": "e39fc696-1fc1-4367-b7b4-42d268792add",
+        "chatSessionId": "sess_37145344-198f-477d-ac7f-46d256386843",
+        "timestamp": 1789099751442
+      },
+      {
+        "executionId": "e39fc696-1fc1-4367-b7b4-42d268792add",
+        "chatSessionId": "sess_37145344-198f-477d-ac7f-46d256386843",
+        "timestamp": 1789099821169
+      }
+    ],
+    "4.2 Write unit tests for `modeState` and `classify`": [
+      {
+        "executionId": "e39fc696-1fc1-4367-b7b4-42d268792add",
+        "chatSessionId": "sess_37145344-198f-477d-ac7f-46d256386843",
+        "timestamp": 1789099739577
+      },
+      {
+        "executionId": "e39fc696-1fc1-4367-b7b4-42d268792add",
+        "chatSessionId": "sess_37145344-198f-477d-ac7f-46d256386843",
+        "timestamp": 1789099828283
+      },
+      {
+        "executionId": "e39fc696-1fc1-4367-b7b4-42d268792add",
+        "chatSessionId": "sess_37145344-198f-477d-ac7f-46d256386843",
+        "timestamp": 1789099910906
+      }
+    ],
+    "5. Checkpoint - buffering and mode logic compile and their tests pass": [
+      {
+        "executionId": "e39fc696-1fc1-4367-b7b4-42d268792add",
+        "chatSessionId": "sess_37145344-198f-477d-ac7f-46d256386843",
+        "timestamp": 1789099739618
+      }
+    ],
+    "6.1 Add `scan.NewEntryFromLookup` to `internal/scan/scan.go`": [
+      {
+        "executionId": "e39fc696-1fc1-4367-b7b4-42d268792add",
+        "chatSessionId": "sess_37145344-198f-477d-ac7f-46d256386843",
+        "timestamp": 1789099739661
+      },
+      {
+        "executionId": "e39fc696-1fc1-4367-b7b4-42d268792add",
+        "chatSessionId": "sess_37145344-198f-477d-ac7f-46d256386843",
+        "timestamp": 1789099752198
+      },
+      {
+        "executionId": "e39fc696-1fc1-4367-b7b4-42d268792add",
+        "chatSessionId": "sess_37145344-198f-477d-ac7f-46d256386843",
+        "timestamp": 1789099822015
+      }
+    ],
+    "6.2 Write unit tests for `NewEntryFromLookup`": [
+      {
+        "executionId": "e39fc696-1fc1-4367-b7b4-42d268792add",
+        "chatSessionId": "sess_37145344-198f-477d-ac7f-46d256386843",
+        "timestamp": 1789099739704
+      },
+      {
+        "executionId": "e39fc696-1fc1-4367-b7b4-42d268792add",
+        "chatSessionId": "sess_37145344-198f-477d-ac7f-46d256386843",
+        "timestamp": 1789099829375
+      },
+      {
+        "executionId": "e39fc696-1fc1-4367-b7b4-42d268792add",
+        "chatSessionId": "sess_37145344-198f-477d-ac7f-46d256386843",
+        "timestamp": 1789099914274
+      }
+    ],
+    "6.3 Refactor `ScanCreateHandler.Handle` in": [
+      {
+        "executionId": "e39fc696-1fc1-4367-b7b4-42d268792add",
+        "chatSessionId": "sess_37145344-198f-477d-ac7f-46d256386843",
+        "timestamp": 1789099739747
+      },
+      {
+        "executionId": "e39fc696-1fc1-4367-b7b4-42d268792add",
+        "chatSessionId": "sess_37145344-198f-477d-ac7f-46d256386843",
+        "timestamp": 1789099830065
+      },
+      {
+        "executionId": "e39fc696-1fc1-4367-b7b4-42d268792add",
+        "chatSessionId": "sess_37145344-198f-477d-ac7f-46d256386843",
+        "timestamp": 1789099913367
+      }
+    ],
+    "6.4 Add regression coverage for the refactored `ScanCreateHandler`": [
+      {
+        "executionId": "e39fc696-1fc1-4367-b7b4-42d268792add",
+        "chatSessionId": "sess_37145344-198f-477d-ac7f-46d256386843",
+        "timestamp": 1789099739790
+      },
+      {
+        "executionId": "21d6ac1b-2e91-4520-85f4-b24195c01adc",
+        "chatSessionId": "sess_37145344-198f-477d-ac7f-46d256386843",
+        "timestamp": 1789139197422
+      }
+    ],
+    "7. Checkpoint - shared helper and handler refactor tests pass": [
+      {
+        "executionId": "e39fc696-1fc1-4367-b7b4-42d268792add",
+        "chatSessionId": "sess_37145344-198f-477d-ac7f-46d256386843",
+        "timestamp": 1789099739827
+      }
+    ],
+    "8.1 Create `internal/scanlistener/listener.go` with the `ScanListener`": [
+      {
+        "executionId": "e39fc696-1fc1-4367-b7b4-42d268792add",
+        "chatSessionId": "sess_37145344-198f-477d-ac7f-46d256386843",
+        "timestamp": 1789099739861
+      },
+      {
+        "executionId": "21d6ac1b-2e91-4520-85f4-b24195c01adc",
+        "chatSessionId": "sess_37145344-198f-477d-ac7f-46d256386843",
+        "timestamp": 1789139198189
+      }
+    ],
+    "8.2 Write unit tests for `ScanListener.Run`": [
+      {
+        "executionId": "e39fc696-1fc1-4367-b7b4-42d268792add",
+        "chatSessionId": "sess_37145344-198f-477d-ac7f-46d256386843",
+        "timestamp": 1789099739908
+      }
+    ],
+    "9.1 Create `internal/scanlistener/device_linux.go` tagged `//go:build": [
+      {
+        "executionId": "e39fc696-1fc1-4367-b7b4-42d268792add",
+        "chatSessionId": "sess_37145344-198f-477d-ac7f-46d256386843",
+        "timestamp": 1789099739962
+      },
+      {
+        "executionId": "e39fc696-1fc1-4367-b7b4-42d268792add",
+        "chatSessionId": "sess_37145344-198f-477d-ac7f-46d256386843",
+        "timestamp": 1789099919651
+      },
+      {
+        "executionId": "62121316-74ba-4b8d-8444-e02802a8e2b1",
+        "chatSessionId": "sess_37145344-198f-477d-ac7f-46d256386843",
+        "timestamp": 1789100059754
+      },
+      {
+        "executionId": "21d6ac1b-2e91-4520-85f4-b24195c01adc",
+        "chatSessionId": "sess_37145344-198f-477d-ac7f-46d256386843",
+        "timestamp": 1789139181200
+      },
+      {
+        "executionId": "21d6ac1b-2e91-4520-85f4-b24195c01adc",
+        "chatSessionId": "sess_37145344-198f-477d-ac7f-46d256386843",
+        "timestamp": 1789139189465
+      }
+    ],
+    "10.1 Implement `loadScanListenerConfig() (*scanlistener.ScanListener,": [
+      {
+        "executionId": "e39fc696-1fc1-4367-b7b4-42d268792add",
+        "chatSessionId": "sess_37145344-198f-477d-ac7f-46d256386843",
+        "timestamp": 1789099739998
+      }
+    ],
+    "10.2 Wire `ScanListener` startup into `main()`": [
+      {
+        "executionId": "e39fc696-1fc1-4367-b7b4-42d268792add",
+        "chatSessionId": "sess_37145344-198f-477d-ac7f-46d256386843",
+        "timestamp": 1789099740036
+      }
+    ],
+    "10.3 Write unit tests for `loadScanListenerConfig`": [
+      {
+        "executionId": "e39fc696-1fc1-4367-b7b4-42d268792add",
+        "chatSessionId": "sess_37145344-198f-477d-ac7f-46d256386843",
+        "timestamp": 1789099740079
+      }
+    ],
+    "11. Checkpoint - server builds and starts with and without `HID_SCANNER_DEVICE` configured, all tests pass": [
+      {
+        "executionId": "e39fc696-1fc1-4367-b7b4-42d268792add",
+        "chatSessionId": "sess_37145344-198f-477d-ac7f-46d256386843",
+        "timestamp": 1789099740123
+      }
+    ],
+    "12.1 Write a property test for mode transitions and classification": [
+      {
+        "executionId": "e39fc696-1fc1-4367-b7b4-42d268792add",
+        "chatSessionId": "sess_37145344-198f-477d-ac7f-46d256386843",
+        "timestamp": 1789099740161
+      }
+    ],
+    "12.2 Write a property test for lookup-based entry construction": [
+      {
+        "executionId": "e39fc696-1fc1-4367-b7b4-42d268792add",
+        "chatSessionId": "sess_37145344-198f-477d-ac7f-46d256386843",
+        "timestamp": 1789099740204
+      }
+    ],
+    "12.3 Write a property test for structural identity with HTTP-created entries": [
+      {
+        "executionId": "e39fc696-1fc1-4367-b7b4-42d268792add",
+        "chatSessionId": "sess_37145344-198f-477d-ac7f-46d256386843",
+        "timestamp": 1789099740261
+      }
+    ],
+    "12.4 Write a property test for headless user attribution and default fallback": [
+      {
+        "executionId": "e39fc696-1fc1-4367-b7b4-42d268792add",
+        "chatSessionId": "sess_37145344-198f-477d-ac7f-46d256386843",
+        "timestamp": 1789099740316
+      }
+    ],
+    "13.1 Add a handler test asserting headless entries have the same shape as browser-created entries": [
+      {
+        "executionId": "e39fc696-1fc1-4367-b7b4-42d268792add",
+        "chatSessionId": "sess_37145344-198f-477d-ac7f-46d256386843",
+        "timestamp": 1789099740357
+      }
+    ],
+    "14. Final checkpoint - full suite, race detector, and coverage": [
+      {
+        "executionId": "e39fc696-1fc1-4367-b7b4-42d268792add",
+        "chatSessionId": "sess_37145344-198f-477d-ac7f-46d256386843",
+        "timestamp": 1789099740396
+      }
+    ],
+    "1. Set up the `Device` interface and event types": [
+      {
+        "executionId": "e39fc696-1fc1-4367-b7b4-42d268792add",
+        "chatSessionId": "sess_37145344-198f-477d-ac7f-46d256386843",
+        "timestamp": 1789099817997
+      }
+    ],
+    "4. Implement mode state and Control_Barcode classification": [
+      {
+        "executionId": "e39fc696-1fc1-4367-b7b4-42d268792add",
+        "chatSessionId": "sess_37145344-198f-477d-ac7f-46d256386843",
+        "timestamp": 1789099910951
+      }
+    ],
+    "2. Implement keycode-to-character mapping and key event decoding": [
+      {
+        "executionId": "e39fc696-1fc1-4367-b7b4-42d268792add",
+        "chatSessionId": "sess_37145344-198f-477d-ac7f-46d256386843",
+        "timestamp": 1789099911618
+      }
+    ],
+    "9. Implement the production evdev `Device`": [
+      {
+        "executionId": "21d6ac1b-2e91-4520-85f4-b24195c01adc",
+        "chatSessionId": "sess_37145344-198f-477d-ac7f-46d256386843",
+        "timestamp": 1789139189515
+      }
+    ]
+  }
+}

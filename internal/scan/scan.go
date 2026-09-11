@@ -46,6 +46,31 @@ type ScanEntry struct {
 	CreatedAt   time.Time               `json:"createdAt"`
 }
 
+// NewEntryFromLookup builds a ScanEntry for a freshly scanned barcode from a
+// product lookup result. ProductID and Status are derived from the lookup: a
+// found product yields ProductID set and Status Pending; no match yields
+// ProductID nil and Status Flagged. UnitCount is always 1. This is the single
+// rule both the HTTP scan-create path and ScanListener use, so entries
+// created through either path are identical apart from UserID.
+func NewEntryFromLookup(userID, barcode string, lookup product.LookupResult, direction *ScanDirection, scannedAt time.Time) ScanEntry {
+	status := Pending
+	var productID *string
+	if lookup.IsFound() {
+		productID = &lookup.Product.ID
+	} else {
+		status = Flagged
+	}
+	return ScanEntry{
+		UserID:    userID,
+		Barcode:   barcode,
+		ScannedAt: scannedAt,
+		Direction: direction,
+		UnitCount: 1,
+		Status:    status,
+		ProductID: productID,
+	}
+}
+
 // Queue provides database operations for scan entries.
 type Queue struct {
 	db *sql.DB

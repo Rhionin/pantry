@@ -94,3 +94,68 @@ func TestProductCacheTTL(t *testing.T) {
 		})
 	}
 }
+
+// --------------------------------------------------------------------------
+// loadScanListenerConfig
+// --------------------------------------------------------------------------
+
+// Feature: background-scan-listener
+//
+// Validates: Requirements 2.7, 4.2
+//
+// loadScanListenerConfig reads the stock-in/stock-out control barcodes and
+// headless user ID from the environment, defaulting each when unset, and
+// refuses to build a listener when the two control barcodes are identical.
+func TestLoadScanListenerConfig(t *testing.T) {
+	t.Run("defaults when unset", func(t *testing.T) {
+		listener, ok := loadScanListenerConfig()
+
+		if !ok {
+			t.Fatal("loadScanListenerConfig() ok = false, want true")
+		}
+		if listener.StockInBarcode != "STOCK_IN" {
+			t.Errorf("StockInBarcode = %q, want %q", listener.StockInBarcode, "STOCK_IN")
+		}
+		if listener.StockOutBarcode != "STOCK_OUT" {
+			t.Errorf("StockOutBarcode = %q, want %q", listener.StockOutBarcode, "STOCK_OUT")
+		}
+		if listener.HeadlessUserID != "user-1" {
+			t.Errorf("HeadlessUserID = %q, want %q", listener.HeadlessUserID, "user-1")
+		}
+	})
+
+	t.Run("explicit env values override defaults", func(t *testing.T) {
+		t.Setenv("STOCK_IN_CONTROL_BARCODE", "IN-123")
+		t.Setenv("STOCK_OUT_CONTROL_BARCODE", "OUT-456")
+		t.Setenv("HEADLESS_USER_ID", "user-headless")
+
+		listener, ok := loadScanListenerConfig()
+
+		if !ok {
+			t.Fatal("loadScanListenerConfig() ok = false, want true")
+		}
+		if listener.StockInBarcode != "IN-123" {
+			t.Errorf("StockInBarcode = %q, want %q", listener.StockInBarcode, "IN-123")
+		}
+		if listener.StockOutBarcode != "OUT-456" {
+			t.Errorf("StockOutBarcode = %q, want %q", listener.StockOutBarcode, "OUT-456")
+		}
+		if listener.HeadlessUserID != "user-headless" {
+			t.Errorf("HeadlessUserID = %q, want %q", listener.HeadlessUserID, "user-headless")
+		}
+	})
+
+	t.Run("equal control barcodes yield ok=false", func(t *testing.T) {
+		t.Setenv("STOCK_IN_CONTROL_BARCODE", "SAME")
+		t.Setenv("STOCK_OUT_CONTROL_BARCODE", "SAME")
+
+		listener, ok := loadScanListenerConfig()
+
+		if ok {
+			t.Fatal("loadScanListenerConfig() ok = true, want false")
+		}
+		if listener != nil {
+			t.Errorf("listener = %v, want nil", listener)
+		}
+	})
+}

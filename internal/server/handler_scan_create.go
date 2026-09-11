@@ -33,35 +33,18 @@ func (h *ScanCreateHandler) Handle(req Request[createScanRequest, struct{}]) (Cr
 		return Created{}, BadRequest("userId is required")
 	}
 
-	unitCount := req.Body.UnitCount
-	if unitCount == 0 {
-		unitCount = 1
-	}
-
 	// Look up the product for this barcode
 	lookupResult, err := h.LookupService.Lookup(req.Context, req.Body.Barcode, req.Body.UserID)
 	if err != nil {
 		return Created{}, InternalError(err)
 	}
 
-	// Determine status based on product lookup
-	status := scan.Pending
-	var prodID *string
-	if lookupResult.IsFound() {
-		prodID = &lookupResult.Product.ID
-	} else {
-		status = scan.Flagged
+	entry := scan.NewEntryFromLookup(req.Body.UserID, req.Body.Barcode, lookupResult, req.Body.Direction, time.Now())
+	if req.Body.ExpiresAt != nil {
+		entry.ExpiresAt = req.Body.ExpiresAt
 	}
-
-	entry := scan.ScanEntry{
-		UserID:    req.Body.UserID,
-		Barcode:   req.Body.Barcode,
-		ScannedAt: time.Now(),
-		Direction: req.Body.Direction,
-		UnitCount: unitCount,
-		ExpiresAt: req.Body.ExpiresAt,
-		Status:    status,
-		ProductID: prodID,
+	if req.Body.UnitCount != 0 {
+		entry.UnitCount = req.Body.UnitCount // HTTP callers may override the default of 1
 	}
 
 	created, err := h.Queue.CreateScanEntry(req.Context, entry)

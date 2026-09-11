@@ -10,6 +10,8 @@ import (
 
 	"github.com/Rhionin/pantry/internal/app"
 	"github.com/Rhionin/pantry/internal/product"
+	"github.com/Rhionin/pantry/internal/scan"
+	"github.com/Rhionin/pantry/internal/scanlistener"
 	"github.com/Rhionin/pantry/internal/server"
 	_ "modernc.org/sqlite"
 )
@@ -77,6 +79,12 @@ func main() {
 
 	handler := server.NewHandler(catalog, lookupService, refresher, sqlDB)
 
+	if listener, ok := loadScanListenerConfig(); ok {
+		listener.Queue = scan.NewQueue(sqlDB)
+		listener.LookupService = lookupService
+		go listener.Run(context.Background())
+	}
+
 	log.Printf("listening on %s", addr)
 	if err := http.ListenAndServe(addr, handler); err != nil {
 		log.Fatalf("listen: %v", err)
@@ -94,4 +102,23 @@ func envOrDefault(key, defaultVal string) string {
 		return v
 	}
 	return defaultVal
+}
+
+// loadScanListenerConfig reads the ScanListener's env-configurable settings
+// and returns a listener ready to have its Queue and LookupService assigned.
+// It returns ok=false when the stock-in and stock-out control barcodes are
+// identical, since that configuration would make every scan ambiguous.
+func loadScanListenerConfig() (*scanlistener.ScanListener, bool) {
+	stockIn := envOrDefault("STOCK_IN_CONTROL_BARCODE", "STOCK_IN")
+	stockOut := envOrDefault("STOCK_OUT_CONTROL_BARCODE", "STOCK_OUT")
+	if stockIn == stockOut {
+		log.Printf("scan listener: STOCK_IN_CONTROL_BARCODE and STOCK_OUT_CONTROL_BARCODE must differ, not starting scan listener")
+		return nil, false
+	}
+
+	return &scanlistener.ScanListener{
+		StockInBarcode:  stockIn,
+		StockOutBarcode: stockOut,
+		HeadlessUserID:  envOrDefault("HEADLESS_USER_ID", "user-1"),
+	}, true
 }
