@@ -500,3 +500,75 @@ func TestLookupByBarcode(t *testing.T) {
 func stringPtr(s string) *string {
 	return &s
 }
+
+// --------------------------------------------------------------------------
+// TestCreateProductSourceValidation
+// --------------------------------------------------------------------------
+
+// Feature: product-cache-freshness, Property 2: Writes record provenance
+//
+// Validates: Requirements 1.7
+//
+// CreateProduct stores the requested Source when it is "external" or "user",
+// defaults an empty Source to SourceUser, and rejects any other value. The
+// product API never submits an invalid source; this is the only guard on the
+// {'external','user'} constraint SQLite cannot enforce via ALTER TABLE.
+func TestCreateProductSourceValidation(t *testing.T) {
+	tests := []struct {
+		name       string
+		source     string
+		wantErr    bool
+		wantStored string
+	}{
+		{
+			name:       "empty source defaults to user",
+			source:     "",
+			wantStored: product.SourceUser,
+		},
+		{
+			name:       "external source accepted",
+			source:     product.SourceExternal,
+			wantStored: product.SourceExternal,
+		},
+		{
+			name:       "user source accepted",
+			source:     product.SourceUser,
+			wantStored: product.SourceUser,
+		},
+		{
+			name:    "invalid source rejected",
+			source:  "bogus",
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			catalog := newTestCatalog(t)
+			ctx := context.Background()
+
+			p := product.Product{ID: "p1", Name: "Test Product", Source: tt.source}
+			err := catalog.CreateProduct(ctx, p)
+			if tt.wantErr {
+				if err == nil {
+					t.Fatal("expected error, got nil")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("CreateProduct: %v", err)
+			}
+
+			got, err := catalog.GetProductByID(ctx, "p1")
+			if err != nil {
+				t.Fatalf("GetProductByID: %v", err)
+			}
+			if got == nil {
+				t.Fatal("expected product, got nil")
+			}
+			if got.Source != tt.wantStored {
+				t.Errorf("Source: want %q, got %q", tt.wantStored, got.Source)
+			}
+		})
+	}
+}

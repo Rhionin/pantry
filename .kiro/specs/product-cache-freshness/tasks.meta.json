@@ -1,0 +1,572 @@
+{
+  "pbtResults": {
+    "3.6 Unit and property tests for the pure functions": {
+      "status": "passed",
+      "lastRunTimestamp": 1788578897703
+    }
+  },
+  "executionHistory": {
+    "1.1 Add migration `004_add_product_freshness.sql`": [
+      {
+        "executionId": "5dd0ffd9-2efe-4ccf-839e-e3e50a30a91f",
+        "chatSessionId": "sess_749af0d0-0ba5-4170-91d2-73acfb0a3621",
+        "timestamp": 1788577364784
+      },
+      {
+        "executionId": "5dd0ffd9-2efe-4ccf-839e-e3e50a30a91f",
+        "chatSessionId": "sess_749af0d0-0ba5-4170-91d2-73acfb0a3621",
+        "timestamp": 1788577374193
+      },
+      {
+        "executionId": "5dd0ffd9-2efe-4ccf-839e-e3e50a30a91f",
+        "chatSessionId": "sess_749af0d0-0ba5-4170-91d2-73acfb0a3621",
+        "timestamp": 1788577501712
+      }
+    ],
+    "1.2 Add the three freshness fields to `product.Product`": [
+      {
+        "executionId": "5dd0ffd9-2efe-4ccf-839e-e3e50a30a91f",
+        "chatSessionId": "sess_749af0d0-0ba5-4170-91d2-73acfb0a3621",
+        "timestamp": 1788577364836
+      },
+      {
+        "executionId": "5dd0ffd9-2efe-4ccf-839e-e3e50a30a91f",
+        "chatSessionId": "sess_749af0d0-0ba5-4170-91d2-73acfb0a3621",
+        "timestamp": 1788577504607
+      },
+      {
+        "executionId": "5dd0ffd9-2efe-4ccf-839e-e3e50a30a91f",
+        "chatSessionId": "sess_749af0d0-0ba5-4170-91d2-73acfb0a3621",
+        "timestamp": 1788577538632
+      }
+    ],
+    "1.3 Unit test migration 004 backfill and idempotence": [
+      {
+        "executionId": "5dd0ffd9-2efe-4ccf-839e-e3e50a30a91f",
+        "chatSessionId": "sess_749af0d0-0ba5-4170-91d2-73acfb0a3621",
+        "timestamp": 1788577364893
+      },
+      {
+        "executionId": "5dd0ffd9-2efe-4ccf-839e-e3e50a30a91f",
+        "chatSessionId": "sess_749af0d0-0ba5-4170-91d2-73acfb0a3621",
+        "timestamp": 1788577545468
+      },
+      {
+        "executionId": "5dd0ffd9-2efe-4ccf-839e-e3e50a30a91f",
+        "chatSessionId": "sess_749af0d0-0ba5-4170-91d2-73acfb0a3621",
+        "timestamp": 1788577824664
+      }
+    ],
+    "2.1 Bind provenance in `CreateProduct`": [
+      {
+        "executionId": "5dd0ffd9-2efe-4ccf-839e-e3e50a30a91f",
+        "chatSessionId": "sess_749af0d0-0ba5-4170-91d2-73acfb0a3621",
+        "timestamp": 1788577364961
+      },
+      {
+        "executionId": "5dd0ffd9-2efe-4ccf-839e-e3e50a30a91f",
+        "chatSessionId": "sess_749af0d0-0ba5-4170-91d2-73acfb0a3621",
+        "timestamp": 1788577828895
+      },
+      {
+        "executionId": "5dd0ffd9-2efe-4ccf-839e-e3e50a30a91f",
+        "chatSessionId": "sess_749af0d0-0ba5-4170-91d2-73acfb0a3621",
+        "timestamp": 1788577900883
+      }
+    ],
+    "2.2 Read the freshness columns in `GetProductByID` and `ListProducts`": [
+      {
+        "executionId": "5dd0ffd9-2efe-4ccf-839e-e3e50a30a91f",
+        "chatSessionId": "sess_749af0d0-0ba5-4170-91d2-73acfb0a3621",
+        "timestamp": 1788577365008
+      },
+      {
+        "executionId": "5dd0ffd9-2efe-4ccf-839e-e3e50a30a91f",
+        "chatSessionId": "sess_749af0d0-0ba5-4170-91d2-73acfb0a3621",
+        "timestamp": 1788577904623
+      },
+      {
+        "executionId": "5dd0ffd9-2efe-4ccf-839e-e3e50a30a91f",
+        "chatSessionId": "sess_749af0d0-0ba5-4170-91d2-73acfb0a3621",
+        "timestamp": 1788577960418
+      }
+    ],
+    "2.3 Add `SaveRefresh` and `MarkRefreshed`": [
+      {
+        "executionId": "5dd0ffd9-2efe-4ccf-839e-e3e50a30a91f",
+        "chatSessionId": "sess_749af0d0-0ba5-4170-91d2-73acfb0a3621",
+        "timestamp": 1788577365059
+      },
+      {
+        "executionId": "5dd0ffd9-2efe-4ccf-839e-e3e50a30a91f",
+        "chatSessionId": "sess_749af0d0-0ba5-4170-91d2-73acfb0a3621",
+        "timestamp": 1788577963960
+      },
+      {
+        "executionId": "5dd0ffd9-2efe-4ccf-839e-e3e50a30a91f",
+        "chatSessionId": "sess_749af0d0-0ba5-4170-91d2-73acfb0a3621",
+        "timestamp": 1788578090923
+      }
+    ],
+    "2.4 Set `name_overridden` inside the `UpdateProduct` UPDATE": [
+      {
+        "executionId": "5dd0ffd9-2efe-4ccf-839e-e3e50a30a91f",
+        "chatSessionId": "sess_749af0d0-0ba5-4170-91d2-73acfb0a3621",
+        "timestamp": 1788577365115
+      },
+      {
+        "executionId": "5dd0ffd9-2efe-4ccf-839e-e3e50a30a91f",
+        "chatSessionId": "sess_749af0d0-0ba5-4170-91d2-73acfb0a3621",
+        "timestamp": 1788578094850
+      },
+      {
+        "executionId": "5dd0ffd9-2efe-4ccf-839e-e3e50a30a91f",
+        "chatSessionId": "sess_749af0d0-0ba5-4170-91d2-73acfb0a3621",
+        "timestamp": 1788578131430
+      }
+    ],
+    "2.5 Unit test `CreateProduct` source validation": [
+      {
+        "executionId": "5dd0ffd9-2efe-4ccf-839e-e3e50a30a91f",
+        "chatSessionId": "sess_749af0d0-0ba5-4170-91d2-73acfb0a3621",
+        "timestamp": 1788577365166
+      },
+      {
+        "executionId": "5dd0ffd9-2efe-4ccf-839e-e3e50a30a91f",
+        "chatSessionId": "sess_749af0d0-0ba5-4170-91d2-73acfb0a3621",
+        "timestamp": 1788578140574
+      },
+      {
+        "executionId": "5dd0ffd9-2efe-4ccf-839e-e3e50a30a91f",
+        "chatSessionId": "sess_749af0d0-0ba5-4170-91d2-73acfb0a3621",
+        "timestamp": 1788578272832
+      }
+    ],
+    "3.1 Create `internal/product/refresh.go` with the type and the freshness predicate": [
+      {
+        "executionId": "5dd0ffd9-2efe-4ccf-839e-e3e50a30a91f",
+        "chatSessionId": "sess_749af0d0-0ba5-4170-91d2-73acfb0a3621",
+        "timestamp": 1788577365210
+      },
+      {
+        "executionId": "5dd0ffd9-2efe-4ccf-839e-e3e50a30a91f",
+        "chatSessionId": "sess_749af0d0-0ba5-4170-91d2-73acfb0a3621",
+        "timestamp": 1788578277102
+      },
+      {
+        "executionId": "5dd0ffd9-2efe-4ccf-839e-e3e50a30a91f",
+        "chatSessionId": "sess_749af0d0-0ba5-4170-91d2-73acfb0a3621",
+        "timestamp": 1788578338257
+      }
+    ],
+    "3.2 Implement `mergeRefresh` and `classify`": [
+      {
+        "executionId": "5dd0ffd9-2efe-4ccf-839e-e3e50a30a91f",
+        "chatSessionId": "sess_749af0d0-0ba5-4170-91d2-73acfb0a3621",
+        "timestamp": 1788577365259
+      },
+      {
+        "executionId": "5dd0ffd9-2efe-4ccf-839e-e3e50a30a91f",
+        "chatSessionId": "sess_749af0d0-0ba5-4170-91d2-73acfb0a3621",
+        "timestamp": 1788578341476
+      },
+      {
+        "executionId": "5dd0ffd9-2efe-4ccf-839e-e3e50a30a91f",
+        "chatSessionId": "sess_749af0d0-0ba5-4170-91d2-73acfb0a3621",
+        "timestamp": 1788578394366
+      }
+    ],
+    "3.3 Implement `Refresh` — the single core path both entry points call": [
+      {
+        "executionId": "5dd0ffd9-2efe-4ccf-839e-e3e50a30a91f",
+        "chatSessionId": "sess_749af0d0-0ba5-4170-91d2-73acfb0a3621",
+        "timestamp": 1788577365307
+      },
+      {
+        "executionId": "5dd0ffd9-2efe-4ccf-839e-e3e50a30a91f",
+        "chatSessionId": "sess_749af0d0-0ba5-4170-91d2-73acfb0a3621",
+        "timestamp": 1788578398694
+      },
+      {
+        "executionId": "5dd0ffd9-2efe-4ccf-839e-e3e50a30a91f",
+        "chatSessionId": "sess_749af0d0-0ba5-4170-91d2-73acfb0a3621",
+        "timestamp": 1788578492759
+      }
+    ],
+    "3.4 Implement `ScheduleRefresh` and `Wait`": [
+      {
+        "executionId": "5dd0ffd9-2efe-4ccf-839e-e3e50a30a91f",
+        "chatSessionId": "sess_749af0d0-0ba5-4170-91d2-73acfb0a3621",
+        "timestamp": 1788577365357
+      },
+      {
+        "executionId": "5dd0ffd9-2efe-4ccf-839e-e3e50a30a91f",
+        "chatSessionId": "sess_749af0d0-0ba5-4170-91d2-73acfb0a3621",
+        "timestamp": 1788578496120
+      },
+      {
+        "executionId": "5dd0ffd9-2efe-4ccf-839e-e3e50a30a91f",
+        "chatSessionId": "sess_749af0d0-0ba5-4170-91d2-73acfb0a3621",
+        "timestamp": 1788578623274
+      }
+    ],
+    "3.5 Wire the `Refresher` into `LookupService` and stamp newly cached products": [
+      {
+        "executionId": "5dd0ffd9-2efe-4ccf-839e-e3e50a30a91f",
+        "chatSessionId": "sess_749af0d0-0ba5-4170-91d2-73acfb0a3621",
+        "timestamp": 1788577365409
+      },
+      {
+        "executionId": "5dd0ffd9-2efe-4ccf-839e-e3e50a30a91f",
+        "chatSessionId": "sess_749af0d0-0ba5-4170-91d2-73acfb0a3621",
+        "timestamp": 1788578626447
+      },
+      {
+        "executionId": "5dd0ffd9-2efe-4ccf-839e-e3e50a30a91f",
+        "chatSessionId": "sess_749af0d0-0ba5-4170-91d2-73acfb0a3621",
+        "timestamp": 1788578715525
+      }
+    ],
+    "3.6 Unit and property tests for the pure functions": [
+      {
+        "executionId": "5dd0ffd9-2efe-4ccf-839e-e3e50a30a91f",
+        "chatSessionId": "sess_749af0d0-0ba5-4170-91d2-73acfb0a3621",
+        "timestamp": 1788577365472
+      },
+      {
+        "executionId": "5dd0ffd9-2efe-4ccf-839e-e3e50a30a91f",
+        "chatSessionId": "sess_749af0d0-0ba5-4170-91d2-73acfb0a3621",
+        "timestamp": 1788578719518
+      },
+      {
+        "executionId": "5dd0ffd9-2efe-4ccf-839e-e3e50a30a91f",
+        "chatSessionId": "sess_749af0d0-0ba5-4170-91d2-73acfb0a3621",
+        "timestamp": 1788578917600
+      }
+    ],
+    "3.7 Concurrency tests for single-flight and goroutine lifetime": [
+      {
+        "executionId": "5dd0ffd9-2efe-4ccf-839e-e3e50a30a91f",
+        "chatSessionId": "sess_749af0d0-0ba5-4170-91d2-73acfb0a3621",
+        "timestamp": 1788577365540
+      },
+      {
+        "executionId": "5dd0ffd9-2efe-4ccf-839e-e3e50a30a91f",
+        "chatSessionId": "sess_749af0d0-0ba5-4170-91d2-73acfb0a3621",
+        "timestamp": 1788578921009
+      },
+      {
+        "executionId": "5dd0ffd9-2efe-4ccf-839e-e3e50a30a91f",
+        "chatSessionId": "sess_749af0d0-0ba5-4170-91d2-73acfb0a3621",
+        "timestamp": 1788579546304
+      }
+    ],
+    "4. Checkpoint - schema, catalog, and refresher compile and their tests pass": [
+      {
+        "executionId": "5dd0ffd9-2efe-4ccf-839e-e3e50a30a91f",
+        "chatSessionId": "sess_749af0d0-0ba5-4170-91d2-73acfb0a3621",
+        "timestamp": 1788577365590
+      },
+      {
+        "executionId": "5dd0ffd9-2efe-4ccf-839e-e3e50a30a91f",
+        "chatSessionId": "sess_749af0d0-0ba5-4170-91d2-73acfb0a3621",
+        "timestamp": 1788579551979
+      },
+      {
+        "executionId": "5dd0ffd9-2efe-4ccf-839e-e3e50a30a91f",
+        "chatSessionId": "sess_749af0d0-0ba5-4170-91d2-73acfb0a3621",
+        "timestamp": 1788579698673
+      }
+    ],
+    "5.1 Add `fakeClock`": [
+      {
+        "executionId": "5dd0ffd9-2efe-4ccf-839e-e3e50a30a91f",
+        "chatSessionId": "sess_749af0d0-0ba5-4170-91d2-73acfb0a3621",
+        "timestamp": 1788577365636
+      },
+      {
+        "executionId": "5dd0ffd9-2efe-4ccf-839e-e3e50a30a91f",
+        "chatSessionId": "sess_749af0d0-0ba5-4170-91d2-73acfb0a3621",
+        "timestamp": 1788579709173
+      },
+      {
+        "executionId": "5dd0ffd9-2efe-4ccf-839e-e3e50a30a91f",
+        "chatSessionId": "sess_749af0d0-0ba5-4170-91d2-73acfb0a3621",
+        "timestamp": 1788579765108
+      }
+    ],
+    "5.2 Extend `fakeOpenFoodFacts`": [
+      {
+        "executionId": "5dd0ffd9-2efe-4ccf-839e-e3e50a30a91f",
+        "chatSessionId": "sess_749af0d0-0ba5-4170-91d2-73acfb0a3621",
+        "timestamp": 1788577365686
+      },
+      {
+        "executionId": "5dd0ffd9-2efe-4ccf-839e-e3e50a30a91f",
+        "chatSessionId": "sess_749af0d0-0ba5-4170-91d2-73acfb0a3621",
+        "timestamp": 1788579768396
+      },
+      {
+        "executionId": "5dd0ffd9-2efe-4ccf-839e-e3e50a30a91f",
+        "chatSessionId": "sess_749af0d0-0ba5-4170-91d2-73acfb0a3621",
+        "timestamp": 1788579833162
+      }
+    ],
+    "5.3 Widen `testEnv` and make `exchanges()` reuse the same `Refresher`": [
+      {
+        "executionId": "5dd0ffd9-2efe-4ccf-839e-e3e50a30a91f",
+        "chatSessionId": "sess_749af0d0-0ba5-4170-91d2-73acfb0a3621",
+        "timestamp": 1788577365734
+      },
+      {
+        "executionId": "5dd0ffd9-2efe-4ccf-839e-e3e50a30a91f",
+        "chatSessionId": "sess_749af0d0-0ba5-4170-91d2-73acfb0a3621",
+        "timestamp": 1788579873943
+      },
+      {
+        "executionId": "5be2cb73-af10-49c0-a9cb-2c7b7ffb78fb",
+        "chatSessionId": "sess_749af0d0-0ba5-4170-91d2-73acfb0a3621",
+        "timestamp": 1788927063003
+      },
+      {
+        "executionId": "5be2cb73-af10-49c0-a9cb-2c7b7ffb78fb",
+        "chatSessionId": "sess_749af0d0-0ba5-4170-91d2-73acfb0a3621",
+        "timestamp": 1788927679755
+      }
+    ],
+    "6.1 Add the `BadGateway` error constructor": [
+      {
+        "executionId": "5dd0ffd9-2efe-4ccf-839e-e3e50a30a91f",
+        "chatSessionId": "sess_749af0d0-0ba5-4170-91d2-73acfb0a3621",
+        "timestamp": 1788577365800
+      },
+      {
+        "executionId": "5dd0ffd9-2efe-4ccf-839e-e3e50a30a91f",
+        "chatSessionId": "sess_749af0d0-0ba5-4170-91d2-73acfb0a3621",
+        "timestamp": 1788580049320
+      },
+      {
+        "executionId": "5be2cb73-af10-49c0-a9cb-2c7b7ffb78fb",
+        "chatSessionId": "sess_749af0d0-0ba5-4170-91d2-73acfb0a3621",
+        "timestamp": 1788927703892
+      },
+      {
+        "executionId": "5be2cb73-af10-49c0-a9cb-2c7b7ffb78fb",
+        "chatSessionId": "sess_749af0d0-0ba5-4170-91d2-73acfb0a3621",
+        "timestamp": 1788927713970
+      }
+    ],
+    "6.2 Add `RefreshHandler`": [
+      {
+        "executionId": "5dd0ffd9-2efe-4ccf-839e-e3e50a30a91f",
+        "chatSessionId": "sess_749af0d0-0ba5-4170-91d2-73acfb0a3621",
+        "timestamp": 1788577365858
+      },
+      {
+        "executionId": "5be2cb73-af10-49c0-a9cb-2c7b7ffb78fb",
+        "chatSessionId": "sess_749af0d0-0ba5-4170-91d2-73acfb0a3621",
+        "timestamp": 1788927727601
+      },
+      {
+        "executionId": "5be2cb73-af10-49c0-a9cb-2c7b7ffb78fb",
+        "chatSessionId": "sess_749af0d0-0ba5-4170-91d2-73acfb0a3621",
+        "timestamp": 1788927840820
+      }
+    ],
+    "6.3 Add `productCacheTTL()` and construct the `Refresher` in `main.go`": [
+      {
+        "executionId": "5dd0ffd9-2efe-4ccf-839e-e3e50a30a91f",
+        "chatSessionId": "sess_749af0d0-0ba5-4170-91d2-73acfb0a3621",
+        "timestamp": 1788577365909
+      },
+      {
+        "executionId": "5be2cb73-af10-49c0-a9cb-2c7b7ffb78fb",
+        "chatSessionId": "sess_749af0d0-0ba5-4170-91d2-73acfb0a3621",
+        "timestamp": 1788927841864
+      },
+      {
+        "executionId": "5be2cb73-af10-49c0-a9cb-2c7b7ffb78fb",
+        "chatSessionId": "sess_749af0d0-0ba5-4170-91d2-73acfb0a3621",
+        "timestamp": 1788927848444
+      }
+    ],
+    "6.4 Widen `NewHandler` and register the route": [
+      {
+        "executionId": "5dd0ffd9-2efe-4ccf-839e-e3e50a30a91f",
+        "chatSessionId": "sess_749af0d0-0ba5-4170-91d2-73acfb0a3621",
+        "timestamp": 1788577365957
+      },
+      {
+        "executionId": "5be2cb73-af10-49c0-a9cb-2c7b7ffb78fb",
+        "chatSessionId": "sess_749af0d0-0ba5-4170-91d2-73acfb0a3621",
+        "timestamp": 1788927851932
+      },
+      {
+        "executionId": "5be2cb73-af10-49c0-a9cb-2c7b7ffb78fb",
+        "chatSessionId": "sess_749af0d0-0ba5-4170-91d2-73acfb0a3621",
+        "timestamp": 1788927942006
+      }
+    ],
+    "6.5 Unit test `productCacheTTL`": [
+      {
+        "executionId": "5dd0ffd9-2efe-4ccf-839e-e3e50a30a91f",
+        "chatSessionId": "sess_749af0d0-0ba5-4170-91d2-73acfb0a3621",
+        "timestamp": 1788577366015
+      },
+      {
+        "executionId": "5be2cb73-af10-49c0-a9cb-2c7b7ffb78fb",
+        "chatSessionId": "sess_749af0d0-0ba5-4170-91d2-73acfb0a3621",
+        "timestamp": 1788927945753
+      },
+      {
+        "executionId": "5be2cb73-af10-49c0-a9cb-2c7b7ffb78fb",
+        "chatSessionId": "sess_749af0d0-0ba5-4170-91d2-73acfb0a3621",
+        "timestamp": 1788928059123
+      }
+    ],
+    "7.1 Refresh outcome cases": [
+      {
+        "executionId": "5dd0ffd9-2efe-4ccf-839e-e3e50a30a91f",
+        "chatSessionId": "sess_749af0d0-0ba5-4170-91d2-73acfb0a3621",
+        "timestamp": 1788577366065
+      },
+      {
+        "executionId": "5be2cb73-af10-49c0-a9cb-2c7b7ffb78fb",
+        "chatSessionId": "sess_749af0d0-0ba5-4170-91d2-73acfb0a3621",
+        "timestamp": 1788928067605
+      },
+      {
+        "executionId": "5be2cb73-af10-49c0-a9cb-2c7b7ffb78fb",
+        "chatSessionId": "sess_749af0d0-0ba5-4170-91d2-73acfb0a3621",
+        "timestamp": 1788928289545
+      }
+    ],
+    "7.2 Refresh failure and ownership cases": [
+      {
+        "executionId": "5dd0ffd9-2efe-4ccf-839e-e3e50a30a91f",
+        "chatSessionId": "sess_749af0d0-0ba5-4170-91d2-73acfb0a3621",
+        "timestamp": 1788577366117
+      },
+      {
+        "executionId": "5be2cb73-af10-49c0-a9cb-2c7b7ffb78fb",
+        "chatSessionId": "sess_749af0d0-0ba5-4170-91d2-73acfb0a3621",
+        "timestamp": 1788928304886
+      },
+      {
+        "executionId": "5be2cb73-af10-49c0-a9cb-2c7b7ffb78fb",
+        "chatSessionId": "sess_749af0d0-0ba5-4170-91d2-73acfb0a3621",
+        "timestamp": 1788928904039
+      }
+    ],
+    "7.3 Stale-while-revalidate lookup tests": [
+      {
+        "executionId": "5dd0ffd9-2efe-4ccf-839e-e3e50a30a91f",
+        "chatSessionId": "sess_749af0d0-0ba5-4170-91d2-73acfb0a3621",
+        "timestamp": 1788577366186
+      },
+      {
+        "executionId": "5be2cb73-af10-49c0-a9cb-2c7b7ffb78fb",
+        "chatSessionId": "sess_749af0d0-0ba5-4170-91d2-73acfb0a3621",
+        "timestamp": 1788928913875
+      },
+      {
+        "executionId": "5be2cb73-af10-49c0-a9cb-2c7b7ffb78fb",
+        "chatSessionId": "sess_749af0d0-0ba5-4170-91d2-73acfb0a3621",
+        "timestamp": 1788929369082
+      }
+    ],
+    "7.4 Name-override flow": [
+      {
+        "executionId": "5dd0ffd9-2efe-4ccf-839e-e3e50a30a91f",
+        "chatSessionId": "sess_749af0d0-0ba5-4170-91d2-73acfb0a3621",
+        "timestamp": 1788577366244
+      },
+      {
+        "executionId": "5be2cb73-af10-49c0-a9cb-2c7b7ffb78fb",
+        "chatSessionId": "sess_749af0d0-0ba5-4170-91d2-73acfb0a3621",
+        "timestamp": 1788929382635
+      },
+      {
+        "executionId": "5be2cb73-af10-49c0-a9cb-2c7b7ffb78fb",
+        "chatSessionId": "sess_749af0d0-0ba5-4170-91d2-73acfb0a3621",
+        "timestamp": 1788929513897
+      }
+    ],
+    "7.5 User-override precedence across a revalidation": [
+      {
+        "executionId": "5dd0ffd9-2efe-4ccf-839e-e3e50a30a91f",
+        "chatSessionId": "sess_749af0d0-0ba5-4170-91d2-73acfb0a3621",
+        "timestamp": 1788577366292
+      },
+      {
+        "executionId": "5be2cb73-af10-49c0-a9cb-2c7b7ffb78fb",
+        "chatSessionId": "sess_749af0d0-0ba5-4170-91d2-73acfb0a3621",
+        "timestamp": 1788929517578
+      },
+      {
+        "executionId": "5be2cb73-af10-49c0-a9cb-2c7b7ffb78fb",
+        "chatSessionId": "sess_749af0d0-0ba5-4170-91d2-73acfb0a3621",
+        "timestamp": 1788929676272
+      }
+    ],
+    "8. Final checkpoint - full suite, race detector, and coverage": [
+      {
+        "executionId": "5dd0ffd9-2efe-4ccf-839e-e3e50a30a91f",
+        "chatSessionId": "sess_749af0d0-0ba5-4170-91d2-73acfb0a3621",
+        "timestamp": 1788577366339
+      },
+      {
+        "executionId": "5be2cb73-af10-49c0-a9cb-2c7b7ffb78fb",
+        "chatSessionId": "sess_749af0d0-0ba5-4170-91d2-73acfb0a3621",
+        "timestamp": 1788929680551
+      },
+      {
+        "executionId": "c00e2bbd-2f57-45b1-b231-954616697c1c",
+        "chatSessionId": "sess_749af0d0-0ba5-4170-91d2-73acfb0a3621",
+        "timestamp": 1789096701191
+      }
+    ],
+    "1. Schema and model foundation": [
+      {
+        "executionId": "5dd0ffd9-2efe-4ccf-839e-e3e50a30a91f",
+        "chatSessionId": "sess_749af0d0-0ba5-4170-91d2-73acfb0a3621",
+        "timestamp": 1788577824759
+      }
+    ],
+    "2. `product.Catalog` reads and writes": [
+      {
+        "executionId": "5dd0ffd9-2efe-4ccf-839e-e3e50a30a91f",
+        "chatSessionId": "sess_749af0d0-0ba5-4170-91d2-73acfb0a3621",
+        "timestamp": 1788578272924
+      }
+    ],
+    "3. `product.Refresher`": [
+      {
+        "executionId": "5dd0ffd9-2efe-4ccf-839e-e3e50a30a91f",
+        "chatSessionId": "sess_749af0d0-0ba5-4170-91d2-73acfb0a3621",
+        "timestamp": 1788579546370
+      }
+    ],
+    "5. Test infrastructure for the API tests": [
+      {
+        "executionId": "5be2cb73-af10-49c0-a9cb-2c7b7ffb78fb",
+        "chatSessionId": "sess_749af0d0-0ba5-4170-91d2-73acfb0a3621",
+        "timestamp": 1788927679834
+      }
+    ],
+    "6. Configuration, the refresh endpoint, and wiring": [
+      {
+        "executionId": "5be2cb73-af10-49c0-a9cb-2c7b7ffb78fb",
+        "chatSessionId": "sess_749af0d0-0ba5-4170-91d2-73acfb0a3621",
+        "timestamp": 1788928059205
+      }
+    ],
+    "7. API tests": [
+      {
+        "executionId": "5be2cb73-af10-49c0-a9cb-2c7b7ffb78fb",
+        "chatSessionId": "sess_749af0d0-0ba5-4170-91d2-73acfb0a3621",
+        "timestamp": 1788929676339
+      }
+    ]
+  }
+}

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 )
 
 // LookupResult represents the outcome of a three-tier product lookup.
@@ -32,6 +33,25 @@ type LookupService struct {
 	OpenFoodFacts interface {
 		LookupBarcode(ctx context.Context, barcode string) (*ProductSummary, error)
 	}
+
+	// Refresher schedules background revalidation of stale cached rows.
+	// Nil disables revalidation, so every existing LookupService literal
+	// keeps compiling and behaving as it does today.
+	Refresher interface {
+		ScheduleRefresh(ctx context.Context, productID string)
+	}
+
+	// Now supplies the current time. Defaults to time.Now when nil.
+	Now func() time.Time
+}
+
+// now returns the current time, defaulting to time.Now so existing
+// construction sites that leave Now nil behave unchanged.
+func (s *LookupService) now() time.Time {
+	if s.Now != nil {
+		return s.Now()
+	}
+	return time.Now()
 }
 
 // Lookup performs a three-tier product lookup for the given barcode and user.
@@ -67,10 +87,14 @@ func (s *LookupService) Lookup(ctx context.Context, barcode, userID string) (Loo
 
 	// If we found exactly one product in the database, return it.
 	if product != nil {
-		return LookupResult{
+		result := LookupResult{
 			Product: product,
 			Source:  "global", // Conservative default; the catalog prioritizes overrides internally
-		}, nil
+		}
+		if s.Refresher != nil {
+			s.Refresher.ScheduleRefresh(ctx, product.ID)
+		}
+		return result, nil
 	}
 
 	// Tier 3: Fall back to external API (Open Food Facts).
@@ -107,12 +131,15 @@ func (s *LookupService) persistExternalProduct(ctx context.Context, product *Pro
 		return fmt.Errorf("could not check for existing product: %w", err)
 	}
 	if existing == nil {
+		now := s.now()
 		err = s.Catalog.CreateProduct(ctx, Product{
 			ID:            product.ID,
 			Name:          product.Name,
 			Category:      product.Category,
 			UnitOfMeasure: product.UnitOfMeasure,
 			ImageURL:      product.ImageURL,
+			Source:        SourceExternal,
+			RefreshedAt:   &now,
 		})
 		if err != nil {
 			return fmt.Errorf("could not save product: %w", err)

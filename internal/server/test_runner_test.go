@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"net/http"
 	"testing"
+	"time"
 
 	"github.com/Rhionin/pantry/internal/product"
 	"github.com/steinfletcher/apitest"
@@ -49,6 +50,8 @@ type testEnv struct {
 	DB            *sql.DB
 	ProductStore  *product.Catalog
 	OpenFoodFacts *fakeOpenFoodFacts
+	Refresher     *product.Refresher
+	Clock         *fakeClock
 	Res           *http.Response // populated only inside afterRequest callbacks
 }
 
@@ -56,8 +59,8 @@ type testEnv struct {
 func runHandlerTests(t *testing.T, tests []handlerTestCase) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			handler, catalog, fake, db := setupTestWithDB(t)
-			env := testEnv{T: t, DB: db, ProductStore: catalog, OpenFoodFacts: fake}
+			handler, catalog, fake, db, refresher, clock := setupTestWithDB(t)
+			env := testEnv{T: t, DB: db, ProductStore: catalog, OpenFoodFacts: fake, Refresher: refresher, Clock: clock}
 
 			if tt.setup != nil {
 				tt.setup(env)
@@ -137,10 +140,20 @@ func buildExpectations(req *apitest.Request, ex httpExchange) *apitest.Response 
 // against the same handler and database, verifying state through the HTTP contract.
 func exchanges(exs ...httpExchange) func(env testEnv) {
 	return func(env testEnv) {
+		// Reuse env.Refresher rather than building a fresh one: a second
+		// Refresher would own a different WaitGroup and in-flight map, so
+		// env.Refresher.Wait() would return without awaiting goroutines this
+		// handler's exchanges started, and tests would flake silently.
+		var now func() time.Time
+		if env.Clock != nil {
+			now = env.Clock.Now
+		}
 		handler := NewHandler(env.ProductStore, &product.LookupService{
 			Catalog:       env.ProductStore,
 			OpenFoodFacts: env.OpenFoodFacts,
-		}, env.DB)
+			Refresher:     env.Refresher,
+			Now:           now,
+		}, env.Refresher, env.DB)
 
 		for i, ex := range exs {
 			env.T.Run("", func(t *testing.T) {

@@ -44,6 +44,10 @@ func InternalError(err error) error {
 	return &HTTPError{Code: http.StatusInternalServerError, Err: err}
 }
 
+func BadGateway(message string) error {
+	return &HTTPError{Code: http.StatusBadGateway, Message: message}
+}
+
 // httpStatusFromError determines the HTTP status code from an error.
 func httpStatusFromError(err error) int {
 	if err == nil {

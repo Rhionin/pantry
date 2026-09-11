@@ -17,6 +17,7 @@ import (
 func NewHandler(
 	catalog *product.Catalog,
 	lookupService *product.LookupService,
+	refresher *product.Refresher,
 	db *sql.DB,
 ) http.Handler {
 	mux := http.NewServeMux()
@@ -32,12 +33,14 @@ func NewHandler(
 	createHandler := &CreateHandler{Catalog: catalog}
 	updateHandler := &UpdateHandler{Catalog: catalog}
 	overrideHandler := &OverrideCreateHandler{Catalog: catalog}
+	refreshHandler := &RefreshHandler{Refresher: refresher, Catalog: catalog}
 
 	mux.HandleFunc("GET /api/products/lookup", HandleJSON(lookupHandler.Handle))
 	mux.HandleFunc("GET /api/products", HandleJSON(listHandler.Handle))
 	mux.HandleFunc("POST /api/products", HandleJSON(createHandler.Handle))
 	mux.HandleFunc("PUT /api/products/{id}", HandleJSON(updateHandler.Handle))
 	mux.HandleFunc("POST /api/products/overrides", HandleJSON(overrideHandler.Handle))
+	mux.HandleFunc("POST /api/products/{id}/refresh", HandleJSON(refreshHandler.Handle))
 
 	// Scan queue handlers
 	scanQueue := scan.NewQueue(db)
