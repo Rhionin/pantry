@@ -162,4 +162,102 @@ describe('ScanQueuePage', () => {
 
     expect(eventSource.closed).toBe(true);
   });
+
+  it('defaults to Stock_Out_View on initial mount', async () => {
+    const fetchMock = vi.fn((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes('status=pending')) {
+        return Promise.resolve(jsonResponse([
+          scanEntry({ id: 'scan-1', barcode: '111', direction: 'stock_out' }),
+          scanEntry({ id: 'scan-2', barcode: '222', direction: 'stock_in' }),
+        ]));
+      }
+      if (url.includes('status=flagged')) return Promise.resolve(jsonResponse([]));
+      if (url === '/api/inventory' || url === '/api/products') return Promise.resolve(jsonResponse([]));
+      throw new Error(`Unexpected request: ${url}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<MantineProvider><ScanQueuePage /></MantineProvider>);
+
+    // Verify the Tabs component renders with Stock_Out_View as the default
+    const tabs = await screen.findByRole('tablist');
+    
+    // Find tabs by their ID attributes to ensure we get the correct tab elements
+    const stockOutTab = screen.getByRole('tab', { name: 'Stock out' });
+    const stockInTab = screen.getByRole('tab', { name: 'Stock in' });
+
+    // Verify Stock_Out tab is selected (aria-selected="true" for active, "false" for inactive)
+    expect(stockOutTab).toHaveAttribute('aria-selected', 'true');
+    expect(stockInTab).toHaveAttribute('aria-selected', 'false');
+
+    // Verify the grid shows only stock_out entries (direction === 'stock_out' or null)
+    const cards = await screen.findAllByRole('article');
+    expect(cards).toHaveLength(1);
+    expect(within(cards[0]).getByText('Barcode: 111')).toBeInTheDocument();
+
+    // Verify clicking Stock_In tab changes the content
+    stockInTab.click();
+
+    // Now stock_in entries should be visible
+    await screen.findByText('Barcode: 222');
+    const cardsAfterSwitch = await screen.findAllByRole('article');
+    expect(cardsAfterSwitch).toHaveLength(1);
+    expect(within(cardsAfterSwitch[0]).getByText('Barcode: 222')).toBeInTheDocument();
+  });
+
+  it('defaults to Stock_Out_View on a fresh mount after prior instance was switched to Stock_In_View', async () => {
+    const fetchMock = vi.fn((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes('status=pending')) {
+        return Promise.resolve(jsonResponse([
+          scanEntry({ id: 'scan-1', barcode: '111', direction: 'stock_out' }),
+          scanEntry({ id: 'scan-2', barcode: '222', direction: 'stock_in' }),
+        ]));
+      }
+      if (url.includes('status=flagged')) return Promise.resolve(jsonResponse([]));
+      if (url === '/api/inventory' || url === '/api/products') return Promise.resolve(jsonResponse([]));
+      throw new Error(`Unexpected request: ${url}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const { unmount } = render(<MantineProvider><ScanQueuePage /></MantineProvider>);
+
+    // First mount: switch to Stock_In_View
+    const tabs = await screen.findByRole('tablist');
+    const stockInTab = screen.getByRole('tab', { name: 'Stock in' });
+    stockInTab.click();
+
+    // Verify we're now showing stock_in entries
+    await screen.findByText('Barcode: 222');
+    const cardsAfterSwitch = await screen.findAllByRole('article');
+    expect(cardsAfterSwitch).toHaveLength(1);
+    expect(within(cardsAfterSwitch[0]).getByText('Barcode: 222')).toBeInTheDocument();
+
+    unmount();
+
+    // Second mount: should default back to Stock_Out_View (no persistence)
+    render(<MantineProvider><ScanQueuePage /></MantineProvider>);
+
+    // Verify the Tabs component renders with Stock_Out_View as the default on fresh mount
+    const stockOutTab2 = screen.getByRole('tab', { name: 'Stock out' });
+    const stockInTab2 = screen.getByRole('tab', { name: 'Stock in' });
+
+    // Verify Stock_Out tab is selected (aria-selected="true" for active, "false" for inactive)
+    expect(stockOutTab2).toHaveAttribute('aria-selected', 'true');
+    expect(stockInTab2).toHaveAttribute('aria-selected', 'false');
+
+    // Verify the grid shows only stock_out entries again
+    const cards2 = await screen.findAllByRole('article');
+    expect(cards2).toHaveLength(1);
+    expect(within(cards2[0]).getByText('Barcode: 111')).toBeInTheDocument();
+
+    // Verify clicking Stock_In tab still works on the fresh mount
+    stockInTab2.click();
+
+    await screen.findByText('Barcode: 222');
+    const cardsAfterSwitch2 = await screen.findAllByRole('article');
+    expect(cardsAfterSwitch2).toHaveLength(1);
+    expect(within(cardsAfterSwitch2[0]).getByText('Barcode: 222')).toBeInTheDocument();
+  });
 });

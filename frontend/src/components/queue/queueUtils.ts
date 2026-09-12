@@ -26,6 +26,41 @@ export const formatExpiryDate = (value: string): string =>
 export const expiryDateToISOString = (expiryDate: string): string | undefined =>
   expiryDate === '' ? undefined : new Date(`${expiryDate}T00:00:00.000Z`).toISOString();
 
+// A Batch_Eligible_Entry is a pending entry whose direction has been
+// determined. Requirement 3.
+export const isBatchEligible = (entry: ScanEntry): boolean =>
+  entry.status === 'pending' && entry.direction !== null;
+
+// Computes the next batch selection when the Select_All_Control is
+// activated. If every displayed Batch_Eligible_Entry is currently selected,
+// deselects all of them; otherwise selects all of them. Ids belonging to
+// entries that are not Batch_Eligible_Entry are left untouched either way.
+// Requirements 3.2, 3.3, 3.4.
+export const toggleSelectAll = (entries: ScanEntry[], selectedIds: string[]): string[] => {
+  const eligibleIds = entries.filter(isBatchEligible).map((entry) => entry.id);
+  const allEligibleSelected = eligibleIds.length > 0 && eligibleIds.every((id) => selectedIds.includes(id));
+  const preserved = selectedIds.filter((id) => !eligibleIds.includes(id));
+  return allEligibleSelected ? preserved : [...new Set([...preserved, ...eligibleIds])];
+};
+
+// A confirmed unit-count entry is only accepted when it is a positive whole
+// number. Requirement 2.6.
+export const isValidUnitCount = (value: number): boolean =>
+  Number.isInteger(value) && value >= 1;
+
+// Partitions displayed entries into the two Queue_Direction_Tabs views.
+// Stock_In_View is exactly `direction === 'stock_in'`; Stock_Out_View is the
+// catchall for `direction === 'stock_out'` and `direction === null`, so a
+// flagged/undirected entry always has somewhere to be reviewed. Every entry
+// belongs to exactly one view — this is a total partition, not a filter that
+// can drop entries. Requirements 9.1, 9.2, 9.3, 9.4.
+export type QueueView = 'stock_in' | 'stock_out';
+
+export const getEntriesForView = (entries: ScanEntry[], view: QueueView): ScanEntry[] =>
+  view === 'stock_in'
+    ? entries.filter((entry) => entry.direction === 'stock_in')
+    : entries.filter((entry) => entry.direction === 'stock_out' || entry.direction === null);
+
 // Applies one incoming Scan_Event to the currently displayed list: upserts it
 // if its status is still displayable (pending/flagged), or removes any entry
 // with the same id if it isn't (committed/cancelled). Requirements 4.2, 4.3.

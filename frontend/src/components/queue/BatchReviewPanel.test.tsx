@@ -7,28 +7,36 @@ const jsonResponse = (body: unknown) =>
   new Response(JSON.stringify(body), { status: 200, headers: { 'Content-Type': 'application/json' } });
 
 describe('BatchReviewPanel', () => {
-  it('commits all selected scans with the shared direction and expiration date', async () => {
-    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
-      jsonResponse({ updatedCount: 2, committedIds: ['a', 'b'] }),
+  it('renders the approve heading, button with correct text and aria-label', () => {
+    render(
+      <MantineProvider>
+        <BatchReviewPanel selectedIds={['a', 'b']} onComplete={vi.fn()} />
+      </MantineProvider>,
     );
+
+    expect(screen.getByRole('heading', { level: 2, name: 'Approve scans' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Approve 2 selected scans' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Approve 2 selected scans' })).toHaveAttribute(
+      'aria-label',
+      'Approve 2 selected scans',
+    );
+  });
+
+  it('shows error message on simulated failure', async () => {
+    const fetchMock = vi.fn<typeof fetch>().mockRejectedValue(new Error('Network error'));
     vi.stubGlobal('fetch', fetchMock);
     const onComplete = vi.fn();
+
     render(
       <MantineProvider>
         <BatchReviewPanel selectedIds={['a', 'b']} onComplete={onComplete} />
       </MantineProvider>,
     );
 
-    fireEvent.change(screen.getByLabelText('Expiration date'), { target: { value: '2026-04-15' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Commit 2 selected' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Approve 2 selected scans' }));
 
-    await waitFor(() => expect(onComplete).toHaveBeenCalled());
-    const [, request] = fetchMock.mock.calls[0];
-    expect(JSON.parse(request?.body as string)).toEqual({
-      scanEntryIds: ['a', 'b'],
-      direction: 'stock_in',
-      expiresAt: '2026-04-15T00:00:00.000Z',
-      commit: true,
-    });
+    await waitFor(() =>
+      expect(screen.getByText('Unable to approve selected scans.')).toBeInTheDocument(),
+    );
   });
 });

@@ -1,8 +1,7 @@
 import { useState } from 'react';
-import { Alert, Button, Group, NativeSelect, Stack, TextInput } from '@mantine/core';
+import { Alert, Button, Group, Stack } from '@mantine/core';
 import { batchCommitScanEntries } from '../../api/client';
-import type { BatchCommitResponse, ScanDirection } from '../../types';
-import { expiryDateToISOString } from './queueUtils';
+import type { BatchCommitResponse } from '../../types';
 
 export interface BatchReviewPanelProps {
   selectedIds: string[];
@@ -10,63 +9,42 @@ export interface BatchReviewPanelProps {
 }
 
 export const BatchReviewPanel = ({ selectedIds, onComplete }: BatchReviewPanelProps) => {
-  const [direction, setDirection] = useState<ScanDirection>('stock_in');
-  const [expiryDate, setExpiryDate] = useState('');
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
-  const handleConfirm = async () => {
+  const handleApprove = async () => {
     setSubmitting(true);
     setError('');
     try {
       const response = await batchCommitScanEntries({
         scanEntryIds: selectedIds,
-        direction,
-        expiresAt: direction === 'stock_in' ? expiryDateToISOString(expiryDate) : undefined,
         commit: true,
       });
       onComplete(response);
     } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : 'Unable to commit selected scans.');
+      setError(requestError instanceof Error ? requestError.message : 'Unable to approve selected scans.');
     } finally {
       setSubmitting(false);
     }
   };
 
   return (
-    <Stack component="section" aria-labelledby="batch-review-heading" gap="xs">
-      <h2 id="batch-review-heading">Batch review</h2>
+    <Stack component="section" aria-labelledby="approve-heading" gap="xs">
+      <h2 id="approve-heading">Approve scans</h2>
       <Group align="end" gap="xs">
-        <NativeSelect
-          size="xs"
-          label="Direction"
-          value={direction}
-          onChange={(event) => setDirection(event.currentTarget.value as ScanDirection)}
-          data={[
-            { value: 'stock_in', label: 'Stock in' },
-            { value: 'stock_out', label: 'Stock out' },
-          ]}
-        />
-        <TextInput
-          size="xs"
-          label="Expiration date"
-          type="date"
-          value={expiryDate}
-          disabled={direction === 'stock_out'}
-          onChange={(event) => setExpiryDate(event.currentTarget.value)}
-        />
         <Button
           size="xs"
-          onClick={() => void handleConfirm()}
+          onClick={() => void handleApprove()}
           disabled={selectedIds.length === 0}
           loading={submitting}
+          aria-label={`Approve ${selectedIds.length} selected scans`}
         >
-          Commit {selectedIds.length} selected
+          Approve {selectedIds.length} selected
         </Button>
       </Group>
       {error !== '' && (
         <Alert color="red" py="xs">
-          {error}
+          Unable to approve selected scans.
         </Alert>
       )}
     </Stack>

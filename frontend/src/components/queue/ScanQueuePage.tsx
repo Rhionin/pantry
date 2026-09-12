@@ -1,13 +1,15 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Alert, Loader, SimpleGrid, Stack, Text, Title } from '@mantine/core';
+import { Alert, Checkbox, Loader, Tabs, SimpleGrid, Stack, Text, Title } from '@mantine/core';
 import { createScanEntry, getInventoryList, listScanEntries } from '../../api/client';
 import type { InventoryItem, ScanEntry } from '../../types';
 import { BarcodeInputField } from '../scanner/BarcodeInputField';
 import { BatchReviewPanel } from './BatchReviewPanel';
 import { ScanEntryCard } from './ScanEntryCard';
-import { mergeScanEvent, pruneSelection, sortScansChronologically } from './queueUtils';
+import { getEntriesForView, isBatchEligible, mergeScanEvent, pruneSelection, sortScansChronologically, toggleSelectAll } from './queueUtils';
 
 const DEFAULT_USER_ID = 'user-1';
+
+export type QueueView = 'stock_in' | 'stock_out';
 
 export interface ScanQueuePageProps {
   userId?: string;
@@ -17,9 +19,24 @@ export const ScanQueuePage = ({ userId = DEFAULT_USER_ID }: ScanQueuePageProps) 
   const [entries, setEntries] = useState<ScanEntry[]>([]);
   const [inventory, setInventory] = useState<InventoryItem[]>([]);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [activeView, setActiveView] = useState<QueueView>('stock_out');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [scanError, setScanError] = useState('');
+  
+  const handleViewChange = (value: string | null) => {
+    if (value !== 'stock_in' && value !== 'stock_out') return;
+    setActiveView(value);
+    setSelectedIds([]);
+  };
+
+  const viewEntries = useMemo(() => getEntriesForView(entries, activeView), [entries, activeView]);
+  const viewEntryIds = useMemo(() => new Set(viewEntries.map((entry) => entry.id)), [viewEntries]);
+  const eligibleEntries = useMemo(() => viewEntries.filter(isBatchEligible), [viewEntries]);
+  const allEligibleSelected = useMemo(
+    () => eligibleEntries.length > 0 && eligibleEntries.every((entry) => selectedIds.includes(entry.id)),
+    [eligibleEntries, selectedIds],
+  );
 
   const loadQueue = useCallback(async () => {
     setLoading(true);
@@ -86,8 +103,21 @@ export const ScanQueuePage = ({ userId = DEFAULT_USER_ID }: ScanQueuePageProps) 
           {scanError}
         </Alert>
       )}
+      <Tabs value={activeView} onChange={handleViewChange}>
+        <Tabs.List>
+          <Tabs.Tab value="stock_in">Stock in</Tabs.Tab>
+          <Tabs.Tab value="stock_out">Stock out</Tabs.Tab>
+        </Tabs.List>
+      </Tabs>
+      <Checkbox
+        label="Select all for approval"
+        aria-label="Select all eligible scans for batch approval"
+        checked={allEligibleSelected}
+        disabled={eligibleEntries.length === 0}
+        onChange={() => setSelectedIds((current) => toggleSelectAll(viewEntries, current))}
+      />
       <BatchReviewPanel
-        selectedIds={selectedIds}
+        selectedIds={selectedIds.filter((id) => viewEntryIds.has(id))}
         onComplete={() => {
           setSelectedIds([]);
           void loadQueue();
@@ -103,7 +133,7 @@ export const ScanQueuePage = ({ userId = DEFAULT_USER_ID }: ScanQueuePageProps) 
         <Text c="dimmed">No pending scans.</Text>
       )}
       <SimpleGrid cols={{ base: 1, sm: 2, lg: 3 }} spacing="xs">
-        {entries.map((entry) => (
+        {viewEntries.map((entry) => (
           <ScanEntryCard
             key={entry.id}
             entry={entry}

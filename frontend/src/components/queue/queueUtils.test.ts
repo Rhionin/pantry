@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import fc from 'fast-check';
 import type { ScanEntry, ScanStatus } from '../../types';
-import { mergeScanEvent, pruneSelection } from './queueUtils';
+import { getEntriesForView, isValidUnitCount, mergeScanEvent, pruneSelection, toggleSelectAll, isBatchEligible } from './queueUtils';
 
 const DISPLAYABLE_SCAN_STATUSES: ScanStatus[] = ['pending', 'flagged'];
 
@@ -119,6 +119,238 @@ describe('pruneSelection', () => {
         const expected = selectedIds.filter((id) => entries.some((entry) => entry.id === id));
 
         expect(pruneSelection(selectedIds, entries)).toEqual(expected);
+      },
+    ), { numRuns: 100 });
+  });
+});
+describe('isValidUnitCount', () => {
+  it('returns false for zero', () => {
+    expect(isValidUnitCount(0)).toBe(false);
+  });
+
+  it('returns true for one', () => {
+    expect(isValidUnitCount(1)).toBe(true);
+  });
+
+  it('returns false for negative numbers', () => {
+    expect(isValidUnitCount(-1)).toBe(false);
+  });
+
+  it('returns false for decimal numbers', () => {
+    expect(isValidUnitCount(1.5)).toBe(false);
+  });
+
+  // Feature: scan-queue-polish, Property 1: Unit count validity
+  //
+  // **Validates: Requirements 2.6**
+  //
+  // For any number, isValidUnitCount SHALL return true if and only if that number
+  // is an integer greater than or equal to one.
+  it('Property 1: returns true for positive integers and false otherwise', () => {
+    const numberArbitrary = fc.integer();
+
+    fc.assert(fc.property(
+      numberArbitrary,
+      (value) => {
+        const expected = Number.isInteger(value) && value >= 1;
+        expect(isValidUnitCount(value)).toBe(expected);
+      },
+    ), { numRuns: 100 });
+  });
+});
+
+describe('isBatchEligible', () => {
+  it('returns true for pending entries with direction set', () => {
+    const entry = scanEntry({ status: 'pending', direction: 'stock_in' });
+    expect(isBatchEligible(entry)).toBe(true);
+  });
+
+  it('returns false for pending entries with direction null', () => {
+    const entry = scanEntry({ status: 'pending', direction: null });
+    expect(isBatchEligible(entry)).toBe(false);
+  });
+
+  it('returns false for flagged entries with direction set', () => {
+    const entry = scanEntry({ status: 'flagged', direction: 'stock_out' });
+    expect(isBatchEligible(entry)).toBe(false);
+  });
+
+  it('returns false for committed entries', () => {
+    const entry = scanEntry({ status: 'committed', direction: 'stock_in' });
+    expect(isBatchEligible(entry)).toBe(false);
+  });
+
+  it('returns false for cancelled entries', () => {
+    const entry = scanEntry({ status: 'cancelled', direction: 'stock_out' });
+    expect(isBatchEligible(entry)).toBe(false);
+  });
+});
+
+describe('toggleSelectAll', () => {
+  it('selects all eligible entries when none are selected', () => {
+    const entries = [
+      scanEntry({ id: 'a', status: 'pending', direction: 'stock_in' }),
+      scanEntry({ id: 'b', status: 'pending', direction: 'stock_out' }),
+      scanEntry({ id: 'c', status: 'pending', direction: null }),
+      scanEntry({ id: 'd', status: 'flagged', direction: 'stock_in' }),
+    ];
+
+    expect(toggleSelectAll(entries, [])).toEqual(['a', 'b']);
+  });
+
+  it('deselects all eligible entries when all are selected', () => {
+    const entries = [
+      scanEntry({ id: 'a', status: 'pending', direction: 'stock_in' }),
+      scanEntry({ id: 'b', status: 'pending', direction: 'stock_out' }),
+    ];
+
+    expect(toggleSelectAll(entries, ['a', 'b'])).toEqual([]);
+  });
+
+  it('preserves non-eligible entries that were already selected', () => {
+    const entries = [
+      scanEntry({ id: 'a', status: 'pending', direction: 'stock_in' }),
+      scanEntry({ id: 'b', status: 'flagged', direction: null }),
+      scanEntry({ id: 'c', status: 'pending', direction: 'stock_out' }),
+    ];
+
+    expect(toggleSelectAll(entries, ['b'])).toEqual(['b', 'a', 'c']);
+  });
+
+  it('adds all eligible entries when only some are already selected', () => {
+    const entries = [
+      scanEntry({ id: 'a', status: 'pending', direction: 'stock_in' }),
+      scanEntry({ id: 'b', status: 'flagged', direction: null }),
+      scanEntry({ id: 'c', status: 'pending', direction: 'stock_out' }),
+    ];
+
+    // When not all eligible are selected, all eligible are added while preserving selected non-eligible
+    // selectedIds=['b','a'] means 'b' (non-eligible) is selected and 'a' (eligible) is selected
+    // Result: 'b' preserved, 'a' already in result, 'c' added as eligible
+    expect(toggleSelectAll(entries, ['b', 'a'])).toEqual(['b', 'a', 'c']);
+  });
+
+  it('preserves the order of non-eligible entries', () => {
+    const entries = [
+      scanEntry({ id: 'a', status: 'pending', direction: 'stock_in' }),
+      scanEntry({ id: 'b', status: 'flagged', direction: null }),
+      scanEntry({ id: 'c', status: 'pending', direction: 'stock_out' }),
+      scanEntry({ id: 'd', status: 'flagged', direction: 'stock_out' }),
+    ];
+
+    expect(toggleSelectAll(entries, ['b', 'd'])).toEqual(['b', 'd', 'a', 'c']);
+  });
+
+  // Feature: scan-queue-polish, Property 2: Select-all toggles exactly the eligible
+  // entries and preserves the rest
+  //
+  // **Validates: Requirements 3.2, 3.3, 3.4**
+  //
+  // For any list of displayed scan entries and any current batch selection,
+  // toggleSelectAll SHALL produce a selection in which every displayed
+  // Batch_Eligible_Entry is selected if and only if at least one Batch_Eligible_Entry
+  // was unselected beforehand, and in which the selected/unselected state of every
+  // entry that is not a Batch_Eligible_Entry is unchanged from the input selection.
+  it('Property 2: toggles eligible entries and preserves non-eligible entries', () => {
+    const directionArbitrary = fc.oneof(
+      fc.constant('stock_in'),
+      fc.constant('stock_out'),
+      fc.constant(null),
+    );
+    const statusArbitrary = fc.oneof(
+      fc.constant('pending'),
+      fc.constant('flagged'),
+      fc.constant('committed'),
+      fc.constant('cancelled'),
+    );
+    const entryArbitrary = fc.record({
+      id: fc.uuid(),
+      status: statusArbitrary,
+      direction: directionArbitrary,
+    }).map(({ id, status, direction }) => scanEntry({ id, status, direction }));
+
+    fc.assert(fc.property(
+      fc.uniqueArray(entryArbitrary, { maxLength: 20, selector: (entry) => entry.id }),
+      fc.array(fc.uuid(), { maxLength: 20 }),
+      (entries, selectedIds) => {
+        const eligibleIds = entries.filter(isBatchEligible).map((entry) => entry.id);
+        const nonEligibleIds = entries.filter((entry) => !isBatchEligible).map((entry) => entry.id);
+
+        const result = toggleSelectAll(entries, selectedIds);
+
+        // Verify non-eligible entries are preserved in order
+        const preservedNonEligible = selectedIds.filter((id) => nonEligibleIds.includes(id));
+        const resultNonEligible = result.filter((id) => nonEligibleIds.includes(id));
+        expect(resultNonEligible).toEqual(preservedNonEligible);
+
+        // Verify eligible entries are all selected or none selected
+        const selectedEligible = result.filter((id) => eligibleIds.includes(id));
+        const previouslySelectedEligible = selectedIds.filter((id) => eligibleIds.includes(id));
+
+        if (previouslySelectedEligible.length === eligibleIds.length && eligibleIds.length > 0) {
+          // If all eligible were selected, none should be selected now
+          expect(selectedEligible).toEqual([]);
+        } else {
+          // Otherwise, all eligible should be selected
+          expect(selectedEligible.sort()).toEqual(eligibleIds.sort());
+        }
+      },
+    ), { numRuns: 100 });
+  });
+});
+describe('getEntriesForView', () => {
+  // Feature: scan-queue-polish, Property 3: Every entry belongs to exactly one queue view
+  //
+  // **Validates: Requirements 9.1, 9.2, 9.3, 9.4**
+  //
+  // For any list of scan entries and either queue view, getEntriesForView partitions the entries
+  // so that an entry appears in the Stock_In_View result if and only if its direction equals
+  // 'stock_in', appears in the Stock_Out_View result if and only if its direction equals
+  // 'stock_out' or is null, and appears in exactly one of the two results — never both,
+  // never neither.
+
+  it('Property 3: partitions entries so each belongs to exactly one view', () => {
+    const directionArbitrary = fc.oneof(
+      fc.constant('stock_in'),
+      fc.constant('stock_out'),
+      fc.constant(null),
+    );
+    const entryArbitrary = fc.record({
+      id: fc.uuid(),
+      direction: directionArbitrary,
+    }).map(({ id, direction }) => scanEntry({ id, direction }));
+
+    fc.assert(fc.property(
+      fc.array(entryArbitrary, { maxLength: 20 }),
+      (entries) => {
+        const stockInEntries = getEntriesForView(entries, 'stock_in');
+        const stockOutEntries = getEntriesForView(entries, 'stock_out');
+
+        // Every entry appears in exactly one of the two results
+        entries.forEach((entry) => {
+          const inStockIn = stockInEntries.some((e) => e.id === entry.id);
+          const inStockOut = stockOutEntries.some((e) => e.id === entry.id);
+
+          if (entry.direction === 'stock_in') {
+            expect(inStockIn).toBe(true);
+            expect(inStockOut).toBe(false);
+          } else {
+            expect(inStockIn).toBe(false);
+            expect(inStockOut).toBe(true);
+          }
+        });
+
+        // The two results are disjoint
+        stockInEntries.forEach((entry) => {
+          expect(stockOutEntries.some((e) => e.id === entry.id)).toBe(false);
+        });
+
+        // Together they cover all input entries
+        const allViewEntries = [...stockInEntries, ...stockOutEntries];
+        expect(allViewEntries.length).toBe(entries.length);
+        entries.forEach((entry) => {
+          expect(allViewEntries.some((e) => e.id === entry.id)).toBe(true);
+        });
       },
     ), { numRuns: 100 });
   });
