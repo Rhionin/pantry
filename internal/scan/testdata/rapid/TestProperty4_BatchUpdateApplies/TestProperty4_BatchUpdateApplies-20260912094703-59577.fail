@@ -1,0 +1,145 @@
+# 2026/09/12 09:47:03.693611 [TestProperty4_BatchUpdateApplies] [rapid] draw userID: "ᛰ+၈>a"
+# 2026/09/12 09:47:03.693614 [TestProperty4_BatchUpdateApplies] [rapid] draw numEntries: 5
+# 2026/09/12 09:47:03.693615 [TestProperty4_BatchUpdateApplies] [rapid] draw barcode: ""
+# 2026/09/12 09:47:03.693720 [TestProperty4_BatchUpdateApplies] [rapid] draw barcode: "a꜆_"
+# 2026/09/12 09:47:03.693817 [TestProperty4_BatchUpdateApplies] [rapid] draw barcode: ""
+# 2026/09/12 09:47:03.693941 [TestProperty4_BatchUpdateApplies] [rapid] draw barcode: "¬﮼£�𖵶¢ŗ\r?\u200f\"ٚ[#𑜡"
+# 2026/09/12 09:47:03.694033 [TestProperty4_BatchUpdateApplies] [rapid] draw barcode: ""
+# 2026/09/12 09:47:03.694156 [TestProperty4_BatchUpdateApplies] [rapid] draw numToUpdate: 1
+# 2026/09/12 09:47:03.694156 [TestProperty4_BatchUpdateApplies] [rapid] draw selectedIdx: 3
+# 2026/09/12 09:47:03.694158 [TestProperty4_BatchUpdateApplies] [rapid] draw direction: "stock_in"
+# 2026/09/12 09:47:03.694161 [TestProperty4_BatchUpdateApplies] [rapid] draw unitCount: 5
+# 2026/09/12 09:47:03.694162 [TestProperty4_BatchUpdateApplies] [rapid] draw daysUntilExpiry: 11
+# 2026/09/12 09:47:03.694217 [TestProperty4_BatchUpdateApplies] Non-selected entry a5c9f299-0b96-4453-9f03-a4b841634bf1: expected unitCount 1, got 3
+# 
+v0.4.8#9565941002370364606
+0x17c2c6aecd206f
+0x1a
+0x67fdd28594d32
+0x2
+0xb9099eb73d44d
+0x2e
+0x0
+0x9a132df518fe8
+0xe
+0x173d74edcbea09
+0x19
+0x140d6e455cc0ee
+0xb2
+0x95a6f2a80d4ce
+0x1d
+0x41c9577a201cf
+0x3
+0x12dba2b8fdb4bc
+0x3e
+0x2b
+0x2c
+0x36
+0x13
+0x1f0184ac360a3
+0x1
+0x5254efc878b7d
+0x107f3fb55e01a5
+0xf41c1c2db980a
+0x2
+0x26cfc0088147f
+0x1588a5ec16f89a
+0x9
+0x1855c49b56b8c
+0x1
+0x1bd9b330fe9e44
+0x1f
+0x18e7eb5571ad21
+0x4c
+0x1770238d4ce639
+0x3
+0x1e74260aaa8288
+0xc
+0x3e4812b89428c
+0xf502717246cb
+0x164bcc0fb5750f
+0x1d
+0x82a55b70224c4
+0x6
+0xb2f18e998a851
+0x1f
+0x13a1bd3773abf1
+0x6e
+0x13e44940b03f61
+0x3f
+0x1e
+0x9fb9da2775513
+0x2
+0x1ba58699b2e2de
+0x0
+0x10338b395111a4
+0x27
+0x1b23bc5bb83dad
+0x19
+0x14dd8526ae8826
+0x286
+0x9a298eab741c5
+0x1e
+0x3d6af607f1ee5
+0x1
+0x172d3cb90b63d2
+0x15
+0x1147153a9bd8f2
+0x67
+0x19c4a52f560cf5
+0x3c
+0x2
+0x1cd1ee3f18cd98
+0x16
+0x8b7fc30078ae8
+0x9
+0xae4536a2f3fbb
+0x2
+0x75ca4a9b12e03
+0x26
+0xdf8cb1933a0ee
+0x12
+0x75d35842a21ad
+0x1c
+0x2952beeccd54a
+0x1
+0x1bad85ed671c18
+0x38
+0x2d
+0x21
+0x131406caadb06f
+0xc2
+0x1b3e3270497e7d
+0x10
+0x151856e22ca96e
+0x2e
+0x1c
+0x10a6ea8811ba41
+0x35
+0x38
+0x1
+0x8b1eb90f64e46
+0x6
+0x120a38e2a96069
+0x23
+0x17204870edd36f
+0x15e
+0x33d0f474302e9
+0x122f9ea35f59b
+0x1e19c0b11e0af3
+0xf4b5d533d991a
+0x6
+0x6
+0x7
+0x0
+0x126bdb2031138b
+0x1a3dbaf306c09a
+0x3
+0x1aa753b52735c0
+0x0
+0x1ee5153a4985fb
+0x1c49d1aa4e6d83
+0x4
+0x1bfbb75db97d51
+0x13b5d6b07dac9f
+0xa

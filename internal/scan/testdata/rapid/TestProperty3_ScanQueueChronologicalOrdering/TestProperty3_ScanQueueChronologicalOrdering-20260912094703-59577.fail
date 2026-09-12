@@ -1,0 +1,21 @@
+# 2026/09/12 09:47:03.677005 [TestProperty3_ScanQueueChronologicalOrdering] [rapid] draw userID: ""
+# 2026/09/12 09:47:03.677007 [TestProperty3_ScanQueueChronologicalOrdering] [rapid] draw numScans: 2
+# 2026/09/12 09:47:03.677008 [TestProperty3_ScanQueueChronologicalOrdering] [rapid] draw offsetSec: 0
+# 2026/09/12 09:47:03.677009 [TestProperty3_ScanQueueChronologicalOrdering] [rapid] draw barcode: ""
+# 2026/09/12 09:47:03.677133 [TestProperty3_ScanQueueChronologicalOrdering] [rapid] draw offsetSec: 0
+# 2026/09/12 09:47:03.677134 [TestProperty3_ScanQueueChronologicalOrdering] [rapid] draw barcode: ""
+# 2026/09/12 09:47:03.677320 [TestProperty3_ScanQueueChronologicalOrdering] Expected 2 entries, got 1
+# 
+v0.4.8#16893228733399730304
+0x0
+0x0
+0x0
+0x1
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0

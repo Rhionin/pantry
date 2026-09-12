@@ -43,3 +43,69 @@ func TestScanCreateHandlerLookupOutcomes(t *testing.T) {
 
 	runHandlerTests(t, tests)
 }
+
+// TestScanCreateHandler_MergeBehavior locks in that a repeat POST /api/scans
+// for the same barcode/userId/direction while the first entry is still
+// pending or flagged merges into the existing entry (unitCount incremented)
+// instead of creating a duplicate row, through the full HTTP path.
+func TestScanCreateHandler_MergeBehavior(t *testing.T) {
+	tests := []handlerTestCase{
+		{
+			name:  "repeat scan while pending merges into existing entry with unitCount 2",
+			setup: setupProductWithBarcode("prod-scan-merge-pending", "Merge Pending Product", "Test", "222333444555"),
+			httpExchange: httpExchange{
+				method:         "POST",
+				path:           "/api/scans",
+				body:           `{"barcode":"222333444555","userId":"user-scan-merge-pending","direction":"stock_in"}`,
+				expectedStatus: http.StatusCreated,
+			},
+			afterRequest: exchanges(
+				httpExchange{
+					method:         "POST",
+					path:           "/api/scans",
+					body:           `{"barcode":"222333444555","userId":"user-scan-merge-pending","direction":"stock_in"}`,
+					expectedStatus: http.StatusCreated,
+				},
+				httpExchange{
+					method:         "GET",
+					path:           "/api/scans",
+					query:          map[string]string{"userId": "user-scan-merge-pending"},
+					expectedStatus: http.StatusOK,
+					assertions: []assertion{
+						{path: "$[0].status", value: "pending"},
+						{path: "$[0].unitCount", value: float64(2)},
+					},
+				},
+			),
+		},
+		{
+			name: "repeat scan while flagged merges into existing entry with unitCount 2",
+			httpExchange: httpExchange{
+				method:         "POST",
+				path:           "/api/scans",
+				body:           `{"barcode":"333444555666","userId":"user-scan-merge-flagged","direction":"stock_in"}`,
+				expectedStatus: http.StatusCreated,
+			},
+			afterRequest: exchanges(
+				httpExchange{
+					method:         "POST",
+					path:           "/api/scans",
+					body:           `{"barcode":"333444555666","userId":"user-scan-merge-flagged","direction":"stock_in"}`,
+					expectedStatus: http.StatusCreated,
+				},
+				httpExchange{
+					method:         "GET",
+					path:           "/api/scans",
+					query:          map[string]string{"userId": "user-scan-merge-flagged"},
+					expectedStatus: http.StatusOK,
+					assertions: []assertion{
+						{path: "$[0].status", value: "flagged"},
+						{path: "$[0].unitCount", value: float64(2)},
+					},
+				},
+			),
+		},
+	}
+
+	runHandlerTests(t, tests)
+}

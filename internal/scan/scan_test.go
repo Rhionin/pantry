@@ -796,6 +796,279 @@ func TestNewEntryFromLookup(t *testing.T) {
 }
 
 // --------------------------------------------------------------------------
+// TestCreateScanEntry_BugCondition_RepeatScanMergesIntoExisting
+// --------------------------------------------------------------------------
+
+// TestCreateScanEntry_BugCondition_RepeatScanMergesIntoExisting is the Task 1
+// bug-condition exploration test for scan-duplicate-cards-fix (Property 1).
+// It encodes the EXPECTED behavior for a repeat scan of the same
+// user/barcode/direction while the first entry is still open (pending or
+// flagged): the repeat scan should merge into the existing entry - unit
+// count incremented, scanned_at left unchanged, no second row - rather than
+// create a new one.
+//
+// CreateScanEntry currently has no merge-or-create check, so it
+// unconditionally inserts a new row for every call. These assertions
+// therefore FAIL on today's code, producing two one-count rows instead of
+// one two-count row; that failure is the counterexample confirming the bug.
+// Task 3.3 re-runs this exact test after the fix to confirm it now passes.
+func TestCreateScanEntry_BugCondition_RepeatScanMergesIntoExisting(t *testing.T) {
+	t0 := time.Now()
+	t1 := t0.Add(5 * time.Minute)
+
+	tests := []struct {
+		name   string
+		first  scan.ScanEntry // creates the open entry at t0
+		second scan.ScanEntry // repeat scan of the same user/barcode/direction at t1
+		status scan.ScanStatus
+	}{
+		{
+			name: "repeat pending scan merges into existing entry instead of duplicating",
+			first: scan.ScanEntry{
+				UserID: "user-1", Barcode: "123456789012", ScannedAt: t0,
+				Direction: ptrScanDirection(scan.StockIn), UnitCount: 1, Status: scan.Pending,
+			},
+			second: scan.ScanEntry{
+				UserID: "user-1", Barcode: "123456789012", ScannedAt: t1,
+				Direction: ptrScanDirection(scan.StockIn), UnitCount: 1, Status: scan.Pending,
+			},
+			status: scan.Pending,
+		},
+		{
+			name: "repeat flagged scan merges into existing entry instead of duplicating",
+			first: scan.ScanEntry{
+				UserID: "user-1", Barcode: "000000000099", ScannedAt: t0,
+				Direction: ptrScanDirection(scan.StockIn), UnitCount: 1, Status: scan.Flagged,
+			},
+			second: scan.ScanEntry{
+				UserID: "user-1", Barcode: "000000000099", ScannedAt: t1,
+				Direction: ptrScanDirection(scan.StockIn), UnitCount: 1, Status: scan.Flagged,
+			},
+			status: scan.Flagged,
+		},
+		{
+			name: "original scan timestamp is preserved on merge, not replaced by the rescan time",
+			first: scan.ScanEntry{
+				UserID: "user-1", Barcode: "555555555555", ScannedAt: t0,
+				Direction: ptrScanDirection(scan.StockOut), UnitCount: 1, Status: scan.Pending,
+			},
+			second: scan.ScanEntry{
+				UserID: "user-1", Barcode: "555555555555", ScannedAt: t1,
+				Direction: ptrScanDirection(scan.StockOut), UnitCount: 1, Status: scan.Pending,
+			},
+			status: scan.Pending,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			queue, _ := newTestQueue(t)
+			ctx := context.Background()
+
+			if _, err := queue.CreateScanEntry(ctx, tt.first); err != nil {
+				t.Fatalf("CreateScanEntry (first scan): %v", err)
+			}
+			if _, err := queue.CreateScanEntry(ctx, tt.second); err != nil {
+				t.Fatalf("CreateScanEntry (repeat scan): %v", err)
+			}
+
+			entries, err := queue.ListScanEntries(ctx, "user-1", tt.status)
+			if err != nil {
+				t.Fatalf("ListScanEntries: %v", err)
+			}
+
+			if len(entries) != 1 {
+				t.Fatalf("want 1 merged entry for repeat scan, got %d entries: %+v", len(entries), entries)
+			}
+			if entries[0].UnitCount != 2 {
+				t.Errorf("UnitCount: want 2 (merged), got %d", entries[0].UnitCount)
+			}
+			if !entries[0].ScannedAt.Equal(t0) {
+				t.Errorf("ScannedAt: want original scan time %v preserved, got %v", t0, entries[0].ScannedAt)
+			}
+		})
+	}
+}
+
+// --------------------------------------------------------------------------
+// TestCreateScanEntry_Preservation_InsertsNewRowWhenNotMergeable
+// --------------------------------------------------------------------------
+
+// TestCreateScanEntry_Preservation_InsertsNewRowWhenNotMergeable is the Task
+// 2 preservation test for scan-duplicate-cards-fix (Property 2). It locks in
+// - on UNFIXED code, before findMergeableScanEntry exists - that every scan
+// without a mergeable prior entry (no prior entry at all, a different
+// direction, a different user, or only closed committed/cancelled entries)
+// keeps inserting a brand-new row, any prior entries are left completely
+// untouched, and exactly one PublishScanEvent call happens per
+// CreateScanEntry call. These assertions must keep passing after the merge
+// fix lands (task 3.4 re-runs this exact test), so the fix cannot regress
+// this behavior.
+func TestCreateScanEntry_Preservation_InsertsNewRowWhenNotMergeable(t *testing.T) {
+	now := time.Now()
+
+	tests := []struct {
+		name          string
+		setupPrior    func(t *testing.T, queue *scan.Queue, ctx context.Context) []*scan.ScanEntry
+		incoming      func() scan.ScanEntry
+		wantUnitCount int
+		wantStatus    scan.ScanStatus
+	}{
+		{
+			name:       "no prior entry, product found: creates a pending row",
+			setupPrior: func(t *testing.T, queue *scan.Queue, ctx context.Context) []*scan.ScanEntry { return nil },
+			incoming: func() scan.ScanEntry {
+				lookup := product.LookupResult{Product: &product.ProductSummary{ID: "prod-1"}}
+				return scan.NewEntryFromLookup("user-1", "100000000001", lookup, ptrScanDirection(scan.StockIn), now)
+			},
+			wantUnitCount: 1,
+			wantStatus:    scan.Pending,
+		},
+		{
+			name:       "no prior entry, product not found: creates a flagged row",
+			setupPrior: func(t *testing.T, queue *scan.Queue, ctx context.Context) []*scan.ScanEntry { return nil },
+			incoming: func() scan.ScanEntry {
+				return scan.NewEntryFromLookup("user-1", "100000000002", product.LookupResult{}, ptrScanDirection(scan.StockIn), now)
+			},
+			wantUnitCount: 1,
+			wantStatus:    scan.Flagged,
+		},
+		{
+			name: "different direction: existing pending stock-in entry is untouched, a new stock-out entry is created",
+			setupPrior: func(t *testing.T, queue *scan.Queue, ctx context.Context) []*scan.ScanEntry {
+				existing, err := queue.CreateScanEntry(ctx, scan.ScanEntry{
+					UserID: "user-1", Barcode: "200000000001", ScannedAt: now,
+					Direction: ptrScanDirection(scan.StockIn), UnitCount: 1, Status: scan.Pending,
+				})
+				if err != nil {
+					t.Fatalf("CreateScanEntry (prior stock-in entry): %v", err)
+				}
+				return []*scan.ScanEntry{existing}
+			},
+			incoming: func() scan.ScanEntry {
+				return scan.ScanEntry{
+					UserID: "user-1", Barcode: "200000000001", ScannedAt: now,
+					Direction: ptrScanDirection(scan.StockOut), UnitCount: 1, Status: scan.Pending,
+				}
+			},
+			wantUnitCount: 1,
+			wantStatus:    scan.Pending,
+		},
+		{
+			name: "different user: existing pending entry for user A is untouched, a new entry is created for user B",
+			setupPrior: func(t *testing.T, queue *scan.Queue, ctx context.Context) []*scan.ScanEntry {
+				existing, err := queue.CreateScanEntry(ctx, scan.ScanEntry{
+					UserID: "user-A", Barcode: "300000000001", ScannedAt: now,
+					Direction: ptrScanDirection(scan.StockIn), UnitCount: 1, Status: scan.Pending,
+				})
+				if err != nil {
+					t.Fatalf("CreateScanEntry (prior entry for user A): %v", err)
+				}
+				return []*scan.ScanEntry{existing}
+			},
+			incoming: func() scan.ScanEntry {
+				return scan.ScanEntry{
+					UserID: "user-B", Barcode: "300000000001", ScannedAt: now,
+					Direction: ptrScanDirection(scan.StockIn), UnitCount: 1, Status: scan.Pending,
+				}
+			},
+			wantUnitCount: 1,
+			wantStatus:    scan.Pending,
+		},
+		{
+			name: "only a committed entry exists: a new entry is created rather than merging into the closed entry",
+			setupPrior: func(t *testing.T, queue *scan.Queue, ctx context.Context) []*scan.ScanEntry {
+				existing, err := queue.CreateScanEntry(ctx, scan.ScanEntry{
+					UserID: "user-1", Barcode: "400000000001", ScannedAt: now,
+					Direction: ptrScanDirection(scan.StockIn), UnitCount: 1, Status: scan.Committed,
+				})
+				if err != nil {
+					t.Fatalf("CreateScanEntry (prior committed entry): %v", err)
+				}
+				return []*scan.ScanEntry{existing}
+			},
+			incoming: func() scan.ScanEntry {
+				return scan.ScanEntry{
+					UserID: "user-1", Barcode: "400000000001", ScannedAt: now,
+					Direction: ptrScanDirection(scan.StockIn), UnitCount: 1, Status: scan.Pending,
+				}
+			},
+			wantUnitCount: 1,
+			wantStatus:    scan.Pending,
+		},
+		{
+			name: "only a cancelled entry exists: a new entry is created rather than merging into the closed entry",
+			setupPrior: func(t *testing.T, queue *scan.Queue, ctx context.Context) []*scan.ScanEntry {
+				existing, err := queue.CreateScanEntry(ctx, scan.ScanEntry{
+					UserID: "user-1", Barcode: "500000000001", ScannedAt: now,
+					Direction: ptrScanDirection(scan.StockIn), UnitCount: 1, Status: scan.Cancelled,
+				})
+				if err != nil {
+					t.Fatalf("CreateScanEntry (prior cancelled entry): %v", err)
+				}
+				return []*scan.ScanEntry{existing}
+			},
+			incoming: func() scan.ScanEntry {
+				return scan.ScanEntry{
+					UserID: "user-1", Barcode: "500000000001", ScannedAt: now,
+					Direction: ptrScanDirection(scan.StockIn), UnitCount: 1, Status: scan.Pending,
+				}
+			},
+			wantUnitCount: 1,
+			wantStatus:    scan.Pending,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			queue, _ := newTestQueue(t)
+			ctx := context.Background()
+
+			broadcaster := &fakeBroadcaster{}
+			queue.Broadcaster = broadcaster
+
+			prior := tt.setupPrior(t, queue, ctx)
+
+			created, err := queue.CreateScanEntry(ctx, tt.incoming())
+			if err != nil {
+				t.Fatalf("CreateScanEntry (incoming scan): %v", err)
+			}
+
+			if created.UnitCount != tt.wantUnitCount {
+				t.Errorf("UnitCount: want %d, got %d", tt.wantUnitCount, created.UnitCount)
+			}
+			if created.Status != tt.wantStatus {
+				t.Errorf("Status: want %v, got %v", tt.wantStatus, created.Status)
+			}
+
+			// The incoming scan must have produced a brand-new row: distinct
+			// from every prior entry, and every prior entry must be
+			// completely unchanged (it was never touched by an UPDATE).
+			for _, p := range prior {
+				if created.ID == p.ID {
+					t.Fatalf("expected a new row distinct from prior entry %s, got the same entry", p.ID)
+				}
+				refetched, err := queue.GetScanEntry(ctx, p.ID)
+				if err != nil {
+					t.Fatalf("GetScanEntry (prior entry %s): %v", p.ID, err)
+				}
+				if !reflect.DeepEqual(refetched, p) {
+					t.Errorf("prior entry %s changed: want %+v, got %+v", p.ID, p, refetched)
+				}
+			}
+
+			// Broadcaster behavior preserved: exactly one PublishScanEvent
+			// call per CreateScanEntry call (setup calls plus the incoming
+			// scan), never more, never fewer.
+			wantEvents := len(prior) + 1
+			if len(broadcaster.scanEvents) != wantEvents {
+				t.Errorf("PublishScanEvent calls: want %d, got %d", wantEvents, len(broadcaster.scanEvents))
+			}
+		})
+	}
+}
+
+// --------------------------------------------------------------------------
 // fakeBroadcaster and Queue publish-behavior tests
 // --------------------------------------------------------------------------
 
@@ -991,4 +1264,92 @@ func ptrString(s string) *string {
 
 func ptrScanStatus(s scan.ScanStatus) *scan.ScanStatus {
 	return &s
+}
+
+// --------------------------------------------------------------------------
+// TestCreateScanEntry_MergeDefaultsZeroUnitCountToOne
+// --------------------------------------------------------------------------
+
+// TestCreateScanEntry_MergeDefaultsZeroUnitCountToOne is a Task 4.2 unit test
+// for scan-duplicate-cards-fix. It locks in that merging a scan with
+// UnitCount == 0 (the zero value for an unset field) increments the existing
+// entry's unit_count by exactly 1, not 0 — the same default-to-1 convention
+// CreateScanEntry already applies on the create path (see NewEntryFromLookup).
+func TestCreateScanEntry_MergeDefaultsZeroUnitCountToOne(t *testing.T) {
+	queue, _ := newTestQueue(t)
+	ctx := context.Background()
+	now := time.Now()
+
+	existing, err := queue.CreateScanEntry(ctx, scan.ScanEntry{
+		UserID: "user-1", Barcode: "600000000001", ScannedAt: now,
+		Direction: ptrScanDirection(scan.StockIn), UnitCount: 3, Status: scan.Pending,
+	})
+	if err != nil {
+		t.Fatalf("CreateScanEntry (existing entry): %v", err)
+	}
+
+	merged, err := queue.CreateScanEntry(ctx, scan.ScanEntry{
+		UserID: "user-1", Barcode: "600000000001", ScannedAt: now.Add(time.Minute),
+		Direction: ptrScanDirection(scan.StockIn), UnitCount: 0, Status: scan.Pending,
+	})
+	if err != nil {
+		t.Fatalf("CreateScanEntry (repeat scan with UnitCount 0): %v", err)
+	}
+
+	if merged.ID != existing.ID {
+		t.Fatalf("expected merge into existing entry %s, got a different entry %s", existing.ID, merged.ID)
+	}
+	if merged.UnitCount != existing.UnitCount+1 {
+		t.Errorf("UnitCount: want %d (existing %d + default delta 1), got %d", existing.UnitCount+1, existing.UnitCount, merged.UnitCount)
+	}
+}
+
+// --------------------------------------------------------------------------
+// TestCreateScanEntry_MergePublishesOneEventPerCall
+// --------------------------------------------------------------------------
+
+// TestCreateScanEntry_MergePublishesOneEventPerCall is a Task 6.3 integration
+// test for scan-duplicate-cards-fix. It confirms that a merge broadcasts
+// exactly once per CreateScanEntry call rather than once per row: two
+// CreateScanEntry calls for the same user/barcode/direction (the second
+// merging into the first) must produce exactly two PublishScanEvent calls
+// total, and the second call's published entry must carry the incremented
+// UnitCount.
+func TestCreateScanEntry_MergePublishesOneEventPerCall(t *testing.T) {
+	queue, _ := newTestQueue(t)
+	ctx := context.Background()
+	now := time.Now()
+
+	broadcaster := &fakeBroadcaster{}
+	queue.Broadcaster = broadcaster
+
+	first, err := queue.CreateScanEntry(ctx, scan.ScanEntry{
+		UserID: "user-1", Barcode: "700000000001", ScannedAt: now,
+		Direction: ptrScanDirection(scan.StockIn), UnitCount: 1, Status: scan.Pending,
+	})
+	if err != nil {
+		t.Fatalf("CreateScanEntry (first scan): %v", err)
+	}
+
+	second, err := queue.CreateScanEntry(ctx, scan.ScanEntry{
+		UserID: "user-1", Barcode: "700000000001", ScannedAt: now.Add(time.Minute),
+		Direction: ptrScanDirection(scan.StockIn), UnitCount: 1, Status: scan.Pending,
+	})
+	if err != nil {
+		t.Fatalf("CreateScanEntry (repeat scan): %v", err)
+	}
+
+	if second.ID != first.ID {
+		t.Fatalf("expected repeat scan to merge into %s, got a different entry %s", first.ID, second.ID)
+	}
+
+	if len(broadcaster.scanEvents) != 2 {
+		t.Fatalf("PublishScanEvent calls: want 2 (one per CreateScanEntry call), got %d: %+v", len(broadcaster.scanEvents), broadcaster.scanEvents)
+	}
+	if broadcaster.scanEvents[1].UnitCount != second.UnitCount {
+		t.Errorf("second published event UnitCount: want %d (incremented), got %d", second.UnitCount, broadcaster.scanEvents[1].UnitCount)
+	}
+	if broadcaster.scanEvents[1].UnitCount != first.UnitCount+1 {
+		t.Errorf("second published event UnitCount: want %d (first UnitCount %d + 1), got %d", first.UnitCount+1, first.UnitCount, broadcaster.scanEvents[1].UnitCount)
+	}
 }

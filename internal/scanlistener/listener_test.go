@@ -2,13 +2,33 @@ package scanlistener
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"strings"
 	"testing"
 
+	_ "modernc.org/sqlite"
+
+	"github.com/Rhionin/pantry/internal/app"
 	"github.com/Rhionin/pantry/internal/product"
 	"github.com/Rhionin/pantry/internal/scan"
 )
+
+// newTestQueue opens an in-memory SQLite database, applies all migrations,
+// and returns a real scan.Queue. Mirrors the newTestQueue helper in
+// internal/scan/scan_test.go.
+func newTestQueue(t *testing.T) *scan.Queue {
+	t.Helper()
+	conn, err := sql.Open("sqlite", ":memory:")
+	if err != nil {
+		t.Fatalf("open in-memory SQLite: %v", err)
+	}
+	t.Cleanup(func() { conn.Close() })
+	if err := app.RunMigrations(conn); err != nil {
+		t.Fatalf("RunMigrations: %v", err)
+	}
+	return scan.NewQueue(conn)
+}
 
 // selectiveErrQueue is a fakeQueue variant whose CreateScanEntry fails only
 // for a configured barcode, letting a test observe that ScanListener.Run
@@ -161,5 +181,33 @@ func TestScanListenerRun_QueueErrorNotSurfacedAndLaterBarcodeStillCreatesEntry(t
 	}
 	if queue.created[0].Barcode != "GOOD" {
 		t.Errorf("barcode = %q, want %q", queue.created[0].Barcode, "GOOD")
+	}
+}
+
+func TestScanListenerRun_RepeatBarcodeMergesIntoExistingEntry(t *testing.T) {
+	// Requirements 2.1, 2.2, 3.5: two lines for the same barcode/mode merge
+	// into a single entry with unit_count == 2 instead of creating two
+	// separate entries. Uses a real scan.Queue (not fakeQueue) so the
+	// actual CreateScanEntry merge logic runs.
+	queue := newTestQueue(t)
+	l := &ScanListener{
+		StockInBarcode:  "STOCK_IN",
+		StockOutBarcode: "STOCK_OUT",
+		Queue:           queue,
+		LookupService:   &fakeLookupService{result: product.LookupResult{}},
+		Stdin:           strings.NewReader("111\n111\n"),
+	}
+
+	l.Run(context.Background())
+
+	entries, err := queue.ListScanEntries(context.Background(), defaultHeadlessUserID, "")
+	if err != nil {
+		t.Fatalf("ListScanEntries: %v", err)
+	}
+	if len(entries) != 1 {
+		t.Fatalf("entries = %d, want 1 (repeat scan must merge, not create a second row)", len(entries))
+	}
+	if entries[0].UnitCount != 2 {
+		t.Errorf("UnitCount = %d, want 2", entries[0].UnitCount)
 	}
 }

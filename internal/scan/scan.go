@@ -99,9 +99,29 @@ func NewQueue(db *sql.DB) *Queue {
 	return &Queue{db: db}
 }
 
-// CreateScanEntry inserts a new scan entry. If entry.ID is empty, a new UUID
-// is generated. Status defaults to "pending" if not set.
+// CreateScanEntry inserts a new scan entry, unless a pending or flagged entry
+// already exists for the same user, barcode, and direction — in that case
+// the existing entry's unit_count is incremented instead of inserting a
+// duplicate row, and scanned_at is left unchanged. If entry.ID is empty, a
+// new UUID is generated for the inserted row. Status defaults to "pending"
+// if not set.
 func (r *Queue) CreateScanEntry(ctx context.Context, entry ScanEntry) (*ScanEntry, error) {
+	existing, err := r.findMergeableScanEntry(ctx, entry.UserID, entry.Barcode, entry.Direction)
+	if err != nil {
+		return nil, err
+	}
+	if existing != nil {
+		delta := entry.UnitCount
+		if delta <= 0 {
+			delta = 1
+		}
+		newUnitCount := existing.UnitCount + delta
+		if err := r.UpdateScanEntry(ctx, existing.ID, nil, &newUnitCount, nil, nil, nil); err != nil {
+			return nil, err
+		}
+		return r.GetScanEntry(ctx, existing.ID)
+	}
+
 	if entry.ID == "" {
 		entry.ID = uuid.NewString()
 	}
@@ -114,7 +134,7 @@ func (r *Queue) CreateScanEntry(ctx context.Context, entry ScanEntry) (*ScanEntr
 		directionStr = ptr(string(*entry.Direction))
 	}
 
-	_, err := r.db.ExecContext(ctx,
+	_, err = r.db.ExecContext(ctx,
 		`INSERT INTO scan_entries (id, user_id, barcode, scanned_at, direction, unit_count, expires_at, status, product_id)
 		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		entry.ID,
@@ -163,6 +183,41 @@ func (r *Queue) GetScanEntry(ctx context.Context, id string) (*ScanEntry, error)
 			return nil, nil
 		}
 		return nil, fmt.Errorf("GetScanEntry: %w", err)
+	}
+	return entry, nil
+}
+
+// findMergeableScanEntry returns the oldest pending or flagged scan entry for
+// the given user, barcode, and direction, or nil if no such entry exists.
+// direction is compared with IS rather than = so a nil direction only matches
+// an existing entry whose direction is also nil (SQLite's IS is null-safe
+// equality), keeping direction an exact-match key including the not-yet-set
+// case. Ties are broken by id for a deterministic result.
+func (r *Queue) findMergeableScanEntry(ctx context.Context, userID, barcode string, direction *ScanDirection) (*ScanEntry, error) {
+	var directionStr *string
+	if direction != nil {
+		directionStr = ptr(string(*direction))
+	}
+
+	row := r.db.QueryRowContext(ctx, `
+		SELECT 
+			se.id, se.user_id, se.barcode, se.scanned_at, se.direction, se.unit_count, 
+			se.expires_at, se.status, se.product_id, se.committed_at, se.created_at,
+			p.id, p.name, COALESCE(p.category, ''), COALESCE(p.unit_of_measure, ''), COALESCE(p.image_url, '')
+		FROM scan_entries se
+		LEFT JOIN products p ON p.id = se.product_id
+		WHERE se.user_id = ? AND se.barcode = ? AND se.direction IS ? AND se.status IN ('pending', 'flagged')
+		ORDER BY se.scanned_at ASC, se.id ASC
+		LIMIT 1`,
+		userID, barcode, nullableString(directionStr),
+	)
+
+	entry, err := scanScanEntry(row)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("findMergeableScanEntry: %w", err)
 	}
 	return entry, nil
 }

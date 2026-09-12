@@ -2,6 +2,7 @@ package scan_test
 
 import (
 	"context"
+	"fmt"
 	"reflect"
 	"testing"
 	"time"
@@ -182,9 +183,13 @@ func TestProperty3_ScanQueueChronologicalOrdering(t *testing.T) {
 			offsetSec := rapid.Int64Range(0, 86400).Draw(rt, "offsetSec")
 			scanTime := baseTime.Add(time.Duration(offsetSec) * time.Second)
 
+			// Barcode must be distinct per entry within this run: CreateScanEntry
+			// now merges into an existing pending/flagged entry with the same
+			// user_id/barcode/direction rather than always inserting, so a
+			// collision would produce fewer rows than numScans.
 			entry := scan.ScanEntry{
 				UserID:    userID,
-				Barcode:   rapid.String().Draw(rt, "barcode"),
+				Barcode:   fmt.Sprintf("%s-%d", rapid.String().Draw(rt, "barcode"), i),
 				ScannedAt: scanTime,
 				UnitCount: 1,
 				Status:    scan.Pending,
@@ -235,9 +240,13 @@ func TestProperty4_BatchUpdateApplies(t *testing.T) {
 		entryIDs := make([]string, numEntries)
 
 		for i := 0; i < numEntries; i++ {
+			// Barcode must be distinct per entry within this run: CreateScanEntry
+			// now merges into an existing pending/flagged entry with the same
+			// user_id/barcode/direction rather than always inserting, so a
+			// collision would produce fewer rows than numEntries.
 			entry := scan.ScanEntry{
 				UserID:    userID,
-				Barcode:   rapid.String().Draw(rt, "barcode"),
+				Barcode:   fmt.Sprintf("%s-%d", rapid.String().Draw(rt, "barcode"), i),
 				ScannedAt: time.Now().Add(time.Duration(i) * time.Minute),
 				UnitCount: 1,
 				Status:    scan.Pending,
@@ -617,9 +626,13 @@ func TestRealtimeProperty5_BatchUpdatePublishesOnePerEntry(t *testing.T) {
 		numEntries := rapid.IntRange(3, 15).Draw(rt, "numEntries")
 		entryIDs := make([]string, numEntries)
 		for i := 0; i < numEntries; i++ {
+			// Barcode must be distinct per entry within this run: CreateScanEntry
+			// now merges into an existing pending/flagged entry with the same
+			// user_id/barcode/direction rather than always inserting, so a
+			// collision would produce fewer rows than numEntries.
 			created, err := queue.CreateScanEntry(ctx, scan.ScanEntry{
 				UserID:    userID,
-				Barcode:   rapid.String().Draw(rt, "barcode"),
+				Barcode:   fmt.Sprintf("%s-%d", rapid.String().Draw(rt, "barcode"), i),
 				ScannedAt: time.Now().Add(time.Duration(i) * time.Minute),
 				UnitCount: 1,
 				Status:    scan.Pending,
@@ -1026,4 +1039,246 @@ func indexOf(ids []string, target string) int {
 		}
 	}
 	return -1
+}
+
+// --------------------------------------------------------------------------
+// scan-duplicate-cards-fix property tests
+// --------------------------------------------------------------------------
+
+// directionFromLabel maps a 0/1/2 label to nil/StockIn/StockOut, giving the
+// property test below a comparable-by-value way to draw and reason about
+// "the same direction" (including nil==nil) versus "a different direction".
+func directionFromLabel(label int) *scan.ScanDirection {
+	switch label {
+	case 1:
+		return ptrScanDirection(scan.StockIn)
+	case 2:
+		return ptrScanDirection(scan.StockOut)
+	default:
+		return nil
+	}
+}
+
+// Feature: scan-duplicate-cards-fix, Property 2: Preservation -
+// Direction/User/Status Mismatch Never Merges
+//
+// For any existing scan entry (random direction including nil, random
+// user_id, random status) and any incoming scan that differs from it by
+// direction, by user_id, or by matching direction+user_id but only against a
+// closed (committed/cancelled) status, CreateScanEntry SHALL insert a new
+// row rather than merging - the row count for that barcode SHALL increase by
+// exactly one, and the existing entry SHALL be left completely unchanged.
+//
+// Validates: Requirements 3.1, 3.2, 3.3, 3.4, 3.5
+func TestProperty2_Preservation_DirectionUserStatusMismatchNeverMerges(t *testing.T) {
+	rapid.Check(t, func(rt *rapid.T) {
+		queue, db := newTestQueue(t)
+		ctx := context.Background()
+
+		barcode := rapid.StringN(1, -1, 50).Draw(rt, "barcode")
+		existingUserID := rapid.StringN(1, -1, 30).Draw(rt, "existingUserID")
+		existingDirLabel := rapid.IntRange(0, 2).Draw(rt, "existingDirLabel")
+
+		mismatchType := rapid.IntRange(0, 2).Draw(rt, "mismatchType")
+
+		var incomingUserID string
+		var incomingDirLabel int
+		var existingStatus scan.ScanStatus
+
+		switch mismatchType {
+		case 0: // different direction, same user
+			incomingUserID = existingUserID
+			offset := rapid.IntRange(1, 2).Draw(rt, "dirOffset")
+			incomingDirLabel = (existingDirLabel + offset) % 3
+			existingStatus = rapid.SampledFrom([]scan.ScanStatus{
+				scan.Pending, scan.Flagged, scan.Committed, scan.Cancelled,
+			}).Draw(rt, "existingStatus")
+		case 1: // different user, same direction
+			incomingDirLabel = existingDirLabel
+			userSuffix := rapid.StringN(1, -1, 20).Draw(rt, "userSuffix")
+			incomingUserID = existingUserID + "-diff-" + userSuffix
+			existingStatus = rapid.SampledFrom([]scan.ScanStatus{
+				scan.Pending, scan.Flagged, scan.Committed, scan.Cancelled,
+			}).Draw(rt, "existingStatus")
+		case 2: // same direction+user_id, mismatch via a closed status
+			// (pending/flagged with the same direction+user_id would be the
+			// mergeable case, which is out of scope for this preservation
+			// property - see Property 1 for that behavior).
+			incomingDirLabel = existingDirLabel
+			incomingUserID = existingUserID
+			existingStatus = rapid.SampledFrom([]scan.ScanStatus{
+				scan.Committed, scan.Cancelled,
+			}).Draw(rt, "existingStatus")
+		}
+
+		existingDirection := directionFromLabel(existingDirLabel)
+		incomingDirection := directionFromLabel(incomingDirLabel)
+
+		existingCreated, err := queue.CreateScanEntry(ctx, scan.ScanEntry{
+			UserID:    existingUserID,
+			Barcode:   barcode,
+			ScannedAt: time.Now(),
+			Direction: existingDirection,
+			UnitCount: 1,
+			Status:    existingStatus,
+		})
+		if err != nil {
+			rt.Fatalf("CreateScanEntry (existing entry): %v", err)
+		}
+
+		incomingCreated, err := queue.CreateScanEntry(ctx, scan.ScanEntry{
+			UserID:    incomingUserID,
+			Barcode:   barcode,
+			ScannedAt: time.Now(),
+			Direction: incomingDirection,
+			UnitCount: 1,
+			Status:    scan.Pending,
+		})
+		if err != nil {
+			rt.Fatalf("CreateScanEntry (incoming scan): %v", err)
+		}
+
+		if incomingCreated.ID == existingCreated.ID {
+			rt.Fatal("expected a new row distinct from the existing entry, got the same entry")
+		}
+
+		var rowCount int
+		if err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM scan_entries WHERE barcode = ?`, barcode).Scan(&rowCount); err != nil {
+			rt.Fatalf("counting scan_entries rows: %v", err)
+		}
+		if rowCount != 2 {
+			rt.Fatalf("row count for barcode %q: want 2 (existing + newly inserted), got %d", barcode, rowCount)
+		}
+
+		refetchedExisting, err := queue.GetScanEntry(ctx, existingCreated.ID)
+		if err != nil {
+			rt.Fatalf("GetScanEntry (existing entry): %v", err)
+		}
+		if refetchedExisting == nil {
+			rt.Fatal("existing entry disappeared")
+		}
+		if refetchedExisting.UnitCount != existingCreated.UnitCount {
+			rt.Fatalf("existing entry UnitCount changed: want %d, got %d", existingCreated.UnitCount, refetchedExisting.UnitCount)
+		}
+		if refetchedExisting.Status != existingCreated.Status {
+			rt.Fatalf("existing entry Status changed: want %v, got %v", existingCreated.Status, refetchedExisting.Status)
+		}
+		if !refetchedExisting.ScannedAt.Truncate(time.Second).Equal(existingCreated.ScannedAt.Truncate(time.Second)) {
+			rt.Fatalf("existing entry ScannedAt changed: want %v, got %v", existingCreated.ScannedAt, refetchedExisting.ScannedAt)
+		}
+		if refetchedExisting.UserID != existingCreated.UserID {
+			rt.Fatalf("existing entry UserID changed: want %q, got %q", existingCreated.UserID, refetchedExisting.UserID)
+		}
+	})
+}
+
+// Feature: scan-duplicate-cards-fix, Property 3: Merge Accounting
+//
+// For any random sequence of scans (varying barcode, user, direction
+// including nil, and product-lookup hit/miss), after feeding each scan
+// through CreateScanEntry, the resulting scan_entries row count per
+// (barcode, user, direction) group SHALL equal the number of scans that
+// opened that group (i.e. exactly one row per group, since nothing in this
+// sequence closes an entry - every scan after the first in a group merges
+// into it), and each group's row SHALL have a unit_count equal to the
+// number of scans merged into that group.
+//
+// Validates: Requirements 2.1, 2.2, 2.3, 3.1, 3.2, 3.3, 3.4, 3.5
+func TestProperty3_MergeAccounting_RowCountAndUnitCountMatchExpectedMerges(t *testing.T) {
+	rapid.Check(t, func(rt *rapid.T) {
+		queue, db := newTestQueue(t)
+		ctx := context.Background()
+
+		barcodePool := []string{"barcode-a", "barcode-b", "barcode-c"}
+		userPool := []string{"user-1", "user-2"}
+		directionLabelPool := []int{0, 1, 2} // nil, StockIn, StockOut
+
+		numScans := rapid.IntRange(1, 15).Draw(rt, "numScans")
+
+		type groupKey struct {
+			barcode  string
+			userID   string
+			dirLabel int
+		}
+
+		// model tracks the expected unit_count accumulated so far per group.
+		model := map[groupKey]int{}
+
+		for i := 0; i < numScans; i++ {
+			barcode := rapid.SampledFrom(barcodePool).Draw(rt, "barcode")
+			userID := rapid.SampledFrom(userPool).Draw(rt, "userID")
+			dirLabel := rapid.SampledFrom(directionLabelPool).Draw(rt, "dirLabel")
+			direction := directionFromLabel(dirLabel)
+			lookupHit := rapid.Bool().Draw(rt, "lookupHit")
+
+			var status scan.ScanStatus
+			var productID *string
+			if lookupHit {
+				status = scan.Pending
+				id := "product-" + barcode
+				productID = &id
+			} else {
+				status = scan.Flagged
+			}
+
+			_, err := queue.CreateScanEntry(ctx, scan.ScanEntry{
+				UserID:    userID,
+				Barcode:   barcode,
+				ScannedAt: time.Now(),
+				Direction: direction,
+				UnitCount: 1,
+				Status:    status,
+				ProductID: productID,
+			})
+			if err != nil {
+				rt.Fatalf("CreateScanEntry failed: %v", err)
+			}
+
+			key := groupKey{barcode: barcode, userID: userID, dirLabel: dirLabel}
+			model[key] = model[key] + 1
+		}
+
+		// Every group that received at least one scan SHALL end up as
+		// exactly one row (nothing in this sequence closes an entry, so
+		// every scan after the first in a group merges into it), with
+		// unit_count equal to the number of scans that went into it.
+		for key, expectedUnitCount := range model {
+			var directionArg interface{}
+			if direction := directionFromLabel(key.dirLabel); direction != nil {
+				directionArg = string(*direction)
+			}
+
+			var rowCount int
+			if err := db.QueryRowContext(ctx,
+				`SELECT COUNT(*) FROM scan_entries WHERE barcode = ? AND user_id = ? AND direction IS ?`,
+				key.barcode, key.userID, directionArg,
+			).Scan(&rowCount); err != nil {
+				rt.Fatalf("counting scan_entries rows for group %+v: %v", key, err)
+			}
+			if rowCount != 1 {
+				rt.Fatalf("group %+v: expected exactly 1 row, got %d", key, rowCount)
+			}
+
+			var unitCount int
+			if err := db.QueryRowContext(ctx,
+				`SELECT unit_count FROM scan_entries WHERE barcode = ? AND user_id = ? AND direction IS ?`,
+				key.barcode, key.userID, directionArg,
+			).Scan(&unitCount); err != nil {
+				rt.Fatalf("reading unit_count for group %+v: %v", key, err)
+			}
+			if unitCount != expectedUnitCount {
+				rt.Fatalf("group %+v: expected unit_count %d, got %d", key, expectedUnitCount, unitCount)
+			}
+		}
+
+		// Total row count across all groups SHALL equal the number of
+		// distinct groups the sequence touched.
+		var totalRows int
+		if err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM scan_entries`).Scan(&totalRows); err != nil {
+			rt.Fatalf("counting total scan_entries rows: %v", err)
+		}
+		if totalRows != len(model) {
+			rt.Fatalf("total row count: want %d (one per group), got %d", len(model), totalRows)
+		}
+	})
 }

@@ -1,0 +1,254 @@
+{
+  "pbtResults": {},
+  "executionHistory": {
+    "1. Write bug condition exploration tests (BEFORE implementing the fix)": [
+      {
+        "executionId": "3cb0d211-7bf5-4c88-a87e-c300497b1d29",
+        "chatSessionId": "sess_1441e928-da25-4b73-83e2-d3719ed6c48d",
+        "timestamp": 1789226657762
+      },
+      {
+        "executionId": "3cb0d211-7bf5-4c88-a87e-c300497b1d29",
+        "chatSessionId": "sess_1441e928-da25-4b73-83e2-d3719ed6c48d",
+        "timestamp": 1789226665601
+      },
+      {
+        "executionId": "3cb0d211-7bf5-4c88-a87e-c300497b1d29",
+        "chatSessionId": "sess_1441e928-da25-4b73-83e2-d3719ed6c48d",
+        "timestamp": 1789226789297
+      }
+    ],
+    "2. Write preservation property tests (BEFORE implementing the fix)": [
+      {
+        "executionId": "3cb0d211-7bf5-4c88-a87e-c300497b1d29",
+        "chatSessionId": "sess_1441e928-da25-4b73-83e2-d3719ed6c48d",
+        "timestamp": 1789226657801
+      },
+      {
+        "executionId": "3cb0d211-7bf5-4c88-a87e-c300497b1d29",
+        "chatSessionId": "sess_1441e928-da25-4b73-83e2-d3719ed6c48d",
+        "timestamp": 1789226792913
+      },
+      {
+        "executionId": "3cb0d211-7bf5-4c88-a87e-c300497b1d29",
+        "chatSessionId": "sess_1441e928-da25-4b73-83e2-d3719ed6c48d",
+        "timestamp": 1789227920913
+      }
+    ],
+    "3.1 Add `findMergeableScanEntry` query method to `Queue`": [
+      {
+        "executionId": "3cb0d211-7bf5-4c88-a87e-c300497b1d29",
+        "chatSessionId": "sess_1441e928-da25-4b73-83e2-d3719ed6c48d",
+        "timestamp": 1789226657842
+      },
+      {
+        "executionId": "3cb0d211-7bf5-4c88-a87e-c300497b1d29",
+        "chatSessionId": "sess_1441e928-da25-4b73-83e2-d3719ed6c48d",
+        "timestamp": 1789227924037
+      },
+      {
+        "executionId": "3cb0d211-7bf5-4c88-a87e-c300497b1d29",
+        "chatSessionId": "sess_1441e928-da25-4b73-83e2-d3719ed6c48d",
+        "timestamp": 1789227970714
+      }
+    ],
+    "3.2 Add the merge-or-create branch to `CreateScanEntry`": [
+      {
+        "executionId": "3cb0d211-7bf5-4c88-a87e-c300497b1d29",
+        "chatSessionId": "sess_1441e928-da25-4b73-83e2-d3719ed6c48d",
+        "timestamp": 1789226657885
+      },
+      {
+        "executionId": "3cb0d211-7bf5-4c88-a87e-c300497b1d29",
+        "chatSessionId": "sess_1441e928-da25-4b73-83e2-d3719ed6c48d",
+        "timestamp": 1789227973697
+      },
+      {
+        "executionId": "3cb0d211-7bf5-4c88-a87e-c300497b1d29",
+        "chatSessionId": "sess_1441e928-da25-4b73-83e2-d3719ed6c48d",
+        "timestamp": 1789228115127
+      }
+    ],
+    "3.3 Verify bug condition exploration tests now pass": [
+      {
+        "executionId": "3cb0d211-7bf5-4c88-a87e-c300497b1d29",
+        "chatSessionId": "sess_1441e928-da25-4b73-83e2-d3719ed6c48d",
+        "timestamp": 1789226657959
+      },
+      {
+        "executionId": "3cb0d211-7bf5-4c88-a87e-c300497b1d29",
+        "chatSessionId": "sess_1441e928-da25-4b73-83e2-d3719ed6c48d",
+        "timestamp": 1789228123011
+      },
+      {
+        "executionId": "3cb0d211-7bf5-4c88-a87e-c300497b1d29",
+        "chatSessionId": "sess_1441e928-da25-4b73-83e2-d3719ed6c48d",
+        "timestamp": 1789228161656
+      }
+    ],
+    "3.4 Verify preservation tests still pass": [
+      {
+        "executionId": "3cb0d211-7bf5-4c88-a87e-c300497b1d29",
+        "chatSessionId": "sess_1441e928-da25-4b73-83e2-d3719ed6c48d",
+        "timestamp": 1789226658007
+      },
+      {
+        "executionId": "3cb0d211-7bf5-4c88-a87e-c300497b1d29",
+        "chatSessionId": "sess_1441e928-da25-4b73-83e2-d3719ed6c48d",
+        "timestamp": 1789228130156
+      },
+      {
+        "executionId": "3cb0d211-7bf5-4c88-a87e-c300497b1d29",
+        "chatSessionId": "sess_1441e928-da25-4b73-83e2-d3719ed6c48d",
+        "timestamp": 1789228162359
+      }
+    ],
+    "4.1 Add direct unit tests for `findMergeableScanEntry` to `internal/scan/scan_test.go`": [
+      {
+        "executionId": "3cb0d211-7bf5-4c88-a87e-c300497b1d29",
+        "chatSessionId": "sess_1441e928-da25-4b73-83e2-d3719ed6c48d",
+        "timestamp": 1789226658046
+      },
+      {
+        "executionId": "3cb0d211-7bf5-4c88-a87e-c300497b1d29",
+        "chatSessionId": "sess_1441e928-da25-4b73-83e2-d3719ed6c48d",
+        "timestamp": 1789228171034
+      },
+      {
+        "executionId": "3cb0d211-7bf5-4c88-a87e-c300497b1d29",
+        "chatSessionId": "sess_1441e928-da25-4b73-83e2-d3719ed6c48d",
+        "timestamp": 1789232260152
+      }
+    ],
+    "4.2 Add a unit test for the zero/unset `UnitCount` default on merge": [
+      {
+        "executionId": "3cb0d211-7bf5-4c88-a87e-c300497b1d29",
+        "chatSessionId": "sess_1441e928-da25-4b73-83e2-d3719ed6c48d",
+        "timestamp": 1789226658094
+      },
+      {
+        "executionId": "3cb0d211-7bf5-4c88-a87e-c300497b1d29",
+        "chatSessionId": "sess_1441e928-da25-4b73-83e2-d3719ed6c48d",
+        "timestamp": 1789228179343
+      },
+      {
+        "executionId": "3cb0d211-7bf5-4c88-a87e-c300497b1d29",
+        "chatSessionId": "sess_1441e928-da25-4b73-83e2-d3719ed6c48d",
+        "timestamp": 1789232261125
+      }
+    ],
+    "5.1 Write a property test asserting final row/unit-count accounting in `internal/scan/scan_properties_test.go`": [
+      {
+        "executionId": "3cb0d211-7bf5-4c88-a87e-c300497b1d29",
+        "chatSessionId": "sess_1441e928-da25-4b73-83e2-d3719ed6c48d",
+        "timestamp": 1789226658135
+      },
+      {
+        "executionId": "3cb0d211-7bf5-4c88-a87e-c300497b1d29",
+        "chatSessionId": "sess_1441e928-da25-4b73-83e2-d3719ed6c48d",
+        "timestamp": 1789228186410
+      },
+      {
+        "executionId": "3cb0d211-7bf5-4c88-a87e-c300497b1d29",
+        "chatSessionId": "sess_1441e928-da25-4b73-83e2-d3719ed6c48d",
+        "timestamp": 1789232478562
+      }
+    ],
+    "6.1 Add an HTTP handler test for merge behavior via `POST /api/scans`": [
+      {
+        "executionId": "3cb0d211-7bf5-4c88-a87e-c300497b1d29",
+        "chatSessionId": "sess_1441e928-da25-4b73-83e2-d3719ed6c48d",
+        "timestamp": 1789226658178
+      },
+      {
+        "executionId": "3cb0d211-7bf5-4c88-a87e-c300497b1d29",
+        "chatSessionId": "sess_1441e928-da25-4b73-83e2-d3719ed6c48d",
+        "timestamp": 1789232486507
+      },
+      {
+        "executionId": "3cb0d211-7bf5-4c88-a87e-c300497b1d29",
+        "chatSessionId": "sess_1441e928-da25-4b73-83e2-d3719ed6c48d",
+        "timestamp": 1789236535926
+      }
+    ],
+    "6.2 Add a `ScanListener` test for merge behavior via stdin": [
+      {
+        "executionId": "3cb0d211-7bf5-4c88-a87e-c300497b1d29",
+        "chatSessionId": "sess_1441e928-da25-4b73-83e2-d3719ed6c48d",
+        "timestamp": 1789226658220
+      },
+      {
+        "executionId": "3cb0d211-7bf5-4c88-a87e-c300497b1d29",
+        "chatSessionId": "sess_1441e928-da25-4b73-83e2-d3719ed6c48d",
+        "timestamp": 1789232492368
+      },
+      {
+        "executionId": "3cb0d211-7bf5-4c88-a87e-c300497b1d29",
+        "chatSessionId": "sess_1441e928-da25-4b73-83e2-d3719ed6c48d",
+        "timestamp": 1789236392819
+      }
+    ],
+    "6.3 Add a test confirming the broadcast fires exactly once per scan on merge": [
+      {
+        "executionId": "3cb0d211-7bf5-4c88-a87e-c300497b1d29",
+        "chatSessionId": "sess_1441e928-da25-4b73-83e2-d3719ed6c48d",
+        "timestamp": 1789226658261
+      },
+      {
+        "executionId": "3cb0d211-7bf5-4c88-a87e-c300497b1d29",
+        "chatSessionId": "sess_1441e928-da25-4b73-83e2-d3719ed6c48d",
+        "timestamp": 1789232498515
+      },
+      {
+        "executionId": "3cb0d211-7bf5-4c88-a87e-c300497b1d29",
+        "chatSessionId": "sess_1441e928-da25-4b73-83e2-d3719ed6c48d",
+        "timestamp": 1789236431508
+      }
+    ],
+    "7. Checkpoint - Ensure all tests pass and coverage is enforced": [
+      {
+        "executionId": "3cb0d211-7bf5-4c88-a87e-c300497b1d29",
+        "chatSessionId": "sess_1441e928-da25-4b73-83e2-d3719ed6c48d",
+        "timestamp": 1789226658299
+      },
+      {
+        "executionId": "3cb0d211-7bf5-4c88-a87e-c300497b1d29",
+        "chatSessionId": "sess_1441e928-da25-4b73-83e2-d3719ed6c48d",
+        "timestamp": 1789236540192
+      },
+      {
+        "executionId": "3cb0d211-7bf5-4c88-a87e-c300497b1d29",
+        "chatSessionId": "sess_1441e928-da25-4b73-83e2-d3719ed6c48d",
+        "timestamp": 1789236763682
+      }
+    ],
+    "3. Fix for duplicate scan-queue cards": [
+      {
+        "executionId": "3cb0d211-7bf5-4c88-a87e-c300497b1d29",
+        "chatSessionId": "sess_1441e928-da25-4b73-83e2-d3719ed6c48d",
+        "timestamp": 1789228162408
+      }
+    ],
+    "4. Add unit test coverage for `findMergeableScanEntry` (logic the tests above don't isolate directly)": [
+      {
+        "executionId": "3cb0d211-7bf5-4c88-a87e-c300497b1d29",
+        "chatSessionId": "sess_1441e928-da25-4b73-83e2-d3719ed6c48d",
+        "timestamp": 1789232261186
+      }
+    ],
+    "5. Add property-based coverage for merge-vs-create accounting across random scan sequences": [
+      {
+        "executionId": "3cb0d211-7bf5-4c88-a87e-c300497b1d29",
+        "chatSessionId": "sess_1441e928-da25-4b73-83e2-d3719ed6c48d",
+        "timestamp": 1789232478618
+      }
+    ],
+    "6. Add integration coverage across both entry points": [
+      {
+        "executionId": "3cb0d211-7bf5-4c88-a87e-c300497b1d29",
+        "chatSessionId": "sess_1441e928-da25-4b73-83e2-d3719ed6c48d",
+        "timestamp": 1789236535981
+      }
+    ]
+  }
+}
