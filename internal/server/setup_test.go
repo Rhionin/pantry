@@ -59,7 +59,8 @@ func setupTestWithDB(t *testing.T) (http.Handler, *product.Catalog, *fakeOpenFoo
 		Now:           clock.Now,
 	}
 
-	return NewHandler(productRepo, lookupService, refresher, db), productRepo, fake, db, refresher, clock
+	handler, _ := NewHandler(productRepo, lookupService, refresher, db)
+	return handler, productRepo, fake, db, refresher, clock
 }
 
 func setupProduct(id, name, category string) func(env testEnv) {

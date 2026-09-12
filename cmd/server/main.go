@@ -10,7 +10,6 @@ import (
 
 	"github.com/Rhionin/pantry/internal/app"
 	"github.com/Rhionin/pantry/internal/product"
-	"github.com/Rhionin/pantry/internal/scan"
 	"github.com/Rhionin/pantry/internal/scanlistener"
 	"github.com/Rhionin/pantry/internal/server"
 	_ "modernc.org/sqlite"
@@ -77,10 +76,10 @@ func main() {
 		Refresher:     refresher,
 	}
 
-	handler := server.NewHandler(catalog, lookupService, refresher, sqlDB)
+	handler, scanQueue := server.NewHandler(catalog, lookupService, refresher, sqlDB)
 
 	if listener, ok := loadScanListenerConfig(); ok {
-		listener.Queue = scan.NewQueue(sqlDB)
+		listener.Queue = scanQueue
 		listener.LookupService = lookupService
 		go listener.Run(context.Background())
 	}

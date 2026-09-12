@@ -1,0 +1,634 @@
+{
+  "pbtResults": {},
+  "executionHistory": {
+    "1.1 Create `internal/events/broadcaster.go` with `Message`, `Broadcaster`,": [
+      {
+        "executionId": "cbc7ebcd-584b-43f0-9b92-885b56d6d881",
+        "chatSessionId": "sess_c1564511-b3e5-46b6-943d-c9b572a3eb2a",
+        "timestamp": 1789168060635
+      },
+      {
+        "executionId": "cbc7ebcd-584b-43f0-9b92-885b56d6d881",
+        "chatSessionId": "sess_c1564511-b3e5-46b6-943d-c9b572a3eb2a",
+        "timestamp": 1789168071365
+      },
+      {
+        "executionId": "cbc7ebcd-584b-43f0-9b92-885b56d6d881",
+        "chatSessionId": "sess_c1564511-b3e5-46b6-943d-c9b572a3eb2a",
+        "timestamp": 1789168146437
+      }
+    ],
+    "1.2 Write unit tests for `Broadcaster` in `internal/events/broadcaster_test.go`": [
+      {
+        "executionId": "cbc7ebcd-584b-43f0-9b92-885b56d6d881",
+        "chatSessionId": "sess_c1564511-b3e5-46b6-943d-c9b572a3eb2a",
+        "timestamp": 1789168060676
+      },
+      {
+        "executionId": "cbc7ebcd-584b-43f0-9b92-885b56d6d881",
+        "chatSessionId": "sess_c1564511-b3e5-46b6-943d-c9b572a3eb2a",
+        "timestamp": 1789168152121
+      },
+      {
+        "executionId": "cbc7ebcd-584b-43f0-9b92-885b56d6d881",
+        "chatSessionId": "sess_c1564511-b3e5-46b6-943d-c9b572a3eb2a",
+        "timestamp": 1789168339064
+      }
+    ],
+    "1.3 Write property tests for `Broadcaster` in": [
+      {
+        "executionId": "cbc7ebcd-584b-43f0-9b92-885b56d6d881",
+        "chatSessionId": "sess_c1564511-b3e5-46b6-943d-c9b572a3eb2a",
+        "timestamp": 1789168060742
+      },
+      {
+        "executionId": "cbc7ebcd-584b-43f0-9b92-885b56d6d881",
+        "chatSessionId": "sess_c1564511-b3e5-46b6-943d-c9b572a3eb2a",
+        "timestamp": 1789168343284
+      },
+      {
+        "executionId": "cbc7ebcd-584b-43f0-9b92-885b56d6d881",
+        "chatSessionId": "sess_c1564511-b3e5-46b6-943d-c9b572a3eb2a",
+        "timestamp": 1789168538118
+      }
+    ],
+    "2. Checkpoint - `internal/events` compiles and its tests pass": [
+      {
+        "executionId": "cbc7ebcd-584b-43f0-9b92-885b56d6d881",
+        "chatSessionId": "sess_c1564511-b3e5-46b6-943d-c9b572a3eb2a",
+        "timestamp": 1789168060780
+      },
+      {
+        "executionId": "cbc7ebcd-584b-43f0-9b92-885b56d6d881",
+        "chatSessionId": "sess_c1564511-b3e5-46b6-943d-c9b572a3eb2a",
+        "timestamp": 1789168587817
+      },
+      {
+        "executionId": "cbc7ebcd-584b-43f0-9b92-885b56d6d881",
+        "chatSessionId": "sess_c1564511-b3e5-46b6-943d-c9b572a3eb2a",
+        "timestamp": 1789168794156
+      }
+    ],
+    "3.1 Extract `aggregateItem` in `internal/inventory/aggregate.go` and add": [
+      {
+        "executionId": "cbc7ebcd-584b-43f0-9b92-885b56d6d881",
+        "chatSessionId": "sess_c1564511-b3e5-46b6-943d-c9b572a3eb2a",
+        "timestamp": 1789168060820
+      },
+      {
+        "executionId": "cbc7ebcd-584b-43f0-9b92-885b56d6d881",
+        "chatSessionId": "sess_c1564511-b3e5-46b6-943d-c9b572a3eb2a",
+        "timestamp": 1789168072146
+      },
+      {
+        "executionId": "cbc7ebcd-584b-43f0-9b92-885b56d6d881",
+        "chatSessionId": "sess_c1564511-b3e5-46b6-943d-c9b572a3eb2a",
+        "timestamp": 1789168145586
+      }
+    ],
+    "3.2 Update `internal/server/handler_inventory_list.go` to use": [
+      {
+        "executionId": "cbc7ebcd-584b-43f0-9b92-885b56d6d881",
+        "chatSessionId": "sess_c1564511-b3e5-46b6-943d-c9b572a3eb2a",
+        "timestamp": 1789168060862
+      },
+      {
+        "executionId": "cbc7ebcd-584b-43f0-9b92-885b56d6d881",
+        "chatSessionId": "sess_c1564511-b3e5-46b6-943d-c9b572a3eb2a",
+        "timestamp": 1789168153204
+      },
+      {
+        "executionId": "cbc7ebcd-584b-43f0-9b92-885b56d6d881",
+        "chatSessionId": "sess_c1564511-b3e5-46b6-943d-c9b572a3eb2a",
+        "timestamp": 1789168337295
+      }
+    ],
+    "3.3 Write unit tests for `GetInventoryItem` in": [
+      {
+        "executionId": "cbc7ebcd-584b-43f0-9b92-885b56d6d881",
+        "chatSessionId": "sess_c1564511-b3e5-46b6-943d-c9b572a3eb2a",
+        "timestamp": 1789168060902
+      },
+      {
+        "executionId": "cbc7ebcd-584b-43f0-9b92-885b56d6d881",
+        "chatSessionId": "sess_c1564511-b3e5-46b6-943d-c9b572a3eb2a",
+        "timestamp": 1789168153837
+      },
+      {
+        "executionId": "cbc7ebcd-584b-43f0-9b92-885b56d6d881",
+        "chatSessionId": "sess_c1564511-b3e5-46b6-943d-c9b572a3eb2a",
+        "timestamp": 1789168338309
+      }
+    ],
+    "4. Checkpoint - inventory aggregation changes compile and existing tests pass": [
+      {
+        "executionId": "cbc7ebcd-584b-43f0-9b92-885b56d6d881",
+        "chatSessionId": "sess_c1564511-b3e5-46b6-943d-c9b572a3eb2a",
+        "timestamp": 1789168060938
+      },
+      {
+        "executionId": "cbc7ebcd-584b-43f0-9b92-885b56d6d881",
+        "chatSessionId": "sess_c1564511-b3e5-46b6-943d-c9b572a3eb2a",
+        "timestamp": 1789168589700
+      },
+      {
+        "executionId": "cbc7ebcd-584b-43f0-9b92-885b56d6d881",
+        "chatSessionId": "sess_c1564511-b3e5-46b6-943d-c9b572a3eb2a",
+        "timestamp": 1789168794841
+      }
+    ],
+    "5.1 Add the `Broadcaster` field and publish calls in": [
+      {
+        "executionId": "cbc7ebcd-584b-43f0-9b92-885b56d6d881",
+        "chatSessionId": "sess_c1564511-b3e5-46b6-943d-c9b572a3eb2a",
+        "timestamp": 1789168060977
+      },
+      {
+        "executionId": "cbc7ebcd-584b-43f0-9b92-885b56d6d881",
+        "chatSessionId": "sess_c1564511-b3e5-46b6-943d-c9b572a3eb2a",
+        "timestamp": 1789168590208
+      },
+      {
+        "executionId": "cbc7ebcd-584b-43f0-9b92-885b56d6d881",
+        "chatSessionId": "sess_c1564511-b3e5-46b6-943d-c9b572a3eb2a",
+        "timestamp": 1789168795797
+      }
+    ],
+    "5.2 Add a `fakeBroadcaster` test double and unit tests in": [
+      {
+        "executionId": "cbc7ebcd-584b-43f0-9b92-885b56d6d881",
+        "chatSessionId": "sess_c1564511-b3e5-46b6-943d-c9b572a3eb2a",
+        "timestamp": 1789168061016
+      },
+      {
+        "executionId": "cbc7ebcd-584b-43f0-9b92-885b56d6d881",
+        "chatSessionId": "sess_c1564511-b3e5-46b6-943d-c9b572a3eb2a",
+        "timestamp": 1789168801758
+      },
+      {
+        "executionId": "cbc7ebcd-584b-43f0-9b92-885b56d6d881",
+        "chatSessionId": "sess_c1564511-b3e5-46b6-943d-c9b572a3eb2a",
+        "timestamp": 1789169386385
+      }
+    ],
+    "5.3 Write property tests for `Pantry` publish behavior in": [
+      {
+        "executionId": "cbc7ebcd-584b-43f0-9b92-885b56d6d881",
+        "chatSessionId": "sess_c1564511-b3e5-46b6-943d-c9b572a3eb2a",
+        "timestamp": 1789168061054
+      },
+      {
+        "executionId": "cbc7ebcd-584b-43f0-9b92-885b56d6d881",
+        "chatSessionId": "sess_c1564511-b3e5-46b6-943d-c9b572a3eb2a",
+        "timestamp": 1789169391465
+      },
+      {
+        "executionId": "cbc7ebcd-584b-43f0-9b92-885b56d6d881",
+        "chatSessionId": "sess_c1564511-b3e5-46b6-943d-c9b572a3eb2a",
+        "timestamp": 1789169773777
+      }
+    ],
+    "6. Checkpoint - `Pantry` publish behavior compiles and its tests pass": [
+      {
+        "executionId": "cbc7ebcd-584b-43f0-9b92-885b56d6d881",
+        "chatSessionId": "sess_c1564511-b3e5-46b6-943d-c9b572a3eb2a",
+        "timestamp": 1789168061089
+      },
+      {
+        "executionId": "cbc7ebcd-584b-43f0-9b92-885b56d6d881",
+        "chatSessionId": "sess_c1564511-b3e5-46b6-943d-c9b572a3eb2a",
+        "timestamp": 1789170078419
+      },
+      {
+        "executionId": "089f425d-e4ad-423d-8a5b-5096937bc40f",
+        "chatSessionId": "sess_c1564511-b3e5-46b6-943d-c9b572a3eb2a",
+        "timestamp": 1789180397075
+      },
+      {
+        "executionId": "089f425d-e4ad-423d-8a5b-5096937bc40f",
+        "chatSessionId": "sess_c1564511-b3e5-46b6-943d-c9b572a3eb2a",
+        "timestamp": 1789180424465
+      }
+    ],
+    "7.1 Add the `Broadcaster` and `Pantry` fields to `internal/scan/scan.go` and": [
+      {
+        "executionId": "cbc7ebcd-584b-43f0-9b92-885b56d6d881",
+        "chatSessionId": "sess_c1564511-b3e5-46b6-943d-c9b572a3eb2a",
+        "timestamp": 1789168061147
+      },
+      {
+        "executionId": "cbc7ebcd-584b-43f0-9b92-885b56d6d881",
+        "chatSessionId": "sess_c1564511-b3e5-46b6-943d-c9b572a3eb2a",
+        "timestamp": 1789168802502
+      },
+      {
+        "executionId": "cbc7ebcd-584b-43f0-9b92-885b56d6d881",
+        "chatSessionId": "sess_c1564511-b3e5-46b6-943d-c9b572a3eb2a",
+        "timestamp": 1789169387308
+      }
+    ],
+    "7.2 Extend `fakeBroadcaster`-style test doubles and unit tests in": [
+      {
+        "executionId": "cbc7ebcd-584b-43f0-9b92-885b56d6d881",
+        "chatSessionId": "sess_c1564511-b3e5-46b6-943d-c9b572a3eb2a",
+        "timestamp": 1789168061192
+      },
+      {
+        "executionId": "cbc7ebcd-584b-43f0-9b92-885b56d6d881",
+        "chatSessionId": "sess_c1564511-b3e5-46b6-943d-c9b572a3eb2a",
+        "timestamp": 1789169392521
+      },
+      {
+        "executionId": "cbc7ebcd-584b-43f0-9b92-885b56d6d881",
+        "chatSessionId": "sess_c1564511-b3e5-46b6-943d-c9b572a3eb2a",
+        "timestamp": 1789169774420
+      }
+    ],
+    "7.3 Write property tests for Requirement 2's Queue methods in": [
+      {
+        "executionId": "cbc7ebcd-584b-43f0-9b92-885b56d6d881",
+        "chatSessionId": "sess_c1564511-b3e5-46b6-943d-c9b572a3eb2a",
+        "timestamp": 1789168061228
+      },
+      {
+        "executionId": "cbc7ebcd-584b-43f0-9b92-885b56d6d881",
+        "chatSessionId": "sess_c1564511-b3e5-46b6-943d-c9b572a3eb2a",
+        "timestamp": 1789169787593
+      },
+      {
+        "executionId": "cbc7ebcd-584b-43f0-9b92-885b56d6d881",
+        "chatSessionId": "sess_c1564511-b3e5-46b6-943d-c9b572a3eb2a",
+        "timestamp": 1789169947215
+      }
+    ],
+    "8.1 Add publish calls in `internal/scan/commit.go`": [
+      {
+        "executionId": "cbc7ebcd-584b-43f0-9b92-885b56d6d881",
+        "chatSessionId": "sess_c1564511-b3e5-46b6-943d-c9b572a3eb2a",
+        "timestamp": 1789168061271
+      },
+      {
+        "executionId": "cbc7ebcd-584b-43f0-9b92-885b56d6d881",
+        "chatSessionId": "sess_c1564511-b3e5-46b6-943d-c9b572a3eb2a",
+        "timestamp": 1789170079144
+      },
+      {
+        "executionId": "cbc7ebcd-584b-43f0-9b92-885b56d6d881",
+        "chatSessionId": "sess_c1564511-b3e5-46b6-943d-c9b572a3eb2a",
+        "timestamp": 1789170298876
+      }
+    ],
+    "8.2 Extend `internal/scan/commit_test.go` with publish-behavior unit tests": [
+      {
+        "executionId": "cbc7ebcd-584b-43f0-9b92-885b56d6d881",
+        "chatSessionId": "sess_c1564511-b3e5-46b6-943d-c9b572a3eb2a",
+        "timestamp": 1789168061312
+      },
+      {
+        "executionId": "cbc7ebcd-584b-43f0-9b92-885b56d6d881",
+        "chatSessionId": "sess_c1564511-b3e5-46b6-943d-c9b572a3eb2a",
+        "timestamp": 1789170302313
+      },
+      {
+        "executionId": "6c2fa3fa-7532-4f3a-b969-92e2a6ca2d4c",
+        "chatSessionId": "sess_c1564511-b3e5-46b6-943d-c9b572a3eb2a",
+        "timestamp": 1789170987810
+      }
+    ],
+    "8.3 Complete the Requirement 2/3 property tests in": [
+      {
+        "executionId": "cbc7ebcd-584b-43f0-9b92-885b56d6d881",
+        "chatSessionId": "sess_c1564511-b3e5-46b6-943d-c9b572a3eb2a",
+        "timestamp": 1789168061355
+      },
+      {
+        "executionId": "6c2fa3fa-7532-4f3a-b969-92e2a6ca2d4c",
+        "chatSessionId": "sess_c1564511-b3e5-46b6-943d-c9b572a3eb2a",
+        "timestamp": 1789170995864
+      },
+      {
+        "executionId": "6c2fa3fa-7532-4f3a-b969-92e2a6ca2d4c",
+        "chatSessionId": "sess_c1564511-b3e5-46b6-943d-c9b572a3eb2a",
+        "timestamp": 1789171599047
+      }
+    ],
+    "9. Checkpoint - `Queue` publish behavior compiles and its tests pass": [
+      {
+        "executionId": "cbc7ebcd-584b-43f0-9b92-885b56d6d881",
+        "chatSessionId": "sess_c1564511-b3e5-46b6-943d-c9b572a3eb2a",
+        "timestamp": 1789168061399
+      },
+      {
+        "executionId": "6c2fa3fa-7532-4f3a-b969-92e2a6ca2d4c",
+        "chatSessionId": "sess_c1564511-b3e5-46b6-943d-c9b572a3eb2a",
+        "timestamp": 1789171604646
+      },
+      {
+        "executionId": "089f425d-e4ad-423d-8a5b-5096937bc40f",
+        "chatSessionId": "sess_c1564511-b3e5-46b6-943d-c9b572a3eb2a",
+        "timestamp": 1789180381379
+      }
+    ],
+    "10.1 Create `internal/server/handler_events.go` with `EventsHandler`": [
+      {
+        "executionId": "cbc7ebcd-584b-43f0-9b92-885b56d6d881",
+        "chatSessionId": "sess_c1564511-b3e5-46b6-943d-c9b572a3eb2a",
+        "timestamp": 1789168061443
+      },
+      {
+        "executionId": "6c2fa3fa-7532-4f3a-b969-92e2a6ca2d4c",
+        "chatSessionId": "sess_c1564511-b3e5-46b6-943d-c9b572a3eb2a",
+        "timestamp": 1789170996826
+      },
+      {
+        "executionId": "6c2fa3fa-7532-4f3a-b969-92e2a6ca2d4c",
+        "chatSessionId": "sess_c1564511-b3e5-46b6-943d-c9b572a3eb2a",
+        "timestamp": 1789171046644
+      }
+    ],
+    "10.2 Wire the broadcaster into `internal/server/server.go`": [
+      {
+        "executionId": "cbc7ebcd-584b-43f0-9b92-885b56d6d881",
+        "chatSessionId": "sess_c1564511-b3e5-46b6-943d-c9b572a3eb2a",
+        "timestamp": 1789168061490
+      },
+      {
+        "executionId": "6c2fa3fa-7532-4f3a-b969-92e2a6ca2d4c",
+        "chatSessionId": "sess_c1564511-b3e5-46b6-943d-c9b572a3eb2a",
+        "timestamp": 1789171603707
+      },
+      {
+        "executionId": "089f425d-e4ad-423d-8a5b-5096937bc40f",
+        "chatSessionId": "sess_c1564511-b3e5-46b6-943d-c9b572a3eb2a",
+        "timestamp": 1789180358392
+      }
+    ],
+    "11. Checkpoint - server builds, existing `internal/server` suite passes unmodified": [
+      {
+        "executionId": "cbc7ebcd-584b-43f0-9b92-885b56d6d881",
+        "chatSessionId": "sess_c1564511-b3e5-46b6-943d-c9b572a3eb2a",
+        "timestamp": 1789168061535
+      },
+      {
+        "executionId": "089f425d-e4ad-423d-8a5b-5096937bc40f",
+        "chatSessionId": "sess_c1564511-b3e5-46b6-943d-c9b572a3eb2a",
+        "timestamp": 1789180398801
+      },
+      {
+        "executionId": "089f425d-e4ad-423d-8a5b-5096937bc40f",
+        "chatSessionId": "sess_c1564511-b3e5-46b6-943d-c9b572a3eb2a",
+        "timestamp": 1789180425251
+      }
+    ],
+    "12.1 Add `internal/server/handler_events_test.go`": [
+      {
+        "executionId": "cbc7ebcd-584b-43f0-9b92-885b56d6d881",
+        "chatSessionId": "sess_c1564511-b3e5-46b6-943d-c9b572a3eb2a",
+        "timestamp": 1789168061578
+      },
+      {
+        "executionId": "089f425d-e4ad-423d-8a5b-5096937bc40f",
+        "chatSessionId": "sess_c1564511-b3e5-46b6-943d-c9b572a3eb2a",
+        "timestamp": 1789180429545
+      },
+      {
+        "executionId": "089f425d-e4ad-423d-8a5b-5096937bc40f",
+        "chatSessionId": "sess_c1564511-b3e5-46b6-943d-c9b572a3eb2a",
+        "timestamp": 1789180666998
+      }
+    ],
+    "13. Checkpoint - full backend suite passes": [
+      {
+        "executionId": "cbc7ebcd-584b-43f0-9b92-885b56d6d881",
+        "chatSessionId": "sess_c1564511-b3e5-46b6-943d-c9b572a3eb2a",
+        "timestamp": 1789168061621
+      },
+      {
+        "executionId": "089f425d-e4ad-423d-8a5b-5096937bc40f",
+        "chatSessionId": "sess_c1564511-b3e5-46b6-943d-c9b572a3eb2a",
+        "timestamp": 1789180671016
+      },
+      {
+        "executionId": "089f425d-e4ad-423d-8a5b-5096937bc40f",
+        "chatSessionId": "sess_c1564511-b3e5-46b6-943d-c9b572a3eb2a",
+        "timestamp": 1789180742912
+      }
+    ],
+    "14.1 Add `mergeScanEvent` and `pruneSelection` to": [
+      {
+        "executionId": "cbc7ebcd-584b-43f0-9b92-885b56d6d881",
+        "chatSessionId": "sess_c1564511-b3e5-46b6-943d-c9b572a3eb2a",
+        "timestamp": 1789168061663
+      },
+      {
+        "executionId": "089f425d-e4ad-423d-8a5b-5096937bc40f",
+        "chatSessionId": "sess_c1564511-b3e5-46b6-943d-c9b572a3eb2a",
+        "timestamp": 1789180671777
+      },
+      {
+        "executionId": "089f425d-e4ad-423d-8a5b-5096937bc40f",
+        "chatSessionId": "sess_c1564511-b3e5-46b6-943d-c9b572a3eb2a",
+        "timestamp": 1789180743661
+      }
+    ],
+    "14.2 Write example and property tests for `mergeScanEvent`/`pruneSelection`": [
+      {
+        "executionId": "cbc7ebcd-584b-43f0-9b92-885b56d6d881",
+        "chatSessionId": "sess_c1564511-b3e5-46b6-943d-c9b572a3eb2a",
+        "timestamp": 1789168061739
+      },
+      {
+        "executionId": "089f425d-e4ad-423d-8a5b-5096937bc40f",
+        "chatSessionId": "sess_c1564511-b3e5-46b6-943d-c9b572a3eb2a",
+        "timestamp": 1789180748033
+      },
+      {
+        "executionId": "089f425d-e4ad-423d-8a5b-5096937bc40f",
+        "chatSessionId": "sess_c1564511-b3e5-46b6-943d-c9b572a3eb2a",
+        "timestamp": 1789180862062
+      }
+    ],
+    "14.3 Create `frontend/src/components/inventory/inventoryUtils.ts` with": [
+      {
+        "executionId": "cbc7ebcd-584b-43f0-9b92-885b56d6d881",
+        "chatSessionId": "sess_c1564511-b3e5-46b6-943d-c9b572a3eb2a",
+        "timestamp": 1789168061780
+      },
+      {
+        "executionId": "089f425d-e4ad-423d-8a5b-5096937bc40f",
+        "chatSessionId": "sess_c1564511-b3e5-46b6-943d-c9b572a3eb2a",
+        "timestamp": 1789180748742
+      },
+      {
+        "executionId": "089f425d-e4ad-423d-8a5b-5096937bc40f",
+        "chatSessionId": "sess_c1564511-b3e5-46b6-943d-c9b572a3eb2a",
+        "timestamp": 1789180862984
+      }
+    ],
+    "14.4 Write example and property tests for `mergeInventoryEvent` in a new": [
+      {
+        "executionId": "cbc7ebcd-584b-43f0-9b92-885b56d6d881",
+        "chatSessionId": "sess_c1564511-b3e5-46b6-943d-c9b572a3eb2a",
+        "timestamp": 1789168061820
+      },
+      {
+        "executionId": "089f425d-e4ad-423d-8a5b-5096937bc40f",
+        "chatSessionId": "sess_c1564511-b3e5-46b6-943d-c9b572a3eb2a",
+        "timestamp": 1789180867820
+      },
+      {
+        "executionId": "089f425d-e4ad-423d-8a5b-5096937bc40f",
+        "chatSessionId": "sess_c1564511-b3e5-46b6-943d-c9b572a3eb2a",
+        "timestamp": 1789181002332
+      }
+    ],
+    "15. Checkpoint - frontend util tests pass": [
+      {
+        "executionId": "cbc7ebcd-584b-43f0-9b92-885b56d6d881",
+        "chatSessionId": "sess_c1564511-b3e5-46b6-943d-c9b572a3eb2a",
+        "timestamp": 1789168061859
+      },
+      {
+        "executionId": "089f425d-e4ad-423d-8a5b-5096937bc40f",
+        "chatSessionId": "sess_c1564511-b3e5-46b6-943d-c9b572a3eb2a",
+        "timestamp": 1789181012605
+      },
+      {
+        "executionId": "089f425d-e4ad-423d-8a5b-5096937bc40f",
+        "chatSessionId": "sess_c1564511-b3e5-46b6-943d-c9b572a3eb2a",
+        "timestamp": 1789181075532
+      }
+    ],
+    "16.1 Add the `EventSource`-backed `useEffect` to": [
+      {
+        "executionId": "cbc7ebcd-584b-43f0-9b92-885b56d6d881",
+        "chatSessionId": "sess_c1564511-b3e5-46b6-943d-c9b572a3eb2a",
+        "timestamp": 1789168061902
+      },
+      {
+        "executionId": "089f425d-e4ad-423d-8a5b-5096937bc40f",
+        "chatSessionId": "sess_c1564511-b3e5-46b6-943d-c9b572a3eb2a",
+        "timestamp": 1789180868407
+      },
+      {
+        "executionId": "089f425d-e4ad-423d-8a5b-5096937bc40f",
+        "chatSessionId": "sess_c1564511-b3e5-46b6-943d-c9b572a3eb2a",
+        "timestamp": 1789181002930
+      }
+    ],
+    "16.2 Add the `EventSource`-backed `useEffect` to": [
+      {
+        "executionId": "cbc7ebcd-584b-43f0-9b92-885b56d6d881",
+        "chatSessionId": "sess_c1564511-b3e5-46b6-943d-c9b572a3eb2a",
+        "timestamp": 1789168061949
+      },
+      {
+        "executionId": "089f425d-e4ad-423d-8a5b-5096937bc40f",
+        "chatSessionId": "sess_c1564511-b3e5-46b6-943d-c9b572a3eb2a",
+        "timestamp": 1789181013552
+      },
+      {
+        "executionId": "089f425d-e4ad-423d-8a5b-5096937bc40f",
+        "chatSessionId": "sess_c1564511-b3e5-46b6-943d-c9b572a3eb2a",
+        "timestamp": 1789181075036
+      }
+    ],
+    "16.3 Add a fake `EventSource` test double and extend": [
+      {
+        "executionId": "cbc7ebcd-584b-43f0-9b92-885b56d6d881",
+        "chatSessionId": "sess_c1564511-b3e5-46b6-943d-c9b572a3eb2a",
+        "timestamp": 1789168061993
+      },
+      {
+        "executionId": "089f425d-e4ad-423d-8a5b-5096937bc40f",
+        "chatSessionId": "sess_c1564511-b3e5-46b6-943d-c9b572a3eb2a",
+        "timestamp": 1789181080041
+      },
+      {
+        "executionId": "089f425d-e4ad-423d-8a5b-5096937bc40f",
+        "chatSessionId": "sess_c1564511-b3e5-46b6-943d-c9b572a3eb2a",
+        "timestamp": 1789181274777
+      }
+    ],
+    "17. Final checkpoint - full suite, coverage, and race detector": [
+      {
+        "executionId": "cbc7ebcd-584b-43f0-9b92-885b56d6d881",
+        "chatSessionId": "sess_c1564511-b3e5-46b6-943d-c9b572a3eb2a",
+        "timestamp": 1789168062048
+      },
+      {
+        "executionId": "089f425d-e4ad-423d-8a5b-5096937bc40f",
+        "chatSessionId": "sess_c1564511-b3e5-46b6-943d-c9b572a3eb2a",
+        "timestamp": 1789181278688
+      },
+      {
+        "executionId": "089f425d-e4ad-423d-8a5b-5096937bc40f",
+        "chatSessionId": "sess_c1564511-b3e5-46b6-943d-c9b572a3eb2a",
+        "timestamp": 1789181398633
+      }
+    ],
+    "3. Add `Pantry.GetInventoryItem` and extract shared aggregation": [
+      {
+        "executionId": "cbc7ebcd-584b-43f0-9b92-885b56d6d881",
+        "chatSessionId": "sess_c1564511-b3e5-46b6-943d-c9b572a3eb2a",
+        "timestamp": 1789168338351
+      }
+    ],
+    "1. Implement `internal/events.Broadcaster`": [
+      {
+        "executionId": "cbc7ebcd-584b-43f0-9b92-885b56d6d881",
+        "chatSessionId": "sess_c1564511-b3e5-46b6-943d-c9b572a3eb2a",
+        "timestamp": 1789168538164
+      }
+    ],
+    "5. Add `Pantry.Broadcaster` and publish calls to `Pantry` mutations": [
+      {
+        "executionId": "cbc7ebcd-584b-43f0-9b92-885b56d6d881",
+        "chatSessionId": "sess_c1564511-b3e5-46b6-943d-c9b572a3eb2a",
+        "timestamp": 1789169773822
+      }
+    ],
+    "7. Add `Queue.Broadcaster`/`Queue.Pantry` and publish calls to scan mutations": [
+      {
+        "executionId": "cbc7ebcd-584b-43f0-9b92-885b56d6d881",
+        "chatSessionId": "sess_c1564511-b3e5-46b6-943d-c9b572a3eb2a",
+        "timestamp": 1789169947278
+      }
+    ],
+    "8. Add publish calls to `ResolveFlaggedEntry`, `CommitStockIn`, `CommitStockOut`": [
+      {
+        "executionId": "6c2fa3fa-7532-4f3a-b969-92e2a6ca2d4c",
+        "chatSessionId": "sess_c1564511-b3e5-46b6-943d-c9b572a3eb2a",
+        "timestamp": 1789171599124
+      }
+    ],
+    "10. Add the `GET /api/events` route and wire the broadcaster": [
+      {
+        "executionId": "089f425d-e4ad-423d-8a5b-5096937bc40f",
+        "chatSessionId": "sess_c1564511-b3e5-46b6-943d-c9b572a3eb2a",
+        "timestamp": 1789180358456
+      }
+    ],
+    "12. Add the SSE integration test": [
+      {
+        "executionId": "089f425d-e4ad-423d-8a5b-5096937bc40f",
+        "chatSessionId": "sess_c1564511-b3e5-46b6-943d-c9b572a3eb2a",
+        "timestamp": 1789180667098
+      }
+    ],
+    "14. Add frontend merge/prune helpers": [
+      {
+        "executionId": "089f425d-e4ad-423d-8a5b-5096937bc40f",
+        "chatSessionId": "sess_c1564511-b3e5-46b6-943d-c9b572a3eb2a",
+        "timestamp": 1789181002380
+      }
+    ],
+    "16. Wire `EventSource` into `ScanQueuePage` and `InventoryPage`": [
+      {
+        "executionId": "089f425d-e4ad-423d-8a5b-5096937bc40f",
+        "chatSessionId": "sess_c1564511-b3e5-46b6-943d-c9b572a3eb2a",
+        "timestamp": 1789181274826
+      }
+    ]
+  }
+}

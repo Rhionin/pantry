@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/Rhionin/pantry/internal/inventory"
 	"github.com/Rhionin/pantry/internal/product"
 	"github.com/google/uuid"
 )
@@ -74,6 +75,23 @@ func NewEntryFromLookup(userID, barcode string, lookup product.LookupResult, dir
 // Queue provides database operations for scan entries.
 type Queue struct {
 	db *sql.DB
+
+	// Broadcaster publishes a Scan_Event (and, for commit paths, an
+	// Inventory_Event) after each successful mutation. Nil in every existing
+	// test and in any caller that doesn't need live updates; publish calls
+	// are skipped entirely when nil.
+	Broadcaster interface {
+		PublishScanEvent(entry ScanEntry)
+		PublishInventoryEvent(item inventory.InventoryItem)
+	}
+
+	// Pantry supplies the aggregated InventoryItem for a scan commit's
+	// affected item, so CommitStockIn/CommitStockOut can publish an
+	// Inventory_Event without duplicating inventory's aggregation logic.
+	// Only required when Broadcaster is set.
+	Pantry interface {
+		GetInventoryItem(ctx context.Context, itemID string, now time.Time, warningDays int) (*inventory.InventoryItem, error)
+	}
 }
 
 // NewQueue creates a new Queue with the given database connection.
@@ -113,7 +131,16 @@ func (r *Queue) CreateScanEntry(ctx context.Context, entry ScanEntry) (*ScanEntr
 		return nil, fmt.Errorf("CreateScanEntry: %w", err)
 	}
 
-	return r.GetScanEntry(ctx, entry.ID)
+	created, err := r.GetScanEntry(ctx, entry.ID)
+	if err != nil {
+		return nil, err
+	}
+
+	if created != nil && r.Broadcaster != nil {
+		r.Broadcaster.PublishScanEvent(*created)
+	}
+
+	return created, nil
 }
 
 // GetScanEntry returns the scan entry with the given ID, or nil if no such
@@ -241,6 +268,15 @@ func (r *Queue) UpdateScanEntry(ctx context.Context, id string, direction *ScanD
 		return fmt.Errorf("UpdateScanEntry: scan entry %q not found", id)
 	}
 
+	updated, err := r.GetScanEntry(ctx, id)
+	if err != nil {
+		return err
+	}
+
+	if updated != nil && r.Broadcaster != nil {
+		r.Broadcaster.PublishScanEvent(*updated)
+	}
+
 	return nil
 }
 
@@ -283,6 +319,18 @@ func (r *Queue) BatchUpdateScanEntries(ctx context.Context, ids []string, direct
 
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("BatchUpdateScanEntries commit: %w", err)
+	}
+
+	if r.Broadcaster != nil {
+		for _, id := range ids {
+			updated, err := r.GetScanEntry(ctx, id)
+			if err != nil {
+				return err
+			}
+			if updated != nil {
+				r.Broadcaster.PublishScanEvent(*updated)
+			}
+		}
 	}
 
 	return nil

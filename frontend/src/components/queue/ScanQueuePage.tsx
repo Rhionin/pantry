@@ -5,7 +5,7 @@ import type { InventoryItem, ScanEntry } from '../../types';
 import { BarcodeInputField } from '../scanner/BarcodeInputField';
 import { BatchReviewPanel } from './BatchReviewPanel';
 import { ScanEntryCard } from './ScanEntryCard';
-import { sortScansChronologically } from './queueUtils';
+import { mergeScanEvent, pruneSelection, sortScansChronologically } from './queueUtils';
 
 const DEFAULT_USER_ID = 'user-1';
 
@@ -42,6 +42,19 @@ export const ScanQueuePage = ({ userId = DEFAULT_USER_ID }: ScanQueuePageProps) 
   useEffect(() => {
     void Promise.resolve().then(loadQueue);
   }, [loadQueue]);
+
+  useEffect(() => {
+    const eventSource = new EventSource('/api/events');
+    eventSource.addEventListener('scan', (message) => {
+      const scanEntry = JSON.parse((message as MessageEvent).data) as ScanEntry;
+      setEntries((current) => {
+        const next = sortScansChronologically(mergeScanEvent(current, scanEntry));
+        setSelectedIds((selected) => pruneSelection(selected, next));
+        return next;
+      });
+    });
+    return () => eventSource.close();
+  }, []);
 
   const itemIdByProductId = useMemo(
     () => new Map(inventory.map((inventoryItem) => [inventoryItem.item.productId, inventoryItem.item.id])),

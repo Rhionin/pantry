@@ -1,8 +1,40 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MantineProvider } from '@mantine/core';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { InventoryItem } from '../../types';
 import { InventoryPage } from './InventoryPage';
+
+// Records the URL a component connects to, the listeners it registers, and
+// whether it closes the connection, so tests can simulate the server pushing
+// a message without a real network connection.
+class FakeEventSource {
+  static instances: FakeEventSource[] = [];
+
+  readonly url: string;
+  closed = false;
+  private readonly listeners = new Map<string, (event: MessageEvent) => void>();
+
+  constructor(url: string) {
+    this.url = url;
+    FakeEventSource.instances.push(this);
+  }
+
+  addEventListener(type: string, listener: (event: MessageEvent) => void) {
+    this.listeners.set(type, listener);
+  }
+
+  close() {
+    this.closed = true;
+  }
+
+  hasListener(type: string) {
+    return this.listeners.has(type);
+  }
+
+  dispatch(type: string, payload: unknown) {
+    this.listeners.get(type)?.({ data: JSON.stringify(payload) } as MessageEvent);
+  }
+}
 
 const inventoryItem = (
   id: string,
@@ -31,6 +63,11 @@ const jsonResponse = (body: unknown) =>
   });
 
 describe('InventoryPage', () => {
+  beforeEach(() => {
+    FakeEventSource.instances = [];
+    vi.stubGlobal('EventSource', FakeEventSource);
+  });
+
   it('shows attention items first and filters the fetched inventory locally', async () => {
     const fetchMock = vi.fn(() => Promise.resolve(jsonResponse([
       inventoryItem('bread', 'Sourdough', 'Bakery', false),
@@ -86,5 +123,55 @@ describe('InventoryPage', () => {
       '/api/inventory/bread/instances',
       expect.any(Object),
     ));
+  });
+
+  it('updates a displayed item pushed over the event stream', async () => {
+    const fetchMock = vi.fn(() => Promise.resolve(jsonResponse([
+      inventoryItem('bread', 'Sourdough', 'Bakery', false),
+    ])));
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<MantineProvider><InventoryPage /></MantineProvider>);
+    await screen.findByText('Sourdough');
+
+    const eventSource = FakeEventSource.instances[0];
+    expect(eventSource.url).toBe('/api/events');
+    expect(eventSource.hasListener('error')).toBe(false);
+
+    eventSource.dispatch('inventory', inventoryItem('bread', 'Sourdough', 'Bakery', true));
+
+    const attentionSection = await screen.findByRole('region', { name: 'Needs Attention' });
+    expect(within(attentionSection).getByText('Sourdough')).toBeInTheDocument();
+  });
+
+  it('ignores a manufactured error event and leaves displayed inventory unchanged', async () => {
+    const fetchMock = vi.fn(() => Promise.resolve(jsonResponse([
+      inventoryItem('bread', 'Sourdough', 'Bakery', false),
+    ])));
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<MantineProvider><InventoryPage /></MantineProvider>);
+    await screen.findByText('Sourdough');
+
+    const eventSource = FakeEventSource.instances[0];
+    eventSource.dispatch('error', {});
+
+    expect(screen.getByText('Sourdough')).toBeInTheDocument();
+    expect(screen.queryByRole('region', { name: 'Needs Attention' })).not.toBeInTheDocument();
+  });
+
+  it('closes the event stream connection on unmount', async () => {
+    const fetchMock = vi.fn(() => Promise.resolve(jsonResponse([])));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const { unmount } = render(<MantineProvider><InventoryPage /></MantineProvider>);
+    await screen.findByText('Your inventory is empty.');
+
+    const eventSource = FakeEventSource.instances[0];
+    expect(eventSource.closed).toBe(false);
+
+    unmount();
+
+    expect(eventSource.closed).toBe(true);
   });
 });

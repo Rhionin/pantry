@@ -328,3 +328,82 @@ func TestGetInventoryList_WithSearchFilter(t *testing.T) {
 		})
 	}
 }
+
+// TestGetInventoryItem_MatchesGetInventoryList locks in that GetInventoryItem
+// and GetInventoryList agree on the aggregated counts for the same item, since
+// both share the aggregateItem implementation.
+func TestGetInventoryItem_MatchesGetInventoryList(t *testing.T) {
+	pantry, catalog, _ := newTestPantry(t)
+	ctx := context.Background()
+	userID := uuid.NewString()
+	now := time.Now()
+
+	prodID := uuid.NewString()
+	if err := catalog.CreateProduct(ctx, product.Product{
+		ID: prodID, Name: "Eggs", Category: "Dairy", UnitOfMeasure: "dozen",
+	}); err != nil {
+		t.Fatalf("CreateProduct: %v", err)
+	}
+	item, err := pantry.GetOrCreateItem(ctx, userID, prodID)
+	if err != nil {
+		t.Fatalf("GetOrCreateItem: %v", err)
+	}
+
+	for _, d := range []time.Duration{
+		30 * 24 * time.Hour, // ok
+		3 * 24 * time.Hour,  // near expiry
+		-24 * time.Hour,     // expired
+	} {
+		ts := now.Add(d)
+		if _, err := pantry.AddInstance(ctx, inventory.ItemInstance{
+			ItemID: item.ID, StockInAt: now, ExpiresAt: &ts,
+		}); err != nil {
+			t.Fatalf("AddInstance: %v", err)
+		}
+	}
+
+	listItems, err := pantry.GetInventoryList(ctx, userID, now, 7, "")
+	if err != nil {
+		t.Fatalf("GetInventoryList: %v", err)
+	}
+	if len(listItems) != 1 {
+		t.Fatalf("expected 1 item, got %d", len(listItems))
+	}
+	want := listItems[0]
+
+	got, err := pantry.GetInventoryItem(ctx, item.ID, now, 7)
+	if err != nil {
+		t.Fatalf("GetInventoryItem: %v", err)
+	}
+	if got == nil {
+		t.Fatal("expected InventoryItem, got nil")
+	}
+	if got.InstanceCount != want.InstanceCount {
+		t.Errorf("InstanceCount: got %d, want %d", got.InstanceCount, want.InstanceCount)
+	}
+	if got.NearExpiryCount != want.NearExpiryCount {
+		t.Errorf("NearExpiryCount: got %d, want %d", got.NearExpiryCount, want.NearExpiryCount)
+	}
+	if got.ExpiredCount != want.ExpiredCount {
+		t.Errorf("ExpiredCount: got %d, want %d", got.ExpiredCount, want.ExpiredCount)
+	}
+	if got.NeedsAttention != want.NeedsAttention {
+		t.Errorf("NeedsAttention: got %v, want %v", got.NeedsAttention, want.NeedsAttention)
+	}
+}
+
+// TestGetInventoryItem_UnknownItemID locks in that an unrecognized itemID
+// returns a nil InventoryItem and no error, rather than an error or a
+// zero-valued InventoryItem.
+func TestGetInventoryItem_UnknownItemID(t *testing.T) {
+	pantry, _, _ := newTestPantry(t)
+	ctx := context.Background()
+
+	got, err := pantry.GetInventoryItem(ctx, uuid.NewString(), time.Now(), 7)
+	if err != nil {
+		t.Fatalf("GetInventoryItem: %v", err)
+	}
+	if got != nil {
+		t.Errorf("expected nil, got %+v", got)
+	}
+}

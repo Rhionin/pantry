@@ -86,7 +86,7 @@ func getScanEntry(env testEnv, userID string) map[string]any {
 	if env.Clock != nil {
 		now = env.Clock.Now
 	}
-	handler := NewHandler(env.ProductStore, &product.LookupService{
+	handler, _ := NewHandler(env.ProductStore, &product.LookupService{
 		Catalog:       env.ProductStore,
 		OpenFoodFacts: env.OpenFoodFacts,
 		Refresher:     env.Refresher,

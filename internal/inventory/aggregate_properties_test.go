@@ -2,6 +2,8 @@ package inventory_test
 
 import (
 	"context"
+	"errors"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -220,6 +222,129 @@ func TestProperty11_SearchFilterExactMatch(t *testing.T) {
 				rt.Fatalf("query %q: item %q (category %q) should not match but was returned",
 					query, item.name, item.category)
 			}
+		}
+	})
+}
+
+// Feature: realtime-scan-updates, Property 7: Every successful inventory-affecting
+// operation publishes exactly one matching Inventory_Event (Pantry half)
+// For any call to Pantry.AddInstance, Pantry.RemoveInstance, or
+// Pantry.UpdateTargetQuantity that returns without an error, exactly one
+// PublishInventoryEvent call SHALL occur whose InventoryItem argument
+// deep-equals the affected item's complete aggregated state immediately
+// after that call, as read back through GetInventoryItem.
+//
+// Validates: Requirements 3.1, 3.2, 3.3
+func TestProperty7_PantryPublishesOnSuccess(t *testing.T) {
+	rapid.Check(t, func(rt *rapid.T) {
+		pantry, catalog, _ := newTestPantry(t)
+		ctx := context.Background()
+		userID := uuid.NewString()
+
+		prodID := uuid.NewString()
+		prodName := rapid.StringMatching(`[A-Z][a-z]+`).Draw(rt, "prodName")
+		if err := catalog.CreateProduct(ctx, product.Product{
+			ID:            prodID,
+			Name:          prodName,
+			Category:      "Test",
+			UnitOfMeasure: "unit",
+		}); err != nil {
+			rt.Fatalf("CreateProduct failed: %v", err)
+		}
+
+		item, err := pantry.GetOrCreateItem(ctx, userID, prodID)
+		if err != nil {
+			rt.Fatalf("GetOrCreateItem failed: %v", err)
+		}
+
+		// Seed a few existing instances (before attaching the broadcaster) so
+		// RemoveInstance has a target to work with.
+		numInstances := rapid.IntRange(1, 5).Draw(rt, "numInstances")
+		instanceIDs := make([]string, 0, numInstances)
+		for i := 0; i < numInstances; i++ {
+			inst, err := pantry.AddInstance(ctx, inventory.ItemInstance{
+				ItemID:    item.ID,
+				StockInAt: time.Now(),
+			})
+			if err != nil {
+				rt.Fatalf("AddInstance (seed) failed: %v", err)
+			}
+			instanceIDs = append(instanceIDs, inst.ID)
+		}
+
+		broadcaster := &fakeBroadcaster{}
+		pantry.Broadcaster = broadcaster
+
+		operation := rapid.IntRange(0, 2).Draw(rt, "operation")
+		switch operation {
+		case 0: // AddInstance
+			if _, err := pantry.AddInstance(ctx, inventory.ItemInstance{
+				ItemID:    item.ID,
+				StockInAt: time.Now(),
+			}); err != nil {
+				rt.Fatalf("AddInstance failed: %v", err)
+			}
+		case 1: // RemoveInstance
+			instanceID := instanceIDs[rapid.IntRange(0, len(instanceIDs)-1).Draw(rt, "instanceIdx")]
+			if err := pantry.RemoveInstance(ctx, instanceID, "manual"); err != nil {
+				rt.Fatalf("RemoveInstance failed: %v", err)
+			}
+		case 2: // UpdateTargetQuantity
+			qty := rapid.IntRange(0, 100).Draw(rt, "qty")
+			if err := pantry.UpdateTargetQuantity(ctx, item.ID, qty); err != nil {
+				rt.Fatalf("UpdateTargetQuantity failed: %v", err)
+			}
+		}
+
+		want, err := pantry.GetInventoryItem(ctx, item.ID, time.Now(), inventory.DefaultWarningDays)
+		if err != nil {
+			rt.Fatalf("GetInventoryItem failed: %v", err)
+		}
+		if want == nil {
+			rt.Fatal("GetInventoryItem: expected item, got nil")
+		}
+		if len(broadcaster.published) != 1 {
+			rt.Fatalf("expected exactly 1 published event, got %d", len(broadcaster.published))
+		}
+		if !reflect.DeepEqual(broadcaster.published[0], *want) {
+			rt.Fatalf("published event: got %+v, want %+v", broadcaster.published[0], *want)
+		}
+	})
+}
+
+// Feature: realtime-scan-updates, Property 8: A failed inventory-affecting call
+// publishes no Inventory_Event (Pantry half)
+// For any call to Pantry.RemoveInstance or Pantry.UpdateTargetQuantity driven
+// into one of its documented error conditions, the call SHALL return an
+// error and zero PublishInventoryEvent calls SHALL occur as a result of
+// that call.
+//
+// Validates: Requirements 3.6
+func TestProperty8_PantryPublishesNoneOnFailure(t *testing.T) {
+	rapid.Check(t, func(rt *rapid.T) {
+		pantry, _, _ := newTestPantry(t)
+		ctx := context.Background()
+
+		broadcaster := &fakeBroadcaster{}
+		pantry.Broadcaster = broadcaster
+
+		unknownID := uuid.NewString()
+		operation := rapid.IntRange(0, 1).Draw(rt, "operation")
+
+		var err error
+		switch operation {
+		case 0: // RemoveInstance on an unknown instance ID
+			err = pantry.RemoveInstance(ctx, unknownID, "manual")
+		case 1: // UpdateTargetQuantity on an unknown item ID
+			qty := rapid.IntRange(0, 100).Draw(rt, "qty")
+			err = pantry.UpdateTargetQuantity(ctx, unknownID, qty)
+		}
+
+		if !errors.Is(err, inventory.ErrInstanceNotFound) {
+			rt.Fatalf("expected ErrInstanceNotFound, got %v", err)
+		}
+		if len(broadcaster.published) != 0 {
+			rt.Fatalf("expected 0 published events, got %d", len(broadcaster.published))
 		}
 	})
 }

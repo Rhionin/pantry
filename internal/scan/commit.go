@@ -4,7 +4,9 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"time"
 
+	"github.com/Rhionin/pantry/internal/inventory"
 	"github.com/google/uuid"
 )
 
@@ -71,6 +73,26 @@ func (r *Queue) CommitStockIn(ctx context.Context, scanEntry *ScanEntry) error {
 
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("commit transaction: %w", err)
+	}
+
+	if r.Broadcaster != nil {
+		committed, err := r.GetScanEntry(ctx, scanEntry.ID)
+		if err != nil {
+			return err
+		}
+		if committed != nil {
+			r.Broadcaster.PublishScanEvent(*committed)
+		}
+
+		if r.Pantry != nil {
+			invItem, err := r.Pantry.GetInventoryItem(ctx, itemID, time.Now(), inventory.DefaultWarningDays)
+			if err != nil {
+				return err
+			}
+			if invItem != nil {
+				r.Broadcaster.PublishInventoryEvent(*invItem)
+			}
+		}
 	}
 
 	return nil
@@ -221,6 +243,26 @@ func (r *Queue) CommitStockOut(ctx context.Context, scanEntry *ScanEntry, instan
 		return fmt.Errorf("commit transaction: %w", err)
 	}
 
+	if r.Broadcaster != nil {
+		committed, err := r.GetScanEntry(ctx, scanEntry.ID)
+		if err != nil {
+			return err
+		}
+		if committed != nil {
+			r.Broadcaster.PublishScanEvent(*committed)
+		}
+
+		if r.Pantry != nil {
+			invItem, err := r.Pantry.GetInventoryItem(ctx, itemID, time.Now(), inventory.DefaultWarningDays)
+			if err != nil {
+				return err
+			}
+			if invItem != nil {
+				r.Broadcaster.PublishInventoryEvent(*invItem)
+			}
+		}
+	}
+
 	return nil
 }
 
@@ -292,6 +334,16 @@ func (r *Queue) ResolveFlaggedEntry(ctx context.Context, scanEntryID, productID 
 
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("commit transaction: %w", err)
+	}
+
+	if r.Broadcaster != nil {
+		resolved, err := r.GetScanEntry(ctx, scanEntryID)
+		if err != nil {
+			return err
+		}
+		if resolved != nil {
+			r.Broadcaster.PublishScanEvent(*resolved)
+		}
 	}
 
 	return nil

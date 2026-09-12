@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"reflect"
 	"testing"
 	"time"
 
@@ -644,5 +645,239 @@ func TestGetInstance(t *testing.T) {
 				t.Errorf("expected nil, got %+v", inst)
 			}
 		})
+	}
+}
+
+// --------------------------------------------------------------------------
+// TestUpdateTargetQuantity
+// --------------------------------------------------------------------------
+
+func TestUpdateTargetQuantity(t *testing.T) {
+	tests := []struct {
+		name        string
+		setup       func(t *testing.T, pantry *inventory.Pantry, catalog *product.Catalog, ctx context.Context) string // returns itemID
+		qty         int
+		expectError error
+	}{
+		{
+			name: "successfully updates target quantity",
+			setup: func(t *testing.T, pantry *inventory.Pantry, catalog *product.Catalog, ctx context.Context) string {
+				createTestProduct(t, catalog, ctx, "p1", "Milk")
+				item, err := pantry.GetOrCreateItem(ctx, "user-1", "p1")
+				if err != nil {
+					t.Fatalf("GetOrCreateItem: %v", err)
+				}
+				return item.ID
+			},
+			qty:         5,
+			expectError: nil,
+		},
+		{
+			name: "returns error for unknown item",
+			setup: func(t *testing.T, pantry *inventory.Pantry, catalog *product.Catalog, ctx context.Context) string {
+				return "non-existent-id"
+			},
+			qty:         5,
+			expectError: inventory.ErrInstanceNotFound,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			pantry, catalog, _ := newTestPantry(t)
+			ctx := context.Background()
+			itemID := tt.setup(t, pantry, catalog, ctx)
+
+			err := pantry.UpdateTargetQuantity(ctx, itemID, tt.qty)
+
+			if tt.expectError != nil {
+				if err == nil {
+					t.Fatalf("expected error %v, got nil", tt.expectError)
+				}
+				if !errors.Is(err, tt.expectError) {
+					t.Fatalf("expected error %v, got %v", tt.expectError, err)
+				}
+				return
+			}
+
+			if err != nil {
+				t.Fatalf("UpdateTargetQuantity: %v", err)
+			}
+
+			item, err := pantry.GetItem(ctx, itemID)
+			if err != nil {
+				t.Fatalf("GetItem: %v", err)
+			}
+			if item == nil {
+				t.Fatal("expected item, got nil")
+			}
+			if item.TargetQuantity == nil || *item.TargetQuantity != tt.qty {
+				t.Errorf("TargetQuantity: want %d, got %v", tt.qty, item.TargetQuantity)
+			}
+		})
+	}
+}
+
+// --------------------------------------------------------------------------
+// fakeBroadcaster and Pantry publish-behavior tests
+// --------------------------------------------------------------------------
+
+// fakeBroadcaster records every PublishInventoryEvent call it receives, so
+// tests can assert on Pantry's publish behavior without depending on
+// internal/events.
+type fakeBroadcaster struct {
+	published []inventory.InventoryItem
+}
+
+func (f *fakeBroadcaster) PublishInventoryEvent(item inventory.InventoryItem) {
+	f.published = append(f.published, item)
+}
+
+// TestPantryBroadcaster_NilIsSafe locks in that leaving pantry.Broadcaster
+// unset, as every other test in this file does, is a supported mode: none of
+// the three mutating methods panics or changes its return value because of it.
+func TestPantryBroadcaster_NilIsSafe(t *testing.T) {
+	pantry, catalog, _ := newTestPantry(t)
+	ctx := context.Background()
+	createTestProduct(t, catalog, ctx, "p1", "Milk")
+	item, err := pantry.GetOrCreateItem(ctx, "user-1", "p1")
+	if err != nil {
+		t.Fatalf("GetOrCreateItem: %v", err)
+	}
+
+	inst, err := pantry.AddInstance(ctx, inventory.ItemInstance{ItemID: item.ID, StockInAt: time.Now()})
+	if err != nil {
+		t.Fatalf("AddInstance: %v", err)
+	}
+	if inst == nil {
+		t.Fatal("AddInstance: expected instance, got nil")
+	}
+
+	if err := pantry.UpdateTargetQuantity(ctx, item.ID, 5); err != nil {
+		t.Fatalf("UpdateTargetQuantity: %v", err)
+	}
+
+	if err := pantry.RemoveInstance(ctx, inst.ID, "manual"); err != nil {
+		t.Fatalf("RemoveInstance: %v", err)
+	}
+}
+
+func TestAddInstance_PublishesInventoryEvent(t *testing.T) {
+	pantry, catalog, _ := newTestPantry(t)
+	ctx := context.Background()
+	createTestProduct(t, catalog, ctx, "p1", "Milk")
+	item, err := pantry.GetOrCreateItem(ctx, "user-1", "p1")
+	if err != nil {
+		t.Fatalf("GetOrCreateItem: %v", err)
+	}
+
+	broadcaster := &fakeBroadcaster{}
+	pantry.Broadcaster = broadcaster
+
+	if _, err := pantry.AddInstance(ctx, inventory.ItemInstance{ItemID: item.ID, StockInAt: time.Now()}); err != nil {
+		t.Fatalf("AddInstance: %v", err)
+	}
+
+	want, err := pantry.GetInventoryItem(ctx, item.ID, time.Now(), inventory.DefaultWarningDays)
+	if err != nil {
+		t.Fatalf("GetInventoryItem: %v", err)
+	}
+	if len(broadcaster.published) != 1 {
+		t.Fatalf("expected 1 published event, got %d", len(broadcaster.published))
+	}
+	if !reflect.DeepEqual(broadcaster.published[0], *want) {
+		t.Errorf("published event: got %+v, want %+v", broadcaster.published[0], *want)
+	}
+}
+
+func TestRemoveInstance_PublishesInventoryEvent(t *testing.T) {
+	pantry, catalog, _ := newTestPantry(t)
+	ctx := context.Background()
+	createTestProduct(t, catalog, ctx, "p1", "Milk")
+	item, err := pantry.GetOrCreateItem(ctx, "user-1", "p1")
+	if err != nil {
+		t.Fatalf("GetOrCreateItem: %v", err)
+	}
+	inst, err := pantry.AddInstance(ctx, inventory.ItemInstance{ItemID: item.ID, StockInAt: time.Now()})
+	if err != nil {
+		t.Fatalf("AddInstance: %v", err)
+	}
+
+	broadcaster := &fakeBroadcaster{}
+	pantry.Broadcaster = broadcaster
+
+	if err := pantry.RemoveInstance(ctx, inst.ID, "manual"); err != nil {
+		t.Fatalf("RemoveInstance: %v", err)
+	}
+
+	want, err := pantry.GetInventoryItem(ctx, item.ID, time.Now(), inventory.DefaultWarningDays)
+	if err != nil {
+		t.Fatalf("GetInventoryItem: %v", err)
+	}
+	if len(broadcaster.published) != 1 {
+		t.Fatalf("expected 1 published event, got %d", len(broadcaster.published))
+	}
+	if !reflect.DeepEqual(broadcaster.published[0], *want) {
+		t.Errorf("published event: got %+v, want %+v", broadcaster.published[0], *want)
+	}
+}
+
+func TestRemoveInstance_UnknownInstance_NoPublish(t *testing.T) {
+	pantry, _, _ := newTestPantry(t)
+	ctx := context.Background()
+
+	broadcaster := &fakeBroadcaster{}
+	pantry.Broadcaster = broadcaster
+
+	err := pantry.RemoveInstance(ctx, "non-existent-id", "manual")
+	if !errors.Is(err, inventory.ErrInstanceNotFound) {
+		t.Fatalf("expected ErrInstanceNotFound, got %v", err)
+	}
+	if len(broadcaster.published) != 0 {
+		t.Errorf("expected 0 published events, got %d", len(broadcaster.published))
+	}
+}
+
+func TestUpdateTargetQuantity_PublishesInventoryEvent(t *testing.T) {
+	pantry, catalog, _ := newTestPantry(t)
+	ctx := context.Background()
+	createTestProduct(t, catalog, ctx, "p1", "Milk")
+	item, err := pantry.GetOrCreateItem(ctx, "user-1", "p1")
+	if err != nil {
+		t.Fatalf("GetOrCreateItem: %v", err)
+	}
+
+	broadcaster := &fakeBroadcaster{}
+	pantry.Broadcaster = broadcaster
+
+	if err := pantry.UpdateTargetQuantity(ctx, item.ID, 5); err != nil {
+		t.Fatalf("UpdateTargetQuantity: %v", err)
+	}
+
+	want, err := pantry.GetInventoryItem(ctx, item.ID, time.Now(), inventory.DefaultWarningDays)
+	if err != nil {
+		t.Fatalf("GetInventoryItem: %v", err)
+	}
+	if len(broadcaster.published) != 1 {
+		t.Fatalf("expected 1 published event, got %d", len(broadcaster.published))
+	}
+	if !reflect.DeepEqual(broadcaster.published[0], *want) {
+		t.Errorf("published event: got %+v, want %+v", broadcaster.published[0], *want)
+	}
+}
+
+func TestUpdateTargetQuantity_UnknownItem_NoPublish(t *testing.T) {
+	pantry, _, _ := newTestPantry(t)
+	ctx := context.Background()
+
+	broadcaster := &fakeBroadcaster{}
+	pantry.Broadcaster = broadcaster
+
+	err := pantry.UpdateTargetQuantity(ctx, "non-existent-id", 5)
+	if !errors.Is(err, inventory.ErrInstanceNotFound) {
+		t.Fatalf("expected ErrInstanceNotFound, got %v", err)
+	}
+	if len(broadcaster.published) != 0 {
+		t.Errorf("expected 0 published events, got %d", len(broadcaster.published))
 	}
 }

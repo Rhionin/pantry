@@ -16,6 +16,10 @@ type InventoryItem struct {
 	NeedsAttention  bool `json:"needsAttention"`
 }
 
+// DefaultWarningDays is the near-expiry window GetInventoryList and
+// GetInventoryItem use when no caller-specific value is required.
+const DefaultWarningDays = 7
+
 // GetInventoryList returns all items for the given userID with aggregated
 // instance information including counts and expiry-based attention flags.
 // Items are ordered by product name. If query is non-empty, only items
@@ -37,35 +41,65 @@ func (r *Pantry) GetInventoryList(ctx context.Context, userID string, now time.T
 			continue
 		}
 
-		// Get all instances for this item
-		instances, err := r.ListItemInstances(ctx, item.ID)
+		invItem, err := r.aggregateItem(ctx, item, now, warningDays)
 		if err != nil {
 			return nil, err
 		}
-
-		invItem := InventoryItem{
-			Item:          item,
-			InstanceCount: len(instances),
-		}
-
-		// Compute expiry status for each instance
-		for _, instance := range instances {
-			status := ComputeExpiryStatus(instance.ExpiresAt, now, warningDays)
-			switch status {
-			case ExpiryStatusNearExpiry:
-				invItem.NearExpiryCount++
-			case ExpiryStatusExpired:
-				invItem.ExpiredCount++
-			}
-		}
-
-		// Set needs attention flag if any instance is near expiry or expired
-		invItem.NeedsAttention = invItem.NearExpiryCount > 0 || invItem.ExpiredCount > 0
 
 		result = append(result, invItem)
 	}
 
 	return result, nil
+}
+
+// GetInventoryItem returns the aggregated InventoryItem for a single item,
+// or nil if no such item exists.
+func (r *Pantry) GetInventoryItem(ctx context.Context, itemID string, now time.Time, warningDays int) (*InventoryItem, error) {
+	item, err := r.getItemByID(ctx, itemID)
+	if err != nil {
+		return nil, err
+	}
+	if item == nil {
+		return nil, nil
+	}
+
+	invItem, err := r.aggregateItem(ctx, *item, now, warningDays)
+	if err != nil {
+		return nil, err
+	}
+	return &invItem, nil
+}
+
+// aggregateItem computes the InstanceCount, NearExpiryCount, ExpiredCount,
+// and NeedsAttention fields for a single item, shared by GetInventoryList
+// and GetInventoryItem so their behavior can never drift apart.
+func (r *Pantry) aggregateItem(ctx context.Context, item Item, now time.Time, warningDays int) (InventoryItem, error) {
+	// Get all instances for this item
+	instances, err := r.ListItemInstances(ctx, item.ID)
+	if err != nil {
+		return InventoryItem{}, err
+	}
+
+	invItem := InventoryItem{
+		Item:          item,
+		InstanceCount: len(instances),
+	}
+
+	// Compute expiry status for each instance
+	for _, instance := range instances {
+		status := ComputeExpiryStatus(instance.ExpiresAt, now, warningDays)
+		switch status {
+		case ExpiryStatusNearExpiry:
+			invItem.NearExpiryCount++
+		case ExpiryStatusExpired:
+			invItem.ExpiredCount++
+		}
+	}
+
+	// Set needs attention flag if any instance is near expiry or expired
+	invItem.NeedsAttention = invItem.NearExpiryCount > 0 || invItem.ExpiredCount > 0
+
+	return invItem, nil
 }
 
 // matchesQuery returns true if the item's product name or category contains

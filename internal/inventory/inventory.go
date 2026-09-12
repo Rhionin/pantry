@@ -42,6 +42,12 @@ type ItemInstance struct {
 // Pantry provides database operations for items and item instances.
 type Pantry struct {
 	db *sql.DB
+
+	// Broadcaster publishes an Inventory_Event after each successful
+	// mutation. Nil in every existing test; publish calls are skipped when nil.
+	Broadcaster interface {
+		PublishInventoryEvent(item InventoryItem)
+	}
 }
 
 // NewPantry creates a new Pantry with the given database connection.
@@ -198,7 +204,14 @@ func (r *Pantry) AddInstance(ctx context.Context, instance ItemInstance) (*ItemI
 		return nil, fmt.Errorf("AddInstance: %w", err)
 	}
 
-	return r.GetInstance(ctx, instance.ID)
+	addedInstance, err := r.GetInstance(ctx, instance.ID)
+	if err != nil {
+		return nil, err
+	}
+
+	r.publishInventoryEvent(ctx, instance.ItemID)
+
+	return addedInstance, nil
 }
 
 // RemoveInstance marks an item instance as removed by setting removed_at
@@ -231,6 +244,8 @@ func (r *Pantry) RemoveInstance(ctx context.Context, instanceID string, reason s
 		return ErrInstanceNotFound
 	}
 
+	r.publishInventoryEvent(ctx, existing.ItemID)
+
 	return nil
 }
 
@@ -251,7 +266,25 @@ func (r *Pantry) UpdateTargetQuantity(ctx context.Context, itemID string, qty in
 	if n == 0 {
 		return ErrInstanceNotFound
 	}
+
+	r.publishInventoryEvent(ctx, itemID)
+
 	return nil
+}
+
+// publishInventoryEvent fetches the aggregated InventoryItem for itemID and
+// publishes it via Broadcaster. It is a no-op if Broadcaster is nil, the
+// item can't be found, or the fetch fails, since the mutation that
+// triggered it has already succeeded and must not fail because of it.
+func (r *Pantry) publishInventoryEvent(ctx context.Context, itemID string) {
+	if r.Broadcaster == nil {
+		return
+	}
+	invItem, err := r.GetInventoryItem(ctx, itemID, time.Now(), DefaultWarningDays)
+	if err != nil || invItem == nil {
+		return
+	}
+	r.Broadcaster.PublishInventoryEvent(*invItem)
 }
 
 // GetItem returns the item with the given ID, or nil if no such item exists.

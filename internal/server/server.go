@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 
+	"github.com/Rhionin/pantry/internal/events"
 	"github.com/Rhionin/pantry/internal/inventory"
 	"github.com/Rhionin/pantry/internal/product"
 	"github.com/Rhionin/pantry/internal/scan"
@@ -13,19 +14,29 @@ import (
 	"github.com/Rhionin/pantry/internal/suggestion"
 )
 
-// NewHandler creates and configures the HTTP handler with all application routes.
+// NewHandler creates and configures the HTTP handler with all application
+// routes. It also returns the scan.Queue it constructs internally, already
+// wired to the same Broadcaster the handler's routes publish through, so
+// callers with a second entry point into scan mutations (e.g. a headless
+// scan listener) can reuse it instead of constructing an independent Queue
+// that would silently skip event broadcasting.
 func NewHandler(
 	catalog *product.Catalog,
 	lookupService *product.LookupService,
 	refresher *product.Refresher,
 	db *sql.DB,
-) http.Handler {
+) (http.Handler, *scan.Queue) {
 	mux := http.NewServeMux()
+
+	broadcaster := events.NewBroadcaster()
 
 	mux.HandleFunc("GET /health", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		fmt.Fprintln(w, `{"status":"ok"}`)
 	})
+
+	eventsHandler := &EventsHandler{Broadcaster: broadcaster}
+	mux.HandleFunc("GET /api/events", eventsHandler.Handle)
 
 	// Product handlers
 	lookupHandler := &LookupHandler{Service: lookupService}
@@ -44,6 +55,7 @@ func NewHandler(
 
 	// Scan queue handlers
 	scanQueue := scan.NewQueue(db)
+	scanQueue.Broadcaster = broadcaster
 	scanCreateHandler := &ScanCreateHandler{
 		Queue:         scanQueue,
 		LookupService: lookupService,
@@ -63,6 +75,8 @@ func NewHandler(
 
 	// Inventory handlers
 	pantry := inventory.NewPantry(db)
+	pantry.Broadcaster = broadcaster
+	scanQueue.Pantry = pantry
 	inventoryListHandler := &InventoryListHandler{Pantry: pantry}
 	inventoryInstancesListHandler := &InventoryInstancesListHandler{Pantry: pantry}
 	inventoryInstanceCreateHandler := &InventoryInstanceCreateHandler{Pantry: pantry}
@@ -114,5 +128,5 @@ func NewHandler(
 	mux.HandleFunc("PATCH /api/shopping-list/items/{id}", HandleJSON(shoppingListItemUpdateHandler.Handle))
 	mux.HandleFunc("POST /api/shopping-list/export", HandleJSON(shoppingListExportHandler.Handle))
 
-	return mux
+	return mux, scanQueue
 }

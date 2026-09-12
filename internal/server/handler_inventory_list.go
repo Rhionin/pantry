@@ -22,7 +22,7 @@ func (h *InventoryListHandler) Handle(req Request[struct{}, struct{}]) ([]invent
 	}
 
 	now := time.Now()
-	warningDays := 7
+	warningDays := inventory.DefaultWarningDays
 
 	// Extract query parameter from raw request
 	query := req.RawRequest.URL.Query().Get("q")

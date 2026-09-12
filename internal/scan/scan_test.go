@@ -3,12 +3,14 @@ package scan_test
 import (
 	"context"
 	"database/sql"
+	"reflect"
 	"testing"
 	"time"
 
 	_ "modernc.org/sqlite"
 
 	"github.com/Rhionin/pantry/internal/app"
+	"github.com/Rhionin/pantry/internal/inventory"
 	"github.com/Rhionin/pantry/internal/product"
 	"github.com/Rhionin/pantry/internal/scan"
 )
@@ -790,6 +792,184 @@ func TestNewEntryFromLookup(t *testing.T) {
 				t.Errorf("Direction: want %v, got %v", *direction, entry.Direction)
 			}
 		})
+	}
+}
+
+// --------------------------------------------------------------------------
+// fakeBroadcaster and Queue publish-behavior tests
+// --------------------------------------------------------------------------
+
+// fakeBroadcaster records every PublishScanEvent/PublishInventoryEvent call
+// it receives, so tests can assert on Queue's publish behavior without
+// depending on internal/events.
+type fakeBroadcaster struct {
+	scanEvents      []scan.ScanEntry
+	inventoryEvents []inventory.InventoryItem
+}
+
+func (f *fakeBroadcaster) PublishScanEvent(entry scan.ScanEntry) {
+	f.scanEvents = append(f.scanEvents, entry)
+}
+
+func (f *fakeBroadcaster) PublishInventoryEvent(item inventory.InventoryItem) {
+	f.inventoryEvents = append(f.inventoryEvents, item)
+}
+
+// TestQueueBroadcaster_NilIsSafe locks in that leaving queue.Broadcaster
+// unset, as every other test in this file does, is a supported mode: none of
+// CreateScanEntry, UpdateScanEntry, or BatchUpdateScanEntries panics or
+// changes its return value because of it.
+func TestQueueBroadcaster_NilIsSafe(t *testing.T) {
+	queue, _ := newTestQueue(t)
+	ctx := context.Background()
+
+	created, err := queue.CreateScanEntry(ctx, scan.ScanEntry{
+		ID:        "scan-1",
+		UserID:    "user-1",
+		Barcode:   "123456789012",
+		ScannedAt: time.Now(),
+		UnitCount: 1,
+	})
+	if err != nil {
+		t.Fatalf("CreateScanEntry: %v", err)
+	}
+	if created == nil {
+		t.Fatal("CreateScanEntry: expected entry, got nil")
+	}
+
+	if err := queue.UpdateScanEntry(ctx, "scan-1", ptrScanDirection(scan.StockIn), nil, nil, nil, nil); err != nil {
+		t.Fatalf("UpdateScanEntry: %v", err)
+	}
+
+	if err := queue.BatchUpdateScanEntries(ctx, []string{"scan-1"}, ptrScanDirection(scan.StockOut), nil, nil); err != nil {
+		t.Fatalf("BatchUpdateScanEntries: %v", err)
+	}
+}
+
+func TestCreateScanEntry_PublishesScanEvent(t *testing.T) {
+	queue, _ := newTestQueue(t)
+	ctx := context.Background()
+
+	broadcaster := &fakeBroadcaster{}
+	queue.Broadcaster = broadcaster
+
+	created, err := queue.CreateScanEntry(ctx, scan.ScanEntry{
+		ID:        "scan-1",
+		UserID:    "user-1",
+		Barcode:   "123456789012",
+		ScannedAt: time.Now(),
+		UnitCount: 1,
+	})
+	if err != nil {
+		t.Fatalf("CreateScanEntry: %v", err)
+	}
+
+	if len(broadcaster.scanEvents) != 1 {
+		t.Fatalf("expected 1 published scan event, got %d", len(broadcaster.scanEvents))
+	}
+	if !reflect.DeepEqual(broadcaster.scanEvents[0], *created) {
+		t.Errorf("published event: got %+v, want %+v", broadcaster.scanEvents[0], *created)
+	}
+}
+
+func TestUpdateScanEntry_PublishesScanEvent(t *testing.T) {
+	queue, _ := newTestQueue(t)
+	ctx := context.Background()
+
+	_, err := queue.CreateScanEntry(ctx, scan.ScanEntry{
+		ID:        "scan-1",
+		UserID:    "user-1",
+		Barcode:   "123456789012",
+		ScannedAt: time.Now(),
+		UnitCount: 1,
+	})
+	if err != nil {
+		t.Fatalf("CreateScanEntry: %v", err)
+	}
+
+	broadcaster := &fakeBroadcaster{}
+	queue.Broadcaster = broadcaster
+
+	if err := queue.UpdateScanEntry(ctx, "scan-1", ptrScanDirection(scan.StockIn), nil, nil, nil, nil); err != nil {
+		t.Fatalf("UpdateScanEntry: %v", err)
+	}
+
+	want, err := queue.GetScanEntry(ctx, "scan-1")
+	if err != nil {
+		t.Fatalf("GetScanEntry: %v", err)
+	}
+	if len(broadcaster.scanEvents) != 1 {
+		t.Fatalf("expected 1 published scan event, got %d", len(broadcaster.scanEvents))
+	}
+	if !reflect.DeepEqual(broadcaster.scanEvents[0], *want) {
+		t.Errorf("published event: got %+v, want %+v", broadcaster.scanEvents[0], *want)
+	}
+}
+
+func TestUpdateScanEntry_UnknownID_NoPublish(t *testing.T) {
+	queue, _ := newTestQueue(t)
+	ctx := context.Background()
+
+	broadcaster := &fakeBroadcaster{}
+	queue.Broadcaster = broadcaster
+
+	err := queue.UpdateScanEntry(ctx, "no-such-id", ptrScanDirection(scan.StockIn), nil, nil, nil, nil)
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if len(broadcaster.scanEvents) != 0 {
+		t.Errorf("expected 0 published scan events, got %d", len(broadcaster.scanEvents))
+	}
+}
+
+func TestBatchUpdateScanEntries_PublishesScanEventPerEntry(t *testing.T) {
+	queue, _ := newTestQueue(t)
+	ctx := context.Background()
+	now := time.Now()
+
+	ids := []string{"scan-1", "scan-2", "scan-3"}
+	for i, id := range ids {
+		_, err := queue.CreateScanEntry(ctx, scan.ScanEntry{
+			ID:        id,
+			UserID:    "user-1",
+			Barcode:   string(rune('1' + i)),
+			ScannedAt: now.Add(time.Duration(i) * time.Minute),
+			UnitCount: 1,
+		})
+		if err != nil {
+			t.Fatalf("CreateScanEntry %s: %v", id, err)
+		}
+	}
+
+	broadcaster := &fakeBroadcaster{}
+	queue.Broadcaster = broadcaster
+
+	if err := queue.BatchUpdateScanEntries(ctx, ids, ptrScanDirection(scan.StockIn), nil, nil); err != nil {
+		t.Fatalf("BatchUpdateScanEntries: %v", err)
+	}
+
+	if len(broadcaster.scanEvents) != len(ids) {
+		t.Fatalf("expected %d published scan events, got %d", len(ids), len(broadcaster.scanEvents))
+	}
+
+	published := make(map[string]scan.ScanEntry, len(broadcaster.scanEvents))
+	for _, e := range broadcaster.scanEvents {
+		published[e.ID] = e
+	}
+
+	for _, id := range ids {
+		want, err := queue.GetScanEntry(ctx, id)
+		if err != nil {
+			t.Fatalf("GetScanEntry %s: %v", id, err)
+		}
+		got, ok := published[id]
+		if !ok {
+			t.Errorf("expected a published event for %s, found none", id)
+			continue
+		}
+		if !reflect.DeepEqual(got, *want) {
+			t.Errorf("published event for %s: got %+v, want %+v", id, got, *want)
+		}
 	}
 }
 

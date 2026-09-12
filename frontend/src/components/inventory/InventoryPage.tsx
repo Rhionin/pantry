@@ -6,6 +6,7 @@ import { filterInventoryItems } from '../../utils/inventoryFilter';
 import { SuggestionPanel } from '../suggestions/SuggestionPanel';
 import { ItemInstanceList } from './ItemInstanceList';
 import { ItemRow } from './ItemRow';
+import { mergeInventoryEvent } from './inventoryUtils';
 
 interface InventorySectionProps {
   heading: string;
@@ -53,6 +54,15 @@ export const InventoryPage = () => {
   useEffect(() => {
     void Promise.resolve().then(loadInventory);
   }, [loadInventory]);
+
+  useEffect(() => {
+    const eventSource = new EventSource('/api/events');
+    eventSource.addEventListener('inventory', (message) => {
+      const inventoryItem = JSON.parse((message as MessageEvent).data) as InventoryItem;
+      setInventoryItems((current) => mergeInventoryEvent(current, inventoryItem));
+    });
+    return () => eventSource.close();
+  }, []);
 
   const filteredItems = useMemo(
     () => filterInventoryItems(inventoryItems, searchQuery),
