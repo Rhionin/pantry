@@ -116,7 +116,7 @@ func TestRefreshHandlerOutcomes(t *testing.T) {
 				if err := env.ProductStore.CreateProduct(context.Background(), prod); err != nil {
 					env.T.Fatalf("failed to create external product: %v", err)
 				}
-				// Deliberately not seeded in env.OpenFoodFacts: LookupBarcode returns
+				// Deliberately not seeded in env.Upstream: LookupBarcode returns
 				// product.ErrProductNotFound for any barcode it has never seen.
 			},
 			httpExchange: httpExchange{

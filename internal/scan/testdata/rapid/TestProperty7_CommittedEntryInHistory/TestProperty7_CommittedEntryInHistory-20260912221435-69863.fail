@@ -1,0 +1,19 @@
+# 2026/09/12 22:14:35.074338 [TestProperty7_CommittedEntryInHistory] [rapid] draw userID: ""
+# 2026/09/12 22:14:35.074340 [TestProperty7_CommittedEntryInHistory] [rapid] draw barcode: ""
+# 2026/09/12 22:14:35.074343 [TestProperty7_CommittedEntryInHistory] [rapid] draw timestampUnix: 0
+# 2026/09/12 22:14:35.074344 [TestProperty7_CommittedEntryInHistory] [rapid] draw hasDirection: false
+# 2026/09/12 22:14:35.074345 [TestProperty7_CommittedEntryInHistory] [rapid] draw unitCount: 1
+# 2026/09/12 22:14:35.074345 [TestProperty7_CommittedEntryInHistory] [rapid] draw hasExpiry: false
+# 2026/09/12 22:14:35.074547 [TestProperty7_CommittedEntryInHistory] CreateScanEntry failed: GetScanEntry: sql: expected 17 destination arguments in Scan, not 16
+# 
+v0.4.8#12878108342796363347
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0

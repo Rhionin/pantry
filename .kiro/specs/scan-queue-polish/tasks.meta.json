@@ -117,6 +117,16 @@
         "executionId": "ac281d92-f44d-47f1-b633-1871a633dbdb",
         "chatSessionId": "sess_cf389716-c8d6-467d-9087-d92b6e1d8696",
         "timestamp": 1789251491259
+      },
+      {
+        "executionId": "0309463b-45cb-4ba4-9a6a-bbf6bfd59ba5",
+        "chatSessionId": "sess_a87ed29e-a1b5-4198-aca0-affa6eec140a",
+        "timestamp": 1789255728597
+      },
+      {
+        "executionId": "0309463b-45cb-4ba4-9a6a-bbf6bfd59ba5",
+        "chatSessionId": "sess_a87ed29e-a1b5-4198-aca0-affa6eec140a",
+        "timestamp": 1789255750531
       }
     ],
     "3.1 Implement `Queue_Direction_Tabs` and derive `viewEntries`": [
@@ -141,6 +151,11 @@
         "executionId": "ac281d92-f44d-47f1-b633-1871a633dbdb",
         "chatSessionId": "sess_cf389716-c8d6-467d-9087-d92b6e1d8696",
         "timestamp": 1789252818501
+      },
+      {
+        "executionId": "0309463b-45cb-4ba4-9a6a-bbf6bfd59ba5",
+        "chatSessionId": "sess_a87ed29e-a1b5-4198-aca0-affa6eec140a",
+        "timestamp": 1789255883243
       }
     ],
     "3.3 Scope the entry grid and `BatchReviewPanel`'s `selectedIds` to the Active_View": [
@@ -153,6 +168,11 @@
         "executionId": "ac281d92-f44d-47f1-b633-1871a633dbdb",
         "chatSessionId": "sess_cf389716-c8d6-467d-9087-d92b6e1d8696",
         "timestamp": 1789253826494
+      },
+      {
+        "executionId": "0309463b-45cb-4ba4-9a6a-bbf6bfd59ba5",
+        "chatSessionId": "sess_a87ed29e-a1b5-4198-aca0-affa6eec140a",
+        "timestamp": 1789255883886
       }
     ],
     "3.4 Write RTL tests for default/reset-to-Stock_Out_View-on-mount behavior": [
@@ -165,6 +185,11 @@
         "executionId": "ac281d92-f44d-47f1-b633-1871a633dbdb",
         "chatSessionId": "sess_cf389716-c8d6-467d-9087-d92b6e1d8696",
         "timestamp": 1789254163364
+      },
+      {
+        "executionId": "0309463b-45cb-4ba4-9a6a-bbf6bfd59ba5",
+        "chatSessionId": "sess_a87ed29e-a1b5-4198-aca0-affa6eec140a",
+        "timestamp": 1789255884491
       }
     ],
     "3.5 Write RTL tests for per-tab filtered rendering": [
@@ -172,6 +197,16 @@
         "executionId": "ac281d92-f44d-47f1-b633-1871a633dbdb",
         "chatSessionId": "sess_cf389716-c8d6-467d-9087-d92b6e1d8696",
         "timestamp": 1789251491478
+      },
+      {
+        "executionId": "0309463b-45cb-4ba4-9a6a-bbf6bfd59ba5",
+        "chatSessionId": "sess_a87ed29e-a1b5-4198-aca0-affa6eec140a",
+        "timestamp": 1789255176872
+      },
+      {
+        "executionId": "0309463b-45cb-4ba4-9a6a-bbf6bfd59ba5",
+        "chatSessionId": "sess_a87ed29e-a1b5-4198-aca0-affa6eec140a",
+        "timestamp": 1789255350584
       }
     ],
     "3.6 Write RTL tests for the view-scoped `Select_All_Control`": [
@@ -179,6 +214,16 @@
         "executionId": "ac281d92-f44d-47f1-b633-1871a633dbdb",
         "chatSessionId": "sess_cf389716-c8d6-467d-9087-d92b6e1d8696",
         "timestamp": 1789251491524
+      },
+      {
+        "executionId": "0309463b-45cb-4ba4-9a6a-bbf6bfd59ba5",
+        "chatSessionId": "sess_a87ed29e-a1b5-4198-aca0-affa6eec140a",
+        "timestamp": 1789255354985
+      },
+      {
+        "executionId": "0309463b-45cb-4ba4-9a6a-bbf6bfd59ba5",
+        "chatSessionId": "sess_a87ed29e-a1b5-4198-aca0-affa6eec140a",
+        "timestamp": 1789255607970
       }
     ],
     "3.7 Write RTL tests for selection clearing on tab switch": [
@@ -186,6 +231,16 @@
         "executionId": "ac281d92-f44d-47f1-b633-1871a633dbdb",
         "chatSessionId": "sess_cf389716-c8d6-467d-9087-d92b6e1d8696",
         "timestamp": 1789251491570
+      },
+      {
+        "executionId": "0309463b-45cb-4ba4-9a6a-bbf6bfd59ba5",
+        "chatSessionId": "sess_a87ed29e-a1b5-4198-aca0-affa6eec140a",
+        "timestamp": 1789255612213
+      },
+      {
+        "executionId": "0309463b-45cb-4ba4-9a6a-bbf6bfd59ba5",
+        "chatSessionId": "sess_a87ed29e-a1b5-4198-aca0-affa6eec140a",
+        "timestamp": 1789255665219
       }
     ],
     "3.8 Write RTL test for view-scoped batch approval": [
@@ -193,6 +248,16 @@
         "executionId": "ac281d92-f44d-47f1-b633-1871a633dbdb",
         "chatSessionId": "sess_cf389716-c8d6-467d-9087-d92b6e1d8696",
         "timestamp": 1789251491611
+      },
+      {
+        "executionId": "0309463b-45cb-4ba4-9a6a-bbf6bfd59ba5",
+        "chatSessionId": "sess_a87ed29e-a1b5-4198-aca0-affa6eec140a",
+        "timestamp": 1789255670236
+      },
+      {
+        "executionId": "0309463b-45cb-4ba4-9a6a-bbf6bfd59ba5",
+        "chatSessionId": "sess_a87ed29e-a1b5-4198-aca0-affa6eec140a",
+        "timestamp": 1789255724304
       }
     ],
     "4.1 Rename `ScanEntryCard`'s single-scan approve control and error copy": [
@@ -309,6 +374,16 @@
         "executionId": "ac281d92-f44d-47f1-b633-1871a633dbdb",
         "chatSessionId": "sess_cf389716-c8d6-467d-9087-d92b6e1d8696",
         "timestamp": 1789251491963
+      },
+      {
+        "executionId": "0309463b-45cb-4ba4-9a6a-bbf6bfd59ba5",
+        "chatSessionId": "sess_a87ed29e-a1b5-4198-aca0-affa6eec140a",
+        "timestamp": 1789255755062
+      },
+      {
+        "executionId": "0309463b-45cb-4ba4-9a6a-bbf6bfd59ba5",
+        "chatSessionId": "sess_a87ed29e-a1b5-4198-aca0-affa6eec140a",
+        "timestamp": 1789255775736
       }
     ],
     "7.1 Implement the increment and decrement controls": [
@@ -379,6 +454,11 @@
         "executionId": "ac281d92-f44d-47f1-b633-1871a633dbdb",
         "chatSessionId": "sess_cf389716-c8d6-467d-9087-d92b6e1d8696",
         "timestamp": 1789253825693
+      },
+      {
+        "executionId": "0309463b-45cb-4ba4-9a6a-bbf6bfd59ba5",
+        "chatSessionId": "sess_a87ed29e-a1b5-4198-aca0-affa6eec140a",
+        "timestamp": 1789255889376
       }
     ],
     "8.2 Write RTL tests for the expiration date input": [
@@ -386,6 +466,16 @@
         "executionId": "ac281d92-f44d-47f1-b633-1871a633dbdb",
         "chatSessionId": "sess_cf389716-c8d6-467d-9087-d92b6e1d8696",
         "timestamp": 1789251492227
+      },
+      {
+        "executionId": "0309463b-45cb-4ba4-9a6a-bbf6bfd59ba5",
+        "chatSessionId": "sess_a87ed29e-a1b5-4198-aca0-affa6eec140a",
+        "timestamp": 1789255177208
+      },
+      {
+        "executionId": "0309463b-45cb-4ba4-9a6a-bbf6bfd59ba5",
+        "chatSessionId": "sess_a87ed29e-a1b5-4198-aca0-affa6eec140a",
+        "timestamp": 1789255350291
       }
     ],
     "9.1 Remove the visible label and add an `aria-label`": [
@@ -398,6 +488,11 @@
         "executionId": "ac281d92-f44d-47f1-b633-1871a633dbdb",
         "chatSessionId": "sess_cf389716-c8d6-467d-9087-d92b6e1d8696",
         "timestamp": 1789254162756
+      },
+      {
+        "executionId": "0309463b-45cb-4ba4-9a6a-bbf6bfd59ba5",
+        "chatSessionId": "sess_a87ed29e-a1b5-4198-aca0-affa6eec140a",
+        "timestamp": 1789255884293
       }
     ],
     "9.2 Write RTL tests for the accessible checkbox": [
@@ -405,6 +500,16 @@
         "executionId": "ac281d92-f44d-47f1-b633-1871a633dbdb",
         "chatSessionId": "sess_cf389716-c8d6-467d-9087-d92b6e1d8696",
         "timestamp": 1789251492390
+      },
+      {
+        "executionId": "0309463b-45cb-4ba4-9a6a-bbf6bfd59ba5",
+        "chatSessionId": "sess_a87ed29e-a1b5-4198-aca0-affa6eec140a",
+        "timestamp": 1789255355357
+      },
+      {
+        "executionId": "0309463b-45cb-4ba4-9a6a-bbf6bfd59ba5",
+        "chatSessionId": "sess_a87ed29e-a1b5-4198-aca0-affa6eec140a",
+        "timestamp": 1789255607701
       }
     ],
     "10. Checkpoint - Ensure all tests pass": [
@@ -412,6 +517,16 @@
         "executionId": "ac281d92-f44d-47f1-b633-1871a633dbdb",
         "chatSessionId": "sess_cf389716-c8d6-467d-9087-d92b6e1d8696",
         "timestamp": 1789251492443
+      },
+      {
+        "executionId": "0309463b-45cb-4ba4-9a6a-bbf6bfd59ba5",
+        "chatSessionId": "sess_a87ed29e-a1b5-4198-aca0-affa6eec140a",
+        "timestamp": 1789255780039
+      },
+      {
+        "executionId": "0309463b-45cb-4ba4-9a6a-bbf6bfd59ba5",
+        "chatSessionId": "sess_a87ed29e-a1b5-4198-aca0-affa6eec140a",
+        "timestamp": 1789255831316
       }
     ],
     "11.1 Implement `showChangeIndicator` state and CSS classes": [
@@ -419,6 +534,16 @@
         "executionId": "ac281d92-f44d-47f1-b633-1871a633dbdb",
         "chatSessionId": "sess_cf389716-c8d6-467d-9087-d92b6e1d8696",
         "timestamp": 1789251492498
+      },
+      {
+        "executionId": "0309463b-45cb-4ba4-9a6a-bbf6bfd59ba5",
+        "chatSessionId": "sess_a87ed29e-a1b5-4198-aca0-affa6eec140a",
+        "timestamp": 1789255177403
+      },
+      {
+        "executionId": "0309463b-45cb-4ba4-9a6a-bbf6bfd59ba5",
+        "chatSessionId": "sess_a87ed29e-a1b5-4198-aca0-affa6eec140a",
+        "timestamp": 1789255349973
       }
     ],
     "11.2 Write RTL tests for the change indicator": [
@@ -426,6 +551,16 @@
         "executionId": "ac281d92-f44d-47f1-b633-1871a633dbdb",
         "chatSessionId": "sess_cf389716-c8d6-467d-9087-d92b6e1d8696",
         "timestamp": 1789251492559
+      },
+      {
+        "executionId": "0309463b-45cb-4ba4-9a6a-bbf6bfd59ba5",
+        "chatSessionId": "sess_a87ed29e-a1b5-4198-aca0-affa6eec140a",
+        "timestamp": 1789255612527
+      },
+      {
+        "executionId": "0309463b-45cb-4ba4-9a6a-bbf6bfd59ba5",
+        "chatSessionId": "sess_a87ed29e-a1b5-4198-aca0-affa6eec140a",
+        "timestamp": 1789255665480
       }
     ],
     "12.1 Remove the direction/expiry controls and simplify the approve request": [
@@ -467,6 +602,16 @@
         "executionId": "ac281d92-f44d-47f1-b633-1871a633dbdb",
         "chatSessionId": "sess_cf389716-c8d6-467d-9087-d92b6e1d8696",
         "timestamp": 1789251492700
+      },
+      {
+        "executionId": "0309463b-45cb-4ba4-9a6a-bbf6bfd59ba5",
+        "chatSessionId": "sess_a87ed29e-a1b5-4198-aca0-affa6eec140a",
+        "timestamp": 1789255833519
+      },
+      {
+        "executionId": "0309463b-45cb-4ba4-9a6a-bbf6bfd59ba5",
+        "chatSessionId": "sess_a87ed29e-a1b5-4198-aca0-affa6eec140a",
+        "timestamp": 1789255871887
       }
     ],
     "4. Rename \"commit\" to \"approve\" across `ScanEntryCard` and `BatchReviewPanel`": [
@@ -495,6 +640,41 @@
         "executionId": "ac281d92-f44d-47f1-b633-1871a633dbdb",
         "chatSessionId": "sess_cf389716-c8d6-467d-9087-d92b6e1d8696",
         "timestamp": 1789254125987
+      }
+    ],
+    "11. Add the motion-aware change indicator to `ScanEntryCard`": [
+      {
+        "executionId": "0309463b-45cb-4ba4-9a6a-bbf6bfd59ba5",
+        "chatSessionId": "sess_a87ed29e-a1b5-4198-aca0-affa6eec140a",
+        "timestamp": 1789255665533
+      }
+    ],
+    "9. Update the `Batch_Selection_Checkbox` to be unlabeled and accessible": [
+      {
+        "executionId": "0309463b-45cb-4ba4-9a6a-bbf6bfd59ba5",
+        "chatSessionId": "sess_a87ed29e-a1b5-4198-aca0-affa6eec140a",
+        "timestamp": 1789255884352
+      }
+    ],
+    "3. Add Queue_Direction_Tabs to `ScanQueuePage` and scope batch controls to the Active_View": [
+      {
+        "executionId": "0309463b-45cb-4ba4-9a6a-bbf6bfd59ba5",
+        "chatSessionId": "sess_a87ed29e-a1b5-4198-aca0-affa6eec140a",
+        "timestamp": 1789255884551
+      }
+    ],
+    "8. Add the per-card expiration date input to `ScanEntryCard`": [
+      {
+        "executionId": "0309463b-45cb-4ba4-9a6a-bbf6bfd59ba5",
+        "chatSessionId": "sess_a87ed29e-a1b5-4198-aca0-affa6eec140a",
+        "timestamp": 1789255889431
+      }
+    ],
+    "7. Add the unit-count editor to `ScanEntryCard`": [
+      {
+        "executionId": "0309463b-45cb-4ba4-9a6a-bbf6bfd59ba5",
+        "chatSessionId": "sess_a87ed29e-a1b5-4198-aca0-affa6eec140a",
+        "timestamp": 1789255897164
       }
     ]
   }

@@ -1,0 +1,709 @@
+{
+  "pbtResults": {},
+  "executionHistory": {
+    "1.1 Add migration `005_add_external_source_and_barcode_misses.sql`": [
+      {
+        "executionId": "75bca067-8f25-4baf-92b8-4f0606e14906",
+        "chatSessionId": "sess_0de74779-747d-4a11-8002-872f0b300674",
+        "timestamp": 1789272323697
+      },
+      {
+        "executionId": "75bca067-8f25-4baf-92b8-4f0606e14906",
+        "chatSessionId": "sess_0de74779-747d-4a11-8002-872f0b300674",
+        "timestamp": 1789272330508
+      },
+      {
+        "executionId": "75bca067-8f25-4baf-92b8-4f0606e14906",
+        "chatSessionId": "sess_0de74779-747d-4a11-8002-872f0b300674",
+        "timestamp": 1789272719972
+      }
+    ],
+    "1.2 Write migration tests for value preservation and NULL provenance": [
+      {
+        "executionId": "75bca067-8f25-4baf-92b8-4f0606e14906",
+        "chatSessionId": "sess_0de74779-747d-4a11-8002-872f0b300674",
+        "timestamp": 1789272323749
+      },
+      {
+        "executionId": "75bca067-8f25-4baf-92b8-4f0606e14906",
+        "chatSessionId": "sess_0de74779-747d-4a11-8002-872f0b300674",
+        "timestamp": 1789272722601
+      },
+      {
+        "executionId": "75bca067-8f25-4baf-92b8-4f0606e14906",
+        "chatSessionId": "sess_0de74779-747d-4a11-8002-872f0b300674",
+        "timestamp": 1789272816895
+      }
+    ],
+    "2.1 Rename `OpenFoodFactsClient` to `ProductOpenerClient` with a construction-time source and base URL": [
+      {
+        "executionId": "75bca067-8f25-4baf-92b8-4f0606e14906",
+        "chatSessionId": "sess_0de74779-747d-4a11-8002-872f0b300674",
+        "timestamp": 1789272323804
+      },
+      {
+        "executionId": "75bca067-8f25-4baf-92b8-4f0606e14906",
+        "chatSessionId": "sess_0de74779-747d-4a11-8002-872f0b300674",
+        "timestamp": 1789272330785
+      },
+      {
+        "executionId": "75bca067-8f25-4baf-92b8-4f0606e14906",
+        "chatSessionId": "sess_0de74779-747d-4a11-8002-872f0b300674",
+        "timestamp": 1789272720394
+      }
+    ],
+    "2.2 Update the two call sites of the old constructor": [
+      {
+        "executionId": "75bca067-8f25-4baf-92b8-4f0606e14906",
+        "chatSessionId": "sess_0de74779-747d-4a11-8002-872f0b300674",
+        "timestamp": 1789272323858
+      },
+      {
+        "executionId": "75bca067-8f25-4baf-92b8-4f0606e14906",
+        "chatSessionId": "sess_0de74779-747d-4a11-8002-872f0b300674",
+        "timestamp": 1789272722957
+      },
+      {
+        "executionId": "75bca067-8f25-4baf-92b8-4f0606e14906",
+        "chatSessionId": "sess_0de74779-747d-4a11-8002-872f0b300674",
+        "timestamp": 1789272816431
+      }
+    ],
+    "2.3 Write client decoding and miss-condition tests across all four databases": [
+      {
+        "executionId": "75bca067-8f25-4baf-92b8-4f0606e14906",
+        "chatSessionId": "sess_0de74779-747d-4a11-8002-872f0b300674",
+        "timestamp": 1789272323917
+      },
+      {
+        "executionId": "75bca067-8f25-4baf-92b8-4f0606e14906",
+        "chatSessionId": "sess_0de74779-747d-4a11-8002-872f0b300674",
+        "timestamp": 1789272820252
+      },
+      {
+        "executionId": "75bca067-8f25-4baf-92b8-4f0606e14906",
+        "chatSessionId": "sess_0de74779-747d-4a11-8002-872f0b300674",
+        "timestamp": 1789273002165
+      }
+    ],
+    "2.4 Write a configuration-parity test for `DefaultProductOpenerClients()`": [
+      {
+        "executionId": "75bca067-8f25-4baf-92b8-4f0606e14906",
+        "chatSessionId": "sess_0de74779-747d-4a11-8002-872f0b300674",
+        "timestamp": 1789272323987
+      },
+      {
+        "executionId": "75bca067-8f25-4baf-92b8-4f0606e14906",
+        "chatSessionId": "sess_0de74779-747d-4a11-8002-872f0b300674",
+        "timestamp": 1789273005507
+      },
+      {
+        "executionId": "75bca067-8f25-4baf-92b8-4f0606e14906",
+        "chatSessionId": "sess_0de74779-747d-4a11-8002-872f0b300674",
+        "timestamp": 1789273376657
+      }
+    ],
+    "3.1 Add `ExternalSource.valid()` and the `products.external_source` column plumbing": [
+      {
+        "executionId": "75bca067-8f25-4baf-92b8-4f0606e14906",
+        "chatSessionId": "sess_0de74779-747d-4a11-8002-872f0b300674",
+        "timestamp": 1789272324049
+      },
+      {
+        "executionId": "75bca067-8f25-4baf-92b8-4f0606e14906",
+        "chatSessionId": "sess_0de74779-747d-4a11-8002-872f0b300674",
+        "timestamp": 1789272723539
+      },
+      {
+        "executionId": "75bca067-8f25-4baf-92b8-4f0606e14906",
+        "chatSessionId": "sess_0de74779-747d-4a11-8002-872f0b300674",
+        "timestamp": 1789272817444
+      }
+    ],
+    "3.2 Add `COALESCE(p.external_source, '')` to the inventory and scan join queries": [
+      {
+        "executionId": "75bca067-8f25-4baf-92b8-4f0606e14906",
+        "chatSessionId": "sess_0de74779-747d-4a11-8002-872f0b300674",
+        "timestamp": 1789272324095
+      },
+      {
+        "executionId": "75bca067-8f25-4baf-92b8-4f0606e14906",
+        "chatSessionId": "sess_0de74779-747d-4a11-8002-872f0b300674",
+        "timestamp": 1789272820636
+      },
+      {
+        "executionId": "75bca067-8f25-4baf-92b8-4f0606e14906",
+        "chatSessionId": "sess_0de74779-747d-4a11-8002-872f0b300674",
+        "timestamp": 1789273001559
+      }
+    ],
+    "3.3 Write validation tests for the four-value set": [
+      {
+        "executionId": "75bca067-8f25-4baf-92b8-4f0606e14906",
+        "chatSessionId": "sess_0de74779-747d-4a11-8002-872f0b300674",
+        "timestamp": 1789272324145
+      },
+      {
+        "executionId": "75bca067-8f25-4baf-92b8-4f0606e14906",
+        "chatSessionId": "sess_0de74779-747d-4a11-8002-872f0b300674",
+        "timestamp": 1789273005909
+      },
+      {
+        "executionId": "75bca067-8f25-4baf-92b8-4f0606e14906",
+        "chatSessionId": "sess_0de74779-747d-4a11-8002-872f0b300674",
+        "timestamp": 1789273377704
+      }
+    ],
+    "4.1 Implement `ExternalLookup`, `FanOutResult`, and `classifyFanOut`": [
+      {
+        "executionId": "75bca067-8f25-4baf-92b8-4f0606e14906",
+        "chatSessionId": "sess_0de74779-747d-4a11-8002-872f0b300674",
+        "timestamp": 1789272324192
+      },
+      {
+        "executionId": "75bca067-8f25-4baf-92b8-4f0606e14906",
+        "chatSessionId": "sess_0de74779-747d-4a11-8002-872f0b300674",
+        "timestamp": 1789272821232
+      },
+      {
+        "executionId": "75bca067-8f25-4baf-92b8-4f0606e14906",
+        "chatSessionId": "sess_0de74779-747d-4a11-8002-872f0b300674",
+        "timestamp": 1789273002501
+      }
+    ],
+    "4.2 Write `classifyFanOut` outcome and determinism tests": [
+      {
+        "executionId": "75bca067-8f25-4baf-92b8-4f0606e14906",
+        "chatSessionId": "sess_0de74779-747d-4a11-8002-872f0b300674",
+        "timestamp": 1789272324237
+      },
+      {
+        "executionId": "75bca067-8f25-4baf-92b8-4f0606e14906",
+        "chatSessionId": "sess_0de74779-747d-4a11-8002-872f0b300674",
+        "timestamp": 1789273006259
+      },
+      {
+        "executionId": "75bca067-8f25-4baf-92b8-4f0606e14906",
+        "chatSessionId": "sess_0de74779-747d-4a11-8002-872f0b300674",
+        "timestamp": 1789273377355
+      }
+    ],
+    "4.3 Write the goroutine-accounting and every-database-asked tests": [
+      {
+        "executionId": "75bca067-8f25-4baf-92b8-4f0606e14906",
+        "chatSessionId": "sess_0de74779-747d-4a11-8002-872f0b300674",
+        "timestamp": 1789272324286
+      },
+      {
+        "executionId": "75bca067-8f25-4baf-92b8-4f0606e14906",
+        "chatSessionId": "sess_0de74779-747d-4a11-8002-872f0b300674",
+        "timestamp": 1789273380817
+      },
+      {
+        "executionId": "75bca067-8f25-4baf-92b8-4f0606e14906",
+        "chatSessionId": "sess_0de74779-747d-4a11-8002-872f0b300674",
+        "timestamp": 1789276123418
+      }
+    ],
+    "5. Checkpoint - client, schema, and fan-out in place": [
+      {
+        "executionId": "75bca067-8f25-4baf-92b8-4f0606e14906",
+        "chatSessionId": "sess_0de74779-747d-4a11-8002-872f0b300674",
+        "timestamp": 1789272324344
+      },
+      {
+        "executionId": "bb881f44-c067-4149-a991-86e05aa563a0",
+        "chatSessionId": "sess_0de74779-747d-4a11-8002-872f0b300674",
+        "timestamp": 1789291491804
+      },
+      {
+        "executionId": "bb881f44-c067-4149-a991-86e05aa563a0",
+        "chatSessionId": "sess_0de74779-747d-4a11-8002-872f0b300674",
+        "timestamp": 1789291504024
+      }
+    ],
+    "6.1 Replace the `OpenFoodFacts` field with `Upstream` on both collaborators": [
+      {
+        "executionId": "75bca067-8f25-4baf-92b8-4f0606e14906",
+        "chatSessionId": "sess_0de74779-747d-4a11-8002-872f0b300674",
+        "timestamp": 1789272324393
+      },
+      {
+        "executionId": "75bca067-8f25-4baf-92b8-4f0606e14906",
+        "chatSessionId": "sess_0de74779-747d-4a11-8002-872f0b300674",
+        "timestamp": 1789273006675
+      },
+      {
+        "executionId": "75bca067-8f25-4baf-92b8-4f0606e14906",
+        "chatSessionId": "sess_0de74779-747d-4a11-8002-872f0b300674",
+        "timestamp": 1789273376962
+      }
+    ],
+    "6.2 Update the four call sites the field rename reaches": [
+      {
+        "executionId": "75bca067-8f25-4baf-92b8-4f0606e14906",
+        "chatSessionId": "sess_0de74779-747d-4a11-8002-872f0b300674",
+        "timestamp": 1789272324443
+      },
+      {
+        "executionId": "75bca067-8f25-4baf-92b8-4f0606e14906",
+        "chatSessionId": "sess_0de74779-747d-4a11-8002-872f0b300674",
+        "timestamp": 1789273381207
+      },
+      {
+        "executionId": "75bca067-8f25-4baf-92b8-4f0606e14906",
+        "chatSessionId": "sess_0de74779-747d-4a11-8002-872f0b300674",
+        "timestamp": 1789276123966
+      }
+    ],
+    "7.1 Implement `RecordBarcodeMiss`, `GetBarcodeMiss`, and `DeleteBarcodeMiss` on `Catalog`": [
+      {
+        "executionId": "75bca067-8f25-4baf-92b8-4f0606e14906",
+        "chatSessionId": "sess_0de74779-747d-4a11-8002-872f0b300674",
+        "timestamp": 1789272324497
+      },
+      {
+        "executionId": "75bca067-8f25-4baf-92b8-4f0606e14906",
+        "chatSessionId": "sess_0de74779-747d-4a11-8002-872f0b300674",
+        "timestamp": 1789273381590
+      },
+      {
+        "executionId": "75bca067-8f25-4baf-92b8-4f0606e14906",
+        "chatSessionId": "sess_0de74779-747d-4a11-8002-872f0b300674",
+        "timestamp": 1789276124501
+      }
+    ],
+    "8.1 Add the miss gate after Tier 1/2 and branch on the fan-out outcome": [
+      {
+        "executionId": "75bca067-8f25-4baf-92b8-4f0606e14906",
+        "chatSessionId": "sess_0de74779-747d-4a11-8002-872f0b300674",
+        "timestamp": 1789272324546
+      },
+      {
+        "executionId": "75bca067-8f25-4baf-92b8-4f0606e14906",
+        "chatSessionId": "sess_0de74779-747d-4a11-8002-872f0b300674",
+        "timestamp": 1789276127631
+      },
+      {
+        "executionId": "bb881f44-c067-4149-a991-86e05aa563a0",
+        "chatSessionId": "sess_0de74779-747d-4a11-8002-872f0b300674",
+        "timestamp": 1789276169266
+      },
+      {
+        "executionId": "bb881f44-c067-4149-a991-86e05aa563a0",
+        "chatSessionId": "sess_0de74779-747d-4a11-8002-872f0b300674",
+        "timestamp": 1789279937468
+      }
+    ],
+    "9.1 Resolve the refresh target from `external_source` with a legacy fallback": [
+      {
+        "executionId": "75bca067-8f25-4baf-92b8-4f0606e14906",
+        "chatSessionId": "sess_0de74779-747d-4a11-8002-872f0b300674",
+        "timestamp": 1789272324600
+      },
+      {
+        "executionId": "75bca067-8f25-4baf-92b8-4f0606e14906",
+        "chatSessionId": "sess_0de74779-747d-4a11-8002-872f0b300674",
+        "timestamp": 1789276127949
+      },
+      {
+        "executionId": "bb881f44-c067-4149-a991-86e05aa563a0",
+        "chatSessionId": "sess_0de74779-747d-4a11-8002-872f0b300674",
+        "timestamp": 1789279940239
+      },
+      {
+        "executionId": "bb881f44-c067-4149-a991-86e05aa563a0",
+        "chatSessionId": "sess_0de74779-747d-4a11-8002-872f0b300674",
+        "timestamp": 1789279990843
+      }
+    ],
+    "10.1 Add `productMissTTL()` and the disabled-lookup stub, and inject one upstream value": [
+      {
+        "executionId": "75bca067-8f25-4baf-92b8-4f0606e14906",
+        "chatSessionId": "sess_0de74779-747d-4a11-8002-872f0b300674",
+        "timestamp": 1789272324644
+      },
+      {
+        "executionId": "bb881f44-c067-4149-a991-86e05aa563a0",
+        "chatSessionId": "sess_0de74779-747d-4a11-8002-872f0b300674",
+        "timestamp": 1789279995997
+      },
+      {
+        "executionId": "bb881f44-c067-4149-a991-86e05aa563a0",
+        "chatSessionId": "sess_0de74779-747d-4a11-8002-872f0b300674",
+        "timestamp": 1789283695253
+      }
+    ],
+    "10.2 Write `productMissTTL()` parsing tests": [
+      {
+        "executionId": "75bca067-8f25-4baf-92b8-4f0606e14906",
+        "chatSessionId": "sess_0de74779-747d-4a11-8002-872f0b300674",
+        "timestamp": 1789272324695
+      },
+      {
+        "executionId": "bb881f44-c067-4149-a991-86e05aa563a0",
+        "chatSessionId": "sess_0de74779-747d-4a11-8002-872f0b300674",
+        "timestamp": 1789283701721
+      },
+      {
+        "executionId": "bb881f44-c067-4149-a991-86e05aa563a0",
+        "chatSessionId": "sess_0de74779-747d-4a11-8002-872f0b300674",
+        "timestamp": 1789287396615
+      }
+    ],
+    "11.1 Rename `fakeOpenFoodFacts` to `fakeProductOpener` with no behavior change": [
+      {
+        "executionId": "75bca067-8f25-4baf-92b8-4f0606e14906",
+        "chatSessionId": "sess_0de74779-747d-4a11-8002-872f0b300674",
+        "timestamp": 1789272324752
+      },
+      {
+        "executionId": "bb881f44-c067-4149-a991-86e05aa563a0",
+        "chatSessionId": "sess_0de74779-747d-4a11-8002-872f0b300674",
+        "timestamp": 1789279996230
+      },
+      {
+        "executionId": "bb881f44-c067-4149-a991-86e05aa563a0",
+        "chatSessionId": "sess_0de74779-747d-4a11-8002-872f0b300674",
+        "timestamp": 1789291504388
+      }
+    ],
+    "11.2 Add `fakeUpstream` and change `setupTestWithDB` to return `(http.Handler, testEnv)`": [
+      {
+        "executionId": "75bca067-8f25-4baf-92b8-4f0606e14906",
+        "chatSessionId": "sess_0de74779-747d-4a11-8002-872f0b300674",
+        "timestamp": 1789272324801
+      },
+      {
+        "executionId": "bb881f44-c067-4149-a991-86e05aa563a0",
+        "chatSessionId": "sess_0de74779-747d-4a11-8002-872f0b300674",
+        "timestamp": 1789283703821
+      },
+      {
+        "executionId": "bb881f44-c067-4149-a991-86e05aa563a0",
+        "chatSessionId": "sess_0de74779-747d-4a11-8002-872f0b300674",
+        "timestamp": 1789287396389
+      }
+    ],
+    "11.3 Propagate `MissTTL` through `exchanges()`": [
+      {
+        "executionId": "75bca067-8f25-4baf-92b8-4f0606e14906",
+        "chatSessionId": "sess_0de74779-747d-4a11-8002-872f0b300674",
+        "timestamp": 1789272324845
+      },
+      {
+        "executionId": "bb881f44-c067-4149-a991-86e05aa563a0",
+        "chatSessionId": "sess_0de74779-747d-4a11-8002-872f0b300674",
+        "timestamp": 1789287466502
+      }
+    ],
+    "12.1 Test the fan-out, precedence, and failure safety over HTTP": [
+      {
+        "executionId": "75bca067-8f25-4baf-92b8-4f0606e14906",
+        "chatSessionId": "sess_0de74779-747d-4a11-8002-872f0b300674",
+        "timestamp": 1789272324901
+      },
+      {
+        "executionId": "bb881f44-c067-4149-a991-86e05aa563a0",
+        "chatSessionId": "sess_0de74779-747d-4a11-8002-872f0b300674",
+        "timestamp": 1789291492044
+      },
+      {
+        "executionId": "bb881f44-c067-4149-a991-86e05aa563a0",
+        "chatSessionId": "sess_0de74779-747d-4a11-8002-872f0b300674",
+        "timestamp": 1789295354435
+      }
+    ],
+    "12.2 Test provenance in every response family and the unchanged fast tiers": [
+      {
+        "executionId": "75bca067-8f25-4baf-92b8-4f0606e14906",
+        "chatSessionId": "sess_0de74779-747d-4a11-8002-872f0b300674",
+        "timestamp": 1789272324961
+      },
+      {
+        "executionId": "bb881f44-c067-4149-a991-86e05aa563a0",
+        "chatSessionId": "sess_0de74779-747d-4a11-8002-872f0b300674",
+        "timestamp": 1789291492120
+      },
+      {
+        "executionId": "bb881f44-c067-4149-a991-86e05aa563a0",
+        "chatSessionId": "sess_0de74779-747d-4a11-8002-872f0b300674",
+        "timestamp": 1789291507847
+      },
+      {
+        "executionId": "bb881f44-c067-4149-a991-86e05aa563a0",
+        "chatSessionId": "sess_0de74779-747d-4a11-8002-872f0b300674",
+        "timestamp": 1789295289902
+      }
+    ],
+    "12.3 Test the confirmed-miss lifecycle over HTTP": [
+      {
+        "executionId": "75bca067-8f25-4baf-92b8-4f0606e14906",
+        "chatSessionId": "sess_0de74779-747d-4a11-8002-872f0b300674",
+        "timestamp": 1789272325015
+      },
+      {
+        "executionId": "bb881f44-c067-4149-a991-86e05aa563a0",
+        "chatSessionId": "sess_0de74779-747d-4a11-8002-872f0b300674",
+        "timestamp": 1789291492182
+      },
+      {
+        "executionId": "bb881f44-c067-4149-a991-86e05aa563a0",
+        "chatSessionId": "sess_0de74779-747d-4a11-8002-872f0b300674",
+        "timestamp": 1789295532851
+      }
+    ],
+    "12.4 Test refresh targeting, the legacy stamp, and merge preservation": [
+      {
+        "executionId": "75bca067-8f25-4baf-92b8-4f0606e14906",
+        "chatSessionId": "sess_0de74779-747d-4a11-8002-872f0b300674",
+        "timestamp": 1789272325061
+      },
+      {
+        "executionId": "bb881f44-c067-4149-a991-86e05aa563a0",
+        "chatSessionId": "sess_0de74779-747d-4a11-8002-872f0b300674",
+        "timestamp": 1789291492252
+      },
+      {
+        "executionId": "bb881f44-c067-4149-a991-86e05aa563a0",
+        "chatSessionId": "sess_0de74779-747d-4a11-8002-872f0b300674",
+        "timestamp": 1789291508156
+      },
+      {
+        "executionId": "bb881f44-c067-4149-a991-86e05aa563a0",
+        "chatSessionId": "sess_0de74779-747d-4a11-8002-872f0b300674",
+        "timestamp": 1789295664840
+      }
+    ],
+    "12.5 Test the disable switch": [
+      {
+        "executionId": "75bca067-8f25-4baf-92b8-4f0606e14906",
+        "chatSessionId": "sess_0de74779-747d-4a11-8002-872f0b300674",
+        "timestamp": 1789272325111
+      },
+      {
+        "executionId": "bb881f44-c067-4149-a991-86e05aa563a0",
+        "chatSessionId": "sess_0de74779-747d-4a11-8002-872f0b300674",
+        "timestamp": 1789291492322
+      },
+      {
+        "executionId": "bb881f44-c067-4149-a991-86e05aa563a0",
+        "chatSessionId": "sess_0de74779-747d-4a11-8002-872f0b300674",
+        "timestamp": 1789291509153
+      },
+      {
+        "executionId": "bb881f44-c067-4149-a991-86e05aa563a0",
+        "chatSessionId": "sess_0de74779-747d-4a11-8002-872f0b300674",
+        "timestamp": 1789295290341
+      }
+    ],
+    "13. Checkpoint - backend complete and the API field is proven": [
+      {
+        "executionId": "75bca067-8f25-4baf-92b8-4f0606e14906",
+        "chatSessionId": "sess_0de74779-747d-4a11-8002-872f0b300674",
+        "timestamp": 1789272325160
+      },
+      {
+        "executionId": "bb881f44-c067-4149-a991-86e05aa563a0",
+        "chatSessionId": "sess_0de74779-747d-4a11-8002-872f0b300674",
+        "timestamp": 1789291492390
+      },
+      {
+        "executionId": "bb881f44-c067-4149-a991-86e05aa563a0",
+        "chatSessionId": "sess_0de74779-747d-4a11-8002-872f0b300674",
+        "timestamp": 1789295870796
+      }
+    ],
+    "14.1 Add the `ExternalSource` type and the optional `ProductSummary` field": [
+      {
+        "executionId": "75bca067-8f25-4baf-92b8-4f0606e14906",
+        "chatSessionId": "sess_0de74779-747d-4a11-8002-872f0b300674",
+        "timestamp": 1789272325219
+      },
+      {
+        "executionId": "bb881f44-c067-4149-a991-86e05aa563a0",
+        "chatSessionId": "sess_0de74779-747d-4a11-8002-872f0b300674",
+        "timestamp": 1789291492465
+      },
+      {
+        "executionId": "bb881f44-c067-4149-a991-86e05aa563a0",
+        "chatSessionId": "sess_0de74779-747d-4a11-8002-872f0b300674",
+        "timestamp": 1789295671597
+      },
+      {
+        "executionId": "bb881f44-c067-4149-a991-86e05aa563a0",
+        "chatSessionId": "sess_0de74779-747d-4a11-8002-872f0b300674",
+        "timestamp": 1789295868255
+      }
+    ],
+    "14.2 Create the `ProvenanceBadge` component": [
+      {
+        "executionId": "75bca067-8f25-4baf-92b8-4f0606e14906",
+        "chatSessionId": "sess_0de74779-747d-4a11-8002-872f0b300674",
+        "timestamp": 1789272325263
+      },
+      {
+        "executionId": "bb881f44-c067-4149-a991-86e05aa563a0",
+        "chatSessionId": "sess_0de74779-747d-4a11-8002-872f0b300674",
+        "timestamp": 1789291492532
+      },
+      {
+        "executionId": "bb881f44-c067-4149-a991-86e05aa563a0",
+        "chatSessionId": "sess_0de74779-747d-4a11-8002-872f0b300674",
+        "timestamp": 1789295868854
+      }
+    ],
+    "14.3 Write `ProvenanceBadge` component tests": [
+      {
+        "executionId": "75bca067-8f25-4baf-92b8-4f0606e14906",
+        "chatSessionId": "sess_0de74779-747d-4a11-8002-872f0b300674",
+        "timestamp": 1789272325310
+      },
+      {
+        "executionId": "bb881f44-c067-4149-a991-86e05aa563a0",
+        "chatSessionId": "sess_0de74779-747d-4a11-8002-872f0b300674",
+        "timestamp": 1789291492596
+      },
+      {
+        "executionId": "bb881f44-c067-4149-a991-86e05aa563a0",
+        "chatSessionId": "sess_0de74779-747d-4a11-8002-872f0b300674",
+        "timestamp": 1789295869253
+      }
+    ],
+    "14.4 Place the badge on the scan card and the inventory row": [
+      {
+        "executionId": "75bca067-8f25-4baf-92b8-4f0606e14906",
+        "chatSessionId": "sess_0de74779-747d-4a11-8002-872f0b300674",
+        "timestamp": 1789272325361
+      },
+      {
+        "executionId": "bb881f44-c067-4149-a991-86e05aa563a0",
+        "chatSessionId": "sess_0de74779-747d-4a11-8002-872f0b300674",
+        "timestamp": 1789291492694
+      },
+      {
+        "executionId": "bb881f44-c067-4149-a991-86e05aa563a0",
+        "chatSessionId": "sess_0de74779-747d-4a11-8002-872f0b300674",
+        "timestamp": 1789295869784
+      }
+    ],
+    "14.5 Write placement tests for both surfaces": [
+      {
+        "executionId": "75bca067-8f25-4baf-92b8-4f0606e14906",
+        "chatSessionId": "sess_0de74779-747d-4a11-8002-872f0b300674",
+        "timestamp": 1789272325414
+      },
+      {
+        "executionId": "bb881f44-c067-4149-a991-86e05aa563a0",
+        "chatSessionId": "sess_0de74779-747d-4a11-8002-872f0b300674",
+        "timestamp": 1789291492742
+      },
+      {
+        "executionId": "bb881f44-c067-4149-a991-86e05aa563a0",
+        "chatSessionId": "sess_0de74779-747d-4a11-8002-872f0b300674",
+        "timestamp": 1789295870182
+      }
+    ],
+    "15. Final checkpoint - full suite and coverage threshold": [
+      {
+        "executionId": "75bca067-8f25-4baf-92b8-4f0606e14906",
+        "chatSessionId": "sess_0de74779-747d-4a11-8002-872f0b300674",
+        "timestamp": 1789272325466
+      },
+      {
+        "executionId": "bb881f44-c067-4149-a991-86e05aa563a0",
+        "chatSessionId": "sess_0de74779-747d-4a11-8002-872f0b300674",
+        "timestamp": 1789291492792
+      },
+      {
+        "executionId": "bb881f44-c067-4149-a991-86e05aa563a0",
+        "chatSessionId": "sess_0de74779-747d-4a11-8002-872f0b300674",
+        "timestamp": 1789295871194
+      }
+    ],
+    "1. Migration 005: provenance column and confirmed-miss table": [
+      {
+        "executionId": "75bca067-8f25-4baf-92b8-4f0606e14906",
+        "chatSessionId": "sess_0de74779-747d-4a11-8002-872f0b300674",
+        "timestamp": 1789272816948
+      }
+    ],
+    "2. Generalize the upstream client to any Product Opener database": [
+      {
+        "executionId": "75bca067-8f25-4baf-92b8-4f0606e14906",
+        "chatSessionId": "sess_0de74779-747d-4a11-8002-872f0b300674",
+        "timestamp": 1789273376731
+      }
+    ],
+    "3. Carry provenance through the catalog and every response family": [
+      {
+        "executionId": "75bca067-8f25-4baf-92b8-4f0606e14906",
+        "chatSessionId": "sess_0de74779-747d-4a11-8002-872f0b300674",
+        "timestamp": 1789273377756
+      }
+    ],
+    "4. Build the concurrent fan-out with a three-state outcome": [
+      {
+        "executionId": "75bca067-8f25-4baf-92b8-4f0606e14906",
+        "chatSessionId": "sess_0de74779-747d-4a11-8002-872f0b300674",
+        "timestamp": 1789276123477
+      }
+    ],
+    "6. Split the upstream into two consumer-side interfaces": [
+      {
+        "executionId": "75bca067-8f25-4baf-92b8-4f0606e14906",
+        "chatSessionId": "sess_0de74779-747d-4a11-8002-872f0b300674",
+        "timestamp": 1789276124011
+      }
+    ],
+    "7. Add the confirmed-miss data-access methods": [
+      {
+        "executionId": "75bca067-8f25-4baf-92b8-4f0606e14906",
+        "chatSessionId": "sess_0de74779-747d-4a11-8002-872f0b300674",
+        "timestamp": 1789276124547
+      }
+    ],
+    "8. Rewrite `LookupService.Lookup` with the miss gate and the three-way outcome switch": [
+      {
+        "executionId": "bb881f44-c067-4149-a991-86e05aa563a0",
+        "chatSessionId": "sess_0de74779-747d-4a11-8002-872f0b300674",
+        "timestamp": 1789279937605
+      }
+    ],
+    "9. Target refreshes at the database a row's provenance names": [
+      {
+        "executionId": "bb881f44-c067-4149-a991-86e05aa563a0",
+        "chatSessionId": "sess_0de74779-747d-4a11-8002-872f0b300674",
+        "timestamp": 1789279990895
+      }
+    ],
+    "10. Wire configuration in `cmd/server/main.go`": [
+      {
+        "executionId": "bb881f44-c067-4149-a991-86e05aa563a0",
+        "chatSessionId": "sess_0de74779-747d-4a11-8002-872f0b300674",
+        "timestamp": 1789287396687
+      }
+    ],
+    "11. Generalize the test harness to four independently controllable databases": [
+      {
+        "executionId": "bb881f44-c067-4149-a991-86e05aa563a0",
+        "chatSessionId": "sess_0de74779-747d-4a11-8002-872f0b300674",
+        "timestamp": 1789291504450
+      }
+    ],
+    "12. Prove the backend behavior through the HTTP API": [
+      {
+        "executionId": "bb881f44-c067-4149-a991-86e05aa563a0",
+        "chatSessionId": "sess_0de74779-747d-4a11-8002-872f0b300674",
+        "timestamp": 1789295664917
+      }
+    ],
+    "14. Surface provenance on the two frontend surfaces": [
+      {
+        "executionId": "bb881f44-c067-4149-a991-86e05aa563a0",
+        "chatSessionId": "sess_0de74779-747d-4a11-8002-872f0b300674",
+        "timestamp": 1789295870254
+      }
+    ]
+  }
+}

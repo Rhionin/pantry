@@ -96,6 +96,95 @@ func TestProductCacheTTL(t *testing.T) {
 }
 
 // --------------------------------------------------------------------------
+// productMissTTL
+// --------------------------------------------------------------------------
+
+// Feature: open-products-facts-lookup, Requirement 8.5
+//
+// Validates: Requirements 8.5, 8.6, 8.7
+//
+// productMissTTL reads PRODUCT_MISS_TTL and always returns a duration
+// without panicking, calling log.Fatal, or exiting: unset or empty yields the
+// default (7 days), a valid Go duration is returned exactly as parsed (even when
+// non-positive), and an unparseable value falls back to the default.
+func TestProductMissTTL(t *testing.T) {
+	tests := []struct {
+		name  string
+		unset bool
+		value string
+		want  time.Duration
+	}{
+		{
+			name:  "unset uses default",
+			unset: true,
+			want:  defaultMissTTL,
+		},
+		{
+			name:  "empty uses default",
+			value: "",
+			want:  defaultMissTTL,
+		},
+		{
+			name:  "one hour",
+			value: "1h",
+			want:  time.Hour,
+		},
+		{
+			name:  "seven days (default)",
+			value: "168h",
+			want:  7 * 24 * time.Hour,
+		},
+		{
+			name:  "zero duration is used as given, not defaulted",
+			value: "0s",
+			want:  0,
+		},
+		{
+			name:  "thirty days",
+			value: "720h",
+			want:  30 * 24 * time.Hour,
+		},
+		{
+			name:  "unparseable word falls back to default",
+			value: "not-a-duration",
+			want:  defaultMissTTL,
+		},
+		{
+			name:  "bare number with no unit falls back to default",
+			value: "5",
+			want:  defaultMissTTL,
+		},
+		{
+			name:  "unit with a space falls back to default",
+			value: "1 day",
+			want:  defaultMissTTL,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if tt.unset {
+				original, wasSet := os.LookupEnv("PRODUCT_MISS_TTL")
+				os.Unsetenv("PRODUCT_MISS_TTL")
+				t.Cleanup(func() {
+					if wasSet {
+						os.Setenv("PRODUCT_MISS_TTL", original)
+					}
+				})
+			} else {
+				t.Setenv("PRODUCT_MISS_TTL", tt.value)
+			}
+
+			got := productMissTTL()
+
+			if got != tt.want {
+				t.Errorf("productMissTTL() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+// --------------------------------------------------------------------------
 // loadScanListenerConfig
 // --------------------------------------------------------------------------
 

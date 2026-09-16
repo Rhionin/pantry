@@ -3,6 +3,8 @@
 // types in internal/product, internal/scan, internal/inventory,
 // internal/suggestion, internal/shopping, and internal/server.
 
+export type ExternalSource = 'openfoodfacts' | 'openproductsfacts' | 'openbeautyfacts' | 'openpetfoodfacts';
+
 export interface ProductSummary {
   id: string;
   name: string;
@@ -11,6 +13,8 @@ export interface ProductSummary {
   // Thumbnail sourced from Open Food Facts. Omitted from the JSON response
   // (via omitempty) when no image is available.
   imageUrl?: string;
+  // Optional field indicating the external database source for this product.
+  externalSource?: ExternalSource;
 }
 
 export interface Product extends ProductSummary {

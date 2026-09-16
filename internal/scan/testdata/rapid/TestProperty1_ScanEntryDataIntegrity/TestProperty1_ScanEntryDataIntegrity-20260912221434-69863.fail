@@ -1,0 +1,11 @@
+# 2026/09/12 22:14:34.823533 [TestProperty1_ScanEntryDataIntegrity] [rapid] draw barcode: ""
+# 2026/09/12 22:14:34.823537 [TestProperty1_ScanEntryDataIntegrity] [rapid] draw timestampUnix: 0
+# 2026/09/12 22:14:34.823538 [TestProperty1_ScanEntryDataIntegrity] [rapid] draw userID: ""
+# 2026/09/12 22:14:34.823990 [TestProperty1_ScanEntryDataIntegrity] CreateScanEntry failed: GetScanEntry: sql: expected 17 destination arguments in Scan, not 16
+# 
+v0.4.8#785750245994080995
+0x0
+0x0
+0x0
+0x0
+0x0

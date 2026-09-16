@@ -25,24 +25,24 @@ const (
 // that has no products row. The handler maps this to HTTP 404.
 var ErrRefreshTargetMissing = errors.New("refresh target not found")
 
-// Refresher revalidates externally-sourced product rows against Open Food
-// Facts. It is the only component that writes freshness-driven changes to the
+// Refresher revalidates externally-sourced product rows against Product Opener
+// databases. It is the only component that writes freshness-driven changes to the
 // products table.
 //
 // For source = 'external' rows the product ID is the barcode:
 // persistExternalProduct sets Product.ID = barcode for every externally-
 // resolved product, and migration 002's placeholder rows have
 // id = product_id = barcode as well. So every external row's ID is its
-// barcode by construction, and Refresh can call OpenFoodFacts.LookupBarcode
-// with the product ID directly, with no second query against barcodes.
+// barcode by construction, and Refresh can call Upstream.LookupIn with the
+// product ID directly, with no second query against barcodes.
 type Refresher struct {
 	Catalog interface {
 		GetProductByID(ctx context.Context, id string) (*Product, error)
 		SaveRefresh(ctx context.Context, p Product, refreshedAt time.Time) error
 		MarkRefreshed(ctx context.Context, id string, refreshedAt time.Time) error
 	}
-	OpenFoodFacts interface {
-		LookupBarcode(ctx context.Context, barcode string) (*ProductSummary, error)
+	Upstream interface {
+		LookupIn(ctx context.Context, source ExternalSource, barcode string) (*ProductSummary, error)
 	}
 
 	// TTL is the age at which an external row becomes stale.
@@ -133,7 +133,7 @@ func classify(before, after Product) RefreshOutcome {
 	return OutcomeUnchanged
 }
 
-// Refresh revalidates a single product row against Open Food Facts. It is
+// Refresh revalidates a single product row against its upstream database. It is
 // the single core path both ScheduleRefresh and the synchronous refresh
 // endpoint call, and it ignores the TTL entirely: staleness is only ever
 // consulted by ScheduleRefresh, so a caller of Refresh always gets a real
@@ -163,7 +163,18 @@ func (r *Refresher) Refresh(ctx context.Context, productID string) (RefreshOutco
 
 	now := r.now()
 
-	upstream, err := r.OpenFoodFacts.LookupBarcode(ctx, row.ID)
+	// A Legacy_External_Row has no provenance, so it is revalidated against
+	// Open Food Facts — the only database it could have come from, since it
+	// was cached before any other was queried.
+	target := row.ExternalSource
+	if target == "" {
+		target = ExternalSourceOpenFoodFacts
+	}
+
+	// Exactly one database, named by the row. The external-row invariant
+	// "product ID is the barcode" still holds, so row.ID is passed directly
+	// with no barcodes query.
+	upstream, err := r.Upstream.LookupIn(ctx, target, row.ID)
 	if err != nil {
 		if errors.Is(err, ErrProductNotFound) {
 			if markErr := r.Catalog.MarkRefreshed(ctx, row.ID, now); markErr != nil {
@@ -180,6 +191,11 @@ func (r *Refresher) Refresh(ctx context.Context, productID string) (RefreshOutco
 	}
 
 	merged := mergeRefresh(*row, *upstream)
+	// One unconditional write covers two requirements: for a row that already
+	// had provenance this is a no-op rewrite of the same value, and for a
+	// Legacy_External_Row it is the stamp that records where the data came from.
+	merged.ExternalSource = target
+
 	if err := r.Catalog.SaveRefresh(ctx, merged, now); err != nil {
 		return OutcomeUnchanged, err
 	}

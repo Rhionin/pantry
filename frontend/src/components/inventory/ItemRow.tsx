@@ -1,6 +1,7 @@
 import { memo } from 'react';
 import { Avatar, Badge, Button, Card, Group, Stack, Text, Title } from '@mantine/core';
 import type { InventoryItem } from '../../types';
+import { ProvenanceBadge } from '../product/ProvenanceBadge';
 
 export interface ItemRowProps {
   inventoryItem: InventoryItem;
@@ -25,6 +26,7 @@ export const ItemRow = memo(({
           <Stack gap={2}>
             <Title order={3} size="h5">{item.product.name}</Title>
             <Text size="sm" c="dimmed">{item.product.category}</Text>
+            <ProvenanceBadge externalSource={item.product.externalSource} />
             <Text size="sm">{instanceCount} {item.product.unitOfMeasure}</Text>
           </Stack>
         </Group>

@@ -1,9 +1,10 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Alert, Avatar, Badge, Button, Card, Checkbox, Group, NumberInput, Stack, Text, TextInput, Title } from '@mantine/core';
 import { commitScanEntry, updateScanEntry } from '../../api/client';
 import type { ScanEntry } from '../../types';
 import { FlaggedEntryResolver } from './FlaggedEntryResolver';
 import { StockOutInstanceSelector } from './StockOutInstanceSelector';
+import { ProvenanceBadge } from '../product/ProvenanceBadge';
 import { expiryDateToISOString, formatExpiryDate, isValidUnitCount } from './queueUtils';
 
 export interface ScanEntryCardProps {
@@ -13,12 +14,6 @@ export interface ScanEntryCardProps {
   onSelectedChange: (selected: boolean) => void;
   onChanged: () => void;
 }
-
-const directionLabel = (entry: ScanEntry): string => {
-  if (entry.direction === 'stock_in') return 'Stock in';
-  if (entry.direction === 'stock_out') return 'Stock out';
-  return 'Not set';
-};
 
 export const ScanEntryCard = ({
   entry,
@@ -38,6 +33,32 @@ export const ScanEntryCard = ({
     entry.expiresAt === null ? '' : entry.expiresAt.substring(0, 10),
   );
   const [expiryError, setExpiryError] = useState('');
+  const [showChangeIndicator, setShowChangeIndicator] = useState(true);
+
+  const prefersReducedMotion = () =>
+    typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  // Sync draft state when unitCount or expiresAt changes (server updates)
+  useEffect(() => {
+    setUnitCountDraft(entry.unitCount);
+  }, [entry.unitCount]);
+
+  useEffect(() => {
+    setExpiryDraft(entry.expiresAt === null ? '' : entry.expiresAt.substring(0, 10));
+  }, [entry.expiresAt]);
+
+  // Show change indicator on mount and when unitCount changes
+  useEffect(() => {
+    setShowChangeIndicator(true);
+    const timer = setTimeout(() => setShowChangeIndicator(false), 600);
+    return () => clearTimeout(timer);
+  }, [entry.unitCount]);
+
+  const changeIndicatorClass = !showChangeIndicator
+    ? undefined
+    : prefersReducedMotion()
+      ? 'scan-entry-card--changed-static'
+      : 'scan-entry-card--changed-animated';
 
   const handleApprove = async () => {
     setApproving(true);
@@ -62,28 +83,6 @@ export const ScanEntryCard = ({
       setRemoveError(requestError instanceof Error ? requestError.message : 'Unable to remove scan.');
     } finally {
       setRemoving(false);
-    }
-  };
-
-  const handleIncrement = async () => {
-    try {
-      await updateScanEntry(entry.id, { unitCount: entry.unitCount + 1 });
-      setUnitCountDraft(entry.unitCount + 1);
-      onChanged();
-    } catch {
-      // Error handling is done by the API layer - just reset draft on failure
-      setUnitCountDraft(entry.unitCount);
-    }
-  };
-
-  const handleDecrement = async () => {
-    try {
-      await updateScanEntry(entry.id, { unitCount: entry.unitCount - 1 });
-      setUnitCountDraft(entry.unitCount - 1);
-      onChanged();
-    } catch {
-      // Error handling is done by the API layer - just reset draft on failure
-      setUnitCountDraft(entry.unitCount);
     }
   };
 
@@ -140,17 +139,19 @@ export const ScanEntryCard = ({
   };
 
   return (
-    <Card component="article" withBorder padding="sm" aria-label={`Scan ${entry.barcode}`}>
+    <Card component="article" withBorder padding="sm" className={changeIndicatorClass} aria-label={`Scan ${entry.barcode}`}>
       <Stack gap="xs">
+        {/* Header: Product info + checkbox */}
         <Group justify="space-between" align="flex-start" wrap="nowrap">
-          <Group gap="xs" wrap="nowrap" align="flex-start">
+          <Group gap="xs" wrap="nowrap" align="flex-start" style={{ flex: 1 }}>
             <Avatar src={entry.product?.imageUrl} name={entry.product?.name ?? '?'} radius="sm" />
-            <div>
+            <div style={{ flex: 1 }}>
               <Title order={3} size="h5">{entry.product?.name ?? 'Unknown product'}</Title>
               <Text size="xs" c="dimmed">Barcode: {entry.barcode}</Text>
+              <ProvenanceBadge externalSource={entry.product?.externalSource} />
             </div>
           </Group>
-          <Group gap="xs" wrap="nowrap">
+          <Group gap="xs" wrap="nowrap" align="center">
             {entry.status === 'flagged' && <Badge color="orange">Flagged</Badge>}
             {entry.status === 'pending' && (
               <Checkbox
@@ -162,19 +163,15 @@ export const ScanEntryCard = ({
             )}
           </Group>
         </Group>
+
+        {/* Timestamp */}
         <Text size="xs" c="dimmed">
-          Scanned: {new Date(entry.scannedAt).toLocaleString()} · Direction: {directionLabel(entry)}
+          Scanned: {new Date(entry.scannedAt).toLocaleString()}
         </Text>
+
+        {/* Unit count + Expiration date controls (pending only) */}
         {entry.status === 'pending' && (
           <Group gap="xs" align="center" wrap="nowrap">
-            <Button
-              size="xs"
-              onClick={() => void handleDecrement()}
-              disabled={entry.unitCount <= 1}
-              aria-label="Decrease unit count"
-            >
-              -
-            </Button>
             <NumberInput
               size="xs"
               min={1}
@@ -184,28 +181,13 @@ export const ScanEntryCard = ({
               onChange={handleUnitCountChange}
               onBlur={handleUnitCountBlur}
               onKeyDown={handleUnitCountKeyDown}
-              w={160}
+              w={80}
               aria-label="Unit count"
             />
-            {unitCountError !== '' && (
-              <Alert color="red" py="xs" style={{ flex: 1 }}>
-                {unitCountError}
-              </Alert>
-            )}
-            <Button
-              size="xs"
-              onClick={() => void handleIncrement()}
-              aria-label="Increase unit count"
-            >
-              +
-            </Button>
-          </Group>
-        )}
-        {entry.status === 'pending' && (
-          <Group gap="xs" align="center" wrap="nowrap">
             <TextInput
               size="xs"
               type="date"
+              placeholder="mm/dd/yyyy"
               value={expiryDraft}
               onChange={(event) => {
                 setExpiryDraft(event.currentTarget.value);
@@ -213,46 +195,79 @@ export const ScanEntryCard = ({
                 setExpiryError('');
               }}
               onBlur={handleExpiryBlur}
-              w={160}
+              w={120}
               aria-label="Expiration date"
             />
+          </Group>
+        )}
+
+        {/* Errors from unit count and expiration date */}
+        {(unitCountError !== '' || expiryError !== '') && (
+          <Stack gap="xs">
+            {unitCountError !== '' && (
+              <Alert color="red" py="xs">
+                {unitCountError}
+              </Alert>
+            )}
             {expiryError !== '' && (
-              <Alert color="red" py="xs" style={{ flex: 1 }}>
+              <Alert color="red" py="xs">
                 {expiryError}
               </Alert>
             )}
-          </Group>
+          </Stack>
         )}
-        <Text size="xs" c="dimmed">
-          Unit count: {entry.unitCount}
-          {entry.expiresAt !== null && ` · Expires: ${formatExpiryDate(entry.expiresAt)}`}
-        </Text>
-        {entry.status === 'flagged' && (
-          <FlaggedEntryResolver entry={entry} onResolved={onChanged} />
-        )}
+
+        {/* Instance selector for stock_out entries */}
         {entry.status === 'pending' && entry.direction === 'stock_out' && itemId !== undefined && (
           <StockOutInstanceSelector itemId={itemId} value={instanceId} onChange={setInstanceId} />
         )}
         {entry.status === 'pending' && entry.direction === 'stock_out' && itemId === undefined && (
           <Alert color="yellow" py="xs">No inventory item is available for this product.</Alert>
         )}
-        {entry.status === 'pending' && entry.direction !== null && (
-          <Button size="xs" loading={approving} onClick={() => void handleApprove()} aria-label="Approve scan">
-            Approve scan
-          </Button>
+
+        {/* Flagged entry resolver */}
+        {entry.status === 'flagged' && (
+          <FlaggedEntryResolver entry={entry} onResolved={onChanged} />
         )}
-        {(entry.status === 'pending' || entry.status === 'flagged') && (
+
+        {/* Approve and Remove buttons on same line (pending with direction only) */}
+        {entry.status === 'pending' && entry.direction !== null && (
+          <Group gap="xs">
+            <Button
+              size="xs"
+              loading={approving}
+              onClick={() => void handleApprove()}
+              style={{ flex: 1 }}
+            >
+              Approve
+            </Button>
+            <Button
+              size="xs"
+              variant="subtle"
+              color="red"
+              loading={removing}
+              onClick={() => void handleRemove()}
+            >
+              Remove
+            </Button>
+          </Group>
+        )}
+
+        {/* Remove-only button for flagged entries */}
+        {entry.status === 'flagged' && (
           <Button
             size="xs"
             variant="subtle"
             color="red"
             loading={removing}
             onClick={() => void handleRemove()}
-            aria-label="Remove scan"
+            w="100%"
           >
             Remove
           </Button>
         )}
+
+        {/* Error alerts */}
         {approveError !== '' && <Alert color="red" py="xs">{approveError}</Alert>}
         {removeError !== '' && <Alert color="red" py="xs">{removeError}</Alert>}
       </Stack>

@@ -82,3 +82,16 @@ code {
   padding: 4px 8px;
   background: var(--code-bg);
 }
+
+.scan-entry-card--changed-animated {
+  animation: scan-entry-changed-flash 600ms ease-out;
+}
+
+.scan-entry-card--changed-static {
+  background-color: var(--accent-bg);
+}
+
+@keyframes scan-entry-changed-flash {
+  0% { background-color: var(--accent-bg); }
+  100% { background-color: transparent; }
+}

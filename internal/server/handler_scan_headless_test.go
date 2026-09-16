@@ -87,10 +87,11 @@ func getScanEntry(env testEnv, userID string) map[string]any {
 		now = env.Clock.Now
 	}
 	handler, _ := NewHandler(env.ProductStore, &product.LookupService{
-		Catalog:       env.ProductStore,
-		OpenFoodFacts: env.OpenFoodFacts,
-		Refresher:     env.Refresher,
-		Now:           now,
+		Catalog:   env.ProductStore,
+		Upstream:  env.Upstream,
+		Refresher: env.Refresher,
+		Now:       now,
+		MissTTL:   5 * time.Minute,
 	}, env.Refresher, env.DB)
 
 	server := httptest.NewServer(handler)

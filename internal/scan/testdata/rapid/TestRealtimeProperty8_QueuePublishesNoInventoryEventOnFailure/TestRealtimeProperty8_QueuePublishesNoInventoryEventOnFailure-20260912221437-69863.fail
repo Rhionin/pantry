@@ -1,0 +1,13 @@
+# 2026/09/12 22:14:37.238602 [TestRealtimeProperty8_QueuePublishesNoInventoryEventOnFailure] [rapid] draw operation: 1
+# 2026/09/12 22:14:37.238606 [TestRealtimeProperty8_QueuePublishesNoInventoryEventOnFailure] [rapid] draw commitStockOutErrorCondition: 4
+# 2026/09/12 22:14:37.238646 [TestRealtimeProperty8_QueuePublishesNoInventoryEventOnFailure] [rapid] draw barcode: ""
+# 2026/09/12 22:14:37.238802 [TestRealtimeProperty8_QueuePublishesNoInventoryEventOnFailure] CreateScanEntry (setup) failed: GetScanEntry: sql: expected 17 destination arguments in Scan, not 16
+# 
+v0.4.8#18123969199008221966
+0x0
+0x0
+0x1
+0x0
+0x1f2b5a0e61c3a6
+0x0
+0x0

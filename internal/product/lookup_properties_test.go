@@ -89,7 +89,7 @@ func TestProperty2_UserOverridePreservation(t *testing.T) {
 
 		before := countRows(rt, db)
 
-		service := &LookupService{Catalog: catalog, OpenFoodFacts: notFoundLookup}
+		service := &LookupService{Catalog: catalog, Upstream: notFoundLookup}
 		result, err := service.Lookup(ctx, barcode, userID)
 		if err != nil {
 			rt.Fatalf("Lookup: %v", err)
@@ -138,7 +138,7 @@ func TestProperty2_GlobalPreservation(t *testing.T) {
 
 		before := countRows(rt, db)
 
-		service := &LookupService{Catalog: catalog, OpenFoodFacts: notFoundLookup}
+		service := &LookupService{Catalog: catalog, Upstream: notFoundLookup}
 		result, err := service.Lookup(ctx, barcode, userID)
 		if err != nil {
 			rt.Fatalf("Lookup: %v", err)
@@ -187,7 +187,7 @@ func TestProperty2_NotFoundPreservation(t *testing.T) {
 
 		before := countRows(rt, db)
 
-		service := &LookupService{Catalog: catalog, OpenFoodFacts: external}
+		service := &LookupService{Catalog: catalog, Upstream: external}
 		result, err := service.Lookup(ctx, barcode, userID)
 		if err != nil {
 			rt.Fatalf("Lookup: %v", err)
@@ -252,7 +252,7 @@ func TestProperty2_ResultEquality(t *testing.T) {
 			wantFound, wantProductID, wantSource = false, "", ""
 		}
 
-		service := &LookupService{Catalog: catalog, OpenFoodFacts: notFoundLookup}
+		service := &LookupService{Catalog: catalog, Upstream: notFoundLookup}
 
 		// First observation is the baseline; a repeat must produce an identical result.
 		first, err := service.Lookup(ctx, barcode, userID)
@@ -332,7 +332,7 @@ func TestProperty3_ExternalPersistenceIdempotent(t *testing.T) {
 			return nil, ErrProductNotFound
 		}}
 
-		service := &LookupService{Catalog: catalog, OpenFoodFacts: external}
+		service := &LookupService{Catalog: catalog, Upstream: external}
 
 		var firstID string
 		for i := 0; i < n; i++ {
@@ -417,7 +417,7 @@ func TestExternalLookupPersistsImageURL(t *testing.T) {
 		return &ProductSummary{ID: barcode, Name: "Coca-Cola", Category: "Beverages", ImageURL: wantImageURL}, nil
 	}}
 
-	service := &LookupService{Catalog: catalog, OpenFoodFacts: external}
+	service := &LookupService{Catalog: catalog, Upstream: external}
 	result, err := service.Lookup(ctx, barcode, "user-1")
 	if err != nil {
 		t.Fatalf("Lookup: %v", err)

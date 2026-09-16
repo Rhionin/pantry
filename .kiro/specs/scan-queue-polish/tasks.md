@@ -40,44 +40,44 @@ Work proceeds bottom-up: shared `queueUtils.ts` helpers first (including the new
     - **Validates: Requirements 9.1, 9.2, 9.3, 9.4**
     - Use `fast-check`, ≥100 iterations, generating entries with all three `direction` values (`stock_in`, `stock_out`, `null`) and asserting the two returned lists are disjoint and together cover the input
 
-- [~] 2. Checkpoint - Ensure all tests pass
+- [x] 2. Checkpoint - Ensure all tests pass
   - Ensure all tests pass, ask the user if questions arise.
 
-- [ ] 3. Add Queue_Direction_Tabs to `ScanQueuePage` and scope batch controls to the Active_View
+- [x] 3. Add Queue_Direction_Tabs to `ScanQueuePage` and scope batch controls to the Active_View
   - [x] 3.1 Implement `Queue_Direction_Tabs` and derive `viewEntries`
     - Add `activeView` state via `useState<QueueView>('stock_out')` so it always initializes to `Stock_Out_View` fresh on every mount, with no read from or write to `localStorage` or any other persistence
     - Render a Mantine `Tabs` above the grid with `Stock_In_View`/`Stock_Out_View` tabs; its `onChange` handler validates the incoming value, calls `setActiveView`, and calls `setSelectedIds([])`
     - Derive `viewEntries = getEntriesForView(entries, activeView)` once per render for the rest of the page to consume
     - _Requirements: 8.1, 8.2, 8.3, 8.4, 8.5, 11.1, 11.2_
 
-  - [-] 3.2 Update the `Select_All_Control` to consume `viewEntries` instead of `entries`
+  - [x] 3.2 Update the `Select_All_Control` to consume `viewEntries` instead of `entries`
     - Compute `eligibleEntries`/`allEligibleSelected` from `viewEntries` and `selectedIds` using `isBatchEligible`
     - Disable the checkbox when there are no eligible entries in the Active_View; keep `aria-label="Select all eligible scans for batch approval"`
     - On change, call `setSelectedIds((current) => toggleSelectAll(viewEntries, current))`
     - _Requirements: 3.1, 3.2, 3.3, 3.4, 10.1, 10.2, 10.3_
 
-  - [-] 3.3 Scope the entry grid and `BatchReviewPanel`'s `selectedIds` to the Active_View
+  - [x] 3.3 Scope the entry grid and `BatchReviewPanel`'s `selectedIds` to the Active_View
     - Map the grid over `viewEntries` instead of `entries`
     - Compute `viewEntryIds` from `viewEntries` and pass `BatchReviewPanel` `selectedIds={selectedIds.filter((id) => viewEntryIds.has(id))}`
     - _Requirements: 8.6, 9.1, 9.2, 9.3, 9.4, 10.4, 10.5_
 
-  - [-] 3.4 Write RTL tests for default/reset-to-Stock_Out_View-on-mount behavior
+  - [x] 3.4 Write RTL tests for default/reset-to-Stock_Out_View-on-mount behavior
     - Assert `Stock_Out_View` is the Active_View on initial mount, and remains so on a fresh mount even after a prior instance was switched to `Stock_In_View` (via unmount/remount, no persisted storage involved)
     - _Requirements: 8.2, 8.3_
 
-  - [~] 3.5 Write RTL tests for per-tab filtered rendering
+  - [x] 3.5 Write RTL tests for per-tab filtered rendering
     - Assert activating each tab renders only that view's entries: `Stock_In_View` shows exactly `direction === 'stock_in'` entries, `Stock_Out_View` shows `direction === 'stock_out'` and `direction === null` entries
     - _Requirements: 8.4, 8.5, 8.6, 9.1, 9.2, 9.3, 9.4_
 
-  - [~] 3.6 Write RTL tests for the view-scoped `Select_All_Control`
+  - [x] 3.6 Write RTL tests for the view-scoped `Select_All_Control`
     - Assert unchecked/disabled state with no eligible entries in the Active_View, checked state once every eligible entry in the Active_View is selected, and that activating it toggles only eligible ids within the Active_View while leaving out-of-view and ineligible entries' selection untouched
     - _Requirements: 3.1, 3.2, 3.3, 3.4, 10.1, 10.2, 10.3_
 
-  - [~] 3.7 Write RTL tests for selection clearing on tab switch
+  - [x] 3.7 Write RTL tests for selection clearing on tab switch
     - Select an entry, switch tabs, switch back, and assert the batch selection is empty
     - _Requirements: 11.1, 11.2_
 
-  - [~] 3.8 Write RTL test for view-scoped batch approval
+  - [x] 3.8 Write RTL test for view-scoped batch approval
     - Assert an approve action from `BatchReviewPanel` only ever includes entries from the Active_View
     - _Requirements: 10.5_
 
@@ -118,10 +118,10 @@ Work proceeds bottom-up: shared `queueUtils.ts` helpers first (including the new
     - Simulate a successful remove PATCH from a rendered card and assert the entry disappears from `ScanQueuePage`'s displayed list via the existing `onChanged`/`loadQueue` reload path
     - _Requirements: 1.3_
 
-- [~] 6. Checkpoint - Ensure all tests pass
+- [x] 6. Checkpoint - Ensure all tests pass
   - Ensure all tests pass, ask the user if questions arise.
 
-- [ ] 7. Add the unit-count editor to `ScanEntryCard`
+- [x] 7. Add the unit-count editor to `ScanEntryCard`
   - [x] 7.1 Implement the increment and decrement controls
     - Show increment/decrement `Button`s and the current count when `entry.status === 'pending'`
     - Increment calls `updateScanEntry(entry.id, { unitCount: entry.unitCount + 1 })`; decrement calls the analogous `- 1` update; both call `onChanged()` on success
@@ -142,36 +142,36 @@ Work proceeds bottom-up: shared `queueUtils.ts` helpers first (including the new
     - Assert a valid confirmed value sends the expected PATCH, an invalid value (`< 1` or non-integer) is rejected client-side with the displayed count unchanged, and a failed PATCH shows an error while reverting to the previously confirmed count
     - _Requirements: 2.5, 2.6, 2.7_
 
-- [ ] 8. Add the per-card expiration date input to `ScanEntryCard`
-  - [-] 8.1 Implement the expiration date input
+- [x] 8. Add the per-card expiration date input to `ScanEntryCard`
+  - [x] 8.1 Implement the expiration date input
     - Add a `TextInput type="date"` shown when `entry.status === 'pending'`, defaulting to `''` when `entry.expiresAt === null`
     - On blur, if the value changed, PATCH `updateScanEntry(entry.id, { expiresAt: expiryDateToISOString(value) })` and call `onChanged()` on success; on failure, show an inline error and reset the draft to the entry's current `expiresAt`
     - _Requirements: 7.1, 7.2, 7.3_
 
-  - [~] 8.2 Write RTL tests for the expiration date input
+  - [x] 8.2 Write RTL tests for the expiration date input
     - Assert the input defaults to empty for a `null` `expiresAt`, that confirming a value sends the expected PATCH, and that a failed PATCH shows an error and resets the draft
     - _Requirements: 7.1, 7.2, 7.3_
 
-- [ ] 9. Update the `Batch_Selection_Checkbox` to be unlabeled and accessible
-  - [-] 9.1 Remove the visible label and add an `aria-label`
+- [x] 9. Update the `Batch_Selection_Checkbox` to be unlabeled and accessible
+  - [x] 9.1 Remove the visible label and add an `aria-label`
     - Remove the `label` prop from the existing selection `Checkbox` and add `aria-label="Select scan for batch approval"`
     - _Requirements: 5.1, 5.2_
 
-  - [~] 9.2 Write RTL tests for the accessible checkbox
+  - [x] 9.2 Write RTL tests for the accessible checkbox
     - Assert no visible label text is rendered, the `aria-label` is present, and toggling the checkbox reports the selection change through `onSelectedChange`
     - _Requirements: 5.1, 5.2, 5.3_
 
-- [~] 10. Checkpoint - Ensure all tests pass
+- [x] 10. Checkpoint - Ensure all tests pass
   - Ensure all tests pass, ask the user if questions arise.
 
-- [ ] 11. Add the motion-aware change indicator to `ScanEntryCard`
-  - [~] 11.1 Implement `showChangeIndicator` state and CSS classes
+- [x] 11. Add the motion-aware change indicator to `ScanEntryCard`
+  - [x] 11.1 Implement `showChangeIndicator` state and CSS classes
     - Add the `useEffect` from the design keyed on `entry.unitCount` that sets `showChangeIndicator` true and clears it after 600ms
     - Add the `prefersReducedMotion` check via `matchMedia` and derive `changeIndicatorClass` (`scan-entry-card--changed-animated` vs `scan-entry-card--changed-static`), applying it to the card's `className`
     - Add `.scan-entry-card--changed-animated`, `.scan-entry-card--changed-static`, and the `scan-entry-changed-flash` keyframes to `frontend/src/index.css`
     - _Requirements: 6.1, 6.2, 6.3, 6.4_
 
-  - [~] 11.2 Write RTL tests for the change indicator
+  - [x] 11.2 Write RTL tests for the change indicator
     - Using `vi.useFakeTimers()`/`vi.advanceTimersByTime(600)` (as in `ScanDirectionToggle.test.tsx`) and `vi.stubGlobal('matchMedia', ...)`, assert the indicator appears on mount and on a `unitCount` change, clears after ~600ms, and renders the static class instead of the animated one when reduced motion is preferred
     - _Requirements: 6.1, 6.2, 6.3, 6.4_
 
@@ -185,7 +185,7 @@ Work proceeds bottom-up: shared `queueUtils.ts` helpers first (including the new
     - Replace the existing test (which asserts the removed direction/expiry fields) with assertions that no direction/expiry controls are rendered and that the approve request body is exactly `{ scanEntryIds, commit: true }`
     - _Requirements: 7.4, 7.5_
 
-- [~] 13. Final checkpoint - Ensure all tests pass
+- [x] 13. Final checkpoint - Ensure all tests pass
   - Ensure all tests pass, ask the user if questions arise.
 
 ## Notes

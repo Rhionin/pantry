@@ -51,7 +51,8 @@ func readSSEFrames(body io.Reader, frames chan<- sseFrame, done chan<- struct{})
 // POST /api/scans call against the same handler/DB the stream is subscribed
 // to (Requirements 1.1, 1.2, 1.5, 2.1).
 func TestEventsStream_ScanEventOnCreate(t *testing.T) {
-	handler, catalog, _, _, _, _ := setupTestWithDB(t)
+	handler, env := setupTestWithDB(t)
+	catalog := env.ProductStore
 
 	const barcode = "999888777666"
 	if err := catalog.CreateProduct(context.Background(), product.Product{

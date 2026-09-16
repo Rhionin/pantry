@@ -6,6 +6,7 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	_ "modernc.org/sqlite"
 
@@ -33,6 +34,29 @@ type mockOpenFoodFacts struct {
 
 func (m mockOpenFoodFacts) LookupBarcode(ctx context.Context, barcode string) (*ProductSummary, error) {
 	return m.lookupFn(ctx, barcode)
+}
+
+// Lookup implements the Upstream interface by calling the mock's lookup function
+// and converting the result to a FanOutResult.
+func (m mockOpenFoodFacts) Lookup(ctx context.Context, barcode string) FanOutResult {
+	product, err := m.lookupFn(ctx, barcode)
+	if err != nil {
+		if errors.Is(err, ErrProductNotFound) {
+			return FanOutResult{Outcome: FanOutConfirmedMiss}
+		}
+		// Other errors (network, timeout) are treated as unresolved.
+		return FanOutResult{Outcome: FanOutUnresolved}
+	}
+	return FanOutResult{
+		Outcome: FanOutHit,
+		Product: product,
+		Source:  ExternalSourceOpenFoodFacts,
+	}
+}
+
+// LookupIn implements the Upstream interface by delegating to LookupBarcode.
+func (m mockOpenFoodFacts) LookupIn(ctx context.Context, source ExternalSource, barcode string) (*ProductSummary, error) {
+	return m.LookupBarcode(ctx, barcode)
 }
 
 // TestLookupService verifies the three-tier lookup behavior using table-driven tests.
@@ -159,8 +183,8 @@ func TestLookupService(t *testing.T) {
 			tt.setupDB(t, catalog)
 
 			service := &LookupService{
-				Catalog:       catalog,
-				OpenFoodFacts: mockOpenFoodFacts{lookupFn: tt.openFoodFacts},
+				Catalog:  catalog,
+				Upstream: mockOpenFoodFacts{lookupFn: tt.openFoodFacts},
 			}
 			actual, err := service.Lookup(context.Background(), tt.barcode, tt.userID)
 
@@ -201,4 +225,384 @@ func TestLookupService(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestLookupService_MissGate tests the confirmed-miss gate behavior.
+func TestLookupService_MissGate(t *testing.T) {
+	tests := []struct {
+		name          string
+		setupDB       func(t *testing.T, catalog *Catalog, now time.Time)
+		upstream      func(ctx context.Context, barcode string) FanOutResult
+		missBarcode   string
+		missTime      time.Time
+		missTTL       time.Duration
+		barcode       string
+		userID        string
+		expectedFound bool
+	}{
+		{
+			name: "confirmed miss suppresses external lookup within TTL",
+			setupDB: func(t *testing.T, catalog *Catalog, now time.Time) {
+				if err := catalog.RecordBarcodeMiss(context.Background(), "miss-barcode", now); err != nil {
+					t.Fatal(err)
+				}
+			},
+			upstream: func(ctx context.Context, barcode string) FanOutResult {
+				// Upstream should not be called
+				t.Errorf("upstream.Lookup called for barcode %q, should have been suppressed by miss gate", barcode)
+				return FanOutResult{Outcome: FanOutUnresolved}
+			},
+			missBarcode:   "miss-barcode",
+			missTime:      time.Unix(1000, 0),
+			missTTL:       1 * time.Hour,
+			barcode:       "miss-barcode",
+			userID:        "user-1",
+			expectedFound: false,
+		},
+		{
+			name: "expired confirmed miss allows external lookup",
+			setupDB: func(t *testing.T, catalog *Catalog, now time.Time) {
+				// Record a miss from 2 hours ago, but TTL is 1 hour
+				pastTime := now.Add(-2 * time.Hour)
+				if err := catalog.RecordBarcodeMiss(context.Background(), "expired-miss", pastTime); err != nil {
+					t.Fatal(err)
+				}
+			},
+			upstream: func(ctx context.Context, barcode string) FanOutResult {
+				if barcode == "expired-miss" {
+					return FanOutResult{
+						Outcome: FanOutHit,
+						Product: &ProductSummary{ID: "expired-miss", Name: "Found", Category: "Food"},
+						Source:  ExternalSourceOpenFoodFacts,
+					}
+				}
+				return FanOutResult{Outcome: FanOutUnresolved}
+			},
+			missBarcode:   "expired-miss",
+			missTime:      time.Unix(1000, 0),
+			missTTL:       1 * time.Hour,
+			barcode:       "expired-miss",
+			userID:        "user-1",
+			expectedFound: true,
+		},
+		{
+			name:    "no miss gate entry allows external lookup",
+			setupDB: func(t *testing.T, catalog *Catalog, now time.Time) {},
+			upstream: func(ctx context.Context, barcode string) FanOutResult {
+				if barcode == "new-barcode" {
+					return FanOutResult{
+						Outcome: FanOutHit,
+						Product: &ProductSummary{ID: "new-barcode", Name: "Found", Category: "Food"},
+						Source:  ExternalSourceOpenFoodFacts,
+					}
+				}
+				return FanOutResult{Outcome: FanOutUnresolved}
+			},
+			missBarcode:   "",
+			missTime:      time.Time{},
+			missTTL:       1 * time.Hour,
+			barcode:       "new-barcode",
+			userID:        "user-1",
+			expectedFound: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			db := setupTestDB(t)
+			catalog := NewCatalog(db)
+			now := time.Unix(2000, 0)
+			tt.setupDB(t, catalog, now)
+
+			service := &LookupService{
+				Catalog:  catalog,
+				Upstream: mockUpstream{fn: tt.upstream},
+				Now:      func() time.Time { return now },
+				MissTTL:  tt.missTTL,
+			}
+			actual, err := service.Lookup(context.Background(), tt.barcode, tt.userID)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+
+			if actual.IsFound() != tt.expectedFound {
+				t.Errorf("IsFound() = %v, expected %v", actual.IsFound(), tt.expectedFound)
+			}
+		})
+	}
+}
+
+// TestLookupService_PersistExternalProduct tests persistence of external products.
+func TestLookupService_PersistExternalProduct(t *testing.T) {
+	db := setupTestDB(t)
+	catalog := NewCatalog(db)
+
+	service := &LookupService{
+		Catalog:  catalog,
+		Upstream: mockOpenFoodFacts{lookupFn: func(ctx context.Context, barcode string) (*ProductSummary, error) { return nil, nil }},
+	}
+
+	product := &ProductSummary{
+		ID:       "test-barcode",
+		Name:     "Test Product",
+		Category: "Food",
+	}
+
+	err := service.persistExternalProduct(context.Background(), product, ExternalSourceOpenFoodFacts)
+	if err != nil {
+		t.Fatalf("persistExternalProduct failed: %v", err)
+	}
+
+	// Verify the product was created
+	created, err := catalog.GetProductByID(context.Background(), "test-barcode")
+	if err != nil {
+		t.Fatalf("GetProductByID failed: %v", err)
+	}
+	if created == nil {
+		t.Fatal("expected product to be created")
+	}
+	if created.ExternalSource != ExternalSourceOpenFoodFacts {
+		t.Errorf("ExternalSource = %q, expected %q", created.ExternalSource, ExternalSourceOpenFoodFacts)
+	}
+
+	// Verify the barcode mapping was created
+	mapped, err := catalog.LookupByBarcode(context.Background(), "test-barcode", "")
+	if err != nil {
+		t.Fatalf("LookupByBarcode failed: %v", err)
+	}
+	if mapped == nil {
+		t.Fatal("expected barcode mapping to be created")
+	}
+	if mapped.ID != "test-barcode" {
+		t.Errorf("mapped product ID = %q, expected %q", mapped.ID, "test-barcode")
+	}
+}
+
+// TestLookupService_DeleteMissOnPersist tests that confirmed misses are deleted when a barcode resolves.
+func TestLookupService_DeleteMissOnPersist(t *testing.T) {
+	db := setupTestDB(t)
+	catalog := NewCatalog(db)
+
+	barcode := "test-barcode"
+	now := time.Now()
+
+	// Record a miss
+	if err := catalog.RecordBarcodeMiss(context.Background(), barcode, now); err != nil {
+		t.Fatal(err)
+	}
+
+	// Verify it was recorded
+	miss, err := catalog.GetBarcodeMiss(context.Background(), barcode)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if miss == nil {
+		t.Fatal("expected miss to be recorded")
+	}
+
+	service := &LookupService{
+		Catalog:  catalog,
+		Upstream: mockOpenFoodFacts{lookupFn: func(ctx context.Context, barcode string) (*ProductSummary, error) { return nil, nil }},
+	}
+
+	product := &ProductSummary{
+		ID:   barcode,
+		Name: "Test Product",
+	}
+
+	// Persist the external product
+	err = service.persistExternalProduct(context.Background(), product, ExternalSourceOpenFoodFacts)
+	if err != nil {
+		t.Fatalf("persistExternalProduct failed: %v", err)
+	}
+
+	// Verify the miss was deleted
+	miss, err = catalog.GetBarcodeMiss(context.Background(), barcode)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if miss != nil {
+		t.Error("expected miss to be deleted after product is persisted")
+	}
+}
+
+// mockUpstream is a simple mock implementing the Upstream interface.
+type mockUpstream struct {
+	fn func(ctx context.Context, barcode string) FanOutResult
+}
+
+func (m mockUpstream) Lookup(ctx context.Context, barcode string) FanOutResult {
+	return m.fn(ctx, barcode)
+}
+
+// TestLookupService_ConfirmedMissRecording tests that confirmed misses are recorded properly.
+func TestLookupService_ConfirmedMissRecording(t *testing.T) {
+	db := setupTestDB(t)
+	catalog := NewCatalog(db)
+
+	now := time.Unix(2000, 0)
+
+	service := &LookupService{
+		Catalog: catalog,
+		Upstream: mockUpstream{fn: func(ctx context.Context, barcode string) FanOutResult {
+			return FanOutResult{Outcome: FanOutConfirmedMiss}
+		}},
+		Now:     func() time.Time { return now },
+		MissTTL: 1 * time.Hour,
+	}
+
+	// Lookup with confirmed miss outcome
+	result, err := service.Lookup(context.Background(), "test-barcode", "user-1")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if result.IsFound() {
+		t.Error("expected not found for confirmed miss")
+	}
+
+	// Verify the miss was recorded
+	miss, err := catalog.GetBarcodeMiss(context.Background(), "test-barcode")
+	if err != nil {
+		t.Fatalf("GetBarcodeMiss failed: %v", err)
+	}
+	if miss == nil {
+		t.Fatal("expected miss to be recorded")
+	}
+	if !miss.Equal(now) {
+		t.Errorf("miss time = %v, expected %v", miss, now)
+	}
+}
+
+// TestLookupService_UnresolvedNotRecorded tests that unresolved lookups don't record a miss.
+func TestLookupService_UnresolvedNotRecorded(t *testing.T) {
+	db := setupTestDB(t)
+	catalog := NewCatalog(db)
+
+	now := time.Unix(2000, 0)
+
+	service := &LookupService{
+		Catalog: catalog,
+		Upstream: mockUpstream{fn: func(ctx context.Context, barcode string) FanOutResult {
+			return FanOutResult{Outcome: FanOutUnresolved}
+		}},
+		Now:     func() time.Time { return now },
+		MissTTL: 1 * time.Hour,
+	}
+
+	// Lookup with unresolved outcome
+	result, err := service.Lookup(context.Background(), "test-barcode", "user-1")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if result.IsFound() {
+		t.Error("expected not found for unresolved")
+	}
+
+	// Verify the miss was NOT recorded
+	miss, err := catalog.GetBarcodeMiss(context.Background(), "test-barcode")
+	if err != nil {
+		t.Fatalf("GetBarcodeMiss failed: %v", err)
+	}
+	if miss != nil {
+		t.Error("expected no miss to be recorded for unresolved outcome")
+	}
+}
+
+// TestLookupService_MissTTLDefault tests the default MissTTL value.
+func TestLookupService_MissTTLDefault(t *testing.T) {
+	db := setupTestDB(t)
+	catalog := NewCatalog(db)
+
+	now := time.Unix(2000, 0)
+	// Record a miss from 8 days ago, which is older than the default 7-day TTL
+	missTime := now.Add(-8 * 24 * time.Hour)
+
+	if err := catalog.RecordBarcodeMiss(context.Background(), "test-barcode", missTime); err != nil {
+		t.Fatal(err)
+	}
+
+	service := &LookupService{
+		Catalog: catalog,
+		Upstream: mockUpstream{fn: func(ctx context.Context, barcode string) FanOutResult {
+			return FanOutResult{
+				Outcome: FanOutHit,
+				Product: &ProductSummary{ID: "test-barcode", Name: "Found"},
+				Source:  ExternalSourceOpenFoodFacts,
+			}
+		}},
+		Now:     func() time.Time { return now },
+		MissTTL: 0, // Will default to defaultMissTTL (7 days)
+	}
+
+	// Lookup should skip the expired miss and query upstream
+	result, err := service.Lookup(context.Background(), "test-barcode", "user-1")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if !result.IsFound() {
+		t.Error("expected to find product from upstream after expired miss")
+	}
+}
+
+// TestLookupService_RefreshScheduled tests that refresher is called for found products.
+func TestLookupService_RefreshScheduled(t *testing.T) {
+	db := setupTestDB(t)
+	catalog := NewCatalog(db)
+
+	// Create a product in the database
+	product := Product{ID: "refresh-test", Name: "Test"}
+	if err := catalog.CreateProduct(context.Background(), product); err != nil {
+		t.Fatal(err)
+	}
+
+	// Add a barcode mapping
+	if err := catalog.UpsertBarcodeMapping(context.Background(), "refresh-barcode", product.ID, "global", ""); err != nil {
+		t.Fatal(err)
+	}
+
+	refreshCalled := false
+	refreshProductID := ""
+
+	refresher := mockRefresher{
+		scheduleFn: func(ctx context.Context, productID string) {
+			refreshCalled = true
+			refreshProductID = productID
+		},
+	}
+
+	service := &LookupService{
+		Catalog:   catalog,
+		Upstream:  mockOpenFoodFacts{lookupFn: func(ctx context.Context, barcode string) (*ProductSummary, error) { return nil, nil }},
+		Refresher: refresher,
+	}
+
+	// Lookup should find the product and schedule refresh
+	result, err := service.Lookup(context.Background(), "refresh-barcode", "user-1")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if !result.IsFound() {
+		t.Error("expected to find product")
+	}
+
+	if !refreshCalled {
+		t.Error("expected refresher.ScheduleRefresh to be called")
+	}
+
+	if refreshProductID != product.ID {
+		t.Errorf("refresher called with product ID %q, expected %q", refreshProductID, product.ID)
+	}
+}
+
+// mockRefresher is a simple mock implementing the Refresher interface.
+type mockRefresher struct {
+	scheduleFn func(ctx context.Context, productID string)
+}
+
+func (m mockRefresher) ScheduleRefresh(ctx context.Context, productID string) {
+	m.scheduleFn(ctx, productID)
 }

@@ -17,7 +17,7 @@ import (
 )
 
 // TestMigrationApplies verifies that RunMigrations applies the initial schema
-// to an in-memory SQLite database and that all 8 expected tables are created.
+// to an in-memory SQLite database and that all 9 expected tables are created.
 func TestMigrationApplies(t *testing.T) {
 	conn, err := sql.Open("sqlite", ":memory:")
 	if err != nil {
@@ -55,6 +55,7 @@ func TestMigrationApplies(t *testing.T) {
 	}
 
 	want := []string{
+		"barcode_misses",
 		"barcodes",
 		"cart_integrations",
 		"consumption_events",
@@ -95,13 +96,14 @@ func TestMigrationIsIdempotent(t *testing.T) {
 	// One schema_migrations row per applied .sql file; the second RunMigrations
 	// must not re-apply any file, so the count equals the number of migration
 	// files (currently 001_initial_schema.sql, 002_backfill_orphaned_products.sql,
-	// 003_add_product_image_url.sql, and 004_add_product_freshness.sql).
+	// 003_add_product_image_url.sql, 004_add_product_freshness.sql, and
+	// 005_add_external_source_and_barcode_misses.sql).
 	var count int
 	if err := conn.QueryRow(`SELECT COUNT(*) FROM schema_migrations`).Scan(&count); err != nil {
 		t.Fatalf("count schema_migrations: %v", err)
 	}
-	if count != 4 {
-		t.Errorf("schema_migrations should have 4 rows after two runs, got %d", count)
+	if count != 5 {
+		t.Errorf("schema_migrations should have 5 rows after two runs, got %d", count)
 	}
 }
 
@@ -385,6 +387,172 @@ func applyMigrationsThrough003(t *testing.T, conn *sql.DB) {
 		"001_initial_schema.sql",
 		"002_backfill_orphaned_products.sql",
 		"003_add_product_image_url.sql",
+	} {
+		sqlBytes, err := os.ReadFile(filepath.Join("migrations", name))
+		if err != nil {
+			t.Fatalf("read migration %q: %v", name, err)
+		}
+		if _, err := conn.Exec(string(sqlBytes)); err != nil {
+			t.Fatalf("apply migration %q: %v", name, err)
+		}
+		if _, err := conn.Exec(`INSERT INTO schema_migrations (filename) VALUES (?)`, name); err != nil {
+			t.Fatalf("record migration %q: %v", name, err)
+		}
+	}
+}
+
+// Feature: open-products-facts-lookup, Property 1: Migration 005 preserves values and adds provenance
+//
+// WHEN migration 005 is applied to a database containing products rows with non-default
+// source, refreshed_at, and name_overridden values, THE Migration_Runner SHALL retain
+// those values unchanged and set external_source to NULL for every pre-existing row.
+// THE barcode_misses table SHALL exist and be queryable after migration. A second
+// RunMigrations call SHALL remain idempotent (schema_migrations count unchanged).
+//
+// Validates: Requirements 3.2, 3.3
+func TestMigration005PreservesValuesAndAddsProvenanceAndIsIdempotent(t *testing.T) {
+	conn, err := sql.Open("sqlite", ":memory:")
+	if err != nil {
+		t.Fatalf("open in-memory SQLite: %v", err)
+	}
+	defer conn.Close()
+
+	applyMigrationsThrough004(t, conn)
+
+	// Seed products rows with non-default source, refreshed_at, and name_overridden values.
+	type seedRow struct {
+		id             string
+		name           string
+		source         string
+		refreshedAt    *time.Time
+		nameOverridden bool
+	}
+	now := time.Date(2024, 1, 2, 3, 4, 5, 0, time.UTC)
+	seeds := []seedRow{
+		{
+			id:             "011110728227",
+			name:           "Whole Milk",
+			source:         "external",
+			refreshedAt:    &now,
+			nameOverridden: true,
+		},
+		{
+			id:             "some-uuid",
+			name:           "Homemade Jam",
+			source:         "external",
+			refreshedAt:    &now,
+			nameOverridden: false,
+		},
+		{
+			id:             "user-product",
+			name:           "User Created",
+			source:         "user",
+			refreshedAt:    nil,
+			nameOverridden: false,
+		},
+	}
+
+	for _, s := range seeds {
+		if _, err := conn.Exec(
+			`INSERT INTO products (id, name, source, refreshed_at, name_overridden, created_at) 
+			 VALUES (?, ?, ?, ?, ?, ?)`,
+			s.id, s.name, s.source, s.refreshedAt, s.nameOverridden, time.Now(),
+		); err != nil {
+			t.Fatalf("seed product %q: %v", s.id, err)
+		}
+	}
+
+	if err := app.RunMigrations(conn); err != nil {
+		t.Fatalf("RunMigrations (apply 005): %v", err)
+	}
+
+	// Assert barcode_misses table exists and is queryable
+	var tableCount int
+	if err := conn.QueryRow(`
+		SELECT COUNT(*) FROM sqlite_master 
+		WHERE type = 'table' AND name = 'barcode_misses'`).Scan(&tableCount); err != nil {
+		t.Fatalf("check barcode_misses table: %v", err)
+	}
+	if tableCount != 1 {
+		t.Errorf("barcode_misses table: want 1, got %d", tableCount)
+	}
+
+	// Verify we can query the barcode_misses table
+	if _, err := conn.Exec(`SELECT COUNT(*) FROM barcode_misses`); err != nil {
+		t.Fatalf("query barcode_misses table: %v", err)
+	}
+
+	// Assert pre-existing rows have unchanged source, refreshed_at, name_overridden, and NULL external_source
+	for _, s := range seeds {
+		var (
+			gotSource         string
+			gotRefreshedAt    sql.NullTime
+			gotNameOverridden bool
+			gotExternalSource sql.NullString
+		)
+		if err := conn.QueryRow(
+			`SELECT source, refreshed_at, name_overridden, external_source
+			 FROM products WHERE id = ?`, s.id,
+		).Scan(&gotSource, &gotRefreshedAt, &gotNameOverridden, &gotExternalSource); err != nil {
+			t.Fatalf("read back product %q: %v", s.id, err)
+		}
+
+		if gotSource != s.source {
+			t.Errorf("product %q source: want %q, got %q", s.id, s.source, gotSource)
+		}
+
+		if s.refreshedAt == nil {
+			if gotRefreshedAt.Valid {
+				t.Errorf("product %q refreshed_at: want NULL, got %v", s.id, gotRefreshedAt.Time)
+			}
+		} else {
+			if !gotRefreshedAt.Valid {
+				t.Errorf("product %q refreshed_at: want %v, got NULL", s.id, s.refreshedAt)
+			} else if !gotRefreshedAt.Time.Equal(*s.refreshedAt) {
+				t.Errorf("product %q refreshed_at: want %v, got %v", s.id, s.refreshedAt, gotRefreshedAt.Time)
+			}
+		}
+
+		if gotNameOverridden != s.nameOverridden {
+			t.Errorf("product %q name_overridden: want %v, got %v", s.id, s.nameOverridden, gotNameOverridden)
+		}
+
+		// external_source must be NULL for all pre-existing rows
+		if gotExternalSource.Valid {
+			t.Errorf("product %q external_source: want NULL, got %q", s.id, gotExternalSource.String)
+		}
+	}
+
+	// A second RunMigrations must be a no-op: schema_migrations count is stable.
+	migrationsBefore := countMigrations(t, conn)
+	if err := app.RunMigrations(conn); err != nil {
+		t.Fatalf("RunMigrations (idempotent re-run): %v", err)
+	}
+	if got := countMigrations(t, conn); got != migrationsBefore {
+		t.Errorf("schema_migrations count changed on re-run: before %d, after %d", migrationsBefore, got)
+	}
+}
+
+// applyMigrationsThrough004 builds a database migrated only through
+// 004_add_product_freshness.sql, by applying migrations 001-004 directly from
+// disk and recording each in schema_migrations. This simulates a pre-005
+// database so TestMigration005PreservesValuesAndAddsProvenanceAndIsIdempotent
+// can seed rows against the pre-005 schema before RunMigrations applies 005.
+func applyMigrationsThrough004(t *testing.T, conn *sql.DB) {
+	t.Helper()
+
+	if _, err := conn.Exec(`CREATE TABLE IF NOT EXISTS schema_migrations (
+		filename TEXT PRIMARY KEY,
+		applied_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+	)`); err != nil {
+		t.Fatalf("create schema_migrations table: %v", err)
+	}
+
+	for _, name := range []string{
+		"001_initial_schema.sql",
+		"002_backfill_orphaned_products.sql",
+		"003_add_product_image_url.sql",
+		"004_add_product_freshness.sql",
 	} {
 		sqlBytes, err := os.ReadFile(filepath.Join("migrations", name))
 		if err != nil {

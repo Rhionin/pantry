@@ -170,7 +170,7 @@ func (r *Queue) GetScanEntry(ctx context.Context, id string) (*ScanEntry, error)
 		SELECT 
 			se.id, se.user_id, se.barcode, se.scanned_at, se.direction, se.unit_count, 
 			se.expires_at, se.status, se.product_id, se.committed_at, se.created_at,
-			p.id, p.name, COALESCE(p.category, ''), COALESCE(p.unit_of_measure, ''), COALESCE(p.image_url, '')
+			p.id, p.name, COALESCE(p.category, ''), COALESCE(p.unit_of_measure, ''), COALESCE(p.image_url, ''), COALESCE(p.external_source, '')
 		FROM scan_entries se
 		LEFT JOIN products p ON p.id = se.product_id
 		WHERE se.id = ?`,
@@ -203,7 +203,7 @@ func (r *Queue) findMergeableScanEntry(ctx context.Context, userID, barcode stri
 		SELECT 
 			se.id, se.user_id, se.barcode, se.scanned_at, se.direction, se.unit_count, 
 			se.expires_at, se.status, se.product_id, se.committed_at, se.created_at,
-			p.id, p.name, COALESCE(p.category, ''), COALESCE(p.unit_of_measure, ''), COALESCE(p.image_url, '')
+			p.id, p.name, COALESCE(p.category, ''), COALESCE(p.unit_of_measure, ''), COALESCE(p.image_url, ''), COALESCE(p.external_source, '')
 		FROM scan_entries se
 		LEFT JOIN products p ON p.id = se.product_id
 		WHERE se.user_id = ? AND se.barcode = ? AND se.direction IS ? AND se.status IN ('pending', 'flagged')
@@ -230,7 +230,7 @@ func (r *Queue) ListScanEntries(ctx context.Context, userID string, status ScanS
 		SELECT 
 			se.id, se.user_id, se.barcode, se.scanned_at, se.direction, se.unit_count, 
 			se.expires_at, se.status, se.product_id, se.committed_at, se.created_at,
-			p.id, p.name, COALESCE(p.category, ''), COALESCE(p.unit_of_measure, ''), COALESCE(p.image_url, '')
+			p.id, p.name, COALESCE(p.category, ''), COALESCE(p.unit_of_measure, ''), COALESCE(p.image_url, ''), COALESCE(p.external_source, '')
 		FROM scan_entries se
 		LEFT JOIN products p ON p.id = se.product_id
 		WHERE se.user_id = ?`
@@ -458,7 +458,7 @@ func scanScanEntry(row scanner) (*ScanEntry, error) {
 	var entry ScanEntry
 	var direction, productIDCol sql.NullString
 	var expiresAt, committedAt sql.NullTime
-	var productID, productName, productCategory, productUnitOfMeasure, productImageURL sql.NullString
+	var productID, productName, productCategory, productUnitOfMeasure, productImageURL, productExternalSource sql.NullString
 
 	err := row.Scan(
 		&entry.ID,
@@ -477,6 +477,7 @@ func scanScanEntry(row scanner) (*ScanEntry, error) {
 		&productCategory,
 		&productUnitOfMeasure,
 		&productImageURL,
+		&productExternalSource,
 	)
 	if err != nil {
 		return nil, err
@@ -498,11 +499,12 @@ func scanScanEntry(row scanner) (*ScanEntry, error) {
 
 	if productID.Valid {
 		entry.Product = &product.ProductSummary{
-			ID:            productID.String,
-			Name:          productName.String,
-			Category:      productCategory.String,
-			UnitOfMeasure: productUnitOfMeasure.String,
-			ImageURL:      productImageURL.String,
+			ID:             productID.String,
+			Name:           productName.String,
+			Category:       productCategory.String,
+			UnitOfMeasure:  productUnitOfMeasure.String,
+			ImageURL:       productImageURL.String,
+			ExternalSource: product.ExternalSource(productExternalSource.String),
 		}
 	}
 

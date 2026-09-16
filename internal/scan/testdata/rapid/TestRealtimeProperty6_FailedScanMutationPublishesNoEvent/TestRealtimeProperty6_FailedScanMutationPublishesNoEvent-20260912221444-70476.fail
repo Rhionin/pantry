@@ -1,0 +1,15 @@
+# 2026/09/12 22:14:44.091474 [TestRealtimeProperty6_FailedScanMutationPublishesNoEvent] [rapid] draw operation: 3
+# 2026/09/12 22:14:44.091476 [TestRealtimeProperty6_FailedScanMutationPublishesNoEvent] [rapid] draw resolveFlaggedErrorCondition: 1
+# 2026/09/12 22:14:44.091500 [TestRealtimeProperty6_FailedScanMutationPublishesNoEvent] [rapid] draw userID: ""
+# 2026/09/12 22:14:44.091503 [TestRealtimeProperty6_FailedScanMutationPublishesNoEvent] [rapid] draw barcode: ""
+# 2026/09/12 22:14:44.091641 [TestRealtimeProperty6_FailedScanMutationPublishesNoEvent] CreateScanEntry (setup) failed: GetScanEntry: sql: expected 17 destination arguments in Scan, not 16
+# 
+v0.4.8#12419060817488208702
+0x0
+0x38e38e38e38e4
+0x3
+0x0
+0x0
+0x1
+0x0
+0x0

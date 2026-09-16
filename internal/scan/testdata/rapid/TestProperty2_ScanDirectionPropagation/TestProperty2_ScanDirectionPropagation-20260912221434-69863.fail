@@ -1,0 +1,22 @@
+# 2026/09/12 22:14:34.916167 [TestProperty2_ScanDirectionPropagation] [rapid] draw userID: ""
+# 2026/09/12 22:14:34.916170 [TestProperty2_ScanDirectionPropagation] [rapid] draw direction: "stock_in"
+# 2026/09/12 22:14:34.916176 [TestProperty2_ScanDirectionPropagation] [rapid] draw numScans: 2
+# 2026/09/12 22:14:34.916176 [TestProperty2_ScanDirectionPropagation] [rapid] draw offset: 0
+# 2026/09/12 22:14:34.916177 [TestProperty2_ScanDirectionPropagation] [rapid] draw offset: 0
+# 2026/09/12 22:14:34.916178 [TestProperty2_ScanDirectionPropagation] [rapid] draw barcode: ""
+# 2026/09/12 22:14:34.916339 [TestProperty2_ScanDirectionPropagation] CreateScanEntry failed: GetScanEntry: sql: expected 17 destination arguments in Scan, not 16
+# 
+v0.4.8#6354371560060740915
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0

@@ -1,0 +1,30 @@
+# 2026/09/12 22:14:37.397329 [TestProperty2_Preservation_DirectionUserStatusMismatchNeverMerges] [rapid] draw barcode: "A"
+# 2026/09/12 22:14:37.397332 [TestProperty2_Preservation_DirectionUserStatusMismatchNeverMerges] [rapid] draw existingUserID: "A"
+# 2026/09/12 22:14:37.397333 [TestProperty2_Preservation_DirectionUserStatusMismatchNeverMerges] [rapid] draw existingDirLabel: 0
+# 2026/09/12 22:14:37.397334 [TestProperty2_Preservation_DirectionUserStatusMismatchNeverMerges] [rapid] draw mismatchType: 0
+# 2026/09/12 22:14:37.397334 [TestProperty2_Preservation_DirectionUserStatusMismatchNeverMerges] [rapid] draw dirOffset: 1
+# 2026/09/12 22:14:37.397336 [TestProperty2_Preservation_DirectionUserStatusMismatchNeverMerges] [rapid] draw existingStatus: "pending"
+# 2026/09/12 22:14:37.397482 [TestProperty2_Preservation_DirectionUserStatusMismatchNeverMerges] CreateScanEntry (existing entry): GetScanEntry: sql: expected 17 destination arguments in Scan, not 16
+# 
+v0.4.8#6221730541832578465
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0

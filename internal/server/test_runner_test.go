@@ -42,6 +42,20 @@ type assertion struct {
 	value interface{}
 }
 
+// fakeUpstream embeds *product.ExternalLookup and holds per-database fakes,
+// letting tests express outcomes like "a hit from Open Products Facts, miss from others".
+// Embedding the real ExternalLookup means a test that seeds one database and asserts a
+// winner is exercising the shipped classifyFanOut and databasePrecedence, not test copies.
+type fakeUpstream struct {
+	*product.ExternalLookup
+	databases map[product.ExternalSource]*fakeProductOpener
+}
+
+// Database returns the fake for a specific database, so a test can seed or inspect it.
+func (f *fakeUpstream) Database(source product.ExternalSource) *fakeProductOpener {
+	return f.databases[source]
+}
+
 // testEnv holds everything a setup or afterRequest callback needs.
 // All fields share the same underlying database, so writes in setup are
 // immediately visible to the handler and to afterRequest exchanges.
@@ -49,9 +63,11 @@ type testEnv struct {
 	T             *testing.T
 	DB            *sql.DB
 	ProductStore  *product.Catalog
-	OpenFoodFacts *fakeOpenFoodFacts
+	Upstream      *fakeUpstream
+	OpenFoodFacts *fakeProductOpener // alias for backward compatibility
 	Refresher     *product.Refresher
 	Clock         *fakeClock
+	MissTTL       time.Duration  // injected into LookupService, used by exchanges()
 	Res           *http.Response // populated only inside afterRequest callbacks
 }
 
@@ -59,8 +75,7 @@ type testEnv struct {
 func runHandlerTests(t *testing.T, tests []handlerTestCase) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			handler, catalog, fake, db, refresher, clock := setupTestWithDB(t)
-			env := testEnv{T: t, DB: db, ProductStore: catalog, OpenFoodFacts: fake, Refresher: refresher, Clock: clock}
+			handler, env := setupTestWithDB(t)
 
 			if tt.setup != nil {
 				tt.setup(env)
@@ -144,15 +159,21 @@ func exchanges(exs ...httpExchange) func(env testEnv) {
 		// Refresher would own a different WaitGroup and in-flight map, so
 		// env.Refresher.Wait() would return without awaiting goroutines this
 		// handler's exchanges started, and tests would flake silently.
+		// Similarly, reuse env.Upstream and env.Clock to maintain the same state
+		// across exchanges. Carry through env.MissTTL so miss-gate tests work
+		// correctly: a missing MissTTL there silently defaults to zero and
+		// makes every cached-miss assertion in an afterRequest sequence pass for
+		// the wrong reason.
 		var now func() time.Time
 		if env.Clock != nil {
 			now = env.Clock.Now
 		}
 		handler, _ := NewHandler(env.ProductStore, &product.LookupService{
-			Catalog:       env.ProductStore,
-			OpenFoodFacts: env.OpenFoodFacts,
-			Refresher:     env.Refresher,
-			Now:           now,
+			Catalog:   env.ProductStore,
+			Upstream:  env.Upstream,
+			Refresher: env.Refresher,
+			Now:       now,
+			MissTTL:   env.MissTTL,
 		}, env.Refresher, env.DB)
 
 		for i, ex := range exs {

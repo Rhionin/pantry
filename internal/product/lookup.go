@@ -2,10 +2,12 @@ package product
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"time"
 )
+
+// defaultMissTTL is the default age at which a confirmed-miss record expires.
+const defaultMissTTL = 7 * 24 * time.Hour
 
 // LookupResult represents the outcome of a three-tier product lookup.
 type LookupResult struct {
@@ -22,16 +24,19 @@ func (r LookupResult) IsFound() bool {
 }
 
 // LookupService orchestrates three-tier product lookup: user overrides first,
-// global DB second, Open Food Facts API third.
+// global DB second, External Lookup API third.
 type LookupService struct {
 	Catalog interface {
 		LookupByBarcode(ctx context.Context, barcode, userID string) (*ProductSummary, error)
 		GetProductByID(ctx context.Context, id string) (*Product, error)
 		CreateProduct(ctx context.Context, product Product) error
 		UpsertBarcodeMapping(ctx context.Context, barcode, productID, source, userID string) error
+		GetBarcodeMiss(ctx context.Context, barcode string) (*time.Time, error)
+		RecordBarcodeMiss(ctx context.Context, barcode string, checkedAt time.Time) error
+		DeleteBarcodeMiss(ctx context.Context, barcode string) error
 	}
-	OpenFoodFacts interface {
-		LookupBarcode(ctx context.Context, barcode string) (*ProductSummary, error)
+	Upstream interface {
+		Lookup(ctx context.Context, barcode string) FanOutResult
 	}
 
 	// Refresher schedules background revalidation of stale cached rows.
@@ -43,6 +48,10 @@ type LookupService struct {
 
 	// Now supplies the current time. Defaults to time.Now when nil.
 	Now func() time.Time
+
+	// MissTTL is the age at which a recorded confirmed miss expires. Defaults to
+	// defaultMissTTL when zero, so existing struct literals keep compiling.
+	MissTTL time.Duration
 }
 
 // now returns the current time, defaulting to time.Now so existing
@@ -54,12 +63,22 @@ func (s *LookupService) now() time.Time {
 	return time.Now()
 }
 
+// missTTL returns the time-to-live for a confirmed barcode miss, defaulting to
+// defaultMissTTL when MissTTL is zero.
+func (s *LookupService) missTTL() time.Duration {
+	if s.MissTTL > 0 {
+		return s.MissTTL
+	}
+	return defaultMissTTL
+}
+
 // Lookup performs a three-tier product lookup for the given barcode and user.
 //
 // Priority order:
 //  1. User overrides for this specific user
 //  2. Global database entries
-//  3. Open Food Facts external API
+//  3. Confirmed misses (barcodes every Product Opener database reported unknown)
+//  4. Open Products Facts external API (all four Product Opener databases)
 //
 // Returns:
 //   - LookupResult with Product set if a match is found
@@ -70,7 +89,7 @@ func (s *LookupService) now() time.Time {
 // multiple products mapping to the same barcode within a source. Barcode conflicts
 // are resolved via the flagged entry workflow where users can create overrides.
 //
-// Requirements: 1.15, 1.16, 1.17
+// Requirements: 1.4, 1.6, 5.1, 5.2, 5.3, 5.4, 5.5, 5.6, 5.8, 6.1, 6.2, 6.6, 10.5, 10.6
 func (s *LookupService) Lookup(ctx context.Context, barcode, userID string) (LookupResult, error) {
 	if barcode == "" {
 		return LookupResult{}, fmt.Errorf("barcode cannot be empty")
@@ -97,35 +116,60 @@ func (s *LookupService) Lookup(ctx context.Context, barcode, userID string) (Loo
 		return result, nil
 	}
 
-	// Tier 3: Fall back to external API (Open Food Facts).
-	product, err = s.OpenFoodFacts.LookupBarcode(ctx, barcode)
+	// Confirmed_Miss gate: check if this barcode was recorded as unknown within the Miss TTL.
+	// This sits AFTER Tier 1/2 deliberately: a user who resolved a flagged entry by creating
+	// a product has a barcodes mapping, so Tier 2 answers and the stale miss row is never
+	// consulted (Requirement 5.8). Reordering these two steps would break that requirement.
+	miss, err := s.Catalog.GetBarcodeMiss(ctx, barcode)
 	if err != nil {
-		// If the external API says "not found", treat as legitimate not-found result.
-		if errors.Is(err, ErrProductNotFound) {
-			return LookupResult{}, nil
-		}
-		// Other errors (network, timeout, etc.) are treated as not-found.
-		// The UI handles this via the flagged entry workflow.
+		return LookupResult{}, fmt.Errorf("could not check known-unknown barcodes: %w", err)
+	}
+	if miss != nil && s.now().Sub(*miss) <= s.missTTL() {
+		// Same empty result and empty Source a fresh all-miss returns, so the
+		// flagged-entry workflow cannot tell the difference (Requirement 5.6).
 		return LookupResult{}, nil
 	}
 
-	// External API returned a product. Persist it so the returned ID references a
-	// real products row and a subsequent scan resolves at Tier 2.
-	if err := s.persistExternalProduct(ctx, product); err != nil {
-		return LookupResult{}, err
-	}
+	// Tier 3: Fall back to external API (all Product Opener databases).
+	result := s.Upstream.Lookup(ctx, barcode)
+	switch result.Outcome {
+	case FanOutHit:
+		// External API returned a product. Persist it so the returned ID references a
+		// real products row and a subsequent scan resolves at Tier 2.
+		if err := s.persistExternalProduct(ctx, result.Product, result.Source); err != nil {
+			return LookupResult{}, err
+		}
 
-	return LookupResult{
-		Product: product,
-		Source:  "external",
-	}, nil
+		// Set the external source on the ProductSummary so it round-trips through
+		// responses (Requirement 9.1).
+		result.Product.ExternalSource = result.Source
+
+		return LookupResult{
+			Product: result.Product,
+			Source:  "external",
+		}, nil
+
+	case FanOutConfirmedMiss:
+		// All Product Opener databases reported the barcode unknown and no database errored.
+		// Record this confirmed miss so repeated scans stop fanning out requests.
+		if err := s.Catalog.RecordBarcodeMiss(ctx, barcode, s.now()); err != nil {
+			return LookupResult{}, err
+		}
+		return LookupResult{}, nil
+
+	default: // FanOutUnresolved
+		// At least one Product Opener database errored and no database supplied a hit.
+		// Write nothing. The barcode stays retryable (Requirements 6.1–6.3)
+		// and the caller learns nothing about the upstream failure (6.6).
+		return LookupResult{}, nil
+	}
 }
 
 // persistExternalProduct idempotently stores an externally-resolved product and
 // its barcode mapping. For external results product.ID equals the barcode, so
 // the products row and the barcodes mapping share that value. Repeated calls for
 // the same barcode create no duplicate rows.
-func (s *LookupService) persistExternalProduct(ctx context.Context, product *ProductSummary) error {
+func (s *LookupService) persistExternalProduct(ctx context.Context, product *ProductSummary, source ExternalSource) error {
 	existing, err := s.Catalog.GetProductByID(ctx, product.ID)
 	if err != nil {
 		return fmt.Errorf("could not check for existing product: %w", err)
@@ -133,13 +177,14 @@ func (s *LookupService) persistExternalProduct(ctx context.Context, product *Pro
 	if existing == nil {
 		now := s.now()
 		err = s.Catalog.CreateProduct(ctx, Product{
-			ID:            product.ID,
-			Name:          product.Name,
-			Category:      product.Category,
-			UnitOfMeasure: product.UnitOfMeasure,
-			ImageURL:      product.ImageURL,
-			Source:        SourceExternal,
-			RefreshedAt:   &now,
+			ID:             product.ID,
+			Name:           product.Name,
+			Category:       product.Category,
+			UnitOfMeasure:  product.UnitOfMeasure,
+			ImageURL:       product.ImageURL,
+			Source:         SourceExternal,
+			ExternalSource: source,
+			RefreshedAt:    &now,
 		})
 		if err != nil {
 			return fmt.Errorf("could not save product: %w", err)
@@ -151,5 +196,13 @@ func (s *LookupService) persistExternalProduct(ctx context.Context, product *Pro
 	if err := s.Catalog.UpsertBarcodeMapping(ctx, product.ID, product.ID, "global", ""); err != nil {
 		return fmt.Errorf("could not save barcode mapping: %w", err)
 	}
+
+	// A barcode that now resolves will never reach the miss gate again
+	// (Tier 2 answers first), so this row is dead data. Deleting it keeps the
+	// table from accumulating entries for barcodes that are no longer misses.
+	if err := s.Catalog.DeleteBarcodeMiss(ctx, product.ID); err != nil {
+		return fmt.Errorf("could not delete barcode miss: %w", err)
+	}
+
 	return nil
 }

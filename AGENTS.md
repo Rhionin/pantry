@@ -9,7 +9,7 @@ Use built-in file editing tools (read_file, write_file, str_replace) to read and
 
 ## Testing
 
-After each task, run `./scripts/test-coverage.sh` to enforce coverage thresholds. The script auto-updates its threshold when coverage increases, so that it can be committed with the rest of the code changes and enforced.
+After each task list, run `./scripts/test-coverage.sh` to enforce coverage thresholds. The script auto-updates its threshold when coverage increases, so that it can be committed with the rest of the code changes and enforced.
 
 Prefer API tests using the apitest framework in `internal/server/`. These exercise behavior from the customer's perspective and often eliminate the need for lower-level unit tests. Write unit tests only when API tests are insufficient (e.g., testing internal algorithms, edge cases in pure functions).
 

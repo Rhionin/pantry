@@ -423,6 +423,10 @@ func (f *blockingOpenFoodFacts) LookupBarcode(ctx context.Context, barcode strin
 	return &result, nil
 }
 
+func (f *blockingOpenFoodFacts) LookupIn(ctx context.Context, source ExternalSource, barcode string) (*ProductSummary, error) {
+	return f.LookupBarcode(ctx, barcode)
+}
+
 func (f *blockingOpenFoodFacts) CallCount(barcode string) int {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -488,7 +492,7 @@ func TestScheduleRefresh_ConcurrentCallsCollapseToOneUpstreamRequest(t *testing.
 
 	refresher := &Refresher{
 		Catalog:               catalog,
-		OpenFoodFacts:         off,
+		Upstream:              off,
 		TTL:                   0, // any elapsed time makes the row stale again after a refresh
 		ExternalLookupEnabled: true,
 	}

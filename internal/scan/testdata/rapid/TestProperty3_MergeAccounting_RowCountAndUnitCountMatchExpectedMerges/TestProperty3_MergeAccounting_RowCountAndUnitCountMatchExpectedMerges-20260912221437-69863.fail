@@ -1,0 +1,18 @@
+# 2026/09/12 22:14:37.440730 [TestProperty3_MergeAccounting_RowCountAndUnitCountMatchExpectedMerges] [rapid] draw numScans: 1
+# 2026/09/12 22:14:37.440732 [TestProperty3_MergeAccounting_RowCountAndUnitCountMatchExpectedMerges] [rapid] draw barcode: "barcode-a"
+# 2026/09/12 22:14:37.440733 [TestProperty3_MergeAccounting_RowCountAndUnitCountMatchExpectedMerges] [rapid] draw userID: "user-1"
+# 2026/09/12 22:14:37.440734 [TestProperty3_MergeAccounting_RowCountAndUnitCountMatchExpectedMerges] [rapid] draw dirLabel: 0
+# 2026/09/12 22:14:37.440734 [TestProperty3_MergeAccounting_RowCountAndUnitCountMatchExpectedMerges] [rapid] draw lookupHit: false
+# 2026/09/12 22:14:37.440850 [TestProperty3_MergeAccounting_RowCountAndUnitCountMatchExpectedMerges] CreateScanEntry failed: GetScanEntry: sql: expected 17 destination arguments in Scan, not 16
+# 
+v0.4.8#15643706635557892811
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0

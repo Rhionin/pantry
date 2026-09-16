@@ -260,4 +260,775 @@ describe('ScanQueuePage', () => {
     expect(cardsAfterSwitch2).toHaveLength(1);
     expect(within(cardsAfterSwitch2[0]).getByText('Barcode: 222')).toBeInTheDocument();
   });
+
+  it('Stock_In_View renders only direction === "stock_in" entries', async () => {
+    const fetchMock = vi.fn((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes('status=pending')) {
+        return Promise.resolve(jsonResponse([
+          scanEntry({ id: 'stock-in-1', barcode: '111', direction: 'stock_in' }),
+          scanEntry({ id: 'stock-out-1', barcode: '222', direction: 'stock_out' }),
+          scanEntry({ id: 'null-direction-1', barcode: '333', direction: null }),
+        ]));
+      }
+      if (url.includes('status=flagged')) return Promise.resolve(jsonResponse([]));
+      if (url === '/api/inventory' || url === '/api/products') return Promise.resolve(jsonResponse([]));
+      throw new Error(`Unexpected request: ${url}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<MantineProvider><ScanQueuePage /></MantineProvider>);
+
+    // Click on Stock_In tab to activate Stock_In_View
+    const stockInTab = screen.getByRole('tab', { name: 'Stock in' });
+    stockInTab.click();
+
+    // Verify only the stock_in entry is rendered
+    const cards = await screen.findAllByRole('article');
+    expect(cards).toHaveLength(1);
+    expect(within(cards[0]).getByText('Barcode: 111')).toBeInTheDocument();
+  });
+
+  it('Stock_Out_View renders direction === "stock_out" and direction === null entries, but not stock_in', async () => {
+    const fetchMock = vi.fn((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes('status=pending')) {
+        return Promise.resolve(jsonResponse([
+          scanEntry({ id: 'stock-in-1', barcode: '111', direction: 'stock_in' }),
+          scanEntry({ id: 'stock-out-1', barcode: '222', direction: 'stock_out' }),
+          scanEntry({ id: 'null-direction-1', barcode: '333', direction: null }),
+        ]));
+      }
+      if (url.includes('status=flagged')) return Promise.resolve(jsonResponse([]));
+      if (url === '/api/inventory' || url === '/api/products') return Promise.resolve(jsonResponse([]));
+      throw new Error(`Unexpected request: ${url}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<MantineProvider><ScanQueuePage /></MantineProvider>);
+
+    // Stock_Out_View is the default, verify both stock_out and null-direction entries are rendered
+    const cards = await screen.findAllByRole('article');
+    expect(cards).toHaveLength(2);
+    expect(within(cards[0]).getByText('Barcode: 222')).toBeInTheDocument();
+    expect(within(cards[1]).getByText('Barcode: 333')).toBeInTheDocument();
+  });
+
+  it('Stock_Out_View excludes stock_in entries even when mixed with other directions', async () => {
+    const fetchMock = vi.fn((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes('status=pending')) {
+        return Promise.resolve(jsonResponse([
+          scanEntry({ id: 'stock-in-1', barcode: '111', direction: 'stock_in' }),
+          scanEntry({ id: 'stock-in-2', barcode: '222', direction: 'stock_in' }),
+          scanEntry({ id: 'stock-out-1', barcode: '333', direction: 'stock_out' }),
+          scanEntry({ id: 'null-direction-1', barcode: '444', direction: null }),
+        ]));
+      }
+      if (url.includes('status=flagged')) return Promise.resolve(jsonResponse([]));
+      if (url === '/api/inventory' || url === '/api/products') return Promise.resolve(jsonResponse([]));
+      throw new Error(`Unexpected request: ${url}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<MantineProvider><ScanQueuePage /></MantineProvider>);
+
+    // Stock_Out_View is the default, verify stock_in entries are NOT rendered
+    const cards = await screen.findAllByRole('article');
+    expect(cards).toHaveLength(2);
+    expect(within(cards[0]).getByText('Barcode: 333')).toBeInTheDocument();
+    expect(within(cards[1]).getByText('Barcode: 444')).toBeInTheDocument();
+
+    // Verify stock_in entries are NOT in the document
+    expect(screen.queryByText('Barcode: 111')).not.toBeInTheDocument();
+    expect(screen.queryByText('Barcode: 222')).not.toBeInTheDocument();
+  });
+
+  it('switching from Stock_Out_View to Stock_In_View renders only stock_in entries', async () => {
+    const fetchMock = vi.fn((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes('status=pending')) {
+        return Promise.resolve(jsonResponse([
+          scanEntry({ id: 'stock-in-1', barcode: '111', direction: 'stock_in' }),
+          scanEntry({ id: 'stock-out-1', barcode: '222', direction: 'stock_out' }),
+          scanEntry({ id: 'null-direction-1', barcode: '333', direction: null }),
+        ]));
+      }
+      if (url.includes('status=flagged')) return Promise.resolve(jsonResponse([]));
+      if (url === '/api/inventory' || url === '/api/products') return Promise.resolve(jsonResponse([]));
+      throw new Error(`Unexpected request: ${url}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<MantineProvider><ScanQueuePage /></MantineProvider>);
+
+    // Initially Stock_Out_View should be active and showing stock_out and null-direction entries
+    let cards = await screen.findAllByRole('article');
+    expect(cards).toHaveLength(2);
+    expect(within(cards[0]).getByText('Barcode: 222')).toBeInTheDocument();
+    expect(within(cards[1]).getByText('Barcode: 333')).toBeInTheDocument();
+
+    // Switch to Stock_In_View
+    const stockInTab = screen.getByRole('tab', { name: 'Stock in' });
+    stockInTab.click();
+
+    // Wait for the stock_in entry to appear and verify stock_out/null entries disappear
+    await screen.findByText('Barcode: 111');
+    expect(screen.queryByText('Barcode: 222')).not.toBeInTheDocument();
+    expect(screen.queryByText('Barcode: 333')).not.toBeInTheDocument();
+
+    cards = screen.getAllByRole('article');
+    expect(cards).toHaveLength(1);
+    expect(within(cards[0]).getByText('Barcode: 111')).toBeInTheDocument();
+  });
+
+  describe('Selection clearing on tab switch', () => {
+    it('clears selection when switching from Stock_Out_View to Stock_In_View', async () => {
+      const fetchMock = vi.fn((input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url.includes('status=pending')) {
+          return Promise.resolve(jsonResponse([
+            scanEntry({ id: 'stock-in-1', barcode: '111', direction: 'stock_in' }),
+            scanEntry({ id: 'stock-out-1', barcode: '222', direction: 'stock_out' }),
+          ]));
+        }
+        if (url.includes('status=flagged')) return Promise.resolve(jsonResponse([]));
+        if (url === '/api/inventory' || url === '/api/products') return Promise.resolve(jsonResponse([]));
+        throw new Error(`Unexpected request: ${url}`);
+      });
+      vi.stubGlobal('fetch', fetchMock);
+
+      render(<MantineProvider><ScanQueuePage /></MantineProvider>);
+
+      // Start in Stock_Out_View with 1 eligible entry
+      const cards = await screen.findAllByRole('article');
+      expect(cards).toHaveLength(1);
+      expect(within(cards[0]).getByText('Barcode: 222')).toBeInTheDocument();
+
+      // Select the entry
+      const checkbox = within(cards[0]).getByRole('checkbox');
+      checkbox.click();
+      expect(checkbox).toBeChecked();
+
+      // Switch to Stock_In_View
+      const stockInTab = screen.getByRole('tab', { name: 'Stock in' });
+      stockInTab.click();
+
+      // Verify Stock_In_View displays the stock_in entry
+      await screen.findByText('Barcode: 111');
+      const cardsAfterSwitch = screen.getAllByRole('article');
+      const cardsInStockInView = cardsAfterSwitch.filter((card) => {
+        try {
+          within(card).getByText('Barcode: 111');
+          return true;
+        } catch {
+          return false;
+        }
+      });
+      expect(cardsInStockInView).toHaveLength(1);
+
+      // Verify the stock_in entry is not selected (selection was cleared)
+      const checkboxInStockInView = within(cardsInStockInView[0]).getByRole('checkbox');
+      expect(checkboxInStockInView).not.toBeChecked();
+    });
+
+    it('clears selection when switching from Stock_In_View to Stock_Out_View', async () => {
+      const fetchMock = vi.fn((input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url.includes('status=pending')) {
+          return Promise.resolve(jsonResponse([
+            scanEntry({ id: 'stock-in-1', barcode: '111', direction: 'stock_in' }),
+            scanEntry({ id: 'stock-out-1', barcode: '222', direction: 'stock_out' }),
+          ]));
+        }
+        if (url.includes('status=flagged')) return Promise.resolve(jsonResponse([]));
+        if (url === '/api/inventory' || url === '/api/products') return Promise.resolve(jsonResponse([]));
+        throw new Error(`Unexpected request: ${url}`);
+      });
+      vi.stubGlobal('fetch', fetchMock);
+
+      render(<MantineProvider><ScanQueuePage /></MantineProvider>);
+
+      // Switch to Stock_In_View first
+      const stockInTab = screen.getByRole('tab', { name: 'Stock in' });
+      stockInTab.click();
+
+      // Verify Stock_In_View displays the stock_in entry
+      let cards = await screen.findAllByRole('article');
+      const cardsInStockInView = cards.filter((card) => {
+        try {
+          within(card).getByText('Barcode: 111');
+          return true;
+        } catch {
+          return false;
+        }
+      });
+      expect(cardsInStockInView).toHaveLength(1);
+
+      // Select the entry
+      const checkbox = within(cardsInStockInView[0]).getByRole('checkbox');
+      checkbox.click();
+      expect(checkbox).toBeChecked();
+
+      // Switch back to Stock_Out_View
+      const stockOutTab = screen.getByRole('tab', { name: 'Stock out' });
+      stockOutTab.click();
+
+      // Verify Stock_Out_View displays the stock_out entry
+      await screen.findByText('Barcode: 222');
+      cards = screen.getAllByRole('article');
+      const cardsInStockOutView = cards.filter((card) => {
+        try {
+          within(card).getByText('Barcode: 222');
+          return true;
+        } catch {
+          return false;
+        }
+      });
+      expect(cardsInStockOutView).toHaveLength(1);
+
+      // Verify the stock_out entry is not selected (selection was cleared)
+      const checkboxInStockOutView = within(cardsInStockOutView[0]).getByRole('checkbox');
+      expect(checkboxInStockOutView).not.toBeChecked();
+    });
+
+    it('clears selection when switching tabs with multiple selected entries', async () => {
+      const fetchMock = vi.fn((input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url.includes('status=pending')) {
+          return Promise.resolve(jsonResponse([
+            scanEntry({ id: 'stock-in-1', barcode: '111', direction: 'stock_in' }),
+            scanEntry({ id: 'stock-in-2', barcode: '222', direction: 'stock_in' }),
+            scanEntry({ id: 'stock-out-1', barcode: '333', direction: 'stock_out' }),
+            scanEntry({ id: 'stock-out-2', barcode: '444', direction: 'stock_out' }),
+          ]));
+        }
+        if (url.includes('status=flagged')) return Promise.resolve(jsonResponse([]));
+        if (url === '/api/inventory' || url === '/api/products') return Promise.resolve(jsonResponse([]));
+        throw new Error(`Unexpected request: ${url}`);
+      });
+      vi.stubGlobal('fetch', fetchMock);
+
+      render(<MantineProvider><ScanQueuePage /></MantineProvider>);
+
+      // Start in Stock_Out_View with 2 eligible entries
+      let cards = await screen.findAllByRole('article');
+      const outCards = cards.filter((card) => {
+        try {
+          within(card).getByText(/Barcode: (333|444)/);
+          return true;
+        } catch {
+          return false;
+        }
+      });
+      expect(outCards).toHaveLength(2);
+
+      // Select both entries
+      const checkbox1 = within(outCards[0]).getByRole('checkbox');
+      const checkbox2 = within(outCards[1]).getByRole('checkbox');
+      checkbox1.click();
+      checkbox2.click();
+      expect(checkbox1).toBeChecked();
+      expect(checkbox2).toBeChecked();
+
+      // Switch to Stock_In_View
+      const stockInTab = screen.getByRole('tab', { name: 'Stock in' });
+      stockInTab.click();
+
+      // Verify Stock_In_View is now active and shows stock_in entries
+      await screen.findByText('Barcode: 111');
+      cards = screen.getAllByRole('article');
+      const inCards = cards.filter((card) => {
+        try {
+          within(card).getByText(/Barcode: (111|222)/);
+          return true;
+        } catch {
+          return false;
+        }
+      });
+      expect(inCards).toHaveLength(2);
+
+      // Verify none of the entries are selected
+      const inCheckbox1 = within(inCards[0]).getByRole('checkbox');
+      const inCheckbox2 = within(inCards[1]).getByRole('checkbox');
+      expect(inCheckbox1).not.toBeChecked();
+      expect(inCheckbox2).not.toBeChecked();
+    });
+
+    it('clears selection when switching back and forth between tabs', async () => {
+      const fetchMock = vi.fn((input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url.includes('status=pending')) {
+          return Promise.resolve(jsonResponse([
+            scanEntry({ id: 'stock-in-1', barcode: '111', direction: 'stock_in' }),
+            scanEntry({ id: 'stock-out-1', barcode: '222', direction: 'stock_out' }),
+          ]));
+        }
+        if (url.includes('status=flagged')) return Promise.resolve(jsonResponse([]));
+        if (url === '/api/inventory' || url === '/api/products') return Promise.resolve(jsonResponse([]));
+        throw new Error(`Unexpected request: ${url}`);
+      });
+      vi.stubGlobal('fetch', fetchMock);
+
+      render(<MantineProvider><ScanQueuePage /></MantineProvider>);
+
+      // Start in Stock_Out_View
+      let cards = await screen.findAllByRole('article');
+      let checkbox = within(cards[0]).getByRole('checkbox');
+
+      // Select entry in Stock_Out_View
+      checkbox.click();
+      expect(checkbox).toBeChecked();
+
+      // Switch to Stock_In_View
+      const stockInTab = screen.getByRole('tab', { name: 'Stock in' });
+      stockInTab.click();
+
+      // Verify selection was cleared
+      await screen.findByText('Barcode: 111');
+      cards = screen.getAllByRole('article').filter((card) => {
+        try {
+          within(card).getByText('Barcode: 111');
+          return true;
+        } catch {
+          return false;
+        }
+      });
+      checkbox = within(cards[0]).getByRole('checkbox');
+      expect(checkbox).not.toBeChecked();
+
+      // Select entry in Stock_In_View
+      checkbox.click();
+      expect(checkbox).toBeChecked();
+
+      // Switch back to Stock_Out_View
+      const stockOutTab = screen.getByRole('tab', { name: 'Stock out' });
+      stockOutTab.click();
+
+      // Verify selection was cleared again
+      await screen.findByText('Barcode: 222');
+      cards = screen.getAllByRole('article').filter((card) => {
+        try {
+          within(card).getByText('Barcode: 222');
+          return true;
+        } catch {
+          return false;
+        }
+      });
+      checkbox = within(cards[0]).getByRole('checkbox');
+      expect(checkbox).not.toBeChecked();
+    });
+
+    it('clears selection when using Select_All_Control then switching tabs', async () => {
+      const fetchMock = vi.fn((input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url.includes('status=pending')) {
+          return Promise.resolve(jsonResponse([
+            scanEntry({ id: 'stock-in-1', barcode: '111', direction: 'stock_in' }),
+            scanEntry({ id: 'stock-in-2', barcode: '222', direction: 'stock_in' }),
+            scanEntry({ id: 'stock-out-1', barcode: '333', direction: 'stock_out' }),
+            scanEntry({ id: 'stock-out-2', barcode: '444', direction: 'stock_out' }),
+          ]));
+        }
+        if (url.includes('status=flagged')) return Promise.resolve(jsonResponse([]));
+        if (url === '/api/inventory' || url === '/api/products') return Promise.resolve(jsonResponse([]));
+        throw new Error(`Unexpected request: ${url}`);
+      });
+      vi.stubGlobal('fetch', fetchMock);
+
+      render(<MantineProvider><ScanQueuePage /></MantineProvider>);
+
+      // Start in Stock_Out_View
+      await screen.findByText('Barcode: 333');
+
+      // Use Select_All_Control to select all eligible entries in Stock_Out_View
+      const selectAllCheckbox = screen.getByRole('checkbox', { name: 'Select all eligible scans for batch approval' });
+      selectAllCheckbox.click();
+
+      // Verify all eligible entries are selected
+      let cards = screen.getAllByRole('article').filter((card) => {
+        try {
+          within(card).getByText(/Barcode: (333|444)/);
+          return true;
+        } catch {
+          return false;
+        }
+      });
+      const checkbox1 = within(cards[0]).getByRole('checkbox');
+      const checkbox2 = within(cards[1]).getByRole('checkbox');
+      expect(checkbox1).toBeChecked();
+      expect(checkbox2).toBeChecked();
+
+      // Switch to Stock_In_View
+      const stockInTab = screen.getByRole('tab', { name: 'Stock in' });
+      stockInTab.click();
+
+      // Verify stock_in entries are not selected (selection was cleared)
+      await screen.findByText('Barcode: 111');
+      cards = screen.getAllByRole('article').filter((card) => {
+        try {
+          within(card).getByText(/Barcode: (111|222)/);
+          return true;
+        } catch {
+          return false;
+        }
+      });
+      const inCheckbox1 = within(cards[0]).getByRole('checkbox');
+      const inCheckbox2 = within(cards[1]).getByRole('checkbox');
+      expect(inCheckbox1).not.toBeChecked();
+      expect(inCheckbox2).not.toBeChecked();
+    });
+  });
+
+  describe('Select_All_Control (view-scoped)', () => {
+    it('is unchecked when no eligible entries exist in the Active_View', async () => {
+      const fetchMock = vi.fn((input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url.includes('status=pending')) {
+          return Promise.resolve(jsonResponse([
+            // Only flagged entries with no direction (not eligible because status !== 'pending')
+            scanEntry({ id: 'flagged-1', barcode: '111', status: 'flagged', direction: null }),
+          ]));
+        }
+        if (url.includes('status=flagged')) {
+          return Promise.resolve(jsonResponse([
+            scanEntry({ id: 'flagged-2', barcode: '222', status: 'flagged', direction: null }),
+          ]));
+        }
+        if (url === '/api/inventory' || url === '/api/products') return Promise.resolve(jsonResponse([]));
+        throw new Error(`Unexpected request: ${url}`);
+      });
+      vi.stubGlobal('fetch', fetchMock);
+
+      render(<MantineProvider><ScanQueuePage /></MantineProvider>);
+
+      const selectAllCheckbox = await screen.findByRole('checkbox', { name: 'Select all eligible scans for batch approval' });
+      expect(selectAllCheckbox).not.toBeChecked();
+    });
+
+    it('is disabled when no eligible entries exist in the Active_View', async () => {
+      const fetchMock = vi.fn((input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url.includes('status=pending')) {
+          return Promise.resolve(jsonResponse([
+            // Only pending entries with no direction (not eligible because direction === null)
+            scanEntry({ id: 'pending-1', barcode: '111', status: 'pending', direction: null }),
+          ]));
+        }
+        if (url.includes('status=flagged')) return Promise.resolve(jsonResponse([]));
+        if (url === '/api/inventory' || url === '/api/products') return Promise.resolve(jsonResponse([]));
+        throw new Error(`Unexpected request: ${url}`);
+      });
+      vi.stubGlobal('fetch', fetchMock);
+
+      render(<MantineProvider><ScanQueuePage /></MantineProvider>);
+
+      const selectAllCheckbox = await screen.findByRole('checkbox', { name: 'Select all eligible scans for batch approval' });
+      expect(selectAllCheckbox).toBeDisabled();
+    });
+
+    it('is checked when all eligible entries in the Active_View are selected', async () => {
+      const fetchMock = vi.fn((input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url.includes('status=pending')) {
+          return Promise.resolve(jsonResponse([
+            scanEntry({ id: 'stock-out-1', barcode: '111', direction: 'stock_out' }),
+            scanEntry({ id: 'stock-out-2', barcode: '222', direction: 'stock_out' }),
+          ]));
+        }
+        if (url.includes('status=flagged')) return Promise.resolve(jsonResponse([]));
+        if (url === '/api/inventory' || url === '/api/products') return Promise.resolve(jsonResponse([]));
+        throw new Error(`Unexpected request: ${url}`);
+      });
+      vi.stubGlobal('fetch', fetchMock);
+
+      render(<MantineProvider><ScanQueuePage /></MantineProvider>);
+
+      const selectAllCheckbox = await screen.findByRole('checkbox', { name: 'Select all eligible scans for batch approval' });
+      
+      // Initially unchecked
+      expect(selectAllCheckbox).not.toBeChecked();
+
+      // Click to select all
+      selectAllCheckbox.click();
+
+      // Now should be checked
+      expect(selectAllCheckbox).toBeChecked();
+
+      // Verify all cards are selected
+      const cards = await screen.findAllByRole('article');
+      const checkboxes = cards.map((card) => within(card).getByRole('checkbox'));
+      checkboxes.forEach((checkbox) => {
+        expect(checkbox).toBeChecked();
+      });
+    });
+
+    it('toggles only eligible entries within the Active_View', async () => {
+      const fetchMock = vi.fn((input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url.includes('status=pending')) {
+          return Promise.resolve(jsonResponse([
+            scanEntry({ id: 'eligible-1', barcode: '111', status: 'pending', direction: 'stock_out' }),
+            scanEntry({ id: 'eligible-2', barcode: '222', status: 'pending', direction: 'stock_out' }),
+            scanEntry({ id: 'ineligible-1', barcode: '333', status: 'pending', direction: null }),
+          ]));
+        }
+        if (url.includes('status=flagged')) return Promise.resolve(jsonResponse([]));
+        if (url === '/api/inventory' || url === '/api/products') return Promise.resolve(jsonResponse([]));
+        throw new Error(`Unexpected request: ${url}`);
+      });
+      vi.stubGlobal('fetch', fetchMock);
+
+      render(<MantineProvider><ScanQueuePage /></MantineProvider>);
+
+      const selectAllCheckbox = await screen.findByRole('checkbox', { name: 'Select all eligible scans for batch approval' });
+
+      // Verify we have 3 entries (2 eligible, 1 ineligible)
+      const cards = await screen.findAllByRole('article');
+      expect(cards).toHaveLength(3);
+
+      // Click Select_All_Control
+      selectAllCheckbox.click();
+
+      // Verify only the 2 eligible entries are selected, not the ineligible one
+      const cardCheckboxes = cards.map((card) => within(card).getByRole('checkbox'));
+      expect(cardCheckboxes[0]).toBeChecked(); // eligible-1
+      expect(cardCheckboxes[1]).toBeChecked(); // eligible-2
+      expect(cardCheckboxes[2]).not.toBeChecked(); // ineligible-1 (direction === null)
+    });
+
+    it('Select_All_Control respects view filtering by toggling only visible eligible entries', async () => {
+      const fetchMock = vi.fn((input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url.includes('status=pending')) {
+          return Promise.resolve(jsonResponse([
+            scanEntry({ id: 'stock-in-1', barcode: '111', direction: 'stock_in' }),
+            scanEntry({ id: 'stock-out-1', barcode: '222', direction: 'stock_out' }),
+            scanEntry({ id: 'stock-out-2', barcode: '333', direction: 'stock_out' }),
+          ]));
+        }
+        if (url.includes('status=flagged')) return Promise.resolve(jsonResponse([]));
+        if (url === '/api/inventory' || url === '/api/products') return Promise.resolve(jsonResponse([]));
+        throw new Error(`Unexpected request: ${url}`);
+      });
+      vi.stubGlobal('fetch', fetchMock);
+
+      render(<MantineProvider><ScanQueuePage /></MantineProvider>);
+
+      // Start in Stock_Out_View with 2 eligible entries
+      let cards = await screen.findAllByRole('article');
+      expect(cards).toHaveLength(2); // stock-out-1 and stock-out-2
+      expect(within(cards[0]).getByText('Barcode: 222')).toBeInTheDocument();
+      expect(within(cards[1]).getByText('Barcode: 333')).toBeInTheDocument();
+
+      // Use Select_All_Control in Stock_Out_View - should select only the 2 visible entries
+      const selectAllCheckbox = screen.getByRole('checkbox', { name: 'Select all eligible scans for batch approval' });
+      selectAllCheckbox.click();
+
+      // Verify both visible entries are selected
+      expect(within(cards[0]).getByRole('checkbox')).toBeChecked();
+      expect(within(cards[1]).getByRole('checkbox')).toBeChecked();
+
+      // Switch to Stock_In_View (clears selection per Requirement 11)
+      const stockInTab = screen.getByRole('tab', { name: 'Stock in' });
+      stockInTab.click();
+
+      // Verify we're now showing only the stock_in entry
+      await screen.findByText('Barcode: 111');
+      cards = screen.getAllByRole('article');
+      // Filter to only entries showing stock_in content
+      cards = cards.filter((card) => {
+        try {
+          within(card).getByText('Barcode: 111');
+          return true;
+        } catch {
+          return false;
+        }
+      });
+      expect(cards).toHaveLength(1);
+
+      // The stock_in entry should NOT be selected (selection was cleared on tab switch)
+      expect(within(cards[0]).getByRole('checkbox')).not.toBeChecked();
+
+      // Use Select_All_Control in Stock_In_View - should select only this 1 entry
+      const selectAllCheckboxStockIn = screen.getByRole('checkbox', { name: 'Select all eligible scans for batch approval' });
+      selectAllCheckboxStockIn.click();
+      expect(within(cards[0]).getByRole('checkbox')).toBeChecked();
+    });
+
+
+    it('preserves selection state of ineligible entries when Select_All_Control is activated', async () => {
+      const fetchMock = vi.fn((input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url.includes('status=pending')) {
+          return Promise.resolve(jsonResponse([
+            scanEntry({ id: 'eligible-1', barcode: '111', status: 'pending', direction: 'stock_out' }),
+            scanEntry({ id: 'ineligible-1', barcode: '222', status: 'pending', direction: null }),
+            scanEntry({ id: 'ineligible-2', barcode: '333', status: 'pending', direction: null }),
+          ]));
+        }
+        if (url.includes('status=flagged')) return Promise.resolve(jsonResponse([]));
+        if (url === '/api/inventory' || url === '/api/products') return Promise.resolve(jsonResponse([]));
+        throw new Error(`Unexpected request: ${url}`);
+      });
+      vi.stubGlobal('fetch', fetchMock);
+
+      render(<MantineProvider><ScanQueuePage /></MantineProvider>);
+
+      // Get all entries (eligible and ineligible)
+      const cards = await screen.findAllByRole('article');
+      expect(cards).toHaveLength(3);
+
+      // Manually select the ineligible entries before using Select_All_Control
+      const ineligibleCheckbox1 = within(cards[1]).getByRole('checkbox');
+      const ineligibleCheckbox2 = within(cards[2]).getByRole('checkbox');
+      ineligibleCheckbox1.click();
+      ineligibleCheckbox2.click();
+
+      expect(ineligibleCheckbox1).toBeChecked();
+      expect(ineligibleCheckbox2).toBeChecked();
+
+      // Now use Select_All_Control to toggle all eligible entries
+      const selectAllCheckbox = screen.getByRole('checkbox', { name: 'Select all eligible scans for batch approval' });
+      selectAllCheckbox.click();
+
+      // Verify:
+      // - The eligible entry is now selected
+      // - The ineligible entries REMAIN selected (preserved)
+      const eligibleCheckbox = within(cards[0]).getByRole('checkbox');
+      expect(eligibleCheckbox).toBeChecked();
+      expect(ineligibleCheckbox1).toBeChecked();
+      expect(ineligibleCheckbox2).toBeChecked();
+    });
+
+    it('deselects all eligible entries in Active_View when all are already selected', async () => {
+      const fetchMock = vi.fn((input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url.includes('status=pending')) {
+          return Promise.resolve(jsonResponse([
+            scanEntry({ id: 'eligible-1', barcode: '111', direction: 'stock_out' }),
+            scanEntry({ id: 'eligible-2', barcode: '222', direction: 'stock_out' }),
+          ]));
+        }
+        if (url.includes('status=flagged')) return Promise.resolve(jsonResponse([]));
+        if (url === '/api/inventory' || url === '/api/products') return Promise.resolve(jsonResponse([]));
+        throw new Error(`Unexpected request: ${url}`);
+      });
+      vi.stubGlobal('fetch', fetchMock);
+
+      render(<MantineProvider><ScanQueuePage /></MantineProvider>);
+
+      const selectAllCheckbox = await screen.findByRole('checkbox', { name: 'Select all eligible scans for batch approval' });
+
+      // Select all
+      selectAllCheckbox.click();
+      expect(selectAllCheckbox).toBeChecked();
+
+      // Deselect all
+      selectAllCheckbox.click();
+      expect(selectAllCheckbox).not.toBeChecked();
+
+      // Verify all individual checkboxes are also unchecked
+      const cards = screen.getAllByRole('article');
+      const cardCheckboxes = cards.map((card) => within(card).getByRole('checkbox'));
+      cardCheckboxes.forEach((checkbox) => {
+        expect(checkbox).not.toBeChecked();
+      });
+    });
+
+    it('only shows eligible entries as eligible in each view', async () => {
+      const fetchMock = vi.fn((input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url.includes('status=pending')) {
+          return Promise.resolve(jsonResponse([
+            scanEntry({ id: 'stock-in-eligible', barcode: '111', status: 'pending', direction: 'stock_in' }),
+            scanEntry({ id: 'stock-out-eligible', barcode: '222', status: 'pending', direction: 'stock_out' }),
+            scanEntry({ id: 'undirected', barcode: '333', status: 'pending', direction: null }),
+          ]));
+        }
+        if (url.includes('status=flagged')) return Promise.resolve(jsonResponse([]));
+        if (url === '/api/inventory' || url === '/api/products') return Promise.resolve(jsonResponse([]));
+        throw new Error(`Unexpected request: ${url}`);
+      });
+      vi.stubGlobal('fetch', fetchMock);
+
+      render(<MantineProvider><ScanQueuePage /></MantineProvider>);
+
+      // Start in Stock_Out_View
+      let selectAllCheckbox = await screen.findByRole('checkbox', { name: 'Select all eligible scans for batch approval' });
+      
+      // In Stock_Out_View, only the stock_out entry and undirected are shown
+      // but only stock_out is eligible (undirected is not eligible because direction === null)
+      let cards = screen.getAllByRole('article');
+      // Filter to entries in Stock_Out_View (showing barcodes 222 and 333)
+      cards = cards.filter((card) => {
+        try {
+          within(card).getByText(/Barcode: (222|333)/);
+          return true;
+        } catch {
+          return false;
+        }
+      });
+      expect(cards).toHaveLength(2);
+
+      // Use Select_All_Control - should only select the stock_out entry
+      selectAllCheckbox.click();
+
+      // Find the cards again after click
+      cards = screen.getAllByRole('article').filter((card) => {
+        try {
+          within(card).getByText(/Barcode: (222|333)/);
+          return true;
+        } catch {
+          return false;
+        }
+      });
+
+      // The first card should be the stock_out entry (222), second is undirected (333)
+      let stockOutCheckbox: HTMLElement | null = null;
+      let undirectedCheckbox: HTMLElement | null = null;
+      for (const card of cards) {
+        try {
+          within(card).getByText('Barcode: 222');
+          stockOutCheckbox = within(card).getByRole('checkbox');
+        } catch {
+          // not this card
+        }
+        try {
+          within(card).getByText('Barcode: 333');
+          undirectedCheckbox = within(card).getByRole('checkbox');
+        } catch {
+          // not this card
+        }
+      }
+
+      expect(stockOutCheckbox).toBeChecked(); // eligible in this view
+      expect(undirectedCheckbox).not.toBeChecked(); // ineligible (direction === null)
+
+      // Switch to Stock_In_View
+      const stockInTab = screen.getByRole('tab', { name: 'Stock in' });
+      stockInTab.click();
+
+      selectAllCheckbox = screen.getByRole('checkbox', { name: 'Select all eligible scans for batch approval' });
+      
+      // Wait for stock_in entry to appear and filter cards
+      await screen.findByText('Barcode: 111');
+      cards = screen.getAllByRole('article').filter((card) => {
+        try {
+          within(card).getByText('Barcode: 111');
+          return true;
+        } catch {
+          return false;
+        }
+      });
+      expect(cards).toHaveLength(1);
+
+      const stockInCheckbox = within(cards[0]).getByRole('checkbox');
+      expect(stockInCheckbox).not.toBeChecked(); // Not selected (selection was cleared on tab switch)
+
+      // Select all in Stock_In_View
+      selectAllCheckbox.click();
+      expect(stockInCheckbox).toBeChecked(); // Now selected
+    });
+  });
 });

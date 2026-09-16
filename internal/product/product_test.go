@@ -4,8 +4,10 @@ import (
 	"context"
 	"database/sql"
 	"testing"
+	"time"
 
 	_ "modernc.org/sqlite"
+	"pgregory.net/rapid"
 
 	"github.com/Rhionin/pantry/internal/app"
 	"github.com/Rhionin/pantry/internal/product"
@@ -571,4 +573,489 @@ func TestCreateProductSourceValidation(t *testing.T) {
 			}
 		})
 	}
+}
+
+// --------------------------------------------------------------------------
+// TestExternalSourceValidation
+// --------------------------------------------------------------------------
+
+func TestExternalSourceValidation(t *testing.T) {
+	tests := []struct {
+		name             string
+		externalSource   product.ExternalSource
+		shouldBeAccepted bool
+	}{
+		{
+			name:             "empty is valid",
+			externalSource:   "",
+			shouldBeAccepted: true,
+		},
+		{
+			name:             "openfoodfacts is valid",
+			externalSource:   product.ExternalSourceOpenFoodFacts,
+			shouldBeAccepted: true,
+		},
+		{
+			name:             "openproductsfacts is valid",
+			externalSource:   product.ExternalSourceOpenProductsFacts,
+			shouldBeAccepted: true,
+		},
+		{
+			name:             "openbeautyfacts is valid",
+			externalSource:   product.ExternalSourceOpenBeautyFacts,
+			shouldBeAccepted: true,
+		},
+		{
+			name:             "openpetfoodfacts is valid",
+			externalSource:   product.ExternalSourceOpenPetFoodFacts,
+			shouldBeAccepted: true,
+		},
+		{
+			name:             "invalid external source rejected",
+			externalSource:   product.ExternalSource("invalid"),
+			shouldBeAccepted: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			catalog := newTestCatalog(t)
+			ctx := context.Background()
+
+			p := product.Product{
+				ID:             "test-prod",
+				Name:           "Test Product",
+				Source:         product.SourceExternal,
+				ExternalSource: tt.externalSource,
+			}
+
+			err := catalog.CreateProduct(ctx, p)
+			if tt.shouldBeAccepted {
+				if err != nil {
+					t.Fatalf("expected CreateProduct to succeed, got error: %v", err)
+				}
+
+				got, err := catalog.GetProductByID(ctx, "test-prod")
+				if err != nil {
+					t.Fatalf("GetProductByID: %v", err)
+				}
+				if got == nil {
+					t.Fatal("expected product, got nil")
+				}
+				if got.ExternalSource != tt.externalSource {
+					t.Errorf("ExternalSource: want %q, got %q", tt.externalSource, got.ExternalSource)
+				}
+			} else {
+				if err == nil {
+					t.Fatal("expected CreateProduct to fail, got nil")
+				}
+			}
+		})
+	}
+}
+
+// --------------------------------------------------------------------------
+//
+// Feature: open-products-facts-lookup, Property 9: Only the four values are storable
+//
+// **Validates: Requirements 3.7**
+//
+// Only the empty string, "openfoodfacts", "openproductsfacts", "openbeautyfacts",
+// and "openpetfoodfacts" are acceptable external_source values. Any string that is
+// neither empty nor one of those four causes CreateProduct to fail and write no row.
+func TestProperty9_OnlyFourValuesAreStorable(t *testing.T) {
+	rapid.Check(t, func(rt *rapid.T) {
+		// Generate strings that are NOT empty and NOT one of the four valid values
+		invalidSource := rapid.StringMatching(`[a-z0-9]{1,20}`).Filter(func(s string) bool {
+			// Filter out the four valid values
+			return s != string(product.ExternalSourceOpenFoodFacts) &&
+				s != string(product.ExternalSourceOpenProductsFacts) &&
+				s != string(product.ExternalSourceOpenBeautyFacts) &&
+				s != string(product.ExternalSourceOpenPetFoodFacts)
+		}).Draw(rt, "invalidSource")
+
+		catalog := newTestCatalog(t)
+		ctx := context.Background()
+
+		p := product.Product{
+			ID:             "test-invalid-source",
+			Name:           "Test Product",
+			Source:         product.SourceExternal,
+			ExternalSource: product.ExternalSource(invalidSource),
+		}
+
+		// CreateProduct should reject this invalid external_source
+		err := catalog.CreateProduct(ctx, p)
+		if err == nil {
+			t.Fatal("expected CreateProduct to reject invalid external_source, got nil")
+		}
+
+		// Verify no row was written
+		got, err := catalog.GetProductByID(ctx, "test-invalid-source")
+		if err != nil {
+			t.Fatalf("GetProductByID: %v", err)
+		}
+		if got != nil {
+			t.Fatal("expected no product row to be written, but found one")
+		}
+	})
+}
+
+// --------------------------------------------------------------------------
+// TestRecordBarcodeMiss
+// --------------------------------------------------------------------------
+
+func TestRecordBarcodeMiss(t *testing.T) {
+	tests := []struct {
+		name string
+		test func(t *testing.T, catalog *product.Catalog, ctx context.Context)
+	}{
+		{
+			name: "record new miss",
+			test: func(t *testing.T, catalog *product.Catalog, ctx context.Context) {
+				barcode := "123456789"
+				checkedAt := mustParseTime(t, "2025-01-01T10:00:00Z")
+
+				err := catalog.RecordBarcodeMiss(ctx, barcode, checkedAt)
+				if err != nil {
+					t.Fatalf("RecordBarcodeMiss: %v", err)
+				}
+
+				got, err := catalog.GetBarcodeMiss(ctx, barcode)
+				if err != nil {
+					t.Fatalf("GetBarcodeMiss: %v", err)
+				}
+				if got == nil {
+					t.Fatal("expected miss record, got nil")
+				}
+				if got.Unix() != checkedAt.Unix() {
+					t.Errorf("checked_at: want %v, got %v", checkedAt, *got)
+				}
+			},
+		},
+		{
+			name: "re-stamp existing miss",
+			test: func(t *testing.T, catalog *product.Catalog, ctx context.Context) {
+				barcode := "987654321"
+				t1 := mustParseTime(t, "2025-01-01T10:00:00Z")
+				t2 := mustParseTime(t, "2025-01-02T10:00:00Z")
+
+				// Record the initial miss
+				err := catalog.RecordBarcodeMiss(ctx, barcode, t1)
+				if err != nil {
+					t.Fatalf("RecordBarcodeMiss (first): %v", err)
+				}
+
+				// Re-stamp with a new time
+				err = catalog.RecordBarcodeMiss(ctx, barcode, t2)
+				if err != nil {
+					t.Fatalf("RecordBarcodeMiss (second): %v", err)
+				}
+
+				// Verify the checked_at is updated
+				got, err := catalog.GetBarcodeMiss(ctx, barcode)
+				if err != nil {
+					t.Fatalf("GetBarcodeMiss: %v", err)
+				}
+				if got == nil {
+					t.Fatal("expected miss record, got nil")
+				}
+				if got.Unix() != t2.Unix() {
+					t.Errorf("checked_at: want %v, got %v", t2, *got)
+				}
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			catalog := newTestCatalog(t)
+			ctx := context.Background()
+			tt.test(t, catalog, ctx)
+		})
+	}
+}
+
+// --------------------------------------------------------------------------
+// TestGetBarcodeMiss
+// --------------------------------------------------------------------------
+
+func TestGetBarcodeMiss(t *testing.T) {
+	tests := []struct {
+		name        string
+		setup       func(t *testing.T, catalog *product.Catalog, ctx context.Context)
+		barcode     string
+		expectFound bool
+	}{
+		{
+			name: "found",
+			setup: func(t *testing.T, catalog *product.Catalog, ctx context.Context) {
+				checkedAt := mustParseTime(t, "2025-01-01T10:00:00Z")
+				if err := catalog.RecordBarcodeMiss(ctx, "111222333", checkedAt); err != nil {
+					t.Fatalf("RecordBarcodeMiss: %v", err)
+				}
+			},
+			barcode:     "111222333",
+			expectFound: true,
+		},
+		{
+			name:        "not found",
+			setup:       func(t *testing.T, catalog *product.Catalog, ctx context.Context) {},
+			barcode:     "no-such-barcode",
+			expectFound: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			catalog := newTestCatalog(t)
+			ctx := context.Background()
+			tt.setup(t, catalog, ctx)
+
+			got, err := catalog.GetBarcodeMiss(ctx, tt.barcode)
+			if err != nil {
+				t.Fatalf("GetBarcodeMiss: %v", err)
+			}
+
+			if tt.expectFound {
+				if got == nil {
+					t.Fatal("expected miss record, got nil")
+				}
+			} else {
+				if got != nil {
+					t.Fatal("expected nil, got miss record")
+				}
+			}
+		})
+	}
+}
+
+// --------------------------------------------------------------------------
+// TestDeleteBarcodeMiss
+// --------------------------------------------------------------------------
+
+func TestDeleteBarcodeMiss(t *testing.T) {
+	tests := []struct {
+		name string
+		test func(t *testing.T, catalog *product.Catalog, ctx context.Context)
+	}{
+		{
+			name: "delete existing miss",
+			test: func(t *testing.T, catalog *product.Catalog, ctx context.Context) {
+				barcode := "555666777"
+				checkedAt := mustParseTime(t, "2025-01-01T10:00:00Z")
+
+				// Record a miss
+				err := catalog.RecordBarcodeMiss(ctx, barcode, checkedAt)
+				if err != nil {
+					t.Fatalf("RecordBarcodeMiss: %v", err)
+				}
+
+				// Verify it exists
+				got, err := catalog.GetBarcodeMiss(ctx, barcode)
+				if err != nil {
+					t.Fatalf("GetBarcodeMiss (before delete): %v", err)
+				}
+				if got == nil {
+					t.Fatal("expected miss record before delete")
+				}
+
+				// Delete it
+				err = catalog.DeleteBarcodeMiss(ctx, barcode)
+				if err != nil {
+					t.Fatalf("DeleteBarcodeMiss: %v", err)
+				}
+
+				// Verify it's gone
+				got, err = catalog.GetBarcodeMiss(ctx, barcode)
+				if err != nil {
+					t.Fatalf("GetBarcodeMiss (after delete): %v", err)
+				}
+				if got != nil {
+					t.Fatal("expected nil after delete")
+				}
+			},
+		},
+		{
+			name: "delete non-existent miss returns no error",
+			test: func(t *testing.T, catalog *product.Catalog, ctx context.Context) {
+				// Deleting a non-existent barcode should not error
+				err := catalog.DeleteBarcodeMiss(ctx, "no-such-barcode")
+				if err != nil {
+					t.Fatalf("DeleteBarcodeMiss: %v", err)
+				}
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			catalog := newTestCatalog(t)
+			ctx := context.Background()
+			tt.test(t, catalog, ctx)
+		})
+	}
+}
+
+// mustParseTime parses a time string in RFC3339 format and panics on error.
+func mustParseTime(t *testing.T, s string) time.Time {
+	t.Helper()
+	tm, err := time.Parse(time.RFC3339, s)
+	if err != nil {
+		t.Fatalf("mustParseTime: %v", err)
+	}
+	return tm
+}
+
+// --------------------------------------------------------------------------
+//
+// Feature: open-products-facts-lookup, Property 5: Confirmed misses behave correctly
+//
+// **Validates: Requirements 5.1, 5.5, 5.7**
+//
+// RecordBarcodeMiss, GetBarcodeMiss, and DeleteBarcodeMiss form the complete
+// lifecycle for confirmed misses. RecordBarcodeMiss both inserts a new miss
+// and updates an existing one. GetBarcodeMiss returns the record when present
+// and nil when absent. DeleteBarcodeMiss removes the record. barcode_misses
+// never appears in queries of products, inventory, or scans, so its data never
+// leaks into responses.
+func TestProperty_BarcodeMissLifecycle(t *testing.T) {
+	rapid.Check(t, func(rt *rapid.T) {
+		catalog := newTestCatalog(t)
+		ctx := context.Background()
+
+		// Generate a random barcode
+		barcode := rapid.StringMatching(`[0-9]{1,20}`).Draw(rt, "barcode")
+
+		// Initially no miss record
+		miss, err := catalog.GetBarcodeMiss(ctx, barcode)
+		if err != nil {
+			t.Fatalf("GetBarcodeMiss (initial): %v", err)
+		}
+		if miss != nil {
+			t.Fatal("expected no miss record initially")
+		}
+
+		// Record first miss
+		t1 := time.Now()
+		if err := catalog.RecordBarcodeMiss(ctx, barcode, t1); err != nil {
+			t.Fatalf("RecordBarcodeMiss (first): %v", err)
+		}
+
+		// Verify it's recorded
+		miss, err = catalog.GetBarcodeMiss(ctx, barcode)
+		if err != nil {
+			t.Fatalf("GetBarcodeMiss (after first record): %v", err)
+		}
+		if miss == nil {
+			t.Fatal("expected miss record after RecordBarcodeMiss")
+		}
+		if miss.Unix() != t1.Unix() {
+			t.Errorf("checked_at after first record: want %v, got %v", t1, *miss)
+		}
+
+		// Re-stamp with a newer time
+		t2 := t1.Add(time.Hour)
+		if err := catalog.RecordBarcodeMiss(ctx, barcode, t2); err != nil {
+			t.Fatalf("RecordBarcodeMiss (second): %v", err)
+		}
+
+		// Verify it's updated
+		miss, err = catalog.GetBarcodeMiss(ctx, barcode)
+		if err != nil {
+			t.Fatalf("GetBarcodeMiss (after second record): %v", err)
+		}
+		if miss == nil {
+			t.Fatal("expected miss record after second RecordBarcodeMiss")
+		}
+		if miss.Unix() != t2.Unix() {
+			t.Errorf("checked_at after re-stamp: want %v, got %v", t2, *miss)
+		}
+
+		// Delete the miss
+		if err := catalog.DeleteBarcodeMiss(ctx, barcode); err != nil {
+			t.Fatalf("DeleteBarcodeMiss: %v", err)
+		}
+
+		// Verify it's gone
+		miss, err = catalog.GetBarcodeMiss(ctx, barcode)
+		if err != nil {
+			t.Fatalf("GetBarcodeMiss (after delete): %v", err)
+		}
+		if miss != nil {
+			t.Fatal("expected no miss record after DeleteBarcodeMiss")
+		}
+
+		// Deleting non-existent miss should not error
+		if err := catalog.DeleteBarcodeMiss(ctx, "nonexistent-"+barcode); err != nil {
+			t.Fatalf("DeleteBarcodeMiss (nonexistent): %v", err)
+		}
+	})
+}
+
+// Property: Confirmed misses are invisible to products queries
+// **Validates: Requirement 5.7**
+// A barcode with a recorded confirmed miss should not appear in the products
+// list or in a barcode lookup.
+func TestProperty_MissesNotInProductQueries(t *testing.T) {
+	rapid.Check(t, func(rt *rapid.T) {
+		catalog := newTestCatalog(t)
+		ctx := context.Background()
+
+		// Record a confirmed miss for a barcode
+		missBarcode := rapid.StringMatching(`[0-9]{10}`).Draw(rt, "missBarcode")
+		now := time.Now()
+		if err := catalog.RecordBarcodeMiss(ctx, missBarcode, now); err != nil {
+			t.Fatalf("RecordBarcodeMiss: %v", err)
+		}
+
+		// Query should not return a product for the miss barcode
+		productSummary, err := catalog.LookupByBarcode(ctx, missBarcode, "")
+		if err != nil {
+			t.Fatalf("LookupByBarcode: %v", err)
+		}
+		if productSummary != nil {
+			t.Fatal("LookupByBarcode should not return a product for a miss barcode")
+		}
+
+		// Get the list of products - should still be empty
+		products, err := catalog.ListProducts(ctx)
+		if err != nil {
+			t.Fatalf("ListProducts: %v", err)
+		}
+
+		// Verify no product with the miss barcode is present
+		for _, p := range products {
+			if p.ID == missBarcode {
+				t.Fatal("ListProducts should not include a product with a miss barcode")
+			}
+		}
+
+		// Create a real product and verify it shows up
+		realBarcode := rapid.StringMatching(`[0-9]{10}`).Draw(rt, "realBarcode")
+		realProduct := product.Product{
+			ID:   realBarcode,
+			Name: "Test Product",
+		}
+		if err := catalog.CreateProduct(ctx, realProduct); err != nil {
+			t.Fatalf("CreateProduct: %v", err)
+		}
+
+		// Map the barcode to the product
+		if err := catalog.UpsertBarcodeMapping(ctx, realBarcode, realBarcode, "global", ""); err != nil {
+			t.Fatalf("UpsertBarcodeMapping: %v", err)
+		}
+
+		// Now LookupByBarcode should find the real product
+		found, err := catalog.LookupByBarcode(ctx, realBarcode, "")
+		if err != nil {
+			t.Fatalf("LookupByBarcode (real): %v", err)
+		}
+		if found == nil {
+			t.Fatal("LookupByBarcode should find the real product")
+		}
+		if found.ID != realBarcode {
+			t.Errorf("LookupByBarcode returned wrong product: want %s, got %s", realBarcode, found.ID)
+		}
+	})
 }

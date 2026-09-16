@@ -1,0 +1,11 @@
+# 2026/09/12 22:14:43.254355 [TestRealtimeProperty4_CreateAndUpdatePublishMatchingEvent] [rapid] draw operation: 1
+# 2026/09/12 22:14:43.254357 [TestRealtimeProperty4_CreateAndUpdatePublishMatchingEvent] [rapid] draw barcode: ""
+# 2026/09/12 22:14:43.254358 [TestRealtimeProperty4_CreateAndUpdatePublishMatchingEvent] [rapid] draw userID: ""
+# 2026/09/12 22:14:43.254517 [TestRealtimeProperty4_CreateAndUpdatePublishMatchingEvent] CreateScanEntry (setup) failed: GetScanEntry: sql: expected 17 destination arguments in Scan, not 16
+# 
+v0.4.8#980234355268076096
+0x0
+0x0
+0x1
+0x0
+0x0

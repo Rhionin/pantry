@@ -19,6 +19,9 @@ import (
 // unparseable.
 const defaultProductCacheTTL = 30 * 24 * time.Hour
 
+// defaultMissTTL is used when PRODUCT_MISS_TTL is unset, empty, or unparseable.
+const defaultMissTTL = 7 * 24 * time.Hour
+
 // productCacheTTL reads PRODUCT_CACHE_TTL and returns the TTL a product
 // cache row uses before Refresher.ScheduleRefresh considers it stale. An
 // unparseable value is logged and defaulted rather than failing startup. A
@@ -34,6 +37,25 @@ func productCacheTTL() time.Duration {
 	if err != nil {
 		log.Printf("invalid PRODUCT_CACHE_TTL %q, using default of %s", raw, defaultProductCacheTTL)
 		return defaultProductCacheTTL
+	}
+	return ttl
+}
+
+// productMissTTL reads PRODUCT_MISS_TTL and returns the age at which a
+// confirmed-miss record expires and the barcode becomes eligible for another
+// fan-out. Shaped exactly like productCacheTTL: an unparseable value is logged
+// and defaulted rather than failing startup, and a value that parses is used as
+// given even if non-positive, since 0s is a legitimate "never cache a miss"
+// debugging setting.
+func productMissTTL() time.Duration {
+	raw := os.Getenv("PRODUCT_MISS_TTL")
+	if raw == "" {
+		return defaultMissTTL
+	}
+	ttl, err := time.ParseDuration(raw)
+	if err != nil {
+		log.Printf("invalid PRODUCT_MISS_TTL %q, using default of %s", raw, defaultMissTTL)
+		return defaultMissTTL
 	}
 	return ttl
 }
@@ -58,22 +80,21 @@ func main() {
 
 	catalog := product.NewCatalog(sqlDB)
 	externalLookupEnabled := os.Getenv("DISABLE_EXTERNAL_PRODUCT_LOOKUP") != "true"
-	var externalProducts interface {
-		LookupBarcode(context.Context, string) (*product.ProductSummary, error)
-	} = product.NewOpenFoodFactsClient()
+	var upstream product.UpstreamDatabases = product.NewExternalLookup(product.DefaultProductOpenerClients())
 	if !externalLookupEnabled {
-		externalProducts = disabledProductLookup{}
+		upstream = disabledExternalLookup{}
 	}
 	refresher := &product.Refresher{
 		Catalog:               catalog,
-		OpenFoodFacts:         externalProducts,
+		Upstream:              upstream,
 		TTL:                   productCacheTTL(),
 		ExternalLookupEnabled: externalLookupEnabled,
 	}
 	lookupService := &product.LookupService{
-		Catalog:       catalog,
-		OpenFoodFacts: externalProducts,
-		Refresher:     refresher,
+		Catalog:   catalog,
+		Upstream:  upstream,
+		Refresher: refresher,
+		MissTTL:   productMissTTL(),
 	}
 
 	handler, scanQueue := server.NewHandler(catalog, lookupService, refresher, sqlDB)
@@ -90,9 +111,13 @@ func main() {
 	}
 }
 
-type disabledProductLookup struct{}
+type disabledExternalLookup struct{}
 
-func (disabledProductLookup) LookupBarcode(context.Context, string) (*product.ProductSummary, error) {
+func (disabledExternalLookup) Lookup(context.Context, string) product.FanOutResult {
+	return product.FanOutResult{Outcome: product.FanOutUnresolved}
+}
+
+func (disabledExternalLookup) LookupIn(context.Context, product.ExternalSource, string) (*product.ProductSummary, error) {
 	return nil, product.ErrProductNotFound
 }
 

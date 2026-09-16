@@ -213,12 +213,12 @@ type externalHarness struct {
 
 func newExternalHarness(t *testing.T) *externalHarness {
 	t.Helper()
-	handler, catalog, fake, db, refresher, clock := setupTestWithDB(t)
+	handler, env := setupTestWithDB(t)
 	server := httptest.NewServer(handler)
 	t.Cleanup(server.Close)
 	return &externalHarness{
 		t:      t,
-		env:    testEnv{T: t, DB: db, ProductStore: catalog, OpenFoodFacts: fake, Refresher: refresher, Clock: clock},
+		env:    env,
 		server: server,
 	}
 }

@@ -31,36 +31,77 @@ func setupTestDB(t *testing.T) *sql.DB {
 	return conn
 }
 
-// setupTestWithDB creates a fully configured HTTP handler and returns the DB
-// along with it. The returned Refresher and fakeClock are the same instances
-// wired into the handler's LookupService, so a test (or exchanges()) that
-// needs to build a second handler against the same state must reuse them
+// setupTestWithDB creates a fully configured HTTP handler and returns it along
+// with a fully populated testEnv. The returned Refresher, fakeClock, and fakeUpstream
+// are the same instances wired into the handler's LookupService, so a test (or exchanges())
+// that needs to build a second handler against the same state must reuse them
 // rather than constructing fresh ones — a second Refresher would own its own
 // WaitGroup and in-flight map, and env.Refresher.Wait() would return without
 // awaiting goroutines the second handler started.
-func setupTestWithDB(t *testing.T) (http.Handler, *product.Catalog, *fakeOpenFoodFacts, *sql.DB, *product.Refresher, *fakeClock) {
+func setupTestWithDB(t *testing.T) (http.Handler, testEnv) {
 	t.Helper()
 	db := setupTestDB(t)
 
 	productRepo := product.NewCatalog(db)
-	fake := newFakeOpenFoodFacts()
 	clock := newFakeClock(time.Now())
+
+	// Build one fakeProductOpener per database
+	databases := make(map[product.ExternalSource]*fakeProductOpener)
+	for _, source := range []product.ExternalSource{
+		product.ExternalSourceOpenFoodFacts,
+		product.ExternalSourceOpenProductsFacts,
+		product.ExternalSourceOpenBeautyFacts,
+		product.ExternalSourceOpenPetFoodFacts,
+	} {
+		databases[source] = newFakeProductOpener()
+	}
+
+	// Build fakeClients map to hold fakeProductOpener instances
+	fakeClients := make(map[product.ExternalSource]product.BarcodeLookup)
+	for source, fake := range databases {
+		fakeClients[source] = fake
+	}
+
+	externalLookup := product.NewExternalLookup(fakeClients)
+	upstream := &fakeUpstream{
+		ExternalLookup: externalLookup,
+		databases:      databases,
+	}
+
 	refresher := &product.Refresher{
 		Catalog:               productRepo,
-		OpenFoodFacts:         fake,
+		Upstream:              upstream,
 		TTL:                   testProductCacheTTL,
 		ExternalLookupEnabled: true,
 		Now:                   clock.Now,
 	}
 	lookupService := &product.LookupService{
-		Catalog:       productRepo,
-		OpenFoodFacts: fake,
-		Refresher:     refresher,
-		Now:           clock.Now,
+		Catalog:   productRepo,
+		Upstream:  upstream,
+		Refresher: refresher,
+		Now:       clock.Now,
+		MissTTL:   5 * time.Minute,
 	}
 
 	handler, _ := NewHandler(productRepo, lookupService, refresher, db)
-	return handler, productRepo, fake, db, refresher, clock
+
+	// Get the Open Food Facts fake for backward compatibility
+	offFake := databases[product.ExternalSourceOpenFoodFacts]
+
+	missTTL := 5 * time.Minute
+
+	env := testEnv{
+		T:             t,
+		DB:            db,
+		ProductStore:  productRepo,
+		Upstream:      upstream,
+		OpenFoodFacts: offFake,
+		Refresher:     refresher,
+		Clock:         clock,
+		MissTTL:       missTTL,
+	}
+
+	return handler, env
 }
 
 func setupProduct(id, name, category string) func(env testEnv) {

@@ -2,7 +2,7 @@
 set -e
 
 # Minimum required line coverage percentage
-COVERAGE_THRESHOLD=82.6
+COVERAGE_THRESHOLD=82.9
 
 # Colors for output
 RED='\033[0;31m'
