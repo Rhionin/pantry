@@ -120,8 +120,9 @@ func isRegisteredGetPath(path string) bool {
 //
 // For any request whose path is /health or begins with /health/ and that
 // matches no registered route — for any method — the response status is never
-// 200 and the body is never the SPA document. The one registered-and-valid
-// case (GET /health) is excluded, since it correctly returns 200.
+// 200 and the body is never the SPA document. The registered-and-valid cases
+// (GET /health, and HEAD /health which ServeMux serves from the GET pattern)
+// are excluded, since they correctly return 200.
 func TestHealthPathsNeverFallBack(t *testing.T) {
 	handler, _ := setupTestWithDB(t)
 
@@ -132,9 +133,14 @@ func TestHealthPathsNeverFallBack(t *testing.T) {
 		}).Draw(t, "healthMethod")
 		path := generateHealthPath(t)
 
-		// Exclude the one registered-and-valid case: GET /health returns 200.
-		if method == http.MethodGet && path == "/health" {
-			t.Skip("GET /health is the registered valid case")
+		// Exclude the registered-and-valid case: GET /health returns 200, and
+		// Go 1.22+ ServeMux serves HEAD from a GET pattern, so HEAD /health also
+		// returns 200. Both are correct behavior for the exact /health path, so
+		// neither should be asserted non-200. Every other method on /health, and
+		// every /health/... subpath under any method, is genuinely unmatched and
+		// still exercised below.
+		if path == "/health" && (method == http.MethodGet || method == http.MethodHead) {
+			t.Skip("GET/HEAD /health is the registered valid case")
 		}
 
 		req := httptest.NewRequest(method, path, nil)
@@ -183,11 +189,26 @@ type registeredRequest struct {
 	body   string
 }
 
+// seededProductID is the product row created by the Property 6 seed. The id
+// generator can draw it so mutating routes sometimes hit an existing row and
+// exercise the success path (which echoes request-derived data) rather than
+// only the not-found path.
+const seededProductID = "prod-1"
+
 // generateRegisteredRequest draws a request over the registered route set,
 // including wildcard routes with generated ids. GET /api/events is excluded
 // by the caller because it is a non-terminating SSE stream.
+//
+// Wildcard ids are drawn from a mix that includes the seeded product id, so
+// the mutating routes (PUT/PATCH/DELETE) sometimes address an existing row and
+// exercise the success/echo path, not only the not-found/validation path. This
+// is the case most likely to differ between the two handlers if routing
+// composition were not transparent, so covering it strengthens the property.
 func generateRegisteredRequest(t *rapid.T) registeredRequest {
-	id := rapid.StringMatching(`[a-z0-9-]{1,12}`)
+	id := rapid.OneOf(
+		rapid.Just(seededProductID),
+		rapid.StringMatching(`[a-z0-9-]{1,12}`),
+	)
 
 	routes := []func(*rapid.T) registeredRequest{
 		func(t *rapid.T) registeredRequest {
@@ -321,7 +342,7 @@ func buildComposedAndAPIHandlers(t *testing.T, seed func(env testEnv)) (http.Han
 // directly or to the composed root handler.
 func TestMountingWebUIPerturbsNoRoute(t *testing.T) {
 	seed := func(env testEnv) {
-		setupProduct("prod-1", "Seeded Product", "Seeded Category")(env)
+		setupProduct(seededProductID, "Seeded Product", "Seeded Category")(env)
 	}
 	composed, apiMux := buildComposedAndAPIHandlers(t, seed)
 
@@ -346,6 +367,16 @@ func TestMountingWebUIPerturbsNoRoute(t *testing.T) {
 		// and differs by construction, not by routing.
 		composedHeader.Del("Date")
 		apiHeader.Del("Date")
+		// Drop Content-Length too: it is derived from the raw body length, but
+		// bodies are only compared after normalizing variable-length dynamic
+		// fields (minted ids, stamped timestamps). A route whose two independent
+		// responses differ only in the length of such a dynamic value would
+		// diverge on Content-Length while the normalized bodies match, which is
+		// not a routing-composition difference. The body equality check below
+		// covers content; this property is about routing, not byte-identical
+		// dynamic values.
+		composedHeader.Del("Content-Length")
+		apiHeader.Del("Content-Length")
 		if !headersEqual(composedHeader, apiHeader) {
 			t.Fatalf("%s %s: headers differ: composed=%v apiMux=%v",
 				rr.method, rr.path, composedHeader, apiHeader)

@@ -27,7 +27,7 @@ first property-test task promotes it to the direct block via `go mod tidy`.
 
 ## Tasks
 
-- [ ] 1. `internal/webui` — embedded asset serving
+- [x] 1. `internal/webui` — embedded asset serving
 
   - [x] 1.1 Create the package, the embed directive, and the placeholder asset
     - Create `internal/webui/webui.go` with the package doc comment,
@@ -106,7 +106,7 @@ first property-test task promotes it to the direct block via `go mod tidy`.
     - _Requirements: 3.8_
     - _Properties: 1_
 
-  - [-] 1.6 Property test asset fidelity
+  - [x] 1.6 Property test asset fidelity
     - **Property 2: Embedded assets are served faithfully**
     - **Validates: Requirements 2.4, 3.2, 3.3**
     - In `webui_properties_test.go`: generate a nested tree of files with varied
@@ -121,7 +121,7 @@ first property-test task promotes it to the direct block via `go mod tidy`.
     - _Requirements: 2.4, 3.2, 3.3_
     - _Properties: 2_
 
-  - [~] 1.7 Property test SPA fallback
+  - [x] 1.7 Property test SPA fallback
     - **Property 3: SPA fallback for unmatched paths**
     - **Validates: Requirements 2.3, 3.1, 3.4**
     - In `webui_properties_test.go`: generate an asset tree and a `GET` path that names no
@@ -136,7 +136,7 @@ first property-test task promotes it to the direct block via `go mod tidy`.
     - _Requirements: 2.3, 3.1, 3.4_
     - _Properties: 3_
 
-  - [~] 1.8 Unit test the cases a property cannot pin down
+  - [x] 1.8 Unit test the cases a property cannot pin down
     - Create `internal/webui/webui_test.go` as a table over `NewHandlerFS`:
       - `/index.html` and `/` return the same status, body, and `Content-Type` (the
         special case from 1.3 — no redirect, no 301)
@@ -166,7 +166,7 @@ first property-test task promotes it to the direct block via `go mod tidy`.
       `git status --porcelain` is clean for the placeholder
     - _Requirements: 2.5_
 
-- [ ] 3. Route composition in `internal/server`
+- [x] 3. Route composition in `internal/server`
 
   - [x] 3.1 Mount the web UI behind a root mux
     - In `internal/server/server.go`, extract today's body into an unexported
@@ -193,7 +193,7 @@ first property-test task promotes it to the direct block via `go mod tidy`.
     - _Requirements: 3.5, 3.6, 3.7_
     - _Properties: 4, 5, 6_
 
-  - [-] 3.2 Extend `httpExchange` with header and body-substring expectations
+  - [x] 3.2 Extend `httpExchange` with header and body-substring expectations
     - Add `expectedHeaders map[string]string` and `bodyContains []string` to
       `httpExchange` in `internal/server/test_runner_test.go` and wire both through
       `buildExpectations` as additional `expect.Assert(...)` calls
@@ -204,7 +204,7 @@ first property-test task promotes it to the direct block via `go mod tidy`.
       introduce a second test case type (AGENTS.md)
     - _Requirements: 3.1, 3.4, 3.8_
 
-  - [~] 3.3 API tests for the routing table
+  - [x] 3.3 API tests for the routing table
     - New `internal/server/handler_webui_test.go` using `handlerTestCase` /
       `runHandlerTests`. Assets come from the tracked placeholder embed, so these tests
       need no Node.js and no build step
@@ -224,7 +224,7 @@ first property-test task promotes it to the direct block via `go mod tidy`.
     - _Requirements: 3.1, 3.2, 3.4, 3.5, 3.6, 3.7, 3.8_
     - _Properties: 1, 4, 5_
 
-  - [~] 3.4 Property test that API and health paths never fall back
+  - [x] 3.4 Property test that API and health paths never fall back
     - **Property 4: API paths never fall back to the SPA**
     - **Validates: Requirements 3.5**
     - **Property 5: Health paths never fall back to the SPA**
@@ -245,7 +245,7 @@ first property-test task promotes it to the direct block via `go mod tidy`.
     - _Requirements: 3.5, 3.6_
     - _Properties: 4, 5_
 
-  - [~] 3.5 Property test that mounting the web UI perturbs no registered route
+  - [x] 3.5 Property test that mounting the web UI perturbs no registered route
     - **Property 6: Mounting the web UI perturbs no registered route**
     - **Validates: Requirements 3.5, 3.6, 3.7**
     - In `server_properties_test.go`: build the composed root handler from `NewHandler`
@@ -361,7 +361,7 @@ first property-test task promotes it to the direct block via `go mod tidy`.
       predictably
     - _Requirements: 4.1, 4.4, 4.5, 4.6_
 
-- [ ] 8. Pi deployment artifacts
+- [x] 8. Pi deployment artifacts
 
   - [x] 8.1 Write `deploy/docker-compose.yml`
     - No top-level `version:` key. It is obsolete under Compose v2 and modern Docker
@@ -402,7 +402,7 @@ first property-test task promotes it to the direct block via `go mod tidy`.
       documenting them as knobs would invite exactly the misconfiguration 8.1 avoids
     - _Requirements: 5.6, 6.4_
 
-  - [~] 8.3 Test the Compose defaults against `main.go`
+  - [x] 8.3 Test the Compose defaults against `main.go`
     - Table-driven test in `cmd/server/main_test.go` asserting each of the six
       documented Compose defaults equals its `main.go` counterpart:
       `PRODUCT_CACHE_TTL`=`defaultProductCacheTTL`, `PRODUCT_MISS_TTL`=`defaultMissTTL`,
@@ -448,7 +448,7 @@ first property-test task promotes it to the direct block via `go mod tidy`.
     - Verify both files with `systemd-analyze verify` before moving on
     - _Requirements: 7.1, 7.3, 7.4, 7.5, 7.6, 7.7, 7.9, 7.10_
 
-- [ ] 9. Deployment documentation
+- [x] 9. Deployment documentation
 
   - [x] 9.1 Write `deploy/README.md` as the Deployment_Guide
     - Supported target stated up front: 64-bit Raspberry Pi OS on arm64 hardware
@@ -513,7 +513,7 @@ first property-test task promotes it to the direct block via `go mod tidy`.
         volume persists either way
     - _Requirements: 6.1, 6.2, 6.3, 6.4, 6.5, 6.6, 6.7, 6.8, 7.8, 7.11, 7.12, 7.13, 7.14_
 
-  - [-] 9.2 Point `cmd/server/README.md` at the deployment guide
+  - [x] 9.2 Point `cmd/server/README.md` at the deployment guide
     - Add a short "Deployment" section linking to `deploy/README.md`, so a reader who
       starts at the server docs finds the Pi path instead of inferring it from the
       workflow files
