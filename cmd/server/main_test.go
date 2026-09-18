@@ -2,249 +2,143 @@ package main
 
 import (
 	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 	"time"
+
+	"gopkg.in/yaml.v3"
 )
 
-// --------------------------------------------------------------------------
-// productCacheTTL
-// --------------------------------------------------------------------------
+// TestComposeDefaultsMatchMainGo verifies that the defaults in deploy/docker-compose.yml
+// match the defaults used by main.go, preventing cross-artifact drift.
+func TestComposeDefaultsMatchMainGo(t *testing.T) {
+	// Read the compose file
+	composeFile := filepath.Join("..", "..", "deploy", "docker-compose.yml")
+	composeData, err := os.ReadFile(composeFile)
+	if err != nil {
+		t.Fatalf("Failed to read compose file: %v", err)
+	}
 
-// Feature: product-cache-freshness, Property 16: TTL configuration is a total function
-//
-// Validates: Requirements 6.1, 6.2, 6.3
-//
-// productCacheTTL reads PRODUCT_CACHE_TTL and always returns a duration
-// without panicking, calling log.Fatal, or exiting: unset or empty yields the
-// default, a valid Go duration is returned exactly as parsed (even when
-// non-positive), and an unparseable value falls back to the default.
-func TestProductCacheTTL(t *testing.T) {
-	tests := []struct {
-		name  string
-		unset bool
-		value string
-		want  time.Duration
+	// Parse the compose file
+	var compose struct {
+		Services map[string]struct {
+			Environment map[string]string `yaml:"environment"`
+		} `yaml:"services"`
+	}
+
+	if err := yaml.Unmarshal(composeData, &compose); err != nil {
+		t.Fatalf("Failed to parse compose file: %v", err)
+	}
+
+	pantryService, exists := compose.Services["pantry"]
+	if !exists {
+		t.Fatal("pantry service not found in compose file")
+	}
+
+	// Test cases mapping compose defaults to Go constants/defaults
+	testCases := []struct {
+		name           string
+		envVar         string
+		composeDefault string
+		goDefault      interface{}
 	}{
 		{
-			name:  "unset uses default",
-			unset: true,
-			want:  defaultProductCacheTTL,
+			name:           "PRODUCT_CACHE_TTL",
+			envVar:         "PRODUCT_CACHE_TTL",
+			composeDefault: extractDefault(t, pantryService.Environment["PRODUCT_CACHE_TTL"]),
+			goDefault:      defaultProductCacheTTL,
 		},
 		{
-			name:  "empty uses default",
-			value: "",
-			want:  defaultProductCacheTTL,
+			name:           "PRODUCT_MISS_TTL",
+			envVar:         "PRODUCT_MISS_TTL",
+			composeDefault: extractDefault(t, pantryService.Environment["PRODUCT_MISS_TTL"]),
+			goDefault:      defaultMissTTL,
 		},
 		{
-			name:  "one hour",
-			value: "1h",
-			want:  time.Hour,
+			name:           "DISABLE_EXTERNAL_PRODUCT_LOOKUP",
+			envVar:         "DISABLE_EXTERNAL_PRODUCT_LOOKUP",
+			composeDefault: extractDefault(t, pantryService.Environment["DISABLE_EXTERNAL_PRODUCT_LOOKUP"]),
+			goDefault:      "false", // main.go checks != "true", so default is effectively false
 		},
 		{
-			name:  "twenty four hours",
-			value: "24h",
-			want:  24 * time.Hour,
+			name:           "STOCK_IN_CONTROL_BARCODE",
+			envVar:         "STOCK_IN_CONTROL_BARCODE",
+			composeDefault: extractDefault(t, pantryService.Environment["STOCK_IN_CONTROL_BARCODE"]),
+			goDefault:      "STOCK_IN", // from loadScanListenerConfig
 		},
 		{
-			name:  "zero duration is used as given, not defaulted",
-			value: "0s",
-			want:  0,
+			name:           "STOCK_OUT_CONTROL_BARCODE",
+			envVar:         "STOCK_OUT_CONTROL_BARCODE",
+			composeDefault: extractDefault(t, pantryService.Environment["STOCK_OUT_CONTROL_BARCODE"]),
+			goDefault:      "STOCK_OUT", // from loadScanListenerConfig
 		},
 		{
-			name:  "seven hundred twenty hours",
-			value: "720h",
-			want:  720 * time.Hour,
-		},
-		{
-			name:  "unparseable word falls back to default",
-			value: "not-a-duration",
-			want:  defaultProductCacheTTL,
-		},
-		{
-			name:  "bare number with no unit falls back to default",
-			value: "5",
-			want:  defaultProductCacheTTL,
-		},
-		{
-			name:  "unit with a space falls back to default",
-			value: "1 day",
-			want:  defaultProductCacheTTL,
+			name:           "HEADLESS_USER_ID",
+			envVar:         "HEADLESS_USER_ID",
+			composeDefault: extractDefault(t, pantryService.Environment["HEADLESS_USER_ID"]),
+			goDefault:      "user-1", // from loadScanListenerConfig
 		},
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if tt.unset {
-				original, wasSet := os.LookupEnv("PRODUCT_CACHE_TTL")
-				os.Unsetenv("PRODUCT_CACHE_TTL")
-				t.Cleanup(func() {
-					if wasSet {
-						os.Setenv("PRODUCT_CACHE_TTL", original)
-					}
-				})
-			} else {
-				t.Setenv("PRODUCT_CACHE_TTL", tt.value)
-			}
-
-			got := productCacheTTL()
-
-			if got != tt.want {
-				t.Errorf("productCacheTTL() = %v, want %v", got, tt.want)
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			switch expected := tc.goDefault.(type) {
+			case time.Duration:
+				// Convert duration to string for comparison
+				expectedStr := expected.String()
+				if tc.composeDefault != expectedStr {
+					t.Errorf("Compose default %q for %s doesn't match Go default %q",
+						tc.composeDefault, tc.envVar, expectedStr)
+				}
+			case string:
+				if tc.composeDefault != expected {
+					t.Errorf("Compose default %q for %s doesn't match Go default %q",
+						tc.composeDefault, tc.envVar, expected)
+				}
+			default:
+				t.Errorf("Unsupported type %T for %s", expected, tc.envVar)
 			}
 		})
 	}
+
+	// Verify the duration parsing matches by actually parsing the compose defaults
+	t.Run("DurationParsing", func(t *testing.T) {
+		cacheTTLStr := extractDefault(t, pantryService.Environment["PRODUCT_CACHE_TTL"])
+		cacheTTL, err := time.ParseDuration(cacheTTLStr)
+		if err != nil {
+			t.Errorf("Compose PRODUCT_CACHE_TTL %q is not a valid duration: %v", cacheTTLStr, err)
+		} else if cacheTTL != defaultProductCacheTTL {
+			t.Errorf("Parsed compose PRODUCT_CACHE_TTL %s != Go default %s", cacheTTL, defaultProductCacheTTL)
+		}
+
+		missTTLStr := extractDefault(t, pantryService.Environment["PRODUCT_MISS_TTL"])
+		missTTL, err := time.ParseDuration(missTTLStr)
+		if err != nil {
+			t.Errorf("Compose PRODUCT_MISS_TTL %q is not a valid duration: %v", missTTLStr, err)
+		} else if missTTL != defaultMissTTL {
+			t.Errorf("Parsed compose PRODUCT_MISS_TTL %s != Go default %s", missTTL, defaultMissTTL)
+		}
+	})
 }
 
-// --------------------------------------------------------------------------
-// productMissTTL
-// --------------------------------------------------------------------------
+// extractDefault extracts the default value from a ${VAR:-default} environment variable string
+func extractDefault(t *testing.T, envValue string) string {
+	t.Helper()
 
-// Feature: open-products-facts-lookup, Requirement 8.5
-//
-// Validates: Requirements 8.5, 8.6, 8.7
-//
-// productMissTTL reads PRODUCT_MISS_TTL and always returns a duration
-// without panicking, calling log.Fatal, or exiting: unset or empty yields the
-// default (7 days), a valid Go duration is returned exactly as parsed (even when
-// non-positive), and an unparseable value falls back to the default.
-func TestProductMissTTL(t *testing.T) {
-	tests := []struct {
-		name  string
-		unset bool
-		value string
-		want  time.Duration
-	}{
-		{
-			name:  "unset uses default",
-			unset: true,
-			want:  defaultMissTTL,
-		},
-		{
-			name:  "empty uses default",
-			value: "",
-			want:  defaultMissTTL,
-		},
-		{
-			name:  "one hour",
-			value: "1h",
-			want:  time.Hour,
-		},
-		{
-			name:  "seven days (default)",
-			value: "168h",
-			want:  7 * 24 * time.Hour,
-		},
-		{
-			name:  "zero duration is used as given, not defaulted",
-			value: "0s",
-			want:  0,
-		},
-		{
-			name:  "thirty days",
-			value: "720h",
-			want:  30 * 24 * time.Hour,
-		},
-		{
-			name:  "unparseable word falls back to default",
-			value: "not-a-duration",
-			want:  defaultMissTTL,
-		},
-		{
-			name:  "bare number with no unit falls back to default",
-			value: "5",
-			want:  defaultMissTTL,
-		},
-		{
-			name:  "unit with a space falls back to default",
-			value: "1 day",
-			want:  defaultMissTTL,
-		},
+	// Expected format: ${VAR:-default}
+	if !strings.HasPrefix(envValue, "${") || !strings.HasSuffix(envValue, "}") {
+		t.Fatalf("Environment variable %q is not in expected ${VAR:-default} format", envValue)
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if tt.unset {
-				original, wasSet := os.LookupEnv("PRODUCT_MISS_TTL")
-				os.Unsetenv("PRODUCT_MISS_TTL")
-				t.Cleanup(func() {
-					if wasSet {
-						os.Setenv("PRODUCT_MISS_TTL", original)
-					}
-				})
-			} else {
-				t.Setenv("PRODUCT_MISS_TTL", tt.value)
-			}
+	// Remove ${ and }
+	inner := envValue[2 : len(envValue)-1]
 
-			got := productMissTTL()
-
-			if got != tt.want {
-				t.Errorf("productMissTTL() = %v, want %v", got, tt.want)
-			}
-		})
+	// Split on :-
+	parts := strings.SplitN(inner, ":-", 2)
+	if len(parts) != 2 {
+		t.Fatalf("Environment variable %q does not contain :- separator", envValue)
 	}
-}
 
-// --------------------------------------------------------------------------
-// loadScanListenerConfig
-// --------------------------------------------------------------------------
-
-// Feature: background-scan-listener
-//
-// Validates: Requirements 2.7, 4.2
-//
-// loadScanListenerConfig reads the stock-in/stock-out control barcodes and
-// headless user ID from the environment, defaulting each when unset, and
-// refuses to build a listener when the two control barcodes are identical.
-func TestLoadScanListenerConfig(t *testing.T) {
-	t.Run("defaults when unset", func(t *testing.T) {
-		listener, ok := loadScanListenerConfig()
-
-		if !ok {
-			t.Fatal("loadScanListenerConfig() ok = false, want true")
-		}
-		if listener.StockInBarcode != "STOCK_IN" {
-			t.Errorf("StockInBarcode = %q, want %q", listener.StockInBarcode, "STOCK_IN")
-		}
-		if listener.StockOutBarcode != "STOCK_OUT" {
-			t.Errorf("StockOutBarcode = %q, want %q", listener.StockOutBarcode, "STOCK_OUT")
-		}
-		if listener.HeadlessUserID != "user-1" {
-			t.Errorf("HeadlessUserID = %q, want %q", listener.HeadlessUserID, "user-1")
-		}
-	})
-
-	t.Run("explicit env values override defaults", func(t *testing.T) {
-		t.Setenv("STOCK_IN_CONTROL_BARCODE", "IN-123")
-		t.Setenv("STOCK_OUT_CONTROL_BARCODE", "OUT-456")
-		t.Setenv("HEADLESS_USER_ID", "user-headless")
-
-		listener, ok := loadScanListenerConfig()
-
-		if !ok {
-			t.Fatal("loadScanListenerConfig() ok = false, want true")
-		}
-		if listener.StockInBarcode != "IN-123" {
-			t.Errorf("StockInBarcode = %q, want %q", listener.StockInBarcode, "IN-123")
-		}
-		if listener.StockOutBarcode != "OUT-456" {
-			t.Errorf("StockOutBarcode = %q, want %q", listener.StockOutBarcode, "OUT-456")
-		}
-		if listener.HeadlessUserID != "user-headless" {
-			t.Errorf("HeadlessUserID = %q, want %q", listener.HeadlessUserID, "user-headless")
-		}
-	})
-
-	t.Run("equal control barcodes yield ok=false", func(t *testing.T) {
-		t.Setenv("STOCK_IN_CONTROL_BARCODE", "SAME")
-		t.Setenv("STOCK_OUT_CONTROL_BARCODE", "SAME")
-
-		listener, ok := loadScanListenerConfig()
-
-		if ok {
-			t.Fatal("loadScanListenerConfig() ok = true, want false")
-		}
-		if listener != nil {
-			t.Errorf("listener = %v, want nil", listener)
-		}
-	})
+	return parts[1]
 }

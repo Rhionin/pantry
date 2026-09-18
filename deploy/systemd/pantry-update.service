@@ -1,0 +1,11 @@
+[Unit]
+Description=Pull and restart the Pantry deployment
+Wants=network-online.target docker.service
+After=network-online.target docker.service
+
+[Service]
+Type=oneshot
+TimeoutStartSec=15min
+WorkingDirectory=/opt/pantry
+ExecStart=/usr/bin/docker compose -f /opt/pantry/docker-compose.yml pull
+ExecStart=/usr/bin/docker compose -f /opt/pantry/docker-compose.yml up -d

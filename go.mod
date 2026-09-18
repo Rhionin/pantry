@@ -9,6 +9,7 @@ require (
 	github.com/steinfletcher/apitest v1.6.0
 	github.com/steinfletcher/apitest-jsonpath v1.7.2
 	modernc.org/sqlite v1.34.5
+	pgregory.net/rapid v1.3.0
 )
 
 require (
@@ -23,5 +24,4 @@ require (
 	modernc.org/libc v1.55.3 // indirect
 	modernc.org/mathutil v1.6.0 // indirect
 	modernc.org/memory v1.8.0 // indirect
-	pgregory.net/rapid v1.3.0 // indirect
 )

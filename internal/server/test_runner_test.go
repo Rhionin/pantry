@@ -14,6 +14,7 @@ import (
 // httpExchange represents a single HTTP request/response pair for declarative testing.
 type httpExchange struct {
 	method         string
+	url            string // alias for path for consistency
 	path           string
 	query          map[string]string
 	body           string
@@ -30,6 +31,9 @@ type handlerTestCase struct {
 
 	// The primary HTTP exchange to test.
 	httpExchange
+
+	// Additional assertions (can be set per-test as needed)
+	bodyContains []string
 
 	// afterRequest verifies behavior after the primary request.
 	// Prefer exchanges() over direct DB queries.
@@ -113,18 +117,24 @@ func executeExchange(t *testing.T, handler http.Handler, ex httpExchange) {
 
 // buildRequest builds an apitest request from an httpExchange.
 func buildRequest(test *apitest.APITest, ex httpExchange) *apitest.Request {
+	// Use url if provided, otherwise fall back to path
+	requestPath := ex.path
+	if ex.url != "" {
+		requestPath = ex.url
+	}
+
 	var req *apitest.Request
 	switch ex.method {
 	case "GET":
-		req = test.Get(ex.path)
+		req = test.Get(requestPath)
 	case "POST":
-		req = test.Post(ex.path)
+		req = test.Post(requestPath)
 	case "PUT":
-		req = test.Put(ex.path)
+		req = test.Put(requestPath)
 	case "PATCH":
-		req = test.Patch(ex.path)
+		req = test.Patch(requestPath)
 	case "DELETE":
-		req = test.Delete(ex.path)
+		req = test.Delete(requestPath)
 	default:
 		panic("unsupported method: " + ex.method)
 	}

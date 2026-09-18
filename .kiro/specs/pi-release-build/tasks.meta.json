@@ -1,0 +1,434 @@
+{
+  "pbtResults": {
+    "1.6 Property test asset fidelity": {
+      "status": "passed",
+      "lastRunTimestamp": 1789537997791
+    },
+    "1.7 Property test SPA fallback": {
+      "status": "passed",
+      "lastRunTimestamp": 1789538105853
+    }
+  },
+  "executionHistory": {
+    "1.1 Create the package, the embed directive, and the placeholder asset": [
+      {
+        "executionId": "e3117f01-c7d1-4749-803a-ea9f2c293246",
+        "chatSessionId": "sess_f1f715c4-aae3-4d67-bf4d-5fe2f9a75456",
+        "timestamp": 1789535347353
+      },
+      {
+        "executionId": "e3117f01-c7d1-4749-803a-ea9f2c293246",
+        "chatSessionId": "sess_f1f715c4-aae3-4d67-bf4d-5fe2f9a75456",
+        "timestamp": 1789535355433
+      },
+      {
+        "executionId": "e3117f01-c7d1-4749-803a-ea9f2c293246",
+        "chatSessionId": "sess_f1f715c4-aae3-4d67-bf4d-5fe2f9a75456",
+        "timestamp": 1789535633437
+      }
+    ],
+    "1.2 Implement the method gate and asset serving": [
+      {
+        "executionId": "e3117f01-c7d1-4749-803a-ea9f2c293246",
+        "chatSessionId": "sess_f1f715c4-aae3-4d67-bf4d-5fe2f9a75456",
+        "timestamp": 1789535347480
+      },
+      {
+        "executionId": "e3117f01-c7d1-4749-803a-ea9f2c293246",
+        "chatSessionId": "sess_f1f715c4-aae3-4d67-bf4d-5fe2f9a75456",
+        "timestamp": 1789535646027
+      },
+      {
+        "executionId": "e3117f01-c7d1-4749-803a-ea9f2c293246",
+        "chatSessionId": "sess_f1f715c4-aae3-4d67-bf4d-5fe2f9a75456",
+        "timestamp": 1789536181453
+      }
+    ],
+    "1.3 Implement SPA fallback": [
+      {
+        "executionId": "e3117f01-c7d1-4749-803a-ea9f2c293246",
+        "chatSessionId": "sess_f1f715c4-aae3-4d67-bf4d-5fe2f9a75456",
+        "timestamp": 1789535347538
+      },
+      {
+        "executionId": "e3117f01-c7d1-4749-803a-ea9f2c293246",
+        "chatSessionId": "sess_f1f715c4-aae3-4d67-bf4d-5fe2f9a75456",
+        "timestamp": 1789536189476
+      },
+      {
+        "executionId": "e3117f01-c7d1-4749-803a-ea9f2c293246",
+        "chatSessionId": "sess_f1f715c4-aae3-4d67-bf4d-5fe2f9a75456",
+        "timestamp": 1789537034971
+      }
+    ],
+    "1.4 Register the missing MIME types and set cache headers": [
+      {
+        "executionId": "e3117f01-c7d1-4749-803a-ea9f2c293246",
+        "chatSessionId": "sess_f1f715c4-aae3-4d67-bf4d-5fe2f9a75456",
+        "timestamp": 1789535347599
+      },
+      {
+        "executionId": "e3117f01-c7d1-4749-803a-ea9f2c293246",
+        "chatSessionId": "sess_f1f715c4-aae3-4d67-bf4d-5fe2f9a75456",
+        "timestamp": 1789537043223
+      },
+      {
+        "executionId": "e3117f01-c7d1-4749-803a-ea9f2c293246",
+        "chatSessionId": "sess_f1f715c4-aae3-4d67-bf4d-5fe2f9a75456",
+        "timestamp": 1789537460916
+      }
+    ],
+    "1.5 Property test the read-only method gate": [
+      {
+        "executionId": "e3117f01-c7d1-4749-803a-ea9f2c293246",
+        "chatSessionId": "sess_f1f715c4-aae3-4d67-bf4d-5fe2f9a75456",
+        "timestamp": 1789535347663
+      },
+      {
+        "executionId": "e3117f01-c7d1-4749-803a-ea9f2c293246",
+        "chatSessionId": "sess_f1f715c4-aae3-4d67-bf4d-5fe2f9a75456",
+        "timestamp": 1789537468509
+      },
+      {
+        "executionId": "e3117f01-c7d1-4749-803a-ea9f2c293246",
+        "chatSessionId": "sess_f1f715c4-aae3-4d67-bf4d-5fe2f9a75456",
+        "timestamp": 1789537920754
+      }
+    ],
+    "1.6 Property test asset fidelity": [
+      {
+        "executionId": "e3117f01-c7d1-4749-803a-ea9f2c293246",
+        "chatSessionId": "sess_f1f715c4-aae3-4d67-bf4d-5fe2f9a75456",
+        "timestamp": 1789535347716
+      },
+      {
+        "executionId": "e3117f01-c7d1-4749-803a-ea9f2c293246",
+        "chatSessionId": "sess_f1f715c4-aae3-4d67-bf4d-5fe2f9a75456",
+        "timestamp": 1789537929254
+      }
+    ],
+    "1.7 Property test SPA fallback": [
+      {
+        "executionId": "e3117f01-c7d1-4749-803a-ea9f2c293246",
+        "chatSessionId": "sess_f1f715c4-aae3-4d67-bf4d-5fe2f9a75456",
+        "timestamp": 1789535347791
+      }
+    ],
+    "1.8 Unit test the cases a property cannot pin down": [
+      {
+        "executionId": "e3117f01-c7d1-4749-803a-ea9f2c293246",
+        "chatSessionId": "sess_f1f715c4-aae3-4d67-bf4d-5fe2f9a75456",
+        "timestamp": 1789535347828
+      }
+    ],
+    "2.1 Ignore copied build output while keeping the placeholder tracked": [
+      {
+        "executionId": "e3117f01-c7d1-4749-803a-ea9f2c293246",
+        "chatSessionId": "sess_f1f715c4-aae3-4d67-bf4d-5fe2f9a75456",
+        "timestamp": 1789535347872
+      },
+      {
+        "executionId": "e3117f01-c7d1-4749-803a-ea9f2c293246",
+        "chatSessionId": "sess_f1f715c4-aae3-4d67-bf4d-5fe2f9a75456",
+        "timestamp": 1789535358141
+      },
+      {
+        "executionId": "e3117f01-c7d1-4749-803a-ea9f2c293246",
+        "chatSessionId": "sess_f1f715c4-aae3-4d67-bf4d-5fe2f9a75456",
+        "timestamp": 1789535636290
+      }
+    ],
+    "3.1 Mount the web UI behind a root mux": [
+      {
+        "executionId": "e3117f01-c7d1-4749-803a-ea9f2c293246",
+        "chatSessionId": "sess_f1f715c4-aae3-4d67-bf4d-5fe2f9a75456",
+        "timestamp": 1789535347913
+      },
+      {
+        "executionId": "e3117f01-c7d1-4749-803a-ea9f2c293246",
+        "chatSessionId": "sess_f1f715c4-aae3-4d67-bf4d-5fe2f9a75456",
+        "timestamp": 1789537469258
+      },
+      {
+        "executionId": "e3117f01-c7d1-4749-803a-ea9f2c293246",
+        "chatSessionId": "sess_f1f715c4-aae3-4d67-bf4d-5fe2f9a75456",
+        "timestamp": 1789537922410
+      }
+    ],
+    "3.2 Extend `httpExchange` with header and body-substring expectations": [
+      {
+        "executionId": "e3117f01-c7d1-4749-803a-ea9f2c293246",
+        "chatSessionId": "sess_f1f715c4-aae3-4d67-bf4d-5fe2f9a75456",
+        "timestamp": 1789535347957
+      },
+      {
+        "executionId": "e3117f01-c7d1-4749-803a-ea9f2c293246",
+        "chatSessionId": "sess_f1f715c4-aae3-4d67-bf4d-5fe2f9a75456",
+        "timestamp": 1789537930051
+      }
+    ],
+    "3.3 API tests for the routing table": [
+      {
+        "executionId": "e3117f01-c7d1-4749-803a-ea9f2c293246",
+        "chatSessionId": "sess_f1f715c4-aae3-4d67-bf4d-5fe2f9a75456",
+        "timestamp": 1789535348002
+      }
+    ],
+    "3.4 Property test that API and health paths never fall back": [
+      {
+        "executionId": "e3117f01-c7d1-4749-803a-ea9f2c293246",
+        "chatSessionId": "sess_f1f715c4-aae3-4d67-bf4d-5fe2f9a75456",
+        "timestamp": 1789535348052
+      }
+    ],
+    "3.5 Property test that mounting the web UI perturbs no registered route": [
+      {
+        "executionId": "e3117f01-c7d1-4749-803a-ea9f2c293246",
+        "chatSessionId": "sess_f1f715c4-aae3-4d67-bf4d-5fe2f9a75456",
+        "timestamp": 1789535348117
+      }
+    ],
+    "4. Checkpoint - the Go side is complete and self-contained": [
+      {
+        "executionId": "e3117f01-c7d1-4749-803a-ea9f2c293246",
+        "chatSessionId": "sess_f1f715c4-aae3-4d67-bf4d-5fe2f9a75456",
+        "timestamp": 1789535348161
+      }
+    ],
+    "5.1 Write the `Dockerfile`": [
+      {
+        "executionId": "e3117f01-c7d1-4749-803a-ea9f2c293246",
+        "chatSessionId": "sess_f1f715c4-aae3-4d67-bf4d-5fe2f9a75456",
+        "timestamp": 1789535348207
+      },
+      {
+        "executionId": "e3117f01-c7d1-4749-803a-ea9f2c293246",
+        "chatSessionId": "sess_f1f715c4-aae3-4d67-bf4d-5fe2f9a75456",
+        "timestamp": 1789535646735
+      },
+      {
+        "executionId": "e3117f01-c7d1-4749-803a-ea9f2c293246",
+        "chatSessionId": "sess_f1f715c4-aae3-4d67-bf4d-5fe2f9a75456",
+        "timestamp": 1789536182268
+      }
+    ],
+    "6.1 Pin the Node major version": [
+      {
+        "executionId": "e3117f01-c7d1-4749-803a-ea9f2c293246",
+        "chatSessionId": "sess_f1f715c4-aae3-4d67-bf4d-5fe2f9a75456",
+        "timestamp": 1789535348249
+      },
+      {
+        "executionId": "e3117f01-c7d1-4749-803a-ea9f2c293246",
+        "chatSessionId": "sess_f1f715c4-aae3-4d67-bf4d-5fe2f9a75456",
+        "timestamp": 1789535360886
+      },
+      {
+        "executionId": "e3117f01-c7d1-4749-803a-ea9f2c293246",
+        "chatSessionId": "sess_f1f715c4-aae3-4d67-bf4d-5fe2f9a75456",
+        "timestamp": 1789535639161
+      }
+    ],
+    "6.2 Write `.github/workflows/ci.yml`": [
+      {
+        "executionId": "e3117f01-c7d1-4749-803a-ea9f2c293246",
+        "chatSessionId": "sess_f1f715c4-aae3-4d67-bf4d-5fe2f9a75456",
+        "timestamp": 1789535348300
+      },
+      {
+        "executionId": "e3117f01-c7d1-4749-803a-ea9f2c293246",
+        "chatSessionId": "sess_f1f715c4-aae3-4d67-bf4d-5fe2f9a75456",
+        "timestamp": 1789536190146
+      },
+      {
+        "executionId": "e3117f01-c7d1-4749-803a-ea9f2c293246",
+        "chatSessionId": "sess_f1f715c4-aae3-4d67-bf4d-5fe2f9a75456",
+        "timestamp": 1789537035813
+      }
+    ],
+    "7.1 Write `.github/workflows/release.yml`": [
+      {
+        "executionId": "e3117f01-c7d1-4749-803a-ea9f2c293246",
+        "chatSessionId": "sess_f1f715c4-aae3-4d67-bf4d-5fe2f9a75456",
+        "timestamp": 1789535348341
+      },
+      {
+        "executionId": "e3117f01-c7d1-4749-803a-ea9f2c293246",
+        "chatSessionId": "sess_f1f715c4-aae3-4d67-bf4d-5fe2f9a75456",
+        "timestamp": 1789537044815
+      },
+      {
+        "executionId": "e3117f01-c7d1-4749-803a-ea9f2c293246",
+        "chatSessionId": "sess_f1f715c4-aae3-4d67-bf4d-5fe2f9a75456",
+        "timestamp": 1789537459235
+      }
+    ],
+    "8.1 Write `deploy/docker-compose.yml`": [
+      {
+        "executionId": "e3117f01-c7d1-4749-803a-ea9f2c293246",
+        "chatSessionId": "sess_f1f715c4-aae3-4d67-bf4d-5fe2f9a75456",
+        "timestamp": 1789535348389
+      },
+      {
+        "executionId": "e3117f01-c7d1-4749-803a-ea9f2c293246",
+        "chatSessionId": "sess_f1f715c4-aae3-4d67-bf4d-5fe2f9a75456",
+        "timestamp": 1789536191009
+      },
+      {
+        "executionId": "e3117f01-c7d1-4749-803a-ea9f2c293246",
+        "chatSessionId": "sess_f1f715c4-aae3-4d67-bf4d-5fe2f9a75456",
+        "timestamp": 1789537036652
+      }
+    ],
+    "8.2 Write `deploy/.env.example`": [
+      {
+        "executionId": "e3117f01-c7d1-4749-803a-ea9f2c293246",
+        "chatSessionId": "sess_f1f715c4-aae3-4d67-bf4d-5fe2f9a75456",
+        "timestamp": 1789535348435
+      },
+      {
+        "executionId": "e3117f01-c7d1-4749-803a-ea9f2c293246",
+        "chatSessionId": "sess_f1f715c4-aae3-4d67-bf4d-5fe2f9a75456",
+        "timestamp": 1789537045591
+      },
+      {
+        "executionId": "e3117f01-c7d1-4749-803a-ea9f2c293246",
+        "chatSessionId": "sess_f1f715c4-aae3-4d67-bf4d-5fe2f9a75456",
+        "timestamp": 1789537460075
+      }
+    ],
+    "8.3 Test the Compose defaults against `main.go`": [
+      {
+        "executionId": "e3117f01-c7d1-4749-803a-ea9f2c293246",
+        "chatSessionId": "sess_f1f715c4-aae3-4d67-bf4d-5fe2f9a75456",
+        "timestamp": 1789535348484
+      }
+    ],
+    "8.4 Write the Auto_Update_Units in `deploy/systemd/`": [
+      {
+        "executionId": "e3117f01-c7d1-4749-803a-ea9f2c293246",
+        "chatSessionId": "sess_f1f715c4-aae3-4d67-bf4d-5fe2f9a75456",
+        "timestamp": 1789535348529
+      },
+      {
+        "executionId": "e3117f01-c7d1-4749-803a-ea9f2c293246",
+        "chatSessionId": "sess_f1f715c4-aae3-4d67-bf4d-5fe2f9a75456",
+        "timestamp": 1789537044057
+      },
+      {
+        "executionId": "e3117f01-c7d1-4749-803a-ea9f2c293246",
+        "chatSessionId": "sess_f1f715c4-aae3-4d67-bf4d-5fe2f9a75456",
+        "timestamp": 1789537461899
+      }
+    ],
+    "9.1 Write `deploy/README.md` as the Deployment_Guide": [
+      {
+        "executionId": "e3117f01-c7d1-4749-803a-ea9f2c293246",
+        "chatSessionId": "sess_f1f715c4-aae3-4d67-bf4d-5fe2f9a75456",
+        "timestamp": 1789535348573
+      },
+      {
+        "executionId": "e3117f01-c7d1-4749-803a-ea9f2c293246",
+        "chatSessionId": "sess_f1f715c4-aae3-4d67-bf4d-5fe2f9a75456",
+        "timestamp": 1789537470160
+      },
+      {
+        "executionId": "e3117f01-c7d1-4749-803a-ea9f2c293246",
+        "chatSessionId": "sess_f1f715c4-aae3-4d67-bf4d-5fe2f9a75456",
+        "timestamp": 1789537921599
+      }
+    ],
+    "9.2 Point `cmd/server/README.md` at the deployment guide": [
+      {
+        "executionId": "e3117f01-c7d1-4749-803a-ea9f2c293246",
+        "chatSessionId": "sess_f1f715c4-aae3-4d67-bf4d-5fe2f9a75456",
+        "timestamp": 1789535348615
+      },
+      {
+        "executionId": "e3117f01-c7d1-4749-803a-ea9f2c293246",
+        "chatSessionId": "sess_f1f715c4-aae3-4d67-bf4d-5fe2f9a75456",
+        "timestamp": 1789537930828
+      }
+    ],
+    "9.3 Write the Development_Guide in `frontend/README.md`": [
+      {
+        "executionId": "e3117f01-c7d1-4749-803a-ea9f2c293246",
+        "chatSessionId": "sess_f1f715c4-aae3-4d67-bf4d-5fe2f9a75456",
+        "timestamp": 1789535348661
+      },
+      {
+        "executionId": "e3117f01-c7d1-4749-803a-ea9f2c293246",
+        "chatSessionId": "sess_f1f715c4-aae3-4d67-bf4d-5fe2f9a75456",
+        "timestamp": 1789535647577
+      },
+      {
+        "executionId": "e3117f01-c7d1-4749-803a-ea9f2c293246",
+        "chatSessionId": "sess_f1f715c4-aae3-4d67-bf4d-5fe2f9a75456",
+        "timestamp": 1789536183112
+      }
+    ],
+    "10.1 Run the Go suite and the coverage gate": [
+      {
+        "executionId": "e3117f01-c7d1-4749-803a-ea9f2c293246",
+        "chatSessionId": "sess_f1f715c4-aae3-4d67-bf4d-5fe2f9a75456",
+        "timestamp": 1789535348704
+      }
+    ],
+    "10.2 Run the frontend checks the CI job runs": [
+      {
+        "executionId": "e3117f01-c7d1-4749-803a-ea9f2c293246",
+        "chatSessionId": "sess_f1f715c4-aae3-4d67-bf4d-5fe2f9a75456",
+        "timestamp": 1789535348751
+      }
+    ],
+    "10.3 Validate the Compose file renders": [
+      {
+        "executionId": "e3117f01-c7d1-4749-803a-ea9f2c293246",
+        "chatSessionId": "sess_f1f715c4-aae3-4d67-bf4d-5fe2f9a75456",
+        "timestamp": 1789535348792
+      }
+    ],
+    "10.4 Sanity-check the image build locally": [
+      {
+        "executionId": "e3117f01-c7d1-4749-803a-ea9f2c293246",
+        "chatSessionId": "sess_f1f715c4-aae3-4d67-bf4d-5fe2f9a75456",
+        "timestamp": 1789535348841
+      }
+    ],
+    "10.5 Validate the Auto_Update_Units": [
+      {
+        "executionId": "e3117f01-c7d1-4749-803a-ea9f2c293246",
+        "chatSessionId": "sess_f1f715c4-aae3-4d67-bf4d-5fe2f9a75456",
+        "timestamp": 1789535348910
+      }
+    ],
+    "2. Version control hygiene": [
+      {
+        "executionId": "e3117f01-c7d1-4749-803a-ea9f2c293246",
+        "chatSessionId": "sess_f1f715c4-aae3-4d67-bf4d-5fe2f9a75456",
+        "timestamp": 1789535636350
+      }
+    ],
+    "5. Container packaging": [
+      {
+        "executionId": "e3117f01-c7d1-4749-803a-ea9f2c293246",
+        "chatSessionId": "sess_f1f715c4-aae3-4d67-bf4d-5fe2f9a75456",
+        "timestamp": 1789536182328
+      }
+    ],
+    "6. Validation workflow": [
+      {
+        "executionId": "e3117f01-c7d1-4749-803a-ea9f2c293246",
+        "chatSessionId": "sess_f1f715c4-aae3-4d67-bf4d-5fe2f9a75456",
+        "timestamp": 1789537035861
+      }
+    ],
+    "7. Release workflow": [
+      {
+        "executionId": "e3117f01-c7d1-4749-803a-ea9f2c293246",
+        "chatSessionId": "sess_f1f715c4-aae3-4d67-bf4d-5fe2f9a75456",
+        "timestamp": 1789537459310
+      }
+    ]
+  }
+}

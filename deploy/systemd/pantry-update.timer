@@ -1,0 +1,10 @@
+[Unit]
+Description=Check for a new Pantry release on an interval
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=5min
+Unit=pantry-update.service
+
+[Install]
+WantedBy=timers.target

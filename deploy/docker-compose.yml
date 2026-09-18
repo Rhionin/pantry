@@ -1,0 +1,23 @@
+services:
+  pantry:
+    image: ghcr.io/rhionin/pantry:${PANTRY_IMAGE_TAG:-latest}
+    container_name: pantry
+    restart: unless-stopped
+    stdin_open: true
+    tty: true
+    ports:
+      - "${HOST_PORT:-8080}:8080"
+    environment:
+      ADDR: ":8080"
+      DB_PATH: /data/pantry.db
+      PRODUCT_CACHE_TTL: ${PRODUCT_CACHE_TTL:-720h}
+      PRODUCT_MISS_TTL: ${PRODUCT_MISS_TTL:-168h}
+      DISABLE_EXTERNAL_PRODUCT_LOOKUP: ${DISABLE_EXTERNAL_PRODUCT_LOOKUP:-false}
+      STOCK_IN_CONTROL_BARCODE: ${STOCK_IN_CONTROL_BARCODE:-STOCK_IN}
+      STOCK_OUT_CONTROL_BARCODE: ${STOCK_OUT_CONTROL_BARCODE:-STOCK_OUT}
+      HEADLESS_USER_ID: ${HEADLESS_USER_ID:-user-1}
+    volumes:
+      - pantry-data:/data
+
+volumes:
+  pantry-data:

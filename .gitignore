@@ -37,6 +37,13 @@ frontend/pnpm-debug.log*
 frontend/playwright-report/
 frontend/test-results/
 
+# Frontend build copied into the Go embed directory
+internal/webui/assets/*
+!internal/webui/assets/index.html
+
+# Pi deployment secrets/overrides
+deploy/.env
+
 # Editor / OS
 .DS_Store
 Thumbs.db

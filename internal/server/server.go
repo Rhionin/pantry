@@ -12,6 +12,7 @@ import (
 	"github.com/Rhionin/pantry/internal/scan"
 	"github.com/Rhionin/pantry/internal/shopping"
 	"github.com/Rhionin/pantry/internal/suggestion"
+	"github.com/Rhionin/pantry/internal/webui"
 )
 
 // NewHandler creates and configures the HTTP handler with all application
@@ -26,17 +27,40 @@ func NewHandler(
 	refresher *product.Refresher,
 	db *sql.DB,
 ) (http.Handler, *scan.Queue) {
-	mux := http.NewServeMux()
+	// Build the API mux containing all existing routes
+	apiMux, scanQueue := newAPIMux(catalog, lookupService, refresher, db)
+
+	// Create root mux that composes API routes with web UI
+	root := http.NewServeMux()
+	root.Handle("/api", apiMux)
+	root.Handle("/api/", apiMux)
+	root.Handle("/health", apiMux)
+	root.Handle("/health/", apiMux)
+	root.Handle("/", webui.NewHandler())
+
+	return root, scanQueue
+}
+
+// newAPIMux creates the API-only mux with all existing route registrations.
+// This extraction allows tests to access the bare API mux for comparison
+// while keeping the route definitions in one place.
+func newAPIMux(
+	catalog *product.Catalog,
+	lookupService *product.LookupService,
+	refresher *product.Refresher,
+	db *sql.DB,
+) (*http.ServeMux, *scan.Queue) {
+	apiMux := http.NewServeMux()
 
 	broadcaster := events.NewBroadcaster()
 
-	mux.HandleFunc("GET /health", func(w http.ResponseWriter, r *http.Request) {
+	apiMux.HandleFunc("GET /health", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		fmt.Fprintln(w, `{"status":"ok"}`)
 	})
 
 	eventsHandler := &EventsHandler{Broadcaster: broadcaster}
-	mux.HandleFunc("GET /api/events", eventsHandler.Handle)
+	apiMux.HandleFunc("GET /api/events", eventsHandler.Handle)
 
 	// Product handlers
 	lookupHandler := &LookupHandler{Service: lookupService}
@@ -46,12 +70,12 @@ func NewHandler(
 	overrideHandler := &OverrideCreateHandler{Catalog: catalog}
 	refreshHandler := &RefreshHandler{Refresher: refresher, Catalog: catalog}
 
-	mux.HandleFunc("GET /api/products/lookup", HandleJSON(lookupHandler.Handle))
-	mux.HandleFunc("GET /api/products", HandleJSON(listHandler.Handle))
-	mux.HandleFunc("POST /api/products", HandleJSON(createHandler.Handle))
-	mux.HandleFunc("PUT /api/products/{id}", HandleJSON(updateHandler.Handle))
-	mux.HandleFunc("POST /api/products/overrides", HandleJSON(overrideHandler.Handle))
-	mux.HandleFunc("POST /api/products/{id}/refresh", HandleJSON(refreshHandler.Handle))
+	apiMux.HandleFunc("GET /api/products/lookup", HandleJSON(lookupHandler.Handle))
+	apiMux.HandleFunc("GET /api/products", HandleJSON(listHandler.Handle))
+	apiMux.HandleFunc("POST /api/products", HandleJSON(createHandler.Handle))
+	apiMux.HandleFunc("PUT /api/products/{id}", HandleJSON(updateHandler.Handle))
+	apiMux.HandleFunc("POST /api/products/overrides", HandleJSON(overrideHandler.Handle))
+	apiMux.HandleFunc("POST /api/products/{id}/refresh", HandleJSON(refreshHandler.Handle))
 
 	// Scan queue handlers
 	scanQueue := scan.NewQueue(db)
@@ -66,12 +90,12 @@ func NewHandler(
 	scanCommitHandler := &ScanCommitHandler{Queue: scanQueue}
 	scanBatchCommitHandler := &ScanBatchCommitHandler{Queue: scanQueue}
 
-	mux.HandleFunc("POST /api/scans", HandleJSON(scanCreateHandler.Handle))
-	mux.HandleFunc("GET /api/scans", HandleJSON(scanListHandler.Handle))
-	mux.HandleFunc("GET /api/scans/history", HandleJSON(scanHistoryHandler.Handle))
-	mux.HandleFunc("PATCH /api/scans/{id}", HandleJSON(scanUpdateHandler.Handle))
-	mux.HandleFunc("POST /api/scans/{id}/commit", HandleJSON(scanCommitHandler.Handle))
-	mux.HandleFunc("POST /api/scans/batch-commit", HandleJSON(scanBatchCommitHandler.Handle))
+	apiMux.HandleFunc("POST /api/scans", HandleJSON(scanCreateHandler.Handle))
+	apiMux.HandleFunc("GET /api/scans", HandleJSON(scanListHandler.Handle))
+	apiMux.HandleFunc("GET /api/scans/history", HandleJSON(scanHistoryHandler.Handle))
+	apiMux.HandleFunc("PATCH /api/scans/{id}", HandleJSON(scanUpdateHandler.Handle))
+	apiMux.HandleFunc("POST /api/scans/{id}/commit", HandleJSON(scanCommitHandler.Handle))
+	apiMux.HandleFunc("POST /api/scans/batch-commit", HandleJSON(scanBatchCommitHandler.Handle))
 
 	// Inventory handlers
 	pantry := inventory.NewPantry(db)
@@ -82,10 +106,10 @@ func NewHandler(
 	inventoryInstanceCreateHandler := &InventoryInstanceCreateHandler{Pantry: pantry}
 	inventoryInstanceDeleteHandler := &InventoryInstanceDeleteHandler{Pantry: pantry}
 
-	mux.HandleFunc("GET /api/inventory", HandleJSON(inventoryListHandler.Handle))
-	mux.HandleFunc("GET /api/inventory/{itemId}/instances", HandleJSON(inventoryInstancesListHandler.Handle))
-	mux.HandleFunc("POST /api/inventory/{itemId}/instances", HandleJSON(inventoryInstanceCreateHandler.Handle))
-	mux.HandleFunc("DELETE /api/inventory/instances/{instanceId}", HandleJSON(inventoryInstanceDeleteHandler.Handle))
+	apiMux.HandleFunc("GET /api/inventory", HandleJSON(inventoryListHandler.Handle))
+	apiMux.HandleFunc("GET /api/inventory/{itemId}/instances", HandleJSON(inventoryInstancesListHandler.Handle))
+	apiMux.HandleFunc("POST /api/inventory/{itemId}/instances", HandleJSON(inventoryInstanceCreateHandler.Handle))
+	apiMux.HandleFunc("DELETE /api/inventory/instances/{instanceId}", HandleJSON(inventoryInstanceDeleteHandler.Handle))
 
 	// Suggestion and target-quantity handlers
 	consumptionLog := suggestion.NewConsumptionLog(db)
@@ -97,8 +121,8 @@ func NewHandler(
 		Pantry: pantry,
 	}
 
-	mux.HandleFunc("GET /api/suggestions/{itemId}", HandleJSON(suggestionGetHandler.Handle))
-	mux.HandleFunc("POST /api/items/{itemId}/target-quantity", HandleJSON(setTargetQuantityHandler.Handle))
+	apiMux.HandleFunc("GET /api/suggestions/{itemId}", HandleJSON(suggestionGetHandler.Handle))
+	apiMux.HandleFunc("POST /api/items/{itemId}/target-quantity", HandleJSON(setTargetQuantityHandler.Handle))
 
 	// Shopping list handlers
 	shoppingList := shopping.NewStore(db)
@@ -122,11 +146,11 @@ func NewHandler(
 		Exporter:     &shopping.NoOpExporter{},
 	}
 
-	mux.HandleFunc("GET /api/shopping-list", HandleJSON(shoppingListGetHandler.Handle))
-	mux.HandleFunc("POST /api/shopping-list/items", HandleJSON(shoppingListItemCreateHandler.Handle))
-	mux.HandleFunc("DELETE /api/shopping-list/items/{id}", HandleJSON(shoppingListItemDeleteHandler.Handle))
-	mux.HandleFunc("PATCH /api/shopping-list/items/{id}", HandleJSON(shoppingListItemUpdateHandler.Handle))
-	mux.HandleFunc("POST /api/shopping-list/export", HandleJSON(shoppingListExportHandler.Handle))
+	apiMux.HandleFunc("GET /api/shopping-list", HandleJSON(shoppingListGetHandler.Handle))
+	apiMux.HandleFunc("POST /api/shopping-list/items", HandleJSON(shoppingListItemCreateHandler.Handle))
+	apiMux.HandleFunc("DELETE /api/shopping-list/items/{id}", HandleJSON(shoppingListItemDeleteHandler.Handle))
+	apiMux.HandleFunc("PATCH /api/shopping-list/items/{id}", HandleJSON(shoppingListItemUpdateHandler.Handle))
+	apiMux.HandleFunc("POST /api/shopping-list/export", HandleJSON(shoppingListExportHandler.Handle))
 
-	return mux, scanQueue
+	return apiMux, scanQueue
 }
