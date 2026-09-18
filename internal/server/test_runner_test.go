@@ -1,8 +1,12 @@
 package server
 
 import (
+	"bytes"
 	"database/sql"
+	"fmt"
+	"io"
 	"net/http"
+	"strings"
 	"testing"
 	"time"
 
@@ -20,6 +24,17 @@ type httpExchange struct {
 	body           string
 	expectedStatus int
 	assertions     []assertion
+
+	// expectedHeaders asserts that each named response header equals the given
+	// value exactly. Optional; a nil map adds no assertions. The JSONPath-only
+	// assertions field cannot express header checks such as Allow: GET, HEAD.
+	expectedHeaders map[string]string
+
+	// bodyContains asserts that the response body contains each substring.
+	// Optional; a nil slice adds no assertions. This is what lets a case assert
+	// "the response is the HTML document containing X", which JSONPath
+	// assertions cannot express.
+	bodyContains []string
 }
 
 // handlerTestCase defines a single HTTP handler test case for table-driven testing.
@@ -31,9 +46,6 @@ type handlerTestCase struct {
 
 	// The primary HTTP exchange to test.
 	httpExchange
-
-	// Additional assertions (can be set per-test as needed)
-	bodyContains []string
 
 	// afterRequest verifies behavior after the primary request.
 	// Prefer exchanges() over direct DB queries.
@@ -156,6 +168,35 @@ func buildExpectations(req *apitest.Request, ex httpExchange) *apitest.Response 
 
 	for _, a := range ex.assertions {
 		expect = expect.Assert(jsonpath.Equal(a.path, a.value))
+	}
+
+	for name, value := range ex.expectedHeaders {
+		name, value := name, value
+		expect = expect.Assert(func(res *http.Response, _ *http.Request) error {
+			if got := res.Header.Get(name); got != value {
+				return fmt.Errorf("expected header %q to equal %q, got %q", name, value, got)
+			}
+			return nil
+		})
+	}
+
+	if len(ex.bodyContains) > 0 {
+		substrings := ex.bodyContains
+		expect = expect.Assert(func(res *http.Response, _ *http.Request) error {
+			b, err := io.ReadAll(res.Body)
+			if err != nil {
+				return fmt.Errorf("read response body: %w", err)
+			}
+			// Restore the body so any later assertions still see it.
+			res.Body = io.NopCloser(bytes.NewReader(b))
+			body := string(b)
+			for _, want := range substrings {
+				if !strings.Contains(body, want) {
+					return fmt.Errorf("expected body to contain %q, got %q", want, body)
+				}
+			}
+			return nil
+		})
 	}
 
 	return expect
