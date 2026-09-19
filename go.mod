@@ -8,6 +8,7 @@ require (
 	github.com/justinrixx/retryhttp v1.1.1
 	github.com/steinfletcher/apitest v1.6.0
 	github.com/steinfletcher/apitest-jsonpath v1.7.2
+	gopkg.in/yaml.v3 v3.0.0-20200313102051-9f266ea9e77c
 	modernc.org/sqlite v1.34.5
 	pgregory.net/rapid v1.3.0
 )
