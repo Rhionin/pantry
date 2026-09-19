@@ -2,7 +2,7 @@ name: Release
 
 on:
   push:
-    branches: [main]
+    branches: [master]
 
 permissions:
   contents: read
@@ -43,5 +43,5 @@ jobs:
           cache-to: type=gha,mode=max
           tags: |
             ghcr.io/rhionin/pantry:latest
-            ghcr.io/rhionin/pantry:main
+            ghcr.io/rhionin/pantry:master
             ghcr.io/rhionin/pantry:${{ github.sha }}
