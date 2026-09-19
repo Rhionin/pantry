@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/Rhionin/pantry/internal/cart"
 	"github.com/Rhionin/pantry/internal/inventory"
 	"github.com/google/uuid"
 )
@@ -69,6 +70,20 @@ func (r *Queue) CommitStockIn(ctx context.Context, scanEntry *ScanEntry) error {
 	)
 	if err != nil {
 		return fmt.Errorf("update scan entry: %w", err)
+	}
+
+	// Reset the ledger for this item if a Ledger is configured.
+	// This happens inside the transaction so a crash after tx.Commit()
+	// would leave instances on the shelf and a ledger still claiming
+	// units are outstanding.
+	if r.Ledger != nil {
+		// For now, we use an empty provider ID since we don't know which
+		// provider to reset. In practice, this would be called per-provider
+		// during provisioning.
+		// TODO: Pass provider ID from provisioning context
+		if err := r.Ledger.ResetForItemTx(ctx, tx, cart.ProviderID(""), itemID, scanEntry.ScannedAt); err != nil {
+			return fmt.Errorf("reset ledger: %w", err)
+		}
 	}
 
 	if err := tx.Commit(); err != nil {
