@@ -1,0 +1,12 @@
+# 2026/09/19 20:37:22.468229 [TestProperty7_PantryPublishesOnSuccess] [rapid] draw prodName: "Aa"
+# 2026/09/19 20:37:22.468400 [TestProperty7_PantryPublishesOnSuccess] GetOrCreateItem failed: getItemByID: sql: expected 11 destination arguments in Scan, not 12
+# 
+v0.4.8#14906261722931814726
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
