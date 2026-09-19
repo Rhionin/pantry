@@ -57,12 +57,14 @@ func TestMigrationApplies(t *testing.T) {
 	want := []string{
 		"barcode_misses",
 		"barcodes",
-		"cart_integrations",
 		"consumption_events",
+		"fulfillment_ledger",
 		"item_instances",
 		"items",
 		"products",
+		"provider_connections",
 		"scan_entries",
+		"shopping_list_entry_adjustments",
 		"shopping_list_items",
 	}
 	sort.Strings(want) // already sorted, but be explicit
@@ -96,14 +98,15 @@ func TestMigrationIsIdempotent(t *testing.T) {
 	// One schema_migrations row per applied .sql file; the second RunMigrations
 	// must not re-apply any file, so the count equals the number of migration
 	// files (currently 001_initial_schema.sql, 002_backfill_orphaned_products.sql,
-	// 003_add_product_image_url.sql, 004_add_product_freshness.sql, and
-	// 005_add_external_source_and_barcode_misses.sql).
+	// 003_add_product_image_url.sql, 004_add_product_freshness.sql,
+	// 005_add_external_source_and_barcode_misses.sql, and
+	// 006_replace_cart_integrations_with_provider_ledger.sql).
 	var count int
 	if err := conn.QueryRow(`SELECT COUNT(*) FROM schema_migrations`).Scan(&count); err != nil {
 		t.Fatalf("count schema_migrations: %v", err)
 	}
-	if count != 5 {
-		t.Errorf("schema_migrations should have 5 rows after two runs, got %d", count)
+	if count != 6 {
+		t.Errorf("schema_migrations should have 6 rows after two runs, got %d", count)
 	}
 }
 
