@@ -40,15 +40,21 @@ export const ScanEntryCard = ({
 
   // Sync draft state when unitCount or expiresAt changes (server updates)
   useEffect(() => {
+    // Deliberate prop->draft sync: reset the controlled draft when the server value changes.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setUnitCountDraft(entry.unitCount);
   }, [entry.unitCount]);
 
   useEffect(() => {
+    // Deliberate prop->draft sync: reset the controlled draft when the server value changes.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setExpiryDraft(entry.expiresAt === null ? '' : entry.expiresAt.substring(0, 10));
   }, [entry.expiresAt]);
 
   // Show change indicator on mount and when unitCount changes
   useEffect(() => {
+    // Intentional transient animation trigger, cleared by the cleanup timer below.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setShowChangeIndicator(true);
     const timer = setTimeout(() => setShowChangeIndicator(false), 600);
     return () => clearTimeout(timer);

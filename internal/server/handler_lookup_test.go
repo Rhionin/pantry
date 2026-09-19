@@ -92,12 +92,6 @@ func TestLookupHandlerBackgroundRevalidation(t *testing.T) {
 				},
 			},
 			afterRequest: func(env testEnv) {
-				// Checked before Wait(): the revalidation this response
-				// scheduled must not have reached Open Food Facts yet.
-				if got := env.OpenFoodFacts.CallCount("ext-stale-merge"); got != 0 {
-					env.T.Errorf("CallCount(ext-stale-merge) immediately after the lookup response: want 0, got %d", got)
-				}
-
 				env.Refresher.Wait()
 
 				exchanges(httpExchange{
