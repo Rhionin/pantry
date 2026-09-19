@@ -171,3 +171,59 @@ func scanShoppingListItem(row scanner) (*ShoppingListItem, error) {
 
 	return &item, nil
 }
+
+// Adjustment holds a shopping list entry adjustment for a provider.
+type Adjustment struct {
+	EntryID    string
+	ProviderID string
+	Quantity   int // 0-999
+	CreatedAt  time.Time
+}
+
+// SetAdjustment sets the adjustment quantity for one entry and provider.
+// Validates quantity is in range 0-999.
+func (s *Store) SetAdjustment(ctx context.Context, entryID, providerID string, quantity int) error {
+	if quantity < 0 || quantity > 999 {
+		return fmt.Errorf("adjustment quantity must be 0-999, got %d", quantity)
+	}
+	_, err := s.db.ExecContext(ctx,
+		`INSERT INTO shopping_list_entry_adjustments (entry_id, provider_id, quantity)
+		 VALUES (?, ?, ?)
+		 ON CONFLICT(entry_id, provider_id) DO UPDATE SET quantity = ?`,
+		entryID, providerID, quantity, quantity)
+	return err
+}
+
+// GetAdjustment returns the adjustment for one entry and provider, or (nil, nil) if not found.
+func (s *Store) GetAdjustment(ctx context.Context, entryID, providerID string) (*Adjustment, error) {
+	var adj Adjustment
+	err := s.db.QueryRowContext(ctx,
+		`SELECT entry_id, provider_id, quantity, updated_at
+		 FROM shopping_list_entry_adjustments
+		 WHERE entry_id = ? AND provider_id = ?`,
+		entryID, providerID).Scan(&adj.EntryID, &adj.ProviderID, &adj.Quantity, &adj.CreatedAt)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to get adjustment: %w", err)
+	}
+	return &adj, nil
+}
+
+// ClearAdjustmentTx clears the adjustment for one entry and provider inside an existing transaction.
+// This must be called in the same transaction as ledger reset.
+func (s *Store) ClearAdjustmentTx(ctx context.Context, tx *sql.Tx, entryID, providerID string) error {
+	_, err := tx.ExecContext(ctx,
+		`DELETE FROM shopping_list_entry_adjustments WHERE entry_id = ? AND provider_id = ?`,
+		entryID, providerID)
+	return err
+}
+
+// RemoveAdjustment removes the adjustment for one entry and provider.
+func (s *Store) RemoveAdjustment(ctx context.Context, entryID, providerID string) error {
+	_, err := s.db.ExecContext(ctx,
+		`DELETE FROM shopping_list_entry_adjustments WHERE entry_id = ? AND provider_id = ?`,
+		entryID, providerID)
+	return err
+}

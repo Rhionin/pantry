@@ -17,8 +17,21 @@ var (
 	ErrInstanceNotFound = errors.New("item instance not found")
 )
 
+// ReplenishmentMode identifies the shopping list calculation mode.
+type ReplenishmentMode string
+
+const (
+	ReplenishMode ReplenishmentMode = "replenish"
+	TargetMode    ReplenishmentMode = "target"
+)
+
+// Valid returns true if the mode is a valid value.
+func (m ReplenishmentMode) Valid() bool {
+	return m == ReplenishMode || m == TargetMode
+}
+
 // Item represents a user's specific instance of interest in a product,
-// with an optional target quantity.
+// with an optional target quantity and replenishment mode.
 type Item struct {
 	ID             string                  `json:"id"`
 	UserID         string                  `json:"userId"`
@@ -26,6 +39,7 @@ type Item struct {
 	Product        *product.ProductSummary `json:"product"` // populated by join queries
 	TargetQuantity *int                    `json:"targetQuantity"`
 	CreatedAt      time.Time               `json:"createdAt"`
+	ReplenishmentMode ReplenishmentMode   `json:"replenishmentMode"`
 }
 
 // ItemInstance represents a single physical unit tracked in the pantry.
@@ -85,7 +99,7 @@ func (r *Pantry) GetOrCreateItem(ctx context.Context, userID, productID string) 
 func (r *Pantry) getItemByUserAndProduct(ctx context.Context, userID, productID string) (*Item, error) {
 	row := r.db.QueryRowContext(ctx, `
 		SELECT 
-			i.id, i.user_id, i.product_id, i.target_quantity, i.created_at,
+			i.id, i.user_id, i.product_id, i.target_quantity, i.created_at, i.replenishment_mode,
 			p.id, p.name, COALESCE(p.category, ''), COALESCE(p.unit_of_measure, ''), COALESCE(p.image_url, ''), COALESCE(p.external_source, '')
 		FROM items i
 		JOIN products p ON p.id = i.product_id
@@ -107,7 +121,7 @@ func (r *Pantry) getItemByUserAndProduct(ctx context.Context, userID, productID 
 func (r *Pantry) getItemByID(ctx context.Context, itemID string) (*Item, error) {
 	row := r.db.QueryRowContext(ctx, `
 		SELECT 
-			i.id, i.user_id, i.product_id, i.target_quantity, i.created_at,
+			i.id, i.user_id, i.product_id, i.target_quantity, i.created_at, i.replenishment_mode,
 			p.id, p.name, COALESCE(p.category, ''), COALESCE(p.unit_of_measure, ''), COALESCE(p.image_url, ''), COALESCE(p.external_source, '')
 		FROM items i
 		JOIN products p ON p.id = i.product_id
@@ -129,7 +143,7 @@ func (r *Pantry) getItemByID(ctx context.Context, itemID string) (*Item, error) 
 func (r *Pantry) ListItems(ctx context.Context, userID string) ([]Item, error) {
 	rows, err := r.db.QueryContext(ctx, `
 		SELECT 
-			i.id, i.user_id, i.product_id, i.target_quantity, i.created_at,
+			i.id, i.user_id, i.product_id, i.target_quantity, i.created_at, i.replenishment_mode,
 			p.id, p.name, COALESCE(p.category, ''), COALESCE(p.unit_of_measure, ''), COALESCE(p.image_url, ''), COALESCE(p.external_source, '')
 		FROM items i
 		JOIN products p ON p.id = i.product_id
@@ -272,6 +286,33 @@ func (r *Pantry) UpdateTargetQuantity(ctx context.Context, itemID string, qty in
 	return nil
 }
 
+// UpdateReplenishmentMode sets the replenishment_mode for the given item.
+// Returns ErrInstanceNotFound if no item with that ID exists.
+// Enforces the two-value set in Go.
+func (r *Pantry) UpdateReplenishmentMode(ctx context.Context, itemID string, mode ReplenishmentMode) error {
+	if !mode.Valid() {
+		return fmt.Errorf("invalid replenishment mode: %q", mode)
+	}
+	res, err := r.db.ExecContext(ctx,
+		`UPDATE items SET replenishment_mode = ? WHERE id = ?`,
+		string(mode), itemID,
+	)
+	if err != nil {
+		return fmt.Errorf("UpdateReplenishmentMode: %w", err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("UpdateReplenishmentMode rows affected: %w", err)
+	}
+	if n == 0 {
+		return ErrInstanceNotFound
+	}
+
+	r.publishInventoryEvent(ctx, itemID)
+
+	return nil
+}
+
 // publishInventoryEvent fetches the aggregated InventoryItem for itemID and
 // publishes it via Broadcaster. It is a no-op if Broadcaster is nil, the
 // item can't be found, or the fetch fails, since the mutation that
@@ -320,6 +361,7 @@ type scanner interface {
 func scanItem(row scanner) (*Item, error) {
 	var item Item
 	var targetQuantity sql.NullInt64
+	var replenishmentMode string
 	var productID, productName, productCategory, productUnitOfMeasure, productImageURL, productExternalSource string
 
 	err := row.Scan(
@@ -328,6 +370,7 @@ func scanItem(row scanner) (*Item, error) {
 		&item.ProductID,
 		&targetQuantity,
 		&item.CreatedAt,
+		&replenishmentMode,
 		&productID,
 		&productName,
 		&productCategory,
@@ -342,6 +385,12 @@ func scanItem(row scanner) (*Item, error) {
 	if targetQuantity.Valid {
 		tq := int(targetQuantity.Int64)
 		item.TargetQuantity = &tq
+	}
+
+	item.ReplenishmentMode = ReplenishmentMode(replenishmentMode)
+	if !item.ReplenishmentMode.Valid() {
+		// Default to target mode if invalid
+		item.ReplenishmentMode = TargetMode
 	}
 
 	item.Product = &product.ProductSummary{

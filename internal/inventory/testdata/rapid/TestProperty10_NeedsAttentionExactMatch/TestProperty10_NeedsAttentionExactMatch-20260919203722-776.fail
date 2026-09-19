@@ -1,0 +1,25 @@
+# 2026/09/19 20:37:22.268343 [TestProperty10_NeedsAttentionExactMatch] [rapid] draw numItems: 1
+# 2026/09/19 20:37:22.268361 [TestProperty10_NeedsAttentionExactMatch] [rapid] draw prodName: "Aa"
+# 2026/09/19 20:37:22.268368 [TestProperty10_NeedsAttentionExactMatch] [rapid] draw category: "Aa"
+# 2026/09/19 20:37:22.268622 [TestProperty10_NeedsAttentionExactMatch] GetOrCreateItem failed: getItemByID: sql: expected 11 destination arguments in Scan, not 12
+# 
+v0.4.8#11294496891808310370
+0x0
+0x0
+0x1
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0

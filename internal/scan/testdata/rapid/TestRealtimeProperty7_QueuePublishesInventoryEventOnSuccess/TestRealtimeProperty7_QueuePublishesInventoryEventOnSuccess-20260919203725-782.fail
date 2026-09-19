@@ -1,0 +1,11 @@
+# 2026/09/19 20:37:25.782700 [TestRealtimeProperty7_QueuePublishesInventoryEventOnSuccess] [rapid] draw operation: 0
+# 2026/09/19 20:37:25.782703 [TestRealtimeProperty7_QueuePublishesInventoryEventOnSuccess] [rapid] draw unitCount: 1
+# 2026/09/19 20:37:25.783224 [TestRealtimeProperty7_QueuePublishesInventoryEventOnSuccess] CommitStockIn failed: getItemByID: sql: expected 11 destination arguments in Scan, not 12
+# 
+v0.4.8#15202756638928984528
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
