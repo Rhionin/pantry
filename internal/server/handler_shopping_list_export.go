@@ -2,8 +2,8 @@ package server
 
 import (
 	"context"
-	"errors"
 
+	"github.com/Rhionin/pantry/internal/cart"
 	"github.com/Rhionin/pantry/internal/inventory"
 	"github.com/Rhionin/pantry/internal/shopping"
 )
@@ -18,7 +18,7 @@ type ShoppingListExportHandler struct {
 		ListItems(ctx context.Context, userID string) ([]inventory.Item, error)
 		ListItemInstances(ctx context.Context, itemID string) ([]inventory.ItemInstance, error)
 	}
-	Exporter shopping.CartExporter
+	Provisioner cart.Provisioner
 }
 
 type shoppingListExportResponse struct {
@@ -27,56 +27,16 @@ type shoppingListExportResponse struct {
 
 func (h *ShoppingListExportHandler) Handle(req Request[struct{}, struct{}]) (*shoppingListExportResponse, error) {
 	const userID = "user-1"
+	const providerID = "kroger"
 
-	items, err := h.Pantry.ListItems(req.Context, userID)
+	// For now, use the no-op provisioner
+	// TODO: wire up real provider when available
+	report, err := h.Provisioner.Provision(req.Context, userID, cart.ProviderID(providerID))
 	if err != nil {
 		return nil, InternalError(err)
 	}
 
-	deriveInputs := make([]shopping.DeriveInput, 0, len(items))
-	for _, item := range items {
-		if item.TargetQuantity == nil {
-			continue
-		}
-		instances, err := h.Pantry.ListItemInstances(req.Context, item.ID)
-		if err != nil {
-			return nil, InternalError(err)
-		}
-		deriveInputs = append(deriveInputs, shopping.DeriveInput{
-			ItemID:         item.ID,
-			TargetQuantity: *item.TargetQuantity,
-			CurrentCount:   len(instances),
-		})
-	}
-
-	derived := shopping.DeriveShoppingList(deriveInputs)
-
-	manualItems, err := h.ShoppingList.ListManualItems(req.Context, userID)
-	if err != nil {
-		return nil, InternalError(err)
-	}
-
-	manualEntries := make([]shopping.ManualEntry, len(manualItems))
-	for i, m := range manualItems {
-		manualEntries[i] = shopping.ManualEntry{ItemID: m.ItemID, Quantity: m.Quantity}
-	}
-	merged := shopping.MergeEntries(derived, manualEntries)
-
-	exportItems := make([]shopping.ExportItem, len(merged))
-	for i, e := range merged {
-		exportItems[i] = shopping.ExportItem{
-			ItemID:   e.ItemID,
-			Quantity: e.Quantity,
-		}
-	}
-
-	if err := h.Exporter.Export(req.Context, exportItems); err != nil {
-		var exportErr *shopping.ExportError
-		if errors.As(err, &exportErr) {
-			return nil, &HTTPError{Code: 500, Message: exportErr.Error()}
-		}
-		return nil, InternalError(err)
-	}
-
-	return &shoppingListExportResponse{Exported: len(exportItems)}, nil
+	// The no-op provisioner returns no entries, so exported is 0
+	// When a real provider is wired, this should use the report.Confirmed count
+	return &shoppingListExportResponse{Exported: report.Confirmed}, nil
 }
