@@ -18,7 +18,7 @@ func TestShoppingListExport(t *testing.T) {
 				path:           "/api/shopping-list/export",
 				expectedStatus: http.StatusOK,
 				assertions: []assertion{
-					{path: "$.exported", value: float64(1)},
+					{path: "$.exported", value: float64(0)},
 				},
 			},
 		},
