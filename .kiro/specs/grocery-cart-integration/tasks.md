@@ -496,7 +496,13 @@ Language: Go for the backend, TypeScript/React for the frontend.
       check-digit gate are what cover placement
     - `rapid` generator: the number system is `rapid.Just('0')`, there is nothing to sample; draw the
       sixth encoded digit across all ten values so every placement case is hit
-    - _Requirements: 17.6, 17.7_
+    - An 8-character barcode can also be an EAN-8, and no check digit separates the two schemes.
+      Treat it as a UPC-E when it begins with `0` and its carried check digit agrees — that is a
+      **decided, accepted residual**, not an oversight, so do not add a further gate and do not
+      record a barcode scheme. The consequence is bounded: the Cart API has no checkout operation, so
+      a misread reaches a cart the owner reviews before paying. Requirement 17.18 states this, and
+      Open Question 6 carries the measured figures behind it
+    - _Requirements: 17.6, 17.7, 17.18_
     - _Properties: 19_
 
   - [ ] 6.3 Cart-add payload serialization and validation
