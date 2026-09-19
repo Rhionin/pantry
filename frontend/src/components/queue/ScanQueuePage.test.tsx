@@ -181,8 +181,8 @@ describe('ScanQueuePage', () => {
     render(<MantineProvider><ScanQueuePage /></MantineProvider>);
 
     // Verify the Tabs component renders with Stock_Out_View as the default
-    const tabs = await screen.findByRole('tablist');
-    
+    await screen.findByRole('tablist');
+
     // Find tabs by their ID attributes to ensure we get the correct tab elements
     const stockOutTab = screen.getByRole('tab', { name: 'Stock out' });
     const stockInTab = screen.getByRole('tab', { name: 'Stock in' });
@@ -224,7 +224,7 @@ describe('ScanQueuePage', () => {
     const { unmount } = render(<MantineProvider><ScanQueuePage /></MantineProvider>);
 
     // First mount: switch to Stock_In_View
-    const tabs = await screen.findByRole('tablist');
+    await screen.findByRole('tablist');
     const stockInTab = screen.getByRole('tab', { name: 'Stock in' });
     stockInTab.click();
 

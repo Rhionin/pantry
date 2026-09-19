@@ -2,6 +2,59 @@
 
 This guide covers deploying Pantry on a Raspberry Pi using Docker Compose.
 
+## Quick Start
+
+New to this? Follow these steps in order on your Raspberry Pi and you'll have Pantry running with automatic updates. Each step says what it does. For options, backups, and troubleshooting, use the reference sections further down.
+
+1. **What you need.** A Raspberry Pi running 64-bit Raspberry Pi OS, and the ability to open a terminal. (See [Supported Platform](#supported-platform) below for exact hardware and OS details.)
+
+2. **Install Docker.** Docker is the engine that runs Pantry. Run:
+
+   ```bash
+   curl -fsSL https://get.docker.com | sh
+   sudo usermod -aG docker $USER
+   ```
+
+   Then **log out and log back in** so the second command takes effect.
+
+3. **Get the Pantry files onto the Pi.** The deployment files live in this repository's `deploy/` folder: `docker-compose.yml`, `.env.example`, and the `systemd/` folder. Copy that whole folder into `/opt/pantry` on your Pi (for example, clone the repo with `git` and copy the `deploy/` contents, or copy them over with a USB drive or `scp`). Use exactly `/opt/pantry`, because the automatic-update files expect that path.
+
+4. **Create the config file.** This holds your settings; the defaults work fine to get started, and you can edit it later (see the [Configuration](#configuration) table). Run:
+
+   ```bash
+   cd /opt/pantry
+   sudo cp .env.example .env
+   ```
+
+5. **Start Pantry.** This downloads the Pantry software and starts it running in the background:
+
+   ```bash
+   sudo docker compose up -d
+   ```
+
+6. **Check it works.** Run this on the Pi. It should print `{"status":"ok"}`:
+
+   ```bash
+   curl http://localhost:8080/health
+   ```
+
+   You can also open `http://<pi-ip-address>:8080` in a web browser on any device on the same network.
+
+7. **Turn on automatic updates.** This copies in two small helper files and switches on a timer that checks for and installs new versions of Pantry for you:
+
+   ```bash
+   sudo cp /opt/pantry/systemd/pantry-update.service /etc/systemd/system/
+   sudo cp /opt/pantry/systemd/pantry-update.timer /etc/systemd/system/
+   sudo systemctl daemon-reload
+   sudo systemctl enable --now pantry-update.timer
+   ```
+
+   Once this is on, every new version installs automatically with no approval step, and the updater runs as root because it controls Docker. See [⚠️ Important Considerations](#️-important-considerations) below for the full picture. Don't turn this on if you've pinned Pantry to a specific version (see [Pinning to Specific Versions](#pinning-to-specific-versions)), because the updater would keep looking for updates it should not apply.
+
+That's it. Pantry will now keep itself up to date.
+
+The rest of this guide is reference material: configuration options, backups, the barcode scanner, rolling back, and troubleshooting.
+
 ## Supported Platform
 
 **Target:** 64-bit Raspberry Pi OS on arm64 hardware
@@ -96,7 +149,7 @@ All configuration is handled through environment variables in `/opt/pantry/.env`
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `PANTRY_IMAGE_TAG` | `latest` | Container image tag to deploy. Use `latest` for newest build, `main` for main branch, or full commit SHA to pin version |
+| `PANTRY_IMAGE_TAG` | `latest` | Container image tag to deploy. Use `latest` for newest build, `master` for master branch, or full commit SHA to pin version |
 | `HOST_PORT` | `8080` | Host port to expose Pantry service. Container always uses port 8080 internally |
 | `PRODUCT_CACHE_TTL` | `720h` | How long to cache product lookups (720h = 30 days) |
 | `PRODUCT_MISS_TTL` | `168h` | How long to cache "not found" results (168h = 7 days) |
@@ -206,8 +259,8 @@ PANTRY_IMAGE_TAG=a1b2c3d4e5f6789012345678901234567890abcd
 ```
 
 Available tags:
-- `latest` - Most recent build from main branch
-- `main` - Alias for latest main branch build  
+- `latest` - Most recent build from master branch
+- `master` - Alias for latest master branch build  
 - `<commit-sha>` - Specific commit (full SHA)
 
 ### Rolling Back
@@ -233,7 +286,7 @@ For automatic updates, you can install systemd units that periodically check for
 
 **Before enabling automatic updates, understand:**
 - The service runs as root because it drives the Docker daemon
-- Enabling automatic updates means **every push to main deploys unattended** with no approval step
+- Enabling automatic updates means **every push to master deploys unattended** with no approval step
 - Container recreation will drop any attached barcode scanner session
 - If you pin to a specific commit SHA, leave automatic updates disabled (they would run forever finding nothing)
 

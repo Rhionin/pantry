@@ -3,7 +3,6 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { MantineProvider } from '@mantine/core';
 import { ScanEntryCard } from './ScanEntryCard';
 import type { ItemInstanceWithStatus, ScanEntry } from '../../types';
-import { commitScanEntry } from '../../api/client';
 
 const entry: ScanEntry = {
   id: 'scan-1',
@@ -784,8 +783,8 @@ describe('ScanEntryCard batch selection checkbox', () => {
       </MantineProvider>,
     );
 
-    const checkbox = screen.getByRole('checkbox', { name: 'Select scan for batch approval' });
-    
+    screen.getByRole('checkbox', { name: 'Select scan for batch approval' });
+
     expect(screen.queryByText('Select scan for batch approval')).not.toBeInTheDocument();
     expect(screen.queryByText(/Select scan/)).not.toBeInTheDocument();
   });
@@ -1215,7 +1214,7 @@ describe('ScanEntryCard provenance badge', () => {
     render(
       <MantineProvider>
         <ScanEntryCard
-          entry={{ ...entry, product: { ...entry.product, externalSource: 'openfoodfacts' } }}
+          entry={{ ...entry, product: { id: 'product-1', name: 'Milk', category: 'Dairy', unitOfMeasure: 'carton', externalSource: 'openfoodfacts' } }}
           itemId="item-1"
           selected={false}
           onSelectedChange={vi.fn()}

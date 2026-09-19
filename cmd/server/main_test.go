@@ -85,11 +85,16 @@ func TestComposeDefaultsMatchMainGo(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			switch expected := tc.goDefault.(type) {
 			case time.Duration:
-				// Convert duration to string for comparison
-				expectedStr := expected.String()
-				if tc.composeDefault != expectedStr {
+				// Compare as durations: the compose literal ("720h") and the Go
+				// constant's String() form ("720h0m0s") are the same duration
+				// but different strings, so parse before comparing.
+				composeDuration, err := time.ParseDuration(tc.composeDefault)
+				if err != nil {
+					t.Errorf("Compose default %q for %s is not a valid duration: %v",
+						tc.composeDefault, tc.envVar, err)
+				} else if composeDuration != expected {
 					t.Errorf("Compose default %q for %s doesn't match Go default %q",
-						tc.composeDefault, tc.envVar, expectedStr)
+						tc.composeDefault, tc.envVar, expected)
 				}
 			case string:
 				if tc.composeDefault != expected {

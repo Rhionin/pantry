@@ -21,3 +21,7 @@ In addition to the browser-based scanner input (`BarcodeInputField` in the front
 Because HID scanners have no direction button, mode is set by scanning one of two reserved "control" barcodes (printed labels), configured via `STOCK_IN_CONTROL_BARCODE` / `STOCK_OUT_CONTROL_BARCODE`. Scanning a control barcode switches the mode for all subsequent product scans until another control barcode is scanned. The mode resets to stock-in on every server restart.
 
 Every scan captured this way goes through the same review queue as browser-created scans, so lookup failures and confirmations are handled identically regardless of how the scan was entered.
+
+## Deployment
+
+In production, the server ships as a single `arm64` container image that runs on a Raspberry Pi via `docker compose`. See the [Deployment Guide](../../deploy/README.md) for the full procedure.
