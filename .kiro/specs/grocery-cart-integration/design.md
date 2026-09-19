@@ -152,8 +152,8 @@ sequenceDiagram
     T->>A: RefreshToken(...) — at most one flight per provider (Req 3.9)
     T-->>E: BearerCredential
     E->>A: Add(ctx, cred, ProvisionRequest)
-    A->>K: POST cart/add (PICKUP, 13-digit UPCs)
-    K-->>A: 200
+    A->>K: PUT /v1/cart/add (PICKUP, 13-character identifiers)
+    K-->>A: 204, no body
     A-->>E: ProvisionResult{Accepted}
     Note over E: Confirmation=per_request ⇒ every accounted<br/>entry is confirmed (Req 11.3)
     E->>L: BEGIN
@@ -165,7 +165,7 @@ sequenceDiagram
     rect rgb(255, 240, 232)
     Note over E,L: Request 2 — abandoned at the attempt limit
     E->>A: Add(ctx, cred, ProvisionRequest)
-    A->>K: POST cart/add
+    A->>K: PUT /v1/cart/add
     K--xA: no response within 10s, 3 attempts
     A-->>E: ProvisionResult{Indeterminate}
     Note over E: Mutation=add_only ⇒ no replay (Req 13.7)<br/>every accounted entry → unknown (Req 13.8)
@@ -365,7 +365,7 @@ type ProvisionRequest struct {
 
 *Dominant access for `Accounts`:* after the provider answers, the engine must walk from one line's result back to every entry that line accounted for, to record an outcome per entry (Requirements 11.2, 11.3) and to advance one ledger row per item (Requirement 10.1). Carrying the resolved items **on the line** makes that a field read instead of a re-derivation, and it means Requirement 9.4 (two entries sharing one identity collapse into one line carrying the summed quantity) loses neither entry. The alternative — a side map from identity to entries — breaks the moment two entries with the same identity land in different batches.
 
-`Options` is a `map[string]string` rather than a typed per-provider struct because the engine must validate it against the declared option set without knowing any provider's option names (Requirement 15.2). The adapter re-reads it into its own typed shape at the serialization boundary, where Kroger's `PICKUP`/`DELIVERY` check lives (Requirement 17.11).
+`Options` is a `map[string]string` rather than a typed per-provider struct because the engine must validate it against the declared option set without knowing any provider's option names (Requirement 15.2). The adapter re-reads it into its own typed shape at the serialization boundary, where Kroger's `PICKUP`/`DELIVERY` check lives (Requirement 17.12).
 
 #### Provision result and outcome
 
@@ -662,33 +662,117 @@ The adapter holds **no database handle**. Tokens arrive as a `cart.Credential` a
 
 It deliberately implements neither `LineUpdater` nor `LineRemover`. Requirement 9.11 ("invoke only that provider's add operation") is therefore not a check the engine performs — there is no method to invoke.
 
+#### The wire facts this adapter is written against
+
+These were unconfirmed when this document was first drafted and are now read directly off the [Kroger Cart API OpenAPI document, version 1.2.3](https://developer.kroger.com/api-products/api/cart-api-public) and the Kroger Authorization Endpoints document, both retrieved from the developer portal's own contract endpoints. They are stated here because several design choices above depend on them.
+
+| Fact | Value |
+|---|---|
+| Operation | `PUT /v1/cart/add` — the only path and the only method the Cart API declares |
+| Request body | `{"items": [{"upc": "…", "quantity": N, "modality": "PICKUP"}]}` — one `items` array, the identifier field named `upc`, `upc` and `quantity` required |
+| `modality` | Optional, defaulting to `PICKUP`; permitted values exactly `DELIVERY` and `PICKUP`, uppercase |
+| Success | **`204` with no response body and no declared response schema** |
+| Hosts | `https://api.kroger.com` (production), `https://api-ce.kroger.com` (certification) |
+| Authorization scope | `cart.basic:write` |
+| Authorization / token URLs | `https://api.kroger.com/v1/connect/oauth2/authorize`, `/v1/connect/oauth2/token` |
+
+The two hosts are why `BaseURL` is a field rather than a constant: the certification host is a natural production-shaped value for it, not a test-only affordance, so switching a deployment to certification is configuration rather than code. The injected `Transport` remains what keeps the contract suite off the network; `BaseURL` is orthogonal to it.
+
+Three consequences for the declared capabilities, all of which now rest on the document rather than on a conservative reading:
+
+- **`Confirmation_Capability: per_request` is confirmed correct.** A `204` with no body carries nothing per item, so there is no per-item result to interpret. `ProvisionResult.PerLine` stays unpopulated for Kroger, and no capability value changes.
+- **`Mutation_Capability: add_only` is confirmed.** The document declares exactly one path and one method — no read, no update, no remove exists to declare.
+- **A rejection is one error for the whole request.** A `400` carries a single error object (`timestamp`, `code`, `reason`; one of `APIError`, `Invalid.UPC`, `Invalid.modality`, `Invalid.parameters`), not a per-item array. So **one malformed line fails the entire batch together**: every entry accounted for by that request takes the `failed` outcome, including the well-formed ones. That is what `per_request` means in practice, and it is a real batching consequence — a larger `Provision_Batch_Size` spends fewer calls (see the quota under *Retry and timeout policy*) but widens the blast radius of one bad identifier. It is also why line validation happens in the engine before the adapter is handed anything (Requirement 15.1, 15.2): the cheapest place to catch a malformed line is before it can take nineteen good ones down with it.
+
+*Content from these sources was rephrased for compliance with licensing restrictions.*
+
 #### Barcode normalization and UPC-E expansion
 
 `internal/cart/kroger/barcode.go`, a pure function:
 
 ```go
-// Normalize returns the 13-digit Normalized_Barcode for a pantry barcode, or
-// ok=false when the input is not 8, 12, or 13 digits (Requirement 17.7).
+// Normalize returns the 13-character Normalized_Barcode for a pantry barcode, or
+// ok=false when the input is not 8, 12, or 13 digits (Requirement 17.8) or when
+// its carried check digit disagrees with the recomputed one.
 func Normalize(barcode string) (cart.ProductIdentity, bool)
 ```
 
-- 13 digits → unchanged (Requirement 17.5).
-- 12 digits → one leading `0` (Requirement 17.4).
-- 8 digits → **expand UPC-E to 12-digit UPC-A**, then one leading `0` (Requirement 17.6).
-- anything else, or any non-digit, or empty → `ok=false`.
+The rule is **not** zero-padding. Kroger's Products API document states that the identifier of `/v1/products/{id}` is the 13-digit `productId` and that the check digit is omitted when converting from a barcode. So the identifier is the GTIN with its **check digit discarded**, left-padded with `0` to 13 characters:
 
-**The UPC-E expansion must be implemented deliberately, against a cited rule set, and covered by property tests. It must not be hand-waved.** It is not a padding operation; it is a case analysis. An 8-digit UPC-E is `S MMMMM PPPP C` where `S` is the number-system digit (0 or 1) and `C` is the check digit, and the placement of the five manufacturer digits and four product digits into the 12-digit UPC-A depends on the value of the **last digit before the check digit**:
+| Input | Steps | Result |
+|---|---|---|
+| 12 digits (UPC-A / GTIN-12) | validate the check digit, discard it, left-pad the 11 remaining data digits with two `0` characters | `011110728227` → `0001111072822` |
+| 8 digits (UPC-E) | expand to a GTIN-12 per GS1 Table 5-7, validate the check digit, discard it, left-pad with two `0` characters | `01234558` → `012345000058` → `0001234500005`* |
+| 13 digits (EAN-13 / GTIN-13) | discard the check digit, left-pad the 12 remaining data digits with one `0` character — **an extrapolation**, see below | `0012345000058` → `0001234500005` |
+| anything else, any non-digit, empty | no identifier (Requirement 17's unrecognized-format criterion) | `ok=false` |
 
-| Last digit `d` | UPC-A body construction |
+\* the 8-digit row's own worked value: expansion yields the GTIN-12 `012345000058` (GS1's first worked example, below), whose 11 data digits are `01234500005`, padded to `0001234500005`.
+
+#### Why the previous rule was wrong, and why it looked right
+
+This document previously said 12 digits → one leading `0` and 13 digits → unchanged. That came from the captured product-search response, which shows `productId` and `upc` holding the same 13-digit value. That observation is sound as far as it goes — the identifier *is* the barcode field — but the capture never showed the **printed barcode** of the product it described. So "the identifier equals `upc`" was supported by the evidence, while "the identifier is the zero-padded printed barcode" was an unsupported inference sitting on top of it. The two are not the same claim, and only the first one was ever verified.
+
+Checked arithmetically, the inference fails on every 13-digit identifier Kroger publishes:
+
+| Kroger `productId` | Valid as `0` + UPC-A? | Valid as EAN-13? | Reproduced by discard-check-digit-then-pad? |
+|---|---|---|---|
+| `0001111060903` | No | No | **Yes** |
+| `0001111041700` | No | No | **Yes** |
+| `0001200016268` | No | No | **Yes** |
+| `0001111041600` (the cited capture) | No | No | **Yes** |
+
+Corroborating each: `0001111041700` carries a `productPageURI` of `/p/kroger-2-reduced-fat-milk/0001111041700`, a real product page; and `012000` is PepsiCo's real GS1 company prefix, consistent with `0001200016268` deriving from UPC-A `012000162688`.
+
+**What made this dangerous rather than merely wrong.** Kroger's `Invalid.UPC` error validates only the **length** — 13 characters. A wrong-but-13-character value is accepted, and the wrong product is added to the owner's cart with no error anywhere. The old rule produces exactly such a value for every 12-digit barcode in the pantry. So the failure mode this document flagged as the UPC-E risk was already live, unflagged, in the UPC-A path — the path every scanned grocery item takes.
+
+#### UPC-E expansion: GS1 General Specifications Table 5-7
+
+**Verified.** The expansion table below matches [GS1 General Specifications, Release 26.0](https://ref.gs1.org/standards/genspecs/), section 5.2.2.4.2 (*Decoding a UPC-E barcode*), **Table 5-7**, row for row, and reproduces all four of GS1's worked examples exactly.
+
+An 8-character UPC-E is `S X1 X2 X3 X4 X5 P6 C`: a number-system digit, six encoded digits, and a check digit. `S` is **always `0`** — GS1 states that `D1` shall always be zero, and that UPC-E may carry only GTIN-12s beginning with zero. The placement of `X1…X5` into the expanded GTIN-12 `D1…D12` is keyed on `P6`, the sixth encoded digit:
+
+| `P6` | Expanded GTIN-12 (`D1`…`D12`) |
 |---|---|
-| 0, 1, 2 | `S` + first two digits + `d` + `0000` + last three digits |
-| 3 | `S` + first three digits + `00000` + last two digits |
-| 4 | `S` + first four digits + `00000` + last digit |
-| 5–9 | `S` + first five digits + `0000` + `d` |
+| 0 | `S` `X1` `X2` `0` `0 0 0 0` `X3` `X4` `X5` `C` |
+| 1 | `S` `X1` `X2` `1` `0 0 0 0` `X3` `X4` `X5` `C` |
+| 2 | `S` `X1` `X2` `2` `0 0 0 0` `X3` `X4` `X5` `C` |
+| 3 | `S` `X1` `X2` `X3` `0 0 0 0 0` `X4` `X5` `C` |
+| 4 | `S` `X1` `X2` `X3` `X4` `0 0 0 0 0` `X5` `C` |
+| 5–9 | `S` `X1` `X2` `X3` `X4` `X5` `0 0 0 0` `P6` `C` |
 
-Then the UPC-A check digit is recomputed (or the UPC-E check digit carried, and verified to agree). Sources: the UPC-E compression and expansion cases in [Universal Product Code](https://en.wikipedia.org/wiki/Universal_Product_Code) and the zero-suppression description in [Oracle Retail's UPC barcode appendix](https://docs.oracle.com/en/industries/retail/store-inventory-op-cloud/latest/reiag/appendix-upc-barcode.htm); GS1 US publishes the authoritative [check-digit and structure rules](https://www.gs1us.org/DesktopModules/Bring2mind/DMX/Download.aspx?Command=Core_Download&EntryId=389). *Content from these sources was rephrased for compliance with licensing restrictions; verify the table against GS1 US before implementing.*
+Also from GS1: the check-digit calculation is section 7.9, and Figures 5-14 to 5-18 carry the worked examples below. *Content from these sources was rephrased for compliance with licensing restrictions.*
 
-Two consequences for the implementation plan. First, the table above is a **hypothesis to verify against GS1 US, not a specification to code from** — three of the four rows produce a 12-digit string for any input, so a transposed row yields plausible-looking wrong identities that would silently request the wrong products. Second, property tests alone cannot catch a consistently-wrong placement, because a wrong table still satisfies "13 digits, all digits" (Requirement 17.14) and idempotence (17.15). So the property tests are paired with a **table-driven unit test carrying one worked example per last-digit case (0, 1, 2, 3, 4, and one of 5–9)**, with expected values taken from the cited rule set rather than from the implementation's own output.
+The expansion is still a case analysis rather than a padding operation, and it must be implemented deliberately and covered by property tests. What has changed is that it is now coded **from** a specification rather than **towards** a hypothesis.
+
+#### The carried check digit is a required integrity gate
+
+A UPC-E's check digit is the check digit of the **fully expanded** GTIN-12 (GS1 section 7.9), not of the compressed form. Recomputing it over the expanded data digits and comparing it against the carried one therefore detects a wrong or transposed table row. Measured over 20,000 well-formed inputs, swapping the `P6=3` and `P6=4` rows is caught **80.0%** of the time.
+
+That number is what closes the hole this section previously said it could not close. The old text conceded that property tests cannot catch a consistently-wrong placement, because a wrong table still yields 13 digits of all digits, and left the risk standing with only a worked-example unit test against it. Check-digit validation converts a **silent wrong-product** into a **detected rejection**: a consistently wrong table fails loudly on four of every five real barcodes instead of quietly ordering something else. A batch would not get past the first shopping list.
+
+So **check-digit validation is a specified step, not an optional nicety**, on every branch:
+
+- A barcode whose carried check digit disagrees with the one recomputed over its data digits yields **no identifier** — the same outcome as an unrecognized length, classified as an Unresolved_Item under Requirement 5 once every barcode of that product has been presented.
+- This applies to the 12-digit and 8-digit branches, which the research confirmed, and — as this design's own choice rather than as a confirmed Kroger behavior — to the 13-digit branch, where the computation is identical and the alternative is trusting a stored value no gate has ever checked.
+
+#### Worked examples, transcribed from GS1
+
+These are GS1's own four examples (Figures 5-15 to 5-18, with GS1's own rule labels); Figure 5-14's caption independently states that its UPC-E encodes `012345000058`.
+
+| UPC-E | Expanded GTIN-12 | GS1 rule |
+|---|---|---|
+| `01234558` | `012345000058` | 2a |
+| `04567840` | `045670000080` | 2b |
+| `03456703` | `034000005673` | 2c |
+| `09847531` | `098400000751` | 2d |
+
+Expected values are **transcribed from the rule set**, never generated by the implementation. Writing them by running the function first would make the test tautological, which for this algorithm is the whole risk. GS1's four rows cover `P6` values 5, 4, 0, and 3; the table-driven unit test extends them with hand-derived examples for the remaining placement cases, `P6 = 1` and `P6 = 2`, so that every row of Table 5-7 carries at least one example.
+
+#### An 8-digit barcode may be an EAN-8, not a UPC-E
+
+Length cannot distinguish the two, so the 8-digit branch can misread a GTIN-8 as a UPC-E. Measured over 50,000 valid codes of each kind: only **10.1%** of valid EAN-8 codes begin with `0`, so the GS1 leading-zero gate rejects 89.9% of them outright; **5.91%** pass both the leading-zero gate and check-digit validation and would be silently misread. Conversely **58.10%** of valid UPC-E codes also validate as GTIN-8, so the two check digits are too correlated to discriminate — a gate that rejected every ambiguous 8-digit code would cost roughly 58% of UPC-E coverage.
+
+The two gates together therefore reject most EAN-8s, and the residual few percent are accepted as the price of keeping UPC-E support. The remainder is reported unresolved under Requirement 17's unrecognized-format criterion (17.8), which is already the safe fallback. The trade-off is recorded under *Open Questions* rather than silently resolved.
 
 ### 6. Replacing the seam in the HTTP surface
 
@@ -708,7 +792,7 @@ func NewHandler(
 
 A `nil` registry means no provider is Credentials_Configured, which is Requirement 12.4's behavior exactly. That choice is what keeps the churn small: the four existing call sites (`cmd/server/main.go`, `internal/server/setup_test.go`, `internal/server/test_runner_test.go`, `internal/server/handler_scan_headless_test.go`) pass `nil` and keep their current behavior. `NewHandler` has grown a parameter before — it gained `refresher` in the product-cache-freshness work — so this follows an established path.
 
-`cmd/server/main.go` gains `loadCartRegistry()`, shaped like the existing `loadScanListenerConfig()`: read every namespaced environment variable, trim whitespace, treat whitespace-only as absent (Requirement 12.1), log each absent name (12.2), apply defaults for an out-of-range batch size (12.5) or an invalid modality (17.9), register what is configured, and **return rather than terminate** whatever is missing (12.10).
+`cmd/server/main.go` gains `loadCartRegistry()`, shaped like the existing `loadScanListenerConfig()`: read every namespaced environment variable, trim whitespace, treat whitespace-only as absent (Requirement 12.1), log each absent name (12.2), apply defaults for an out-of-range batch size (12.5) or an invalid modality (17.10), register what is configured, and **return rather than terminate** whatever is missing (12.10).
 
 The single line this feature replaces:
 
@@ -1137,29 +1221,31 @@ This feature is a strong fit for property-based testing: the quantity computatio
 
 **Validates: Requirements 3.3, 3.4, 3.5, 3.9**
 
-### Property 17: Barcode normalization dispatches on length and preserves digits
+### Property 17: Barcode normalization dispatches on length, discards the check digit, and preserves the data digits
 
-*For any* barcode string of 12 digits, the normalized barcode SHALL equal that barcode prefixed with one `0` and SHALL end with those 12 digits in their original order; *for any* barcode of 13 digits, the normalized barcode SHALL equal that barcode unchanged; and *for any* string whose digit count is other than 8, 12, or 13, or that holds any non-digit character, or that is empty, no normalized barcode SHALL be produced.
+*For any* barcode string of 12 digits whose check digit is correct, the normalized barcode SHALL equal the first 11 of those digits prefixed with two `0` characters, and SHALL therefore end with those 11 digits in their original order and SHALL NOT end with the discarded check digit; *for any* barcode of 13 digits whose check digit is correct, the normalized barcode SHALL equal the first 12 of those digits prefixed with one `0` character; *for any* 8-digit barcode accepted as a UPC-E, the normalized barcode SHALL equal the first 11 digits of its expanded 12-digit GTIN prefixed with two `0` characters; and *for any* string whose digit count is other than 8, 12, or 13, or that holds any non-digit character, or that is empty, or whose carried check digit disagrees with the check digit recomputed over its data digits, no normalized barcode SHALL be produced.
 
-**Validates: Requirements 17.4, 17.5, 17.7, 17.16**
+**Validates: Requirements 17.4, 17.5, 17.7, 17.8, 17.17**
 
-### Property 18: Every normalized barcode is 13 digits, and normalizing one again changes nothing
+### Property 18: Every normalized barcode is 13 digits, and normalization is deterministic and injective
 
-*For all* barcodes from which a normalized barcode is produced, that normalized barcode SHALL hold exactly 13 characters, every one of which is a digit; and *for all* normalized barcodes, normalizing that value again SHALL produce a value equal to the input.
+*For all* barcodes from which a normalized barcode is produced, that normalized barcode SHALL hold exactly 13 characters, every one of which is a digit; *for all* barcodes, normalizing the same input twice SHALL produce the same result both times; and *for all* pairs of distinct valid GTINs of equal length, the normalized barcodes produced from them SHALL differ.
 
-**Validates: Requirements 17.14, 17.15**
+Idempotence — the second half of this property as previously written — is **contradicted** and has been removed. Once normalization discards a check digit it cannot be idempotent: feeding a normalized identifier back in discards another digit (`0001111072822` → `000111107282` → `0000111107282`). Determinism is what the old criterion was reaching for and is what a caller actually relies on: two resolutions over the same barcode set agree (Requirement 5.8). Injectivity over equal-length valid GTINs is the other half of the guarantee that matters — that discarding a check digit never collapses two real products onto one identifier — and unlike idempotence it is true of the corrected rule. Note that injectivity is claimed *within* one input length only: a 12-digit and a 13-digit GTIN can normalize to the same 13 characters, which is precisely the ambiguity recorded under *Open Questions*.
 
-### Property 19: UPC-E expansion yields a 12-digit UPC-A preserving the number system
+**Validates: Requirements 17.15, 17.16**
 
-*For any* 8-digit barcode whose first character is `0` or `1`, the expansion SHALL produce a 12-digit UPC-A whose first digit equals that number-system digit, whose check digit is the correct UPC-A check digit for the preceding 11 digits, and whose manufacturer and product digits appear in the positions the cited rule set assigns for that value's last digit before the check digit; and the resulting normalized barcode SHALL be that 12-digit value prefixed with one `0`.
+### Property 19: UPC-E expansion follows GS1 Table 5-7 and agrees with the carried check digit
 
-**Validates: Requirements 17.3, 17.6**
+*For any* 8-digit barcode accepted as a UPC-E, its first character SHALL be `0`, the expansion SHALL produce a 12-digit GTIN whose first digit is that `0`, whose remaining digits appear in the positions GS1 General Specifications Table 5-7 assigns for that barcode's sixth encoded digit, and whose check digit equals both the check digit the barcode carried and the check digit correctly computed over the preceding 11 digits; and the resulting normalized barcode SHALL equal the first 11 digits of that expanded GTIN prefixed with two `0` characters.
+
+**Validates: Requirements 17.3, 17.6, 17.7**
 
 ### Property 20: A Kroger cart-add payload round-trips through JSON
 
 *For all* valid Kroger cart-add payloads — a payload carrying 1 to the provider's batch size lines, each line carrying a product identifier of exactly 13 digits, an integer quantity between 1 and 999 inclusive, and a cart modality of either `PICKUP` or `DELIVERY` — serializing the payload to JSON and then deserializing that JSON SHALL produce a payload whose line count, line order, and per-line product identifier, quantity, and modality are equal to those of the original payload.
 
-**Validates: Requirements 17.10, 17.13**
+**Validates: Requirements 17.11, 17.14**
 
 ---
 
@@ -1184,7 +1270,7 @@ This feature is a strong fit for property-based testing: the quantity computatio
 | Refresh rejected, refresh token invalid (3.7) | 409 | says reauthorization of that provider is needed |
 | Refresh failed for another reason (3.8) | 502 | provider identifier, failure category, provider status |
 | Malformed provider response (15.3) | 502 | says the provider response was malformed |
-| Malformed presented request (15.2, 17.11) | 500 | names the rejected field — this is a Pantry bug, not a user error |
+| Malformed presented request (15.2, 17.12) | 500 | names the rejected field — this is a Pantry bug, not a user error |
 
 Every provider-derived error body carries exactly three things: the provider identifier, the failure category, and the provider response status (Requirement 14.5). It never carries a provider response body, because a provider response body is where tokens live.
 
@@ -1199,6 +1285,12 @@ This is the most important line in this section. A provision operation that conf
 Per provider, defaulting to Requirement 13's values: a 10-second limit applied independently to each attempt, at most 3 attempts, waits of 500 ms then 1000 ms measured from the end of the preceding attempt, and at least the indicated duration when the provider supplies a retry-after. A rate-limit or server-error status retries; any other client-error status does not. Total worst case for one request with no retry-after indication: 31.5 s.
 
 `github.com/justinrixx/retryhttp` is already a direct dependency and `product.NewProductOpenerClient` already wraps it with a custom `shouldRetry` that adds 429 handling. The cart adapter reuses that approach, with one addition that matters: under `add_only`, an abandoned attempt must **not** be retried at the request level, because a request that timed out may have been applied. The retry transport handles rate-limit and server-error statuses; a timeout on a mutating request terminates the request and yields `Indeterminate` (Requirement 13.7). Conflating the two would submit a line twice.
+
+**The Kroger quota is a documented hard number: 5,000 calls per day**, stated in the Cart API document's own description. It is confirmed, not inferred, and it bears on two decisions above.
+
+First, on Requirement 13's retry policy. Three attempts per request means one provisioning operation can spend up to three times its request count against a daily budget that is not per operation but per day across every operation the deployment makes. The policy stays as Requirement 13 specifies — retrying only rate-limit and server-error statuses, never a timeout under `add_only` — and that restraint is now a quota argument as well as a correctness one: a blanket retry would triple the worst-case spend for no gain, since a timed-out mutation cannot be safely repeated anyway.
+
+Second, on `Provision_Batch_Size`. A larger batch spends **fewer calls** for the same shopping list — 100 lines at a batch size of 50 costs two calls, at a batch size of 5 it costs twenty — so the quota pushes the default upwards. It is pushed the other way by the confirmed rejection shape above: one malformed line fails its entire request, so a large batch widens what a single bad identifier takes down. The default of 50 (Requirement 12.5) sits between the two, and both forces are now documented rather than guessed: at 50, a household-sized list costs a handful of calls a day against a 5,000-call budget, so the quota is not the binding constraint for a single-household deployment while the batching blast radius is. If the two ever conflict for a real deployment, the quota is the one with headroom to give.
 
 ### Startup errors never terminate
 
@@ -1249,13 +1341,17 @@ No property-based testing is implemented from scratch; `rapid` supplies the gene
 | 14 — secret containment | `internal/server` | `rapid.StringMatching` or a distinctive prefixed `rapid.StringOfN` for each secret kind, seeded into the connection record and the scripted provider responses; every cart endpoint exercised; every response body, header, `Location`, and captured log line scanned for every seeded value. Log capture follows `migrate_test.go`'s `log.SetOutput(&buf)` pattern. |
 | 15 — authorization state | `internal/cart/connection` | `rapid.IntRange(2, 50)` calls; assert length, pairwise distinctness via a set, single persistence, and sibling-provider stability. `Adapter.Rand` is injected so the generator controls entropy without weakening production's `crypto/rand`. |
 | 16 — refresh threshold and single flight | `internal/cart/connection` | `rapid.IntRange(-3600, 7200)` remaining lifetime seconds with an injected clock, plus `rapid.IntRange(2, 32)` concurrent callers released by a barrier while the scripted exchange blocks; assert exactly one exchange and one shared token. |
-| 17, 18 — normalization | `internal/cart/kroger` | Length-dispatch generator: `rapid.OneOf` over `rapid.StringOfN(digits, 8, 8, -1)`, `…(12, 12, -1)`, `…(13, 13, -1)`, arbitrary lengths 0–20 of digits, and strings containing a non-digit rune. `digits = rapid.RuneFrom([]rune("0123456789"))`. Idempotence feeds every accepted output back in. |
-| 19 — UPC-E expansion | `internal/cart/kroger` | `rapid.SampledFrom([]rune{'0','1'})` number system + `rapid.StringOfN(digits, 6, 6, -1)` body + a check digit, with the last body digit drawn by `rapid.SampledFrom` so all five placement cases are hit. Paired with the worked-example table described below. |
+| 17, 18 — normalization | `internal/cart/kroger` | Length-dispatch generator: `rapid.OneOf` over **check-digit-valid** GTINs (draw 11 data digits with `rapid.StringOfN(digits, 11, 11, -1)` and append the computed check digit for the 12-digit case, 12 data digits for the 13-digit case, and a generated UPC-E for the 8-digit case), **check-digit-invalid** variants of each (append a digit drawn to differ from the correct one, which must yield no identifier), arbitrary digit strings of lengths 0–20, and strings containing a non-digit rune. `digits = rapid.RuneFrom([]rune("0123456789"))`. Determinism normalizes each drawn input twice and compares; injectivity draws **pairs** of distinct valid GTINs of the *same* length from the same generator and asserts their identifiers differ. Feeding an accepted output back in is deliberately **not** asserted — see Property 18 on why idempotence is false. |
+| 19 — UPC-E expansion | `internal/cart/kroger` | `rapid.Just('0')` number system — GS1 requires `D1` to be zero, so there is nothing to sample — + `rapid.StringOfN(digits, 5, 5, -1)` for `X1…X5` + the sixth encoded digit `P6` drawn by `rapid.SampledFrom([]rune{'0','1','2','3','4','5','6','7','8','9'})` so every placement case is hit including each of 0, 1, 2, 3, 4 individually and the shared 5–9 row + the check digit computed over the expanded GTIN so the drawn barcode passes the integrity gate. A second pass corrupts the check digit and asserts rejection. Paired with the GS1 worked-example table described below. |
 | 20 — payload round trip | `internal/cart/kroger` | `rapid.SliceOfN(lineGen, 1, batchSize)`; `lineGen` = 13-digit identity via `rapid.StringOfN(digits, 13, 13, -1)`, `rapid.IntRange(1, 999)` quantity, `rapid.SampledFrom([]string{"PICKUP", "DELIVERY"})` modality. Marshal with `github.com/go-json-experiment/json`, the codec the repo already uses. |
 
-### UPC-E expansion is tested twice, deliberately
+### UPC-E expansion is tested three times, deliberately
 
-The output's *shape* is what Property 19 proves: 12 digits, the number-system digit preserved, a valid check digit. It cannot prove the *placement* is right, because a transposed rule row still produces 12 digits with a valid check digit — it would just name a different product. So Property 19 is paired with a **table-driven unit test carrying one worked example per last-digit case (0, 1, 2, 3, 4, and one of 5–9)**, with expected values transcribed from the cited GS1 rule set rather than from the implementation's own output. Writing the expected values by running the function first would make the test tautological, which for this algorithm is the whole risk.
+The output's *shape* is what Property 19 proves: 12 digits, a leading zero, a check digit that computes correctly over the preceding 11. On its own it cannot prove the *placement* is right, because a transposed Table 5-7 row still produces 12 digits with a self-consistent check digit — it would just name a different product.
+
+So it is paired with a **table-driven unit test carrying one worked example per placement case**, and that test now carries **GS1's own four examples** (`01234558` → `012345000058`, `04567840` → `045670000080`, `03456703` → `034000005673`, `09847531` → `098400000751`, GS1 rules 2a–2d) extended with hand-derived rows for the two placement cases GS1's examples do not reach. Expected values are transcribed from Table 5-7, never produced by running the implementation; doing the latter would make the test tautological, which for this algorithm is the whole risk. The placement table itself is no longer a hypothesis — it is verified against GS1 General Specifications Release 26.0 Table 5-7 row for row — so this test now checks an implementation against a specification rather than checking one guess against another.
+
+The **third** line of defence is new and is the strongest of the three, because it runs in production rather than in CI: the carried check digit must agree with the one recomputed over the expanded GTIN. It is independent of both tests above — it does not depend on anyone having chosen the right examples or the right generator — and it catches a transposed `P6=3`/`P6=4` row 80.0% of the time on well-formed input. A wrong table therefore cannot reach the owner's cart quietly; it fails on most barcodes it sees. The earlier draft of this section conceded that a consistently-wrong placement could only be caught by example, and that concession no longer holds.
 
 ### The contract suite, CI, and fork pull requests
 
@@ -1300,21 +1396,29 @@ Per AGENTS.md, internal error paths an API caller cannot trigger are not tested:
 | `ListConsumedAtByItems` returns timestamps, counted in Go | Per-item `COUNT(*) WHERE consumed_at > ?` | Each item has its own boundary, so the SQL form is one query per list entry — and `SetMaxOpenConns(1)` serializes those against every other request. |
 | `CREATE INDEX` on `consumption_events(item_id, consumed_at)` | No index, matching the repo's current state | No migration in this repo creates an index today, so this is a deliberate first. It is the one query this feature adds whose cost grows without bound as consumption history accumulates. |
 | Contract suite in `internal/cart/carttest`, a non-test package | A `_test.go` helper in `internal/cart` | `internal/cart/kroger`'s tests must import the same suite, and a `_test.go` file cannot be imported across packages. Follows the `net/http/httptest` pattern. |
+| The Kroger identifier is the GTIN with its **check digit discarded**, left-padded with `0` to 13 characters | The previous rule: left-pad the full 12-digit UPC with one `0`, leave a 13-digit barcode unchanged | The previous rule reproduces **none** of the four 13-digit identifiers Kroger publishes, while discard-then-pad reproduces all four; Kroger's own Products API document says the check digit is omitted when converting from a barcode. The old rule came from a capture that showed `productId == upc` but never showed the printed barcode, so "the identifier is the barcode field" was verified and "the identifier is the zero-padded barcode" was an inference resting on nothing. |
+| Check-digit validation is a **required** step on every branch, and a disagreement yields no identifier | Trust the expansion table and the stored barcode, validating nothing | Kroger's `Invalid.UPC` validates only the 13-character **length**, so a wrong table or a corrupt barcode produces an accepted value that adds the **wrong product** silently. Validation converts that into a detected rejection, catching a transposed placement row 80.0% of the time. It is also the only defence that runs in production rather than in CI. Its cost is that a barcode with a bad check digit becomes an Unresolved_Item, which Requirement 17.8 already handles. |
 
 ---
 
 ## Open Questions
 
-These are genuinely undetermined by the requirements, not merely unimplemented. Each needs an answer before the task list that touches it.
+These are genuinely undetermined by the requirements, not merely unimplemented. Each needs an answer before the task list that touches it. Two entries below are kept in place and marked **RESOLVED**: the verification that closed them also refuted a different assumption this document had not thought to question, and that is worth leaving legible rather than deleting.
 
 1. **Stale belief after a disconnect and reconnect under a different account.** Requirement 4.3 says disconnecting leaves every ledger entry unchanged, and Requirement 2.10 says a second authorization leaves every ledger entry unchanged. Taken together, the owner can disconnect Kroger, reconnect under a *different* Kroger account, and the ledger will still claim units were requested from "Kroger" — units that the new account's cart has never seen. Every subsequent quantity is then understated for exactly those products, and the owner's only recovery is the ledger reset of Requirement 10.7. The requirements leave this unresolved deliberately, and there are three coherent answers: (a) keep it as specified and rely on the reset control, documenting the reset as the remedy; (b) reset the ledger automatically on disconnect, which contradicts 4.3 as written; (c) persist an opaque account fingerprint on the connection record and reset the ledger when a reconnection presents a different one, which needs an account identifier the Kroger API may not expose without a scope this feature does not request. **Recommendation: (a) for this feature, with the reset control's label making the remedy discoverable, and (c) recorded as the follow-up once the Kroger identity endpoint and its scope requirement are confirmed.**
 
 2. **An adjustment whose entry is replaced.** `shopping.Store.SyncDerivedItems` inserts a *new* `shopping_list_items` row when a purchased derived gap's quantity changes, so an adjustment recorded against the old row does not carry to the new one. Requirement 8 keys an adjustment by entry and provider and says nothing about entry replacement. This design deletes the orphaned adjustment in the same transaction that deletes the entry, so the freshly computed quantity shows — which is defensible (the adjustment was recorded against a different quantity) but is a choice, not a derivation. **Needs confirmation that a silently dropped adjustment is acceptable, or a decision to key adjustments by `(item_id, provider_id)` instead, which would survive entry replacement but would conflict with Requirement 8's stated key.**
 
-3. **The Kroger scope string and cart-add payload shape.** Carried forward from the requirements' own *Assumptions to Validate*. The exact `cart.basic:write` scope string and the request and response shapes of the cart-add operation are unconfirmed, including whether the response carries per-item results. This design declares `per_request`, the conservative reading. If the response does carry per-item results, the change is one declared capability value — `ConfirmPerRequest` becomes `ConfirmPerLine` — plus populating `ProvisionResult.PerLine`. No engine change, which is the abstraction earning its keep. **Needs verification against Kroger documentation before the adapter task.**
+3. **The Kroger scope string and cart-add payload shape — RESOLVED.** Verified against the Kroger Cart API OpenAPI document version 1.2.3 and the Authorization Endpoints document, both retrieved from the developer portal's own contract endpoints. The confirmed answers: the scope string is **`cart.basic:write`**, exactly as this design assumed; the operation is **`PUT /v1/cart/add`**, the only path and method the Cart API declares; the body is `{"items":[{"upc","quantity","modality"}]}` with the identifier field named `upc` and `modality` optional, defaulting to `PICKUP`, permitted values exactly `DELIVERY` and `PICKUP`; success is **`204` with no body and no declared response schema**; the hosts are `https://api.kroger.com` and `https://api-ce.kroger.com`. Therefore **`per_request` is confirmed correct rather than conservative** — a bodiless `204` carries nothing per item — so no capability value changes and `ProvisionResult.PerLine` stays unpopulated for Kroger. **`add_only` is confirmed** because the Cart API has exactly one operation: there is no read, update, or remove to declare. A rejection carries one error for the whole request, so one malformed line fails the entire batch together. Worth stating plainly: **the abstraction was never exercised here.** The conservative reading turned out to be right, so the "one declared value changes and no engine change" escape hatch this entry described was not needed. The assumption that *was* refuted was the **product identifier** — recorded above under the normalization section and in the Design Decisions table — and it was not in this list at all. The risk sat in the thing the document was confident about, not in the thing it flagged.
 
-4. **The UPC-E placement table.** The table in this document is a hypothesis drawn from secondary sources and must be verified against the GS1 US specification before implementation. Three of its four rows produce a 12-digit result for any input, so a transposed row yields plausible wrong identities rather than an error. **Needs the GS1 rule set in hand before the normalization task, and the worked examples must be transcribed from it rather than generated by the implementation.**
+4. **The UPC-E placement table — RESOLVED.** Verified against GS1 General Specifications, Release 26.0, section 5.2.2.4.2, **Table 5-7**. **The table was correct**: it matches Table 5-7 row for row and reproduces all four of GS1's worked examples. **UPC-E support stays in the spec**, the authority for it is Table 5-7 rather than the secondary sources this entry was drawn from, and the table is now keyed on the sixth encoded digit in GS1's own `X1…X5` / `P6` notation. Two errors in the surrounding prose were corrected in the process: the number-system digit is always `0`, not "0 or 1" (GS1 states `D1` shall always be zero), and the structure is `S` plus six encoded digits plus a check digit, not the 11-character `S MMMMM PPPP C` this document had written. The verification is twofold: **GS1's four worked examples, transcribed rather than generated**, and the **check-digit integrity gate** — the carried check digit is the check digit of the fully expanded GTIN-12, so recomputing it catches a transposed row 80.0% of the time, which is the production-time mitigation this entry said did not exist.
 
-5. **Whether the provisioning endpoint should require an explicit provider once a second provider exists.** Requirement 7.12 defines the default only for the case of exactly one configured provider. With two configured and none named, the behavior is undefined. The safest reading is a 400 asking the client to name one, which is what this design assumes. **Needs confirmation.**
+5. **The 13-character branch: EAN-13 barcode, or already-normalized Kroger identifier?** The corrected rule discards a check digit, which makes the 13-character case genuinely ambiguous in a way the old rule hid. A stored 13-character value can be an **EAN-13 barcode**, whose check digit must be discarded (`0012345000058` → `0001234500005`), or an **already-normalized Kroger identifier**, which must be passed through untouched — and length cannot distinguish them, because both are exactly 13 digits. Nor can the check digit: an already-normalized identifier's last digit is a data digit that will occasionally validate as a check digit by coincidence. The EAN-13 conversion is also the one branch with **no published Kroger worked example** — the documented sentence covers it, but all four verified identifiers derive from 12-digit UPC-As, so this branch is an extrapolation from the sentence rather than a confirmed behavior. Three coherent answers: (a) treat every stored 13-character value as an EAN-13 barcode and discard its check digit; (b) treat every such value as an already-normalized identifier and pass it through; (c) carry the barcode's scheme alongside the digits in `product.Catalog` so the branch is chosen from recorded provenance rather than guessed from length. **Recommendation: (a).** Pantry populates that field by **scanning a printed barcode**, so the values in it are barcodes, and (b) would mean the one code path fed by the scanner silently assumes its input came from somewhere else. (c) is the correct long-term answer and is a schema change this feature does not need. **This needs one real EAN-13 product confirmed against the Kroger Products API before the adapter task** — a single lookup settles whether the documented sentence extends to GTIN-13 as written.
 
-6. **Whether a `client_handoff` provider's artifact should be persisted.** Requirement 11.6 records every carried entry as `unknown`, and Requirement 11.10 gives the owner two controls to resolve that. But the artifact itself is returned once in a response body; if the page reloads before the owner resolves the unknowns, the entries remain adjusted and unconfirmed with no record that a handoff ever happened. No requirement asks for persistence. **Needs a decision on whether an unresolved handoff should survive a reload; note that no shipped provider declares `client_handoff`, so this affects the fake provider's contract-suite cases only until a second adapter arrives.**
+6. **An 8-digit barcode that is an EAN-8 rather than a UPC-E.** Length cannot distinguish them, and the two gates only narrow the overlap. Measured over 50,000 valid codes of each kind: **10.1%** of valid EAN-8 codes begin with `0`, so the GS1 leading-zero gate rejects 89.9%; **5.91%** pass both the leading-zero gate and check-digit validation and would be misread as UPC-E, producing a wrong 13-character identifier that Kroger accepts on length; and **58.10%** of valid UPC-E codes also validate as GTIN-8, so the check digits are far too correlated to discriminate between the two schemes. That last figure is what forecloses the obvious fix: **rejecting every ambiguous 8-digit code would cost roughly 58% of UPC-E coverage** to eliminate a 5.91% misread rate on a barcode scheme that is itself rare in a home pantry. The options are (a) keep both gates and accept the residual misread; (b) reject every 8-digit code that also validates as a GTIN-8, paying the coverage cost; (c) record the barcode's scheme at scan time, which is option (c) of the previous question and the same schema change. **Recommendation: (a).** Requirement 17.8 already reports an unrecognized format as unresolved, so for roughly 94% of EAN-8 inputs the owner sees an unresolved entry rather than a silent substitution; trading away most of UPC-E to close the remainder is the worse bargain. **Needs the owner's assent to accept a known residual rather than a clean rule.**
+
+7. **Replacing the idempotence criterion.** Requirement 17's idempotence criterion — normalizing a Normalized_Barcode yields the same value — is **contradicted** by the corrected rule, not merely awkward under it: discarding a check digit cannot be idempotent, since a second pass discards another digit (`0001111072822` → `000111107282` → `0000111107282`). The recommended replacement is **determinism** (the same input always yields the same identifier) plus **injectivity over valid GTINs of equal length** (two distinct valid GTINs of the same length never collapse onto one identifier), which is what Property 18 now states. Determinism is what the idempotence criterion was reaching for in practice, and injectivity covers the risk idempotence was standing in for. **This deletes a stated acceptance criterion, so it needs the owner's assent rather than a unilateral edit** — and the numbering of the replacement is being settled in requirements.md, which is why Property 18 names it by subject matter.
+
+8. **Whether the provisioning endpoint should require an explicit provider once a second provider exists.** Requirement 7.12 defines the default only for the case of exactly one configured provider. With two configured and none named, the behavior is undefined. The safest reading is a 400 asking the client to name one, which is what this design assumes. **Needs confirmation.**
+
+9. **Whether a `client_handoff` provider's artifact should be persisted.** Requirement 11.6 records every carried entry as `unknown`, and Requirement 11.10 gives the owner two controls to resolve that. But the artifact itself is returned once in a response body; if the page reloads before the owner resolves the unknowns, the entries remain adjusted and unconfirmed with no record that a handoff ever happened. No requirement asks for persistence. **Needs a decision on whether an unresolved handoff should survive a reload; note that no shipped provider declares `client_handoff`, so this affects the fake provider's contract-suite cases only until a second adapter arrives.**
