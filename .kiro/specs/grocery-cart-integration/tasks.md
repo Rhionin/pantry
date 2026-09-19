@@ -471,9 +471,13 @@ Language: Go for the backend, TypeScript/React for the frontend.
     - 13 digits: discard the check digit and pad with one zero. This branch is an **extrapolation**
       from Kroger's documented conversion rule with no published worked example — check the design's
       open question before relying on it, and do not quietly widen it
+    - A 13-character input is **unambiguously an EAN-13**, because a pantry barcode is stored exactly
+      as it appears on the real-world object (Requirement 5.12) — an already-normalized identifier
+      has no path into the barcode column, so there is no scheme to guess at here. The converted
+      value is derived for the current operation only and must **never** be written back to storage
     - Anything else, any non-digit, or empty: no identifier, so the engine reports the entry
       unresolved
-    - _Requirements: 17.3, 17.4, 17.5, 17.7, 17.8, 17.15, 17.16, 17.17_
+    - _Requirements: 5.12, 17.3, 17.4, 17.5, 17.7, 17.8, 17.15, 17.16, 17.17_
     - _Properties: 17, 18_
 
   - [ ] 6.2 UPC-E expansion per GS1 Table 5-7
@@ -543,7 +547,11 @@ Language: Go for the backend, TypeScript/React for the frontend.
     - A test asserts the shipped registry registers cleanly, so a registration failure — which would
       be a programming error rather than a configuration error — surfaces in CI rather than in
       production
-    - _Requirements: 16.1, 17.1_
+    - The separate credentialed `-tags=live` verification must include **one real imported product
+      carrying an EAN-13**: that branch of the conversion rule has no published Kroger worked
+      example and could not be verified from documentation, so the credentialed run is the first
+      point at which it can be checked at all
+    - _Requirements: 16.1, 16.9, 17.1_
 
   - [ ] 6.7 `loadCartRegistry()` in `cmd/server/main.go`
     - Shaped like the existing `loadScanListenerConfig()`: read every namespaced environment
