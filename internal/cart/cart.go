@@ -237,6 +237,12 @@ func (b BearerCredential) String() string {
 	return "bearer(redacted)"
 }
 
+// NewBearerCredential creates a new BearerCredential.
+// This is provided for packages that need to construct bearer credentials.
+func NewBearerCredential(token string) BearerCredential {
+	return BearerCredential{token: token}
+}
+
 // HeaderCredential applies a custom header.
 type HeaderCredential struct{ name, value string }
 
