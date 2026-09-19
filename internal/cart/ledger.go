@@ -1,0 +1,94 @@
+package cart
+
+import (
+	"context"
+	"database/sql"
+	"time"
+)
+
+// Ledger is the data-access type for the fulfillment ledger.
+// Named for the domain concept per AGENTS.md — not a `Repo`, not a bare `Store`.
+type Ledger struct {
+	db *sql.DB
+}
+
+// NewLedger creates a new Ledger backed by the given database.
+func NewLedger(db *sql.DB) *Ledger {
+	return &Ledger{db: db}
+}
+
+// ListForProvider returns all ledger entries for one provider.
+// The dominant access is "every entry for one provider, read at once", so the
+// SQL is one query, then O(1) per entry, not a per-item read inside the entry loop.
+// A missing key in the returned map is the "no entry exists" case, resolved by
+// the caller to Requested: 0 with a boundary preceding every consumption event.
+func (l *Ledger) ListForProvider(ctx context.Context, p ProviderID) (map[string]LedgerEntry, error) {
+	rows, err := l.db.QueryContext(ctx,
+		`SELECT item_id, requested_quantity, ledger_boundary
+		 FROM fulfillment_ledger
+		 WHERE provider_id = ?
+		 ORDER BY item_id`, string(p))
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	result := make(map[string]LedgerEntry)
+	for rows.Next() {
+		var entry LedgerEntry
+		if err := rows.Scan(&entry.ItemID, &entry.Requested, &entry.Boundary); err != nil {
+			return nil, err
+		}
+		result[entry.ItemID] = entry
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return result, nil
+}
+
+// Advance adds qty to the requested_quantity for one provider/item.
+// The advance is an INSERT ... ON CONFLICT(provider_id, item_id) DO UPDATE SET
+// requested_quantity = requested_quantity + excluded.requested_quantity, performing
+// the read-modify-write in SQL so no lost update is possible.
+// ledger_boundary is absent from the SET list, expressing "an advance moves no boundary"
+// as an absent column rather than a rule to remember.
+// The advance is additionally conditional on the boundary the operation computed against
+// (WHERE ledger_boundary = ?). Zero rows affected means a stock-in intervened.
+func (l *Ledger) Advance(ctx context.Context, provider ProviderID, itemID string, qty int, boundary time.Time) (int64, error) {
+	result, err := l.db.ExecContext(ctx,
+		`INSERT INTO fulfillment_ledger (provider_id, item_id, requested_quantity, ledger_boundary)
+		 VALUES (?, ?, ?, ?)
+		 ON CONFLICT(provider_id, item_id) DO UPDATE SET
+		     requested_quantity = fulfillment_ledger.requested_quantity + excluded.requested_quantity
+		 WHERE fulfillment_ledger.ledger_boundary = ?`,
+		string(provider), itemID, qty, boundary, boundary)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
+// ResetForItemTx resets the ledger entry for one item inside an existing transaction.
+// This is the only transaction-bound method, existing so that every statement
+// touching fulfillment_ledger stays in one package.
+// The caller must pass the provider_id since the table has provider_id as part of
+// the primary key.
+func (l *Ledger) ResetForItemTx(ctx context.Context, tx *sql.Tx, provider ProviderID, itemID string, at time.Time) error {
+	_, err := tx.ExecContext(ctx,
+		`INSERT INTO fulfillment_ledger (provider_id, item_id, requested_quantity, ledger_boundary)
+		 VALUES (?, ?, 0, ?)
+		 ON CONFLICT(provider_id, item_id) DO UPDATE SET
+		     requested_quantity = 0, ledger_boundary = ?`,
+		string(provider), itemID, at, at)
+	return err
+}
+
+// ResetForProvider resets all ledger entries for one provider.
+func (l *Ledger) ResetForProvider(ctx context.Context, provider ProviderID) error {
+	_, err := l.db.ExecContext(ctx,
+		`UPDATE fulfillment_ledger SET requested_quantity = 0, ledger_boundary = ? WHERE provider_id = ?`,
+		time.Now().UTC(), string(provider))
+	return err
+}
