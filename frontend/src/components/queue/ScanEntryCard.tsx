@@ -5,7 +5,7 @@ import type { ScanEntry } from '../../types';
 import { FlaggedEntryResolver } from './FlaggedEntryResolver';
 import { StockOutInstanceSelector } from './StockOutInstanceSelector';
 import { ProvenanceBadge } from '../product/ProvenanceBadge';
-import { expiryDateToISOString, formatExpiryDate, isValidUnitCount } from './queueUtils';
+import { expiryDateToISOString, isValidUnitCount } from './queueUtils';
 
 export interface ScanEntryCardProps {
   entry: ScanEntry;

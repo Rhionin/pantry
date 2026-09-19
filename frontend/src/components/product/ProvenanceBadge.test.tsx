@@ -1,7 +1,7 @@
 import { render, screen } from '@testing-library/react';
 import { MantineProvider } from '@mantine/core';
 import { describe, expect, it } from 'vitest';
-import { ProvenanceBadge, DATABASE_NAMES } from './ProvenanceBadge';
+import { ProvenanceBadge } from './ProvenanceBadge';
 import type { ExternalSource } from '../../types';
 
 describe('ProvenanceBadge', () => {

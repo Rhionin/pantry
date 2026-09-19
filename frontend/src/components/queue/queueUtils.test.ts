@@ -274,7 +274,7 @@ describe('toggleSelectAll', () => {
       fc.array(fc.uuid(), { maxLength: 20 }),
       (entries, selectedIds) => {
         const eligibleIds = entries.filter(isBatchEligible).map((entry) => entry.id);
-        const nonEligibleIds = entries.filter((entry) => !isBatchEligible).map((entry) => entry.id);
+        const nonEligibleIds = entries.filter(() => !isBatchEligible).map((entry) => entry.id);
 
         const result = toggleSelectAll(entries, selectedIds);
 
