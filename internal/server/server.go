@@ -33,10 +33,23 @@ type config struct {
 	broadcaster   *events.Broadcaster
 	statusFn      func() scanlistener.Status
 	scannerConfig ScannerConfig
+	registry      *cart.Registry
+	ledger        *cart.Ledger
 }
 
 // Option is a functional option for NewHandler.
 type Option func(*config)
+
+// WithCartRegistry supplies the grocery-provider registry and fulfillment
+// ledger that back the provider and provisioning endpoints. When unset, the
+// cart endpoints wire an empty registry and no-op provisioner, so the default
+// install exposes no configured provider.
+func WithCartRegistry(registry *cart.Registry, ledger *cart.Ledger) Option {
+	return func(c *config) {
+		c.registry = registry
+		c.ledger = ledger
+	}
+}
 
 // WithBroadcaster supplies an externally owned Broadcaster so the scan
 // listener can publish mode changes to the same subscribers the HTTP handlers
@@ -114,6 +127,21 @@ func newAPIMux(
 	broadcaster := events.NewBroadcaster()
 	if cfg != nil && cfg.broadcaster != nil {
 		broadcaster = cfg.broadcaster
+	}
+
+	// Resolve the cart registry and ledger from config; default to an empty
+	// registry and no-op provisioner when no provider is configured.
+	var registry *cart.Registry
+	var ledger *cart.Ledger
+	if cfg != nil {
+		registry = cfg.registry
+		ledger = cfg.ledger
+	}
+	if registry == nil {
+		registry = cart.NewRegistry()
+	}
+	if ledger == nil {
+		ledger = cart.NewLedger(db)
 	}
 
 	apiMux.HandleFunc("GET /health", func(w http.ResponseWriter, r *http.Request) {
@@ -246,12 +274,8 @@ func newAPIMux(
 	apiMux.HandleFunc("POST /api/shopping-list/export", HandleJSON(shoppingListExportHandler.Handle))
 
 	// Cart integration handlers
-	registry := cart.NewRegistry()
-	ledger := cart.NewLedger(db)
+	// Note: registry and ledger are passed in from the caller and created in loadCartRegistry()
 	connDir := connection.NewDirectory(db)
-
-	// Note: The Kroger provider will be registered here when loadCartRegistry() is implemented
-	// For now, we wire the handlers with an empty registry (no-op behavior)
 
 	providersHandler := &ProvidersHandler{
 		Registry:      registry,
@@ -275,6 +299,26 @@ func newAPIMux(
 	apiMux.HandleFunc("DELETE /api/providers/{providerId}/connection", HandleJSON(providerDisconnectHandler.Handle))
 	apiMux.HandleFunc("GET /api/providers/{providerId}/ledger", HandleJSON(providerLedgerGetHandler.Handle))
 	apiMux.HandleFunc("POST /api/providers/{providerId}/ledger/reset", HandleJSON(providerLedgerResetHandler.Handle))
+
+	// Replenishment mode handler
+	setReplenishmentModeHandler := &SetReplenishmentModeHandler{
+		Pantry: pantry,
+	}
+	apiMux.HandleFunc("POST /api/items/{itemId}/replenishment-mode", HandleJSON(setReplenishmentModeHandler.Handle))
+
+	// Adjustment handler
+	shoppingListAdjustmentHandler := &ShoppingListAdjustmentHandler{
+		ShoppingList: shoppingList,
+	}
+	apiMux.HandleFunc("PUT /api/shopping-list/items/{id}/adjustment", HandleJSON(shoppingListAdjustmentHandler.Handle))
+	apiMux.HandleFunc("DELETE /api/shopping-list/items/{id}/adjustment", HandleJSON(shoppingListAdjustmentHandler.Handle))
+
+	// Unknown resolution handler
+	unknownResolutionHandler := &UnknownResolutionHandler{
+		ShoppingList: shoppingList,
+		Provisioner:  shoppingListExportHandler.Provisioner,
+	}
+	apiMux.HandleFunc("POST /api/shopping-list/items/{id}/unknown-resolution", HandleJSON(unknownResolutionHandler.Handle))
 
 	return apiMux, scanQueue
 }
