@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/Rhionin/pantry/internal/cart"
 	"github.com/Rhionin/pantry/internal/inventory"
 	"github.com/Rhionin/pantry/internal/product"
 	"github.com/google/uuid"
@@ -75,6 +76,13 @@ func NewEntryFromLookup(userID, barcode string, lookup product.LookupResult, dir
 // Queue provides database operations for scan entries.
 type Queue struct {
 	db *sql.DB
+
+	// Ledger resets the fulfillment ledger for items when stock-in occurs.
+	// Only required when providers are configured and the ledger needs
+	// to be reset on new stock.
+	Ledger interface {
+		ResetForItemTx(ctx context.Context, tx *sql.Tx, provider cart.ProviderID, itemID string, at time.Time) error
+	}
 
 	// Broadcaster publishes a Scan_Event (and, for commit paths, an
 	// Inventory_Event) after each successful mutation. Nil in every existing

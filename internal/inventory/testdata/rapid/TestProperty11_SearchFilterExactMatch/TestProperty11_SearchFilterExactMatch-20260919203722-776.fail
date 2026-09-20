@@ -1,0 +1,15 @@
+# 2026/09/19 20:37:22.363339 [TestProperty11_SearchFilterExactMatch] [rapid] draw numItems: 1
+# 2026/09/19 20:37:22.363343 [TestProperty11_SearchFilterExactMatch] [rapid] draw nameIdx: 0
+# 2026/09/19 20:37:22.363345 [TestProperty11_SearchFilterExactMatch] [rapid] draw categoryIdx: 0
+# 2026/09/19 20:37:22.363540 [TestProperty11_SearchFilterExactMatch] GetOrCreateItem failed: getItemByID: sql: expected 11 destination arguments in Scan, not 12
+# 
+v0.4.8#13958773871829777224
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0

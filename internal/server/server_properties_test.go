@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Rhionin/pantry/internal/cart"
 	"github.com/Rhionin/pantry/internal/product"
 	"pgregory.net/rapid"
 )
@@ -322,13 +323,13 @@ func buildComposedAndAPIHandlers(t *testing.T, seed func(env testEnv)) (http.Han
 	if seed != nil {
 		seed(envA)
 	}
-	composed, _ := NewHandler(catalogA, lookupA, refresherA, envA.DB)
+	composed, _ := NewHandler(catalogA, lookupA, refresherA, envA.DB, cart.NewRegistry(), cart.NewLedger(envA.DB))
 
 	catalogB, lookupB, refresherB, envB := build()
 	if seed != nil {
 		seed(envB)
 	}
-	apiMux, _ := newAPIMux(catalogB, lookupB, refresherB, envB.DB)
+	apiMux, _ := newAPIMux(catalogB, lookupB, refresherB, envB.DB, cart.NewRegistry(), cart.NewLedger(envB.DB))
 
 	return composed, apiMux
 }

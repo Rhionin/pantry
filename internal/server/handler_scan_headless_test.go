@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Rhionin/pantry/internal/cart"
 	"github.com/Rhionin/pantry/internal/product"
 	"github.com/Rhionin/pantry/internal/scan"
 )
@@ -92,7 +93,7 @@ func getScanEntry(env testEnv, userID string) map[string]any {
 		Refresher: env.Refresher,
 		Now:       now,
 		MissTTL:   5 * time.Minute,
-	}, env.Refresher, env.DB)
+	}, env.Refresher, env.DB, cart.NewRegistry(), cart.NewLedger(env.DB))
 
 	server := httptest.NewServer(handler)
 	defer server.Close()

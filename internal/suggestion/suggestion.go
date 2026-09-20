@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -133,6 +134,50 @@ func scanConsumptionEvent(row scanner) (*ConsumptionEvent, error) {
 	}
 
 	return &event, nil
+}
+
+// ListConsumedAtByItems returns consumption timestamps for multiple items.
+// One query returns (item_id, consumed_at) pairs, then we count per item's boundary.
+// Not a per-item COUNT(*) WHERE consumed_at > ? because each item has its own boundary,
+// and one query per item would serialize against SetMaxOpenConns(1).
+func (r *ConsumptionLog) ListConsumedAtByItems(ctx context.Context, itemIDs []string) (map[string][]time.Time, error) {
+	if len(itemIDs) == 0 {
+		return make(map[string][]time.Time), nil
+	}
+
+	// Create placeholders for IN clause
+	placeholders := make([]string, len(itemIDs))
+	args := make([]interface{}, len(itemIDs)+1)
+	for i, id := range itemIDs {
+		placeholders[i] = "?"
+		args[i] = id
+	}
+	args[len(itemIDs)] = time.Now().UTC() // boundary
+
+	rows, err := r.db.QueryContext(ctx,
+		`SELECT item_id, consumed_at FROM consumption_events
+		 WHERE item_id IN (`+strings.Join(placeholders, ",")+`) AND consumed_at > ?`,
+		args...,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list consumed at by items: %w", err)
+	}
+	defer rows.Close()
+
+	result := make(map[string][]time.Time)
+	for rows.Next() {
+		var itemID string
+		var consumedAt time.Time
+		if err := rows.Scan(&itemID, &consumedAt); err != nil {
+			return nil, fmt.Errorf("failed to read consumed event: %w", err)
+		}
+		result[itemID] = append(result[itemID], consumedAt)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("failed to iterate consumed events: %w", err)
+	}
+
+	return result, nil
 }
 
 // nullableString converts a *string to sql.NullString for nullable TEXT columns.

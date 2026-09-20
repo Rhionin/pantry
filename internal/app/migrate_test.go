@@ -57,12 +57,14 @@ func TestMigrationApplies(t *testing.T) {
 	want := []string{
 		"barcode_misses",
 		"barcodes",
-		"cart_integrations",
 		"consumption_events",
+		"fulfillment_ledger",
 		"item_instances",
 		"items",
 		"products",
+		"provider_connections",
 		"scan_entries",
+		"shopping_list_entry_adjustments",
 		"shopping_list_items",
 	}
 	sort.Strings(want) // already sorted, but be explicit
@@ -96,14 +98,15 @@ func TestMigrationIsIdempotent(t *testing.T) {
 	// One schema_migrations row per applied .sql file; the second RunMigrations
 	// must not re-apply any file, so the count equals the number of migration
 	// files (currently 001_initial_schema.sql, 002_backfill_orphaned_products.sql,
-	// 003_add_product_image_url.sql, 004_add_product_freshness.sql, and
-	// 005_add_external_source_and_barcode_misses.sql).
+	// 003_add_product_image_url.sql, 004_add_product_freshness.sql,
+	// 005_add_external_source_and_barcode_misses.sql, and
+	// 006_replace_cart_integrations_with_provider_ledger.sql).
 	var count int
 	if err := conn.QueryRow(`SELECT COUNT(*) FROM schema_migrations`).Scan(&count); err != nil {
 		t.Fatalf("count schema_migrations: %v", err)
 	}
-	if count != 5 {
-		t.Errorf("schema_migrations should have 5 rows after two runs, got %d", count)
+	if count != 6 {
+		t.Errorf("schema_migrations should have 6 rows after two runs, got %d", count)
 	}
 }
 
@@ -567,6 +570,41 @@ func applyMigrationsThrough004(t *testing.T, conn *sql.DB) {
 	}
 }
 
+// applyMigrationsThrough005 builds a database migrated only through
+// 005_add_external_source_and_barcode_misses.sql, by applying migrations 001-005
+// directly from disk and recording each in schema_migrations. This simulates a
+// pre-006 database so tests can seed rows against the pre-006 schema before
+// RunMigrations applies 006.
+func applyMigrationsThrough005(t *testing.T, conn *sql.DB) {
+	t.Helper()
+
+	if _, err := conn.Exec(`CREATE TABLE IF NOT EXISTS schema_migrations (
+		filename TEXT PRIMARY KEY,
+		applied_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+	)`); err != nil {
+		t.Fatalf("create schema_migrations table: %v", err)
+	}
+
+	for _, name := range []string{
+		"001_initial_schema.sql",
+		"002_backfill_orphaned_products.sql",
+		"003_add_product_image_url.sql",
+		"004_add_product_freshness.sql",
+		"005_add_external_source_and_barcode_misses.sql",
+	} {
+		sqlBytes, err := os.ReadFile(filepath.Join("migrations", name))
+		if err != nil {
+			t.Fatalf("read migration %q: %v", name, err)
+		}
+		if _, err := conn.Exec(string(sqlBytes)); err != nil {
+			t.Fatalf("apply migration %q: %v", name, err)
+		}
+		if _, err := conn.Exec(`INSERT INTO schema_migrations (filename) VALUES (?)`, name); err != nil {
+			t.Fatalf("record migration %q: %v", name, err)
+		}
+	}
+}
+
 // nullableSeed converts an empty string to nil so seeded optional columns are
 // stored as NULL rather than empty string, matching product.Catalog's convention.
 func nullableSeed(s string) any {
@@ -574,4 +612,218 @@ func nullableSeed(s string) any {
 		return nil
 	}
 	return s
+}
+
+// Feature: grocery-cart-integration, Property 1: Migration 006 drops cart_integrations and adds new tables
+//
+// Migration 006 replaces cart_integrations with provider_connections, fulfillment_ledger,
+// and shopping_list_entry_adjustments tables. It also adds replenishment_mode to items.
+//
+// Validates: Requirements 2.2, 6.2, 8.2, 10.12
+func TestMigration006ReplacesCartIntegrationsWithProviderLedger(t *testing.T) {
+	conn, err := sql.Open("sqlite", ":memory:")
+	if err != nil {
+		t.Fatalf("open in-memory SQLite: %v", err)
+	}
+	defer conn.Close()
+
+	applyMigrationsThrough005(t, conn)
+
+	// Verify cart_integrations exists before migration
+	var cartIntegrationsCount int
+	if err := conn.QueryRow(`
+		SELECT COUNT(*) FROM sqlite_master 
+		WHERE type = 'table' AND name = 'cart_integrations'`).Scan(&cartIntegrationsCount); err != nil {
+		t.Fatalf("check cart_integrations table: %v", err)
+	}
+	if cartIntegrationsCount != 1 {
+		t.Errorf("cart_integrations table before migration: want 1, got %d", cartIntegrationsCount)
+	}
+
+	// Verify provider_connections, fulfillment_ledger, shopping_list_entry_adjustments don't exist yet
+	for _, tableName := range []string{"provider_connections", "fulfillment_ledger", "shopping_list_entry_adjustments"} {
+		var count int
+		if err := conn.QueryRow(`
+			SELECT COUNT(*) FROM sqlite_master 
+			WHERE type = 'table' AND name = ?`, tableName).Scan(&count); err != nil {
+			t.Fatalf("check %s table: %v", tableName, err)
+		}
+		if count != 0 {
+			t.Errorf("%s table should not exist before migration 006", tableName)
+		}
+	}
+
+	// Verify items doesn't have replenishment_mode yet
+	var hasReplenishmentMode bool
+	if err := conn.QueryRow(`
+		SELECT COUNT(*) FROM pragma_table_info('items') WHERE name = 'replenishment_mode'`).Scan(&hasReplenishmentMode); err != nil {
+		t.Fatalf("check replenishment_mode column: %v", err)
+	}
+	if hasReplenishmentMode {
+		t.Errorf("replenishment_mode column should not exist before migration 006")
+	}
+
+	// Apply migration 006
+	if err := app.RunMigrations(conn); err != nil {
+		t.Fatalf("RunMigrations (apply 006): %v", err)
+	}
+
+	// Verify cart_integrations no longer exists
+	if err := conn.QueryRow(`
+		SELECT COUNT(*) FROM sqlite_master 
+		WHERE type = 'table' AND name = 'cart_integrations'`).Scan(&cartIntegrationsCount); err != nil {
+		t.Fatalf("check cart_integrations table: %v", err)
+	}
+	if cartIntegrationsCount != 0 {
+		t.Errorf("cart_integrations table should not exist after migration 006")
+	}
+
+	// Verify new tables exist
+	for _, tableName := range []string{"provider_connections", "fulfillment_ledger", "shopping_list_entry_adjustments"} {
+		var count int
+		if err := conn.QueryRow(`
+			SELECT COUNT(*) FROM sqlite_master 
+			WHERE type = 'table' AND name = ?`, tableName).Scan(&count); err != nil {
+			t.Fatalf("check %s table: %v", tableName, err)
+		}
+		if count != 1 {
+			t.Errorf("%s table should exist after migration 006", tableName)
+		}
+	}
+
+	// Verify items has replenishment_mode
+	if err := conn.QueryRow(`
+		SELECT COUNT(*) FROM pragma_table_info('items') WHERE name = 'replenishment_mode'`).Scan(&hasReplenishmentMode); err != nil {
+		t.Fatalf("check replenishment_mode column: %v", err)
+	}
+	if !hasReplenishmentMode {
+		t.Errorf("replenishment_mode column should exist after migration 006")
+	}
+
+	// Verify replenishment_mode has the correct default
+	var defaultVal string
+	if err := conn.QueryRow(`
+		SELECT sql FROM sqlite_master 
+		WHERE type = 'table' AND name = 'items'`).Scan(&defaultVal); err != nil {
+		t.Fatalf("get items table SQL: %v", err)
+	}
+	if !strings.Contains(defaultVal, "replenishment_mode TEXT NOT NULL DEFAULT 'target'") {
+		t.Errorf("replenishment_mode should have DEFAULT 'target': got %s", defaultVal)
+	}
+
+	// Verify idx_consumption_events_item_consumed index exists
+	var indexCount int
+	if err := conn.QueryRow(`
+		SELECT COUNT(*) FROM sqlite_master 
+		WHERE type = 'index' AND name = 'idx_consumption_events_item_consumed'`).Scan(&indexCount); err != nil {
+		t.Fatalf("check index: %v", err)
+	}
+	if indexCount != 1 {
+		t.Errorf("idx_consumption_events_item_consumed index should exist")
+	}
+
+	// A second RunMigrations must be a no-op: schema_migrations count is stable.
+	migrationsBefore := countMigrations(t, conn)
+	if err := app.RunMigrations(conn); err != nil {
+		t.Fatalf("RunMigrations (idempotent re-run): %v", err)
+	}
+	if got := countMigrations(t, conn); got != migrationsBefore {
+		t.Errorf("schema_migrations count changed on re-run: before %d, after %d", migrationsBefore, got)
+	}
+}
+
+// Feature: grocery-cart-integration, Property 2: Migration 006 preserves existing items data
+//
+// WHEN migration 006 is applied to a database containing items rows, THE Migration_Runner
+// SHALL leave all items columns unchanged and set replenishment_mode to 'target' for every row.
+//
+// Validates: Requirements 6.1, 6.2, 6.3, 6.4, 6.5
+func TestMigration006PreservesItemsDataAndSetsDefaultMode(t *testing.T) {
+	conn, err := sql.Open("sqlite", ":memory:")
+	if err != nil {
+		t.Fatalf("open in-memory SQLite: %v", err)
+	}
+	defer conn.Close()
+
+	applyMigrationsThrough005(t, conn)
+
+	// Seed items rows with various configurations
+	type seedRow struct {
+		id, userID, productID string
+		targetQuantity        *int
+		createdAt             time.Time
+	}
+	now := time.Date(2024, 1, 2, 3, 4, 5, 0, time.UTC)
+	seeds := []seedRow{
+		{id: "item-1", userID: "user-1", productID: "011110728227", targetQuantity: intPtr(5), createdAt: now},
+		{id: "item-2", userID: "user-1", productID: "some-uuid", targetQuantity: nil, createdAt: now.Add(time.Hour)},
+		{id: "item-3", userID: "user-2", productID: "another-uuid", targetQuantity: intPtr(3), createdAt: now.Add(2 * time.Hour)},
+	}
+	for _, s := range seeds {
+		if _, err := conn.Exec(
+			`INSERT INTO items (id, user_id, product_id, target_quantity, created_at) VALUES (?, ?, ?, ?, ?)`,
+			s.id, s.userID, s.productID, s.targetQuantity, s.createdAt,
+		); err != nil {
+			t.Fatalf("seed item %q: %v", s.id, err)
+		}
+	}
+
+	if err := app.RunMigrations(conn); err != nil {
+		t.Fatalf("RunMigrations (apply 006): %v", err)
+	}
+
+	// Verify all items have replenishment_mode = 'target' and original data preserved
+	for _, s := range seeds {
+		var (
+			gotUserID, gotProductID string
+			gotTargetQuantity       *int
+			gotMode                 string
+			gotCreatedAt            time.Time
+		)
+		if err := conn.QueryRow(
+			`SELECT user_id, product_id, target_quantity, replenishment_mode, created_at
+			 FROM items WHERE id = ?`, s.id,
+		).Scan(&gotUserID, &gotProductID, &gotTargetQuantity, &gotMode, &gotCreatedAt); err != nil {
+			t.Fatalf("read back item %q: %v", s.id, err)
+		}
+
+		if gotUserID != s.userID {
+			t.Errorf("item %q user_id: want %q, got %q", s.id, s.userID, gotUserID)
+		}
+		if gotProductID != s.productID {
+			t.Errorf("item %q product_id: want %q, got %q", s.id, s.productID, gotProductID)
+		}
+		if !targetQuantityEqual(s.targetQuantity, gotTargetQuantity) {
+			t.Errorf("item %q target_quantity: want %v, got %v", s.id, s.targetQuantity, gotTargetQuantity)
+		}
+		if gotMode != "target" {
+			t.Errorf("item %q replenishment_mode: want 'target', got %q", s.id, gotMode)
+		}
+		if !gotCreatedAt.Equal(s.createdAt) {
+			t.Errorf("item %q created_at: want %v, got %v", s.id, s.createdAt, gotCreatedAt)
+		}
+	}
+
+	// A second RunMigrations must be a no-op: schema_migrations count is stable.
+	migrationsBefore := countMigrations(t, conn)
+	if err := app.RunMigrations(conn); err != nil {
+		t.Fatalf("RunMigrations (idempotent re-run): %v", err)
+	}
+	if got := countMigrations(t, conn); got != migrationsBefore {
+		t.Errorf("schema_migrations count changed on re-run: before %d, after %d", migrationsBefore, got)
+	}
+}
+
+func intPtr(i int) *int {
+	return &i
+}
+
+func targetQuantityEqual(a, b *int) bool {
+	if a == nil && b == nil {
+		return true
+	}
+	if a == nil || b == nil {
+		return false
+	}
+	return *a == *b
 }
