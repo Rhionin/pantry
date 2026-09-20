@@ -6,9 +6,12 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/Rhionin/pantry/internal/app"
+	"github.com/Rhionin/pantry/internal/cart"
+	"github.com/Rhionin/pantry/internal/cart/kroger"
 	"github.com/Rhionin/pantry/internal/product"
 	"github.com/Rhionin/pantry/internal/scanlistener"
 	"github.com/Rhionin/pantry/internal/server"
@@ -60,6 +63,60 @@ func productMissTTL() time.Duration {
 	return ttl
 }
 
+// loadCartRegistry reads environment variables to configure grocery providers.
+// It returns a registry with configured providers, or nil if none are configured.
+// The returned Ledger is needed for the HTTP handlers.
+func loadCartRegistry(db *sql.DB) (*cart.Registry, *cart.Ledger) {
+	// Check if Kroger is disabled
+	if os.Getenv("DISABLE_KROGER") == "true" {
+		log.Println("Kroger provider disabled via DISABLE_KROGER")
+		return nil, nil
+	}
+
+	// Check if Kroger client_id is set
+	clientID := os.Getenv("KROGER_CLIENT_ID")
+	if clientID = strings.TrimSpace(clientID); clientID == "" {
+		log.Println("KROGER_CLIENT_ID not set or empty, Kroger provider not configured")
+		return nil, nil
+	}
+
+	clientSecret := strings.TrimSpace(os.Getenv("KROGER_CLIENT_SECRET"))
+	if clientSecret == "" {
+		log.Println("KROGER_CLIENT_SECRET not set or empty, Kroger provider not configured")
+		return nil, nil
+	}
+
+	redirectURI := strings.TrimSpace(os.Getenv("KROGER_REDIRECT_URI"))
+	if redirectURI == "" {
+		log.Println("KROGER_REDIRECT_URI not set or empty, Kroger provider not configured")
+		return nil, nil
+	}
+
+	modality := strings.TrimSpace(os.Getenv("KROGER_MODALITY"))
+	if modality == "" {
+		modality = "PICKUP"
+	} else if modality != "PICKUP" && modality != "DELIVERY" {
+		log.Printf("invalid KROGER_MODALITY %q, using default PICKUP", modality)
+		modality = "PICKUP"
+	}
+
+	adapter, err := kroger.New(clientID, clientSecret, redirectURI, modality)
+	if err != nil {
+		log.Printf("failed to create Kroger adapter: %v, skipping registration", err)
+		return nil, nil
+	}
+
+	registry := cart.NewRegistry()
+	if err := registry.Register(adapter); err != nil {
+		log.Printf("failed to register Kroger: %v", err)
+		return nil, nil
+	}
+
+	ledger := cart.NewLedger(db)
+
+	return registry, ledger
+}
+
 func main() {
 	dbPath := envOrDefault("DB_PATH", "pantry.db")
 	addr := envOrDefault("ADDR", ":8080")
@@ -97,7 +154,10 @@ func main() {
 		MissTTL:   productMissTTL(),
 	}
 
-	handler, scanQueue := server.NewHandler(catalog, lookupService, refresher, sqlDB)
+	// Load cart registry and register Kroger adapter if configured
+	registry, ledger := loadCartRegistry(sqlDB)
+
+	handler, scanQueue := server.NewHandler(catalog, lookupService, refresher, sqlDB, registry, ledger)
 
 	if listener, ok := loadScanListenerConfig(); ok {
 		listener.Queue = scanQueue

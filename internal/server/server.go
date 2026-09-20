@@ -28,9 +28,11 @@ func NewHandler(
 	lookupService *product.LookupService,
 	refresher *product.Refresher,
 	db *sql.DB,
+	registry *cart.Registry,
+	ledger *cart.Ledger,
 ) (http.Handler, *scan.Queue) {
 	// Build the API mux containing all existing routes
-	apiMux, scanQueue := newAPIMux(catalog, lookupService, refresher, db)
+	apiMux, scanQueue := newAPIMux(catalog, lookupService, refresher, db, registry, ledger)
 
 	// Create root mux that composes API routes with web UI
 	root := http.NewServeMux()
@@ -51,6 +53,8 @@ func newAPIMux(
 	lookupService *product.LookupService,
 	refresher *product.Refresher,
 	db *sql.DB,
+	registry *cart.Registry,
+	ledger *cart.Ledger,
 ) (*http.ServeMux, *scan.Queue) {
 	apiMux := http.NewServeMux()
 
@@ -155,12 +159,8 @@ func newAPIMux(
 	apiMux.HandleFunc("POST /api/shopping-list/export", HandleJSON(shoppingListExportHandler.Handle))
 
 	// Cart integration handlers
-	registry := cart.NewRegistry()
-	ledger := cart.NewLedger(db)
+	// Note: registry and ledger are passed in from the caller and created in loadCartRegistry()
 	connDir := connection.NewDirectory(db)
-
-	// Note: The Kroger provider will be registered here when loadCartRegistry() is implemented
-	// For now, we wire the handlers with an empty registry (no-op behavior)
 
 	providersHandler := &ProvidersHandler{
 		Registry:      registry,
@@ -184,6 +184,26 @@ func newAPIMux(
 	apiMux.HandleFunc("DELETE /api/providers/{providerId}/connection", HandleJSON(providerDisconnectHandler.Handle))
 	apiMux.HandleFunc("GET /api/providers/{providerId}/ledger", HandleJSON(providerLedgerGetHandler.Handle))
 	apiMux.HandleFunc("POST /api/providers/{providerId}/ledger/reset", HandleJSON(providerLedgerResetHandler.Handle))
+
+	// Replenishment mode handler
+	setReplenishmentModeHandler := &SetReplenishmentModeHandler{
+		Pantry: pantry,
+	}
+	apiMux.HandleFunc("POST /api/items/{itemId}/replenishment-mode", HandleJSON(setReplenishmentModeHandler.Handle))
+
+	// Adjustment handler
+	shoppingListAdjustmentHandler := &ShoppingListAdjustmentHandler{
+		ShoppingList: shoppingList,
+	}
+	apiMux.HandleFunc("PUT /api/shopping-list/items/{id}/adjustment", HandleJSON(shoppingListAdjustmentHandler.Handle))
+	apiMux.HandleFunc("DELETE /api/shopping-list/items/{id}/adjustment", HandleJSON(shoppingListAdjustmentHandler.Handle))
+
+	// Unknown resolution handler
+	unknownResolutionHandler := &UnknownResolutionHandler{
+		ShoppingList: shoppingList,
+		Provisioner:  shoppingListExportHandler.Provisioner,
+	}
+	apiMux.HandleFunc("POST /api/shopping-list/items/{id}/unknown-resolution", HandleJSON(unknownResolutionHandler.Handle))
 
 	return apiMux, scanQueue
 }

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/Rhionin/pantry/internal/app"
+	"github.com/Rhionin/pantry/internal/cart"
 	"github.com/Rhionin/pantry/internal/product"
 	_ "modernc.org/sqlite"
 )
@@ -83,7 +84,7 @@ func setupTestWithDB(t *testing.T) (http.Handler, testEnv) {
 		MissTTL:   5 * time.Minute,
 	}
 
-	handler, _ := NewHandler(productRepo, lookupService, refresher, db)
+	handler, _ := NewHandler(productRepo, lookupService, refresher, db, cart.NewRegistry(), cart.NewLedger(db))
 
 	// Get the Open Food Facts fake for backward compatibility
 	offFake := databases[product.ExternalSourceOpenFoodFacts]

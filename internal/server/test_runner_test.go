@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Rhionin/pantry/internal/cart"
 	"github.com/Rhionin/pantry/internal/product"
 	"github.com/steinfletcher/apitest"
 	jsonpath "github.com/steinfletcher/apitest-jsonpath"
@@ -225,7 +226,7 @@ func exchanges(exs ...httpExchange) func(env testEnv) {
 			Refresher: env.Refresher,
 			Now:       now,
 			MissTTL:   env.MissTTL,
-		}, env.Refresher, env.DB)
+		}, env.Refresher, env.DB, cart.NewRegistry(), cart.NewLedger(env.DB))
 
 		for i, ex := range exs {
 			env.T.Run("", func(t *testing.T) {

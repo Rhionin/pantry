@@ -183,3 +183,28 @@ func TestHeaderCredential_String(t *testing.T) {
 		t.Errorf("String() = %q, want %q", got, "X-API-Key=redacted")
 	}
 }
+
+func TestRegistry_Register_Validation(t *testing.T) {
+	// Test duplicate registration
+	registry := NewRegistry()
+	registry.Register(&mockProvider{id: "test"})
+	if err := registry.Register(&mockProvider{id: "test"}); err == nil {
+		t.Error("duplicate registration should fail")
+	}
+}
+
+type mockProvider struct {
+	id string
+}
+
+func (m *mockProvider) ID() ProviderID         { return ProviderID(m.id) }
+func (m *mockProvider) DisplayName() string    { return "Mock" }
+func (m *mockProvider) Capabilities() Capabilities {
+	return Capabilities{
+		Auth:         AuthNone,
+		Delivery:     DeliveryServerPush,
+		Confirmation: ConfirmNone,
+		Mutation:     MutateAddOnly,
+		Identity:     IdentityDerived,
+	}
+}
