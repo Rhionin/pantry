@@ -226,7 +226,7 @@ func exchanges(exs ...httpExchange) func(env testEnv) {
 			Refresher: env.Refresher,
 			Now:       now,
 			MissTTL:   env.MissTTL,
-		}, env.Refresher, env.DB, cart.NewRegistry(), cart.NewLedger(env.DB))
+		}, env.Refresher, env.DB, WithCartRegistry(cart.NewRegistry(), cart.NewLedger(env.DB)))
 
 		for i, ex := range exs {
 			env.T.Run("", func(t *testing.T) {
