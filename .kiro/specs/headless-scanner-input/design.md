@@ -2,7 +2,11 @@
 
 ## Overview
 
-`ScanListener` stops reading `os.Stdin` and instead opens the Scanner_Device — the scanner's evdev character device — reads `input_event` records from it, decodes keycodes into characters, and assembles a Scan_Line that completes on Enter. From the completed barcode value onward, nothing changes: the same `classify` call, the same `modeState`, the same `scan.NewEntryFromLookup`, the same `Queue.CreateScanEntry`.
+`ScanListener` gains a second way to obtain barcodes and defaults to it: it opens the Scanner_Device — the scanner's evdev character device — reads `input_event` records from it, decodes keycodes into characters, and assembles a Scan_Line that completes on Enter. From the completed barcode value onward, nothing changes: the same `classify` call, the same `modeState`, the same `scan.NewEntryFromLookup`, the same `Queue.CreateScanEntry`.
+
+The existing `os.Stdin` path is **kept intact** as the other selectable source, for local development on a machine with no scanner and possibly no evdev subsystem. This is not a compatibility shim to be removed later: typing a barcode into a terminal is the only way to exercise Control_Barcode handling and Current_Mode outside the Pi, and the browser's `POST /api/scans` path is not a substitute because it bypasses both.
+
+The two sources are selected by explicit configuration, not autodetection. Autodetecting a TTY would be convenient and is the wrong call here: the appliance's failure mode would become silent again the moment something supplied the container a TTY — which today's `docker-compose.yml` does, via the `stdin_open`/`tty` pair this feature removes. An explicit default of "device" means a typo, an unset variable, or a stale Compose file all land on the source that works in production.
 
 The terminal used to do two jobs for us, and both move into the process:
 
@@ -32,28 +36,36 @@ Language: Go. No new module dependencies: `golang.org/x/sys` is already in `go.m
           │                 │                    GET /health reads Status()
           │                 ▼
           │      scanlistener.ScanListener
-          │         DevicePath, StockInBarcode, StockOutBarcode,
-          │         HeadlessUserID, Open (injectable seam)
+          │         Source, DevicePath, Stdin, StockInBarcode,
+          │         StockOutBarcode, HeadlessUserID, Open (seam)
           └────────►ModePublisher
                             │
                             │ go listener.Run(ctx)
                             ▼
-                  ┌──────────────────────────────┐
-                  │ reconnect loop (Req 2)        │
-                  │  Open(DevicePath)             │
-                  │   ├─ err → log, backoff, retry│
-                  │   └─ ok  → readFrom(ctx, dev) │
-                  │        device removed → reset │
-                  │        buffer, back to top    │
-                  └───────────────┬──────────────┘
-                                  ▼
-                        readKeyEvent(dev)  ── 24-byte input_event records
-                                  │ EV_KEY, value==1 only (Req 1.2, 1.3)
-                                  ▼
-                        lineAssembler.feed(KeyEvent)
-                          decodeKey → printable / enter / shift / unmapped
-                                  │ complete line on Enter (Req 1.6)
-                                  ▼
+                     Run: switch l.Source (Req 10.6)
+                      │                        │
+        SourceDevice  │                        │  SourceStdin
+        (default)     ▼                        ▼  (local dev)
+      ┌──────────────────────────────┐   ┌────────────────────────────┐
+      │ runDevice — reconnect loop    │   │ runStdin — UNCHANGED from  │
+      │  Open(DevicePath)             │   │ today: bufio.Scanner over  │
+      │   ├─ err → log, backoff, retry│   │ l.Stdin (default os.Stdin) │
+      │   └─ ok  → readFrom(ctx, dev) │   │ EOF → log and stop, no     │
+      │        device removed → reset │   │ retry (bg-scan-listener    │
+      │        buffer, back to top    │   │ Req 1.3 still applies)     │
+      └───────────────┬──────────────┘   └─────────────┬──────────────┘
+                      ▼                                 │
+            readKeyEvent(dev) ── 24-byte input_event     │ TTY does the
+                      │ EV_KEY, value==1 (Req 1.2, 1.3)  │ line assembly
+                      ▼                                  │
+            lineAssembler.feed(KeyEvent)                 │
+              decodeKey → printable/enter/shift/unmapped │
+                      │ complete line on Enter (Req 1.6) │
+                      └───────────────┬──────────────────┘
+                                      ▼
+                            handleLine (shared sink)
+                                      │
+                                      ▼
                         empty? → discard (Req 1.7)
                                   │
                        ┌──────────┴───────────┐
@@ -178,18 +190,58 @@ func (a *lineAssembler) reset()
 
 Shift state lives in the assembler rather than being tracked globally, so a disconnect that strands a shift key down cannot leak into the next connection — `reset` clears it along with the buffer.
 
-### Reconnect loop — `internal/scanlistener/listener.go`
-
-`Run` changes from a single `bufio.Scanner` pass into an outer reconnect loop around an inner read loop. `Stdin io.Reader` is removed from the struct; `DevicePath string`, `Open OpenFunc`, and the backoff bounds replace it.
+### Source selection — `internal/scanlistener/source.go`
 
 ```go
-// Run opens the Scanner_Device and reads Key_Events from it until ctx is
-// cancelled, reopening the device with a capped backoff whenever it is absent
-// or disappears. It never returns an error: a missing scanner is an expected
-// state on an appliance whose USB enumeration may finish after this process
-// starts, so Run keeps retrying and the HTTP server is unaffected either way
-// (Requirements 2.1, 2.7).
+// Source names where the ScanListener obtains barcodes. It is fixed at
+// startup (Requirement 10.6) so the active source is a reportable fact
+// rather than a race against device availability.
+type Source string
+
+const (
+	SourceDevice Source = "device" // default: the appliance path
+	SourceStdin  Source = "stdin"  // local development in a terminal
+)
+
+// ParseSource maps a configured value to a Source. An unset or empty value
+// yields SourceDevice; an unrecognized value yields SourceDevice with
+// ok=false so the caller can log the offending input (Requirements 7.5-7.7).
+// Defaulting to SourceDevice rather than to stdin is deliberate: a typo must
+// not silently select the source that cannot work under a service manager.
+func ParseSource(raw string) (s Source, ok bool)
+```
+
+`Run` dispatches on it, and the two loops converge on the existing `handleLine`:
+
+```go
 func (l *ScanListener) Run(ctx context.Context) {
+	switch l.Source {
+	case SourceStdin:
+		l.runStdin(ctx)
+	default:
+		l.runDevice(ctx)
+	}
+}
+```
+
+`runStdin` is today's implementation moved verbatim — `bufio.Scanner` over `l.Stdin` defaulting to `os.Stdin`, stopping on EOF or a read error without retrying. The `Stdin io.Reader` field **stays**, which is why the existing `listener_test.go` cases and `background-scan-listener`'s stdin-driven property tests keep passing unmodified (Requirement 10.7). No retry loop wraps it, because a closed pipe cannot reopen.
+
+**The TTY mismatch guard.** With `SourceStdin` selected but standard input not a terminal, the listener is in exactly the state this feature exists to eliminate — it will read EOF and stop, silently. So `runStdin` checks once at startup and logs a warning naming the combination, surfacing it in Scanner_Status, then proceeds (Requirement 10.4).
+
+The check must be a real terminal test, not `os.Stdin.Stat()` against `os.ModeCharDevice`: the standard input a service manager supplies is `/dev/null`, which *is* a character device and would pass that test (Requirement 10.5). `github.com/mattn/go-isatty` performs the correct `ioctl` and is already in `go.mod` as an indirect dependency, so this promotes it to direct and adds no new module to the build.
+
+### Reconnect loop — `internal/scanlistener/listener.go`
+
+`runDevice` is an outer reconnect loop around an inner read loop. `DevicePath string`, `Open OpenFunc`, and the backoff bounds are added to the struct alongside the retained `Stdin`.
+
+```go
+// runDevice opens the Scanner_Device and reads Key_Events from it until ctx
+// is cancelled, reopening the device with a capped backoff whenever it is
+// absent or disappears. It never returns an error: a missing scanner is an
+// expected state on an appliance whose USB enumeration may finish after this
+// process starts, so it keeps retrying and the HTTP server is unaffected
+// either way (Requirements 2.1, 2.7).
+func (l *ScanListener) runDevice(ctx context.Context) {
 	backoff := l.initialBackoff()
 	for ctx.Err() == nil {
 		dev, grabbed, err := l.open(l.DevicePath)
@@ -222,17 +274,22 @@ Cancellation while blocked in `read` is handled by closing the device from a gor
 // through GET /health because an appliance with no monitor has no other way
 // to distinguish a dead scanner from an idle one.
 type Status struct {
-	DevicePath      string     `json:"devicePath"`
-	Connected       bool       `json:"connected"`
-	Grabbed         bool       `json:"grabbed"`
-	Mode            string     `json:"mode"`
-	UnmappedKeys    int        `json:"unmappedKeys"`
-	LastScanAt      *time.Time `json:"lastScanAt"`
-	LastError       string     `json:"lastError,omitempty"`
+	Source       Source     `json:"source"`       // "device" or "stdin"
+	DevicePath   string     `json:"devicePath,omitempty"`
+	Connected    bool       `json:"connected"`
+	Grabbed      bool       `json:"grabbed"`
+	Mode         string     `json:"mode"`
+	UnmappedKeys int        `json:"unmappedKeys"`
+	LastScanAt   *time.Time `json:"lastScanAt"`
+	LastError    string     `json:"lastError,omitempty"`
 }
+```
 
+```go
 func (l *ScanListener) Status() Status
 ```
+
+For `SourceStdin`, `Connected` reports whether the stdin reader is still open (false once it hits EOF), `DevicePath` is omitted, `Grabbed` is false, and the TTY mismatch from Requirement 10.4 appears in `LastError`. That makes the one question a developer actually asks — "why isn't my typed barcode registering?" — answerable from `curl /health` alone.
 
 Guarded by a mutex, like `modeState` — whose existing comment already anticipated exactly this use: "the same value could be inspected by future health endpoints."
 
@@ -283,7 +340,10 @@ New environment variable, read with the existing `envOrDefault` helper:
 
 | Env var | Default | Requirement |
 |---|---|---|
+| `SCAN_INPUT` | `device` | 7.5, 7.6, 7.7 |
 | `SCANNER_DEVICE` | `/dev/pantry-scanner` | 7.1 |
+
+Local development is then `SCAN_INPUT=stdin go run ./cmd/server`, which behaves exactly as the server does today. The Compose file pins `SCAN_INPUT=device` explicitly rather than relying on the default, so the appliance's configuration states its intent on the face of the file.
 
 `STOCK_IN_CONTROL_BARCODE`, `STOCK_OUT_CONTROL_BARCODE`, and `HEADLESS_USER_ID` keep their current names and defaults (Requirement 7.2), and the identical-control-barcode check is unchanged (Requirement 7.3).
 
@@ -332,6 +392,11 @@ No schema changes. `ScanListener` still writes ordinary `scan_entries` rows thro
 
 | Situation | Behavior | Requirement |
 |---|---|---|
+| `SCAN_INPUT` unset | Select `device`; log the resolved source | 7.4, 7.6 |
+| `SCAN_INPUT` holds an unrecognized value | Log a configuration error naming the value, select `device` | 7.7 |
+| `SCAN_INPUT=stdin` and stdin is not a terminal | Log a warning naming the combination, record it in `LastError`, keep running | 10.4, 10.5 |
+| `SCAN_INPUT=stdin`, stdin reaches EOF or errors | Log and stop reading; no retry; HTTP unaffected — `background-scan-listener` Req 1.3, unchanged | 10.1 |
+| `SCAN_INPUT=stdin` on a machine with no evdev | No device is opened or required | 10.2 |
 | `SCANNER_DEVICE` path absent at startup | Log resolved path, status `connected: false`, retry with backoff; HTTP unaffected | 2.1, 7.4 |
 | Open fails with a permission error | Same retry path; `LastError` in Scanner_Status names it, so a bad udev rule is diagnosable over HTTP | 2.1, 2.4 |
 | `EVIOCGRAB` fails | Log, continue reading, Scanner_Status reports `grabbed: false` | 3.2 |
@@ -358,7 +423,10 @@ Per AGENTS.md: table-driven unit tests, `rapid` property tests, and `apitest` ca
 - `decodeKey` (`keymap_test.go`): digit row, letters unshifted and shifted, keypad digits, `KEY_ENTER` and `KEY_KPENTER` both returning `keyEnter`, both shift keycodes returning `keyShift`, and an arbitrary unmapped code returning `keyUnmapped`.
 - `lineAssembler` (`assembler_test.go`): a digit sequence plus Enter yields the barcode exactly once; a release event (`Value: 0`) for a printable key appends nothing; a non-`EV_KEY` record appends nothing; Enter on an empty buffer yields the empty string, which `handleLine` then discards; shift-down/letter/shift-up yields one uppercase then lowercase; `reset()` mid-line discards the partial buffer and clears stranded shift state.
 - Reconnect loop (`listener_test.go`), with an injected `OpenFunc`: an opener failing then succeeding results in a device read without `Run` returning; an opener whose device returns `ENODEV` mid-stream is reopened; backoff grows on consecutive failures and resets after a success; a cancelled context returns from `Run` both while waiting on backoff and while blocked in a read; `Close` is called on every device the opener handed out (no descriptor leak across reconnects).
-- Configuration (`cmd/server/main_test.go`): `SCANNER_DEVICE` default and override via `t.Setenv`, matching the existing `TestProductCacheTTL` pattern; the identical-control-barcode case still returns `ok=false`.
+- `ParseSource` (`source_test.go`): `"device"` and `"stdin"` map to their sources with `ok=true`; empty and unset map to `SourceDevice` with `ok=true`; an arbitrary other string maps to `SourceDevice` with `ok=false`.
+- Source dispatch (`listener_test.go`): with `Source: SourceStdin` and an injected `Stdin`, `Run` reads lines and never calls the `OpenFunc`; with `Source: SourceDevice`, `Run` calls the `OpenFunc` and never touches `Stdin`. This pair is what keeps the two paths from quietly collapsing into one.
+- Configuration (`cmd/server/main_test.go`): `SCANNER_DEVICE` and `SCAN_INPUT` defaults and overrides via `t.Setenv`, matching the existing `TestProductCacheTTL` pattern; an unrecognized `SCAN_INPUT` yields `SourceDevice`; the identical-control-barcode case still returns `ok=false`.
+- **Retained unmodified**: the existing `internal/scanlistener/listener_test.go` stdin cases and `background-scan-listener`'s stdin-driven property tests. They now exercise `runStdin` through `Run` with `Source: SourceStdin` set in their fixture, and their assertions do not change (Requirement 10.7).
 
 **Property tests** (`listener_properties_test.go`, ≥100 iterations each, `pgregory.net/rapid`). Properties 1 and 2 below replace `background-scan-listener`'s Property 1 (empty-line discard) and extend its Property 2 (mode transitions) to drive Key_Event bytes instead of stdin lines. That spec's Properties 3, 4, and 5 cover `scan.NewEntryFromLookup` and attribution, are untouched by this feature, and keep passing as-is.
 

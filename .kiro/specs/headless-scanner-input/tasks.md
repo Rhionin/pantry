@@ -16,7 +16,14 @@ reconnect loop above them is fully faked in tests.
 Everything downstream of a completed barcode line is untouched: `classify`, `modeState`,
 `handleLine`, `scan.NewEntryFromLookup`, and `Queue.CreateScanEntry` keep their current
 behavior, and `background-scan-listener`'s Properties 3, 4, and 5 keep passing unmodified.
-`ScanListener.Stdin` is removed in task 6.
+
+`ScanListener.Stdin` is **retained**. Today's `bufio.Scanner` loop moves verbatim into
+`runStdin` and stays selectable via `SCAN_INPUT=stdin` for local development, so a
+developer with no scanner and no evdev subsystem can still exercise control barcodes and
+mode switching. The existing `listener_test.go` cases and the stdin-driven property tests
+from `background-scan-listener` are therefore amended only in their fixture setup, not
+rewritten — if a task below appears to require changing their assertions, that is a
+signal the stdin path's behavior was altered, which this feature does not do.
 
 Language: Go. Verification follows AGENTS.md: table-driven unit tests, `rapid` property
 tests (`pgregory.net/rapid`, already a dependency), and the `apitest` framework in
@@ -132,11 +139,10 @@ existing test call sites compile untouched.
     - JSON tags as specified in the design, with `LastError` omitted when empty
     - _Requirements: 1.9, 5.1_
 
-  - [ ] 6.2 Rewrite `ScanListener.Run` in `internal/scanlistener/listener.go` as a
-    reconnect loop, and add `readFrom`
-    - Remove the `Stdin io.Reader` field; add `DevicePath string`, `Open
-      OpenFunc`, and the initial/maximum backoff fields
-    - `Run` loops while `ctx.Err() == nil`: open, and on error record the status,
+  - [ ] 6.2 Add `runDevice` and `readFrom` to `internal/scanlistener/listener.go`
+    - **Keep** the `Stdin io.Reader` field; add `Source Source`, `DevicePath
+      string`, `Open OpenFunc`, and the initial/maximum backoff fields
+    - `runDevice` loops while `ctx.Err() == nil`: open, and on error record the status,
       wait the backoff, grow it toward the cap, and retry; on success record the
       status, reset the backoff, run `readFrom`, then close the device
     - `readFrom` owns a `lineAssembler`, calls `reset()` before its first read,
@@ -156,10 +162,12 @@ existing test call sites compile untouched.
       no-op so tests and a listener-less server need no stub
     - _Requirements: 5.3_
 
-  - [ ] 6.4 Rewrite `internal/scanlistener/listener_test.go` for the device path
-    - Replace the `strings.Reader`/`io.Pipe` stdin fakes with an injected
-      `OpenFunc` over a `bytes.Reader` of synthetic `input_event` records, plus a
-      recording `fakeQueue` and `fakeLookupService`
+  - [ ] 6.4 Extend `internal/scanlistener/listener_test.go` with device-path cases
+    - Keep every existing stdin case, adding only `Source: SourceStdin` to its
+      fixture; their assertions must not change (Requirement 10.7)
+    - Add cases driven by an injected `OpenFunc` over a `bytes.Reader` of
+      synthetic `input_event` records, reusing the existing
+      `fakeQueue`/`fakeLookupService`
     - An opener that fails once then succeeds reads from the device without
       `Run` returning
     - An opener whose device returns a device-removal error mid-stream is
@@ -174,6 +182,39 @@ existing test call sites compile untouched.
     - `Status()` reports `connected` true while reading and false after a
       removal, and carries the open error in `LastError`
     - _Requirements: 2.1, 2.2, 2.3, 2.4, 2.5, 2.6, 2.8, 3.3, 5.1, 5.3_
+
+  - [ ] 6.5 Create `internal/scanlistener/source.go` with the `Source` type, the
+    `SourceDevice` and `SourceStdin` constants, and `ParseSource(raw string)
+    (Source, bool)`
+    - An unset, empty, or unrecognized value yields `SourceDevice`; an
+      unrecognized value additionally yields `ok=false` so the caller can log it
+    - Document why the default is the device rather than stdin: a typo or a stale
+      config must not silently select the source that cannot work under a
+      service manager
+    - _Requirements: 7.5, 7.6, 7.7, 10.6_
+
+  - [ ] 6.6 Move today's stdin loop into `runStdin` and add the TTY mismatch guard
+    - `runStdin` is the current `Run` body verbatim: `bufio.Scanner` over
+      `l.Stdin` defaulting to `os.Stdin`, stopping on EOF or a read error with no
+      retry, dispatching each line into `handleLine`
+    - `Run` becomes a `switch l.Source` dispatching to `runStdin` or `runDevice`
+    - At `runStdin` entry, check whether standard input is a terminal using
+      `github.com/mattn/go-isatty` — promoted from indirect to direct in `go.mod`
+      — and when it is not, log a warning naming the combination and record it in
+      the status `LastError`, then proceed
+    - Do not use `os.Stdin.Stat()` against `os.ModeCharDevice` for this check:
+      `/dev/null` is a character device and would pass it, which is precisely the
+      case the guard exists to catch
+    - _Requirements: 10.1, 10.2, 10.3, 10.4, 10.5, 10.6_
+
+  - [ ] 6.7 Write unit tests for source selection and the stdin guard
+    - `source_test.go`: `ParseSource` table covering `"device"`, `"stdin"`, `""`,
+      and an arbitrary other string
+    - `listener_test.go`: with `Source: SourceStdin` and an injected `Stdin`,
+      `Run` reads lines and never invokes the `OpenFunc`; with `Source:
+      SourceDevice`, `Run` invokes the `OpenFunc` and never reads `Stdin`
+    - `Status()` reports the active source under each configuration
+    - _Requirements: 7.5, 7.6, 7.7, 10.1, 10.2, 10.6_
 
 - [ ] 7. Checkpoint - the listener compiles against a faked device and its tests pass
   - Run `go test -race ./internal/scanlistener/...` for the reconnect loop's
@@ -214,10 +255,12 @@ existing test call sites compile untouched.
     - _Requirements: 5.1, 5.2, 5.4_
 
 - [ ] 9. Configuration and lifecycle wiring in `cmd/server/main.go`
-  - [ ] 9.1 Add `SCANNER_DEVICE` to `loadScanListenerConfig`
-    - Read via the existing `envOrDefault` helper, defaulting to
-      `/dev/pantry-scanner`; set `DevicePath` on the returned listener
-    - Log the resolved device path at startup
+  - [ ] 9.1 Add `SCANNER_DEVICE` and `SCAN_INPUT` to `loadScanListenerConfig`
+    - Read both via the existing `envOrDefault` helper; `SCANNER_DEVICE` defaults
+      to `/dev/pantry-scanner` and sets `DevicePath`; `SCAN_INPUT` goes through
+      `scanlistener.ParseSource` and sets `Source`, logging a configuration error
+      when `ParseSource` reports the value was unrecognized
+    - Log the resolved device path and active source at startup
     - Keep the identical-control-barcode check returning `ok=false` unchanged
     - _Requirements: 7.1, 7.2, 7.3, 7.4_
 
@@ -236,8 +279,10 @@ existing test call sites compile untouched.
     - `SCANNER_DEVICE` unset yields the default path; an explicit value
       overrides it; use `t.Setenv`, matching the existing `TestProductCacheTTL`
       pattern
+    - `SCAN_INPUT` unset yields `SourceDevice`; `stdin` yields `SourceStdin`; an
+      unrecognized value yields `SourceDevice`
     - Equal control barcodes still yield `ok=false`
-    - _Requirements: 7.1, 7.3_
+    - _Requirements: 7.1, 7.3, 7.5, 7.6, 7.7_
 
 - [ ] 10. Checkpoint - server builds and starts with no scanner attached
   - Confirm the server starts, serves `GET /health` with `connected: false`, and
@@ -336,7 +381,10 @@ existing test call sites compile untouched.
 
   - [ ] 13.2 Update `deploy/docker-compose.yml`
     - Add the `devices:` mapping for `/dev/pantry-scanner`, a `group_add:` entry
-      taking a numeric `SCANNER_GID`, and `SCANNER_DEVICE` in `environment:`
+      taking a numeric `SCANNER_GID`, and both `SCANNER_DEVICE` and
+      `SCAN_INPUT: device` in `environment:`
+    - Pin `SCAN_INPUT` explicitly rather than relying on the default, so the
+      appliance's intent is stated on the face of the file
     - Remove `stdin_open: true` and `tty: true`
     - Keep the container running as `nonroot` with no added capabilities
     - _Requirements: 4.1, 4.2, 8.2, 8.3_
@@ -367,6 +415,16 @@ existing test call sites compile untouched.
       the scanner is emitting keycodes outside the US-layout map
     - _Requirements: 8.3, 8.4, 8.5, 8.6_
 
+  - [ ] 13.5 Document the local-development source in `cmd/server/README.md`
+    - State that `SCAN_INPUT=stdin go run ./cmd/server` reproduces today's
+      behavior — type or scan a barcode into the terminal and press Enter — and
+      that this is the only way to exercise control barcodes and mode switching
+      off the Pi, since the browser's `POST /api/scans` path bypasses both
+    - State that the default is `device`, so omitting `SCAN_INPUT` locally
+      produces a listener retrying a device path that does not exist, visible as
+      `connected: false` in `GET /health`
+    - _Requirements: 10.1, 10.2, 10.3_
+
 - [ ] 14. Display the current mode in the web UI
   - [ ] 14.1 Consume the scanner-mode SSE event in the frontend
     - Handle the new event type in the existing SSE subscription and show the
@@ -378,10 +436,11 @@ existing test call sites compile untouched.
 - [ ] 15. Record the supersession in the `background-scan-listener` spec
   - [ ] 15.1 Add a note to
     `.kiro/specs/background-scan-listener/requirements.md` recording that
-    Requirements 1.1, 1.2, and 1.3 are superseded by `headless-scanner-input`,
-    and that Requirements 2 through 6 remain in force
-    - Prevents a future reader implementing against the stdin contract, and
-      prevents the never-resume rule in 1.3 being reinstated as a bug fix
+    Requirements 1.1 through 1.3 are narrowed by `headless-scanner-input` to
+    apply only when `SCAN_INPUT=stdin`, that they remain in force under that
+    configuration, and that Requirements 2 through 6 are unaffected
+    - Prevents a future reader assuming stdin is the default, and prevents the
+      never-resume rule in 1.3 being applied to the hot-pluggable device path
     - _Requirements: none (documentation hygiene)_
 
 - [ ] 16. Final checkpoint - full suite, race detector, and coverage
@@ -396,6 +455,10 @@ existing test call sites compile untouched.
 `openEvdev`'s two system calls are the only code this plan leaves untested (Requirement
 9.3), so the acceptance check is physical and cannot be asserted by the suite:
 
+0. On the development machine, before touching the Pi: run `SCAN_INPUT=stdin go run
+   ./cmd/server`, type a barcode followed by Enter, and confirm the entry appears in the
+   queue — then scan the STOCK OUT control barcode and confirm the mode changes. This is
+   the regression check that local development still works, and it needs no hardware.
 1. Install the udev rule with the real VID/PID, run `sudo udevadm control --reload &&
    sudo udevadm trigger`, and confirm `/dev/pantry-scanner` exists with the expected group.
 2. Apply the updated Compose file, then confirm `curl http://localhost:8080/health`
@@ -417,7 +480,9 @@ existing test call sites compile untouched.
   unmodified — they are the guard that this change is confined to input capture.
 - Tasks 1, 2, and 3 are independent and parallelizable; each is a separate new file with
   no shared dependency.
-- Tasks 6.2 and 6.3 both edit `listener.go` and are sequenced, not parallelized.
+- Tasks 6.2, 6.3, and 6.6 all edit `listener.go` and are sequenced, not parallelized.
+- The stdin path is retained, so any task that would change an existing
+  `listener_test.go` assertion (rather than its fixture) indicates a mistake.
 - Tasks 8.2 and 8.3 both edit `server.go` and are sequenced.
 - Tasks 9.1 and 9.2 both edit `main.go` and are sequenced.
 - Task 13 (deployment) has no automated verification and is validated by the manual
@@ -430,15 +495,16 @@ existing test call sites compile untouched.
   "waves": [
     { "id": 0, "tasks": ["1.1", "2.1", "3.1"] },
     { "id": 1, "tasks": ["1.2", "2.2", "3.2", "5.1"] },
-    { "id": 2, "tasks": ["5.2", "5.3", "6.1", "8.1"] },
+    { "id": 2, "tasks": ["5.2", "5.3", "6.1", "6.5", "8.1"] },
     { "id": 3, "tasks": ["6.2"] },
     { "id": 4, "tasks": ["6.3", "8.2"] },
-    { "id": 5, "tasks": ["6.4", "8.3"] },
-    { "id": 6, "tasks": ["8.4", "9.1", "11.1", "11.2", "11.3", "11.4"] },
-    { "id": 7, "tasks": ["9.2"] },
-    { "id": 8, "tasks": ["9.3", "11.5", "11.6", "11.7"] },
-    { "id": 9, "tasks": ["13.1", "13.2", "13.3", "14.1", "15.1"] },
-    { "id": 10, "tasks": ["13.4"] }
+    { "id": 5, "tasks": ["6.6", "8.3"] },
+    { "id": 6, "tasks": ["6.4", "6.7", "8.4", "11.1", "11.2", "11.3", "11.4"] },
+    { "id": 7, "tasks": ["9.1"] },
+    { "id": 8, "tasks": ["9.2"] },
+    { "id": 9, "tasks": ["9.3", "11.5", "11.6", "11.7"] },
+    { "id": 10, "tasks": ["13.1", "13.2", "13.3", "13.5", "14.1", "15.1"] },
+    { "id": 11, "tasks": ["13.4"] }
   ]
 }
 ```

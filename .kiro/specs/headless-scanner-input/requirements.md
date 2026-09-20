@@ -8,18 +8,21 @@ The documented workaround, `sudo docker attach pantry` (see `deploy/README.md`),
 
 This feature replaces the standard-input capture path with a read of the scanner's own kernel input device (evdev), so that scans are captured with no terminal, no attached session, and no keyboard or monitor ever connected to the Pi. Everything downstream of a completed barcode line — Control_Barcode classification, `Current_Mode`, `scan.NewEntryFromLookup`, `Queue.CreateScanEntry` — is unchanged. This feature also adds the status visibility that a terminal used to provide implicitly, through the existing `GET /health` route and the existing SSE event stream, without adding any HTTP route or network listener.
 
+Standard-input capture is **retained**, not deleted, as an explicitly selected source for local development. A developer running `go run ./cmd/server` in a terminal has no Scanner_Device, no udev rule, and on macOS no evdev subsystem at all, so typing a barcode into the terminal remains the only way to exercise the Control_Barcode and Current_Mode logic outside the Pi. Which source is active is decided by explicit configuration rather than by autodetection, so that a misconfigured appliance fails loudly instead of silently selecting the source that does not work in production.
+
 ## Relationship to the `background-scan-listener` spec
 
 This spec supersedes part of `background-scan-listener`:
 
-- **Superseded:** Requirement 1.1 and 1.2 (read lines from standard input) are replaced by Requirement 1 below (read Key_Events from the Scanner_Device).
-- **Superseded:** Requirement 1.3 ("SHALL NOT attempt to resume reading" after EOF or a read error) is replaced by Requirement 2 below. Never resuming is correct for a pipe, which cannot reopen; it is wrong for a hot-pluggable USB device, which routinely disappears and returns.
+- **Narrowed, not removed:** Requirements 1.1 and 1.2 (read lines from standard input) remain in force *when the configured Scan_Input_Source is standard input*, which is the local-development configuration (Requirement 10 below). They no longer describe the default or the appliance deployment, which read Key_Events from the Scanner_Device (Requirement 1 below).
+- **Narrowed, not removed:** Requirement 1.3 ("SHALL NOT attempt to resume reading" after EOF or a read error) remains in force for the standard-input source and is replaced by Requirement 2 below *for the Scanner_Device source only*. Never resuming is correct for a pipe, which cannot reopen; it is wrong for a hot-pluggable USB device, which routinely disappears and returns. The original rule was not wrong — it was being applied to a source it does not fit.
 - **Preserved unchanged:** Requirements 2 (mode switching via control barcodes), 3 (shared queue integration), 4 (attribution), 5 (no new network surface), and 6 (coexistence with browser-based capture). Requirement 5 in particular remains satisfied: this feature exchanges one local file descriptor for another and still binds no port or socket.
 
 Note that an earlier iteration of `background-scan-listener` planned an `internal/scanlistener/device.go` with a `KeyEvent` type (visible in that spec's `tasks.meta.json` execution history) and was revised to the standard-input design, on the stated grounds that stdin left "no hardware-only or platform-only file" unfaked. That tradeoff was sound when a focused terminal was available. It is not available on this appliance, so Requirement 9 below carries the testability obligation forward explicitly: the decoding and line-assembly logic must remain fully testable without hardware, and only a thin device-opening shell may be untestable in a normal `go test` run.
 
 ## Glossary
 
+- **Scan_Input_Source**: Which of two origins the ScanListener reads barcodes from — the Scanner_Device (the appliance default) or the Server_Process's own standard input (local development). Selected by explicit configuration, never autodetected.
 - **Scanner_Device**: The kernel input (evdev) character device that a USB HID barcode scanner presents, from which Key_Events are read.
 - **Device_Path**: The filesystem path at which the Server_Process opens the Scanner_Device. A udev-managed stable symlink, not a bare `/dev/input/eventN` path, which is not stable across reboots or replugs.
 - **Key_Event**: One `input_event` record read from the Scanner_Device, carrying an event type, a keycode, and a value distinguishing press, release, and auto-repeat.
@@ -34,6 +37,8 @@ Note that an earlier iteration of `background-scan-listener` planned an `interna
 ### Requirement 1: Scan capture from the scanner's input device
 
 **User Story:** As a pantry owner, I want the Pi to capture scans with nothing attached but power and the scanner, so that I never need a keyboard, a monitor, or a terminal session to stock items in or out.
+
+Every criterion in this requirement applies WHERE the configured Scan_Input_Source is the Scanner_Device.
 
 #### Acceptance Criteria
 
@@ -50,6 +55,8 @@ Note that an earlier iteration of `background-scan-listener` planned an `interna
 ### Requirement 2: Device availability and reconnection
 
 **User Story:** As a pantry owner, I want the Pi to work when I plug it in and to recover when I unplug and replug the scanner, so that it keeps working without me logging in to restart anything.
+
+Every criterion in this requirement applies WHERE the configured Scan_Input_Source is the Scanner_Device. The standard-input source keeps `background-scan-listener` Requirement 1.3's behavior instead: on end-of-file or a read error it logs, stops, and does not resume, because a closed pipe cannot reopen.
 
 #### Acceptance Criteria
 
@@ -88,7 +95,7 @@ Note that an earlier iteration of `background-scan-listener` planned an `interna
 
 #### Acceptance Criteria
 
-1. WHEN a client issues GET /health, THE Server_Process SHALL include in the response the Scanner_Status: whether the Scanner_Device is currently open, the configured Device_Path, whether Exclusive_Grab is held, the Current_Mode, the count of discarded unmapped keycodes, and the time at which a barcode was last accepted.
+1. WHEN a client issues GET /health, THE Server_Process SHALL include in the response the Scanner_Status: the active Scan_Input_Source, whether the Scanner_Device is currently open, the configured Device_Path, whether Exclusive_Grab is held, the Current_Mode, the count of discarded unmapped keycodes, and the time at which a barcode was last accepted.
 2. THE Server_Process SHALL continue to include in the GET /health response the existing `"status":"ok"` field, with its existing value, so that existing health checks and the documented `curl http://localhost:8080/health` verification step continue to pass unchanged.
 3. WHEN the ScanListener changes the Current_Mode in response to a Control_Barcode, THE Server_Process SHALL publish that change on the existing server-sent-events stream, so that a browser already subscribed observes the new mode without polling.
 4. THE Server_Process SHALL NOT register any HTTP route beyond the set of HTTP routes registered prior to this feature.
@@ -99,7 +106,7 @@ Note that an earlier iteration of `background-scan-listener` planned an `interna
 
 #### Acceptance Criteria
 
-1. THE ScanListener SHALL read scan input exclusively from the Scanner_Device and SHALL NOT accept scan input from any network connection.
+1. THE ScanListener SHALL read scan input exclusively from the configured Scan_Input_Source — either the Scanner_Device or the Server_Process's own standard input, both of which are local file descriptors — and SHALL NOT accept scan input from any network connection under either configuration.
 2. THE ScanListener SHALL NOT open, bind, or listen on any TCP port, UDP port, or Unix domain socket to accept incoming connections.
 
 ### Requirement 7: Configuration
@@ -111,7 +118,10 @@ Note that an earlier iteration of `background-scan-listener` planned an `interna
 1. THE Server_Process SHALL read the Device_Path from an environment variable, defaulting to a udev-managed stable symlink path when that variable is unset or empty.
 2. THE Server_Process SHALL continue to read the stock-in Control_Barcode, stock-out Control_Barcode, and Headless_User_ID from their existing environment variables with their existing defaults.
 3. IF the configured stock-in Control_Barcode and stock-out Control_Barcode are identical, THEN THE Server_Process SHALL log a configuration error and continue serving existing HTTP routes without a ScanListener.
-4. THE Server_Process SHALL log the resolved Device_Path at startup, so that a misconfigured path is diagnosable from the journal alone.
+4. THE Server_Process SHALL log the resolved Device_Path and the active Scan_Input_Source at startup, so that a misconfigured source or path is diagnosable from the journal alone.
+5. THE Server_Process SHALL read the Scan_Input_Source from an environment variable accepting exactly two values, one selecting the Scanner_Device and one selecting standard input.
+6. WHERE the Scan_Input_Source variable is unset or empty, THE Server_Process SHALL select the Scanner_Device, so that the appliance deployment requires no configuration to work and no typo can silently select the source that does not function under systemd.
+7. IF the Scan_Input_Source variable holds a value that is neither of the two accepted values, THEN THE Server_Process SHALL log a configuration error naming the offending value and SHALL select the Scanner_Device, rather than guessing or failing startup.
 
 ### Requirement 8: Deployment on the Raspberry Pi appliance
 
@@ -135,3 +145,18 @@ Note that an earlier iteration of `background-scan-listener` planned an `interna
 1. THE keycode decoding and Scan_Line assembly logic SHALL be exercisable in a normal `go test` run against synthetic Key_Event bytes, with no Scanner_Device present.
 2. THE reconnection and backoff logic SHALL be exercisable in a normal `go test` run against an injected device opener that fails, succeeds, and fails again on demand, with no Scanner_Device present.
 3. THE only logic permitted to be unexercisable without hardware SHALL be the concrete system calls that open a device path and request Exclusive_Grab, isolated behind an injectable seam.
+
+
+### Requirement 10: Local development via standard input
+
+**User Story:** As a developer, I want to keep typing barcodes into my terminal when I run the server locally, so that I can exercise control barcodes, mode switching, and the scan queue without a Raspberry Pi, a udev rule, or a scanner plugged into my laptop.
+
+#### Acceptance Criteria
+
+1. WHERE the configured Scan_Input_Source is standard input, THE ScanListener SHALL read complete lines from the Server_Process's own standard input and SHALL treat the full content of each line as a single barcode value, with the behavior `background-scan-listener` Requirements 1.1 through 1.4 specify.
+2. WHERE the configured Scan_Input_Source is standard input, THE ScanListener SHALL NOT open, read, or require the existence of the Scanner_Device, so that a development machine with no evdev subsystem is fully supported.
+3. WHERE the configured Scan_Input_Source is standard input, THE ScanListener SHALL apply the same Control_Barcode classification, Current_Mode handling, product lookup, and Queue.CreateScanEntry path it applies to barcodes read from the Scanner_Device, so that a barcode typed in a terminal and a barcode scanned on the Pi are indistinguishable downstream.
+4. WHERE the configured Scan_Input_Source is standard input AND standard input is not a terminal, THE Server_Process SHALL log a warning identifying that combination, SHALL report it through Scanner_Status, and SHALL continue running, because that combination is the silent-failure mode this feature exists to eliminate: it is what a systemd or container deployment produces when misconfigured.
+5. THE Server_Process SHALL determine whether standard input is a terminal by a check that distinguishes a terminal from a character device that is not a terminal, since the standard input a service manager supplies is `/dev/null`, which is itself a character device.
+6. THE ScanListener SHALL select the Scan_Input_Source once at startup and SHALL NOT switch sources while running, so that the active source is a fixed, reportable fact rather than a race against device availability.
+7. THE existing automated tests covering the standard-input reading path SHALL continue to pass unmodified, since that path's behavior is unchanged by this feature.
