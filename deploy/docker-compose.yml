@@ -3,8 +3,6 @@ services:
     image: ghcr.io/rhionin/pantry:${PANTRY_IMAGE_TAG:-latest}
     container_name: pantry
     restart: unless-stopped
-    stdin_open: true
-    tty: true
     ports:
       - "${HOST_PORT:-8080}:8080"
     environment:
@@ -16,8 +14,15 @@ services:
       STOCK_IN_CONTROL_BARCODE: ${STOCK_IN_CONTROL_BARCODE:-STOCK_IN}
       STOCK_OUT_CONTROL_BARCODE: ${STOCK_OUT_CONTROL_BARCODE:-STOCK_OUT}
       HEADLESS_USER_ID: ${HEADLESS_USER_ID:-user-1}
+      SCAN_INPUT: device
+      SCANNER_DEVICE: /dev/pantry-scanner
+      SCANNER_GID: ${SCANNER_GID:-65532}
     volumes:
       - pantry-data:/data
+    devices:
+      - /dev/pantry-scanner:/dev/pantry-scanner
+    group_add:
+      - "${SCANNER_GID:-65532}"
 
 volumes:
   pantry-data:

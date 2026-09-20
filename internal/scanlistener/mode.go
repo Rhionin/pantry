@@ -15,7 +15,7 @@ type modeState struct {
 }
 
 // newModeState creates a modeState defaulting to stock_in, matching the rule
-// that no Control_Barcode has been scanned since the server started.
+// that no Control_Barcodes have been scanned since the server started.
 func newModeState() *modeState {
 	return &modeState{current: scan.StockIn}
 }

@@ -11,6 +11,10 @@ const DEFAULT_USER_ID = 'user-1';
 
 export type QueueView = 'stock_in' | 'stock_out';
 
+export interface ScannerModeEvent {
+  mode: 'stock_in' | 'stock_out';
+}
+
 export interface ScanQueuePageProps {
   userId?: string;
 }
@@ -20,6 +24,7 @@ export const ScanQueuePage = ({ userId = DEFAULT_USER_ID }: ScanQueuePageProps) 
   const [inventory, setInventory] = useState<InventoryItem[]>([]);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [activeView, setActiveView] = useState<QueueView>('stock_out');
+  const [scannerMode, setScannerMode] = useState<QueueView>('stock_out');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [scanError, setScanError] = useState('');
@@ -70,6 +75,12 @@ export const ScanQueuePage = ({ userId = DEFAULT_USER_ID }: ScanQueuePageProps) 
         return next;
       });
     });
+    eventSource.addEventListener('scanner_mode', (message) => {
+      const event = JSON.parse((message as MessageEvent).data) as ScannerModeEvent;
+      if (event.mode === 'stock_in' || event.mode === 'stock_out') {
+        setScannerMode(event.mode);
+      }
+    });
     return () => eventSource.close();
   }, []);
 
@@ -103,6 +114,9 @@ export const ScanQueuePage = ({ userId = DEFAULT_USER_ID }: ScanQueuePageProps) 
           {scanError}
         </Alert>
       )}
+      <Alert color={scannerMode === 'stock_in' ? 'blue' : 'orange'} py="xs" title={`Mode: ${scannerMode}`}>
+        Current scanner mode: <strong>{scannerMode === 'stock_in' ? 'STOCK IN' : 'STOCK OUT'}</strong>
+      </Alert>
       <Tabs value={activeView} onChange={handleViewChange}>
         <Tabs.List>
           <Tabs.Tab value="stock_in">Stock in</Tabs.Tab>

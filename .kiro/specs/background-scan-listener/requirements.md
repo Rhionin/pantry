@@ -1,5 +1,19 @@
 # Requirements Document
 
+## Status
+
+**Superseded by `headless-scanner-input` spec.**
+
+The `headless-scanner-input` spec reuses most of this spec's requirements but
+refines them to support two sources:
+
+- **Requirement 1.1 through 1.3** are now conditional: they apply ONLY when
+  `SCAN_INPUT=stdin`. When `SCAN_INPUT=device`, Requirement 1.3 is replaced
+  by a reconnect loop (see `headless-scanner-input` Requirements 1 and 2).
+- **Requirements 2 through 6** remain in force unchanged.
+
+See `internal/scanlistener/README.md` for the current implementation guidance.
+
 ## Introduction
 
 Today, capturing a scan requires a browser tab open to a page rendering `BarcodeInputField`, which listens for keystrokes from an HID barcode scanner over the DOM. This feature adds a second capture path that runs inside the Go server process itself: a `ScanListener` that reads completed barcode lines from the Server_Process's own standard input. A USB or Bluetooth HID barcode scanner types into whatever has keyboard focus, just like a physical keyboard, so as long as the terminal window running the server has focus, scanning works with no browser open. Because HID scanners have no direction button, the mode is set by scanning dedicated control barcodes ("STOCK IN" / "STOCK OUT") that persist as the current mode until changed again. Every scan captured this way is queued through the same `Queue.CreateScanEntry` path the existing `ScanCreateHandler` uses, so review still happens through the existing `ScanQueuePage` / `BatchReviewPanel` UI. The existing browser-based `BarcodeInputField` flow is unaffected.
