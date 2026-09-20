@@ -173,11 +173,26 @@ Pantry now reads barcode scans directly from the scanner's evdev device (`/dev/i
 
 ### Prerequisites
 
-1. **Find your scanner's vendor/product ID:**
+1. **Find your scanner's device information:**
+
+   **USB scanners:**
    ```bash
    lsusb | grep -i scanner
    ```
    Output looks like: `Bus 001 Device 005: ID XXXX:YYYY Symbol Technologies, Inc. Scanner`
+
+   **Bluetooth scanners:**
+   Bluetooth scanners appear as input devices and won't show in `lsusb`. Instead:
+   ```bash
+   # List all input event devices
+   ls -l /dev/input/event*
+   
+   # Get details about a specific event device (replace eventX with your device)
+   udevadm info -a -p $(udevadm info -q path -n /dev/input/eventX) | grep -E "(vendor|product|name)"
+   
+   # Or look for your scanner in the input device list
+   cat /proc/bus/input/devices | grep -A5 -B5 -i scanner
+   ```
 
 2. **Install the udev rule:**
    Copy the provided rule file to `/etc/udev/rules.d/`:
@@ -185,7 +200,14 @@ Pantry now reads barcode scans directly from the scanner's evdev device (`/dev/i
    sudo cp pantry/udev/99-pantry-scanner.rules /etc/udev/rules.d/
    ```
    
-   Then edit the rule to replace `XXXX` and `YYYY` with your scanner's actual vendor and product IDs.
+   **For USB scanners:** Edit the rule to replace `XXXX` and `YYYY` with your scanner's actual vendor and product IDs.
+   
+   **For Bluetooth scanners:** Modify the rule to match by device name instead:
+   ```bash
+   SUBSYSTEM=="input", ATTRS{name}=="*Scanner*", \
+     KERNEL=="event*", SYMLINK+="pantry-scanner", GROUP="pantry", MODE="0640"
+   ```
+   Replace `*Scanner*` with the actual name pattern from your device (found in step 1).
 
 3. **Reload udev and trigger:**
    ```bash

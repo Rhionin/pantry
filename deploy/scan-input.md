@@ -21,7 +21,7 @@ work through stdin.
 
 ## Appliance Deployment
 
-For Raspberry Pi deployment with a USB barcode scanner:
+### USB Barcode Scanners
 
 1. Find your scanner's vendor/product ID:
    ```bash
@@ -34,6 +34,7 @@ For Raspberry Pi deployment with a USB barcode scanner:
    SUBSYSTEM=="input", ATTRS{idVendor}=="XXXX", ATTRS{idProduct}=="YYYY", \
      KERNEL=="event*", SYMLINK+="pantry-scanner", GROUP="pantry", MODE="0640"
    ```
+   Replace `XXXX` and `YYYY` with your scanner's actual vendor and product IDs.
 
 3. Reload udev and trigger:
    ```bash
@@ -45,6 +46,42 @@ For Raspberry Pi deployment with a USB barcode scanner:
    ```bash
    ls -l /dev/pantry-scanner
    ```
+
+### Bluetooth Barcode Scanners
+
+Bluetooth scanners appear as input devices and won't show in `lsusb`. Instead:
+
+1. Find your scanner's device name:
+   ```bash
+   # List all input event devices
+   ls -l /dev/input/event*
+   
+   # Get details about a specific event device (replace eventX with your device)
+   udevadm info -a -p $(udevadm info -q path -n /dev/input/eventX) | grep -E "(vendor|product|name)"
+   
+   # Or look for your scanner in the input device list
+   cat /proc/bus/input/devices | grep -A5 -B5 -i scanner
+   ```
+
+2. Create the udev rule at `/etc/udev/rules.d/99-pantry-scanner.rules`:
+   ```bash
+   SUBSYSTEM=="input", ATTRS{name}=="*Scanner*", \
+     KERNEL=="event*", SYMLINK+="pantry-scanner", GROUP="pantry", MODE="0640"
+   ```
+   Replace `*Scanner*` with the actual name pattern from your device.
+
+3. Reload udev and trigger:
+   ```bash
+   sudo udevadm control --reload
+   sudo udevadm trigger
+   ```
+
+4. Verify `/dev/pantry-scanner` exists:
+   ```bash
+   ls -l /dev/pantry-scanner
+   ```
+
+### Common Steps for Both Types
 
 5. Get the numeric gid of the "pantry" group:
    ```bash
@@ -60,3 +97,6 @@ For Raspberry Pi deployment with a USB barcode scanner:
    ```bash
    curl http://localhost:8080/health
    ```
+   Look for the `scanner` object:
+   - `connected: true` and `grabbed: true` means the scanner is working
+   - `connected: false` with `lastError` containing "permission denied" means the udev rule's group doesn't match `SCANNER_GID`

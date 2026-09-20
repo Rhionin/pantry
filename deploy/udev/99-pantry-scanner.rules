@@ -1,8 +1,7 @@
 # Pantry Scanner udev rule
 #
-# This rule matches a USB HID barcode scanner by vendor and product ID,
-# creates a stable symlink at /dev/pantry-scanner, and grants read access
-# to the "pantry" group.
+# This rule creates a stable symlink at /dev/pantry-scanner and grants read
+# access to the "pantry" group for the barcode scanner's evdev device.
 #
 # Why not add the service user to the "input" group?
 # ---------------------------------------------------
@@ -12,14 +11,27 @@
 #
 # The approach here scopes access to exactly one device. If you unplug your
 # scanner and plug in a different one (even another scanner), it won't be
-# readable by Pantry until you add its VID/PID here.
+# readable by Pantry until you add its identifier here.
 #
 # The "pantry" group must exist and the container process must be added to it.
 # The distroless image runs as uid 65532; add that user to the "pantry" group.
+#
+# USB scanners:
+#   Get vendor/product ID from `lsusb | grep -i scanner`
+#   Example: Bus 001 Device 005: ID XXXX:YYYY Symbol Technologies, Inc. Scanner
+#   Rule: SUBSYSTEM=="input", ATTRS{idVendor}=="XXXX", ATTRS{idProduct}=="YYYY", ...
+#
+# Bluetooth scanners:
+#   Find the device name from `/proc/bus/input/devices` or `udevadm info`
+#   Rule: SUBSYSTEM=="input", ATTRS{name}=="*Scanner*", ...
+#
+# For either type, replace the placeholder values below with your scanner's
+# actual identifiers.
 
-# Match by vendor and product ID. Replace XXXX and YYYY with your scanner's
-# actual values. Get them from `lsusb`:
-#   $ lsusb | grep -i scanner
-#   Bus 001 Device 005: ID XXXX:YYYY Symbol Technologies, Inc. Scanner
-SUBSYSTEM=="input", ATTRS{idVendor}=="XXXX", ATTRS{idProduct}=="YYYY", \
-  KERNEL=="event*", SYMLINK+="pantry-scanner", GROUP="pantry", MODE="0640"
+# USB scanner example (uncomment and edit):
+# SUBSYSTEM=="input", ATTRS{idVendor}=="XXXX", ATTRS{idProduct}=="YYYY", \
+#   KERNEL=="event*", SYMLINK+="pantry-scanner", GROUP="pantry", MODE="0640"
+
+# Bluetooth scanner example (uncomment and edit - replace *Scanner* with actual name):
+# SUBSYSTEM=="input", ATTRS{name}=="*Scanner*", \
+#   KERNEL=="event*", SYMLINK+="pantry-scanner", GROUP="pantry", MODE="0640"
