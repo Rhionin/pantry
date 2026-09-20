@@ -2,23 +2,10 @@ package connection
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"time"
-
-	"github.com/Rhionin/pantry/internal/cart"
 )
-
-// Ptr returns a pointer to t.
-func Ptr[T any](v T) *T {
-	return &v
-}
-
-// refreshCall holds a pending token exchange.
-type refreshCall struct {
-	done chan struct{}
-	err  error
-	tokenSet cart.TokenSet
-}
 
 // TokenBroker implements result-sharing single flight for token refresh.
 // Every waiting caller receives the token the one in-progress exchange produced.
@@ -26,6 +13,16 @@ type TokenBroker struct {
 	mu       sync.Mutex
 	inFlight map[string]*refreshCall
 	Directory *Directory
+}
+
+// refreshCall holds a pending token exchange.
+type refreshCall struct {
+	done chan struct{}
+	err  error
+	accessToken string
+	refreshToken string
+	expiresIn   time.Duration
+	receiptAt   time.Time
 }
 
 // NewTokenBroker creates a new TokenBroker.
@@ -40,16 +37,16 @@ func NewTokenBroker(dir *Directory) *TokenBroker {
 // Refresh if and only if the remaining access-token lifetime is 60 seconds or less,
 // or no access token is persisted.
 // The key is ProviderID, so a slow provider's flight blocks no request to another provider.
-func (b *TokenBroker) AccessToken(ctx context.Context, provider cart.ProviderID, flow cart.OAuthFlow) (cart.Credential, error) {
+func (b *TokenBroker) AccessToken(ctx context.Context, provider string, refreshFn func(refreshToken string) (accessToken string, refreshTokenOut string, expiresIn time.Duration, err error)) (string, error) {
 	b.mu.Lock()
-	if call, ok := b.inFlight[string(provider)]; ok {
+	if call, ok := b.inFlight[provider]; ok {
 		// Another request is already refreshing this provider's token
 		b.mu.Unlock()
 		<-call.done
 		if call.err != nil {
-			return nil, call.err
+			return "", call.err
 		}
-		return cart.NewBearerCredential(call.tokenSet.AccessToken), nil
+		return call.accessToken, nil
 	}
 
 	// Check if we need to refresh (single-flight setup)
@@ -57,7 +54,7 @@ func (b *TokenBroker) AccessToken(ctx context.Context, provider cart.ProviderID,
 	conn, err := b.Directory.Read(ctx, provider)
 	if err != nil {
 		b.mu.Unlock()
-		return nil, err
+		return "", err
 	}
 
 	// Check if we have a valid token or need refresh
@@ -72,62 +69,45 @@ func (b *TokenBroker) AccessToken(ctx context.Context, provider cart.ProviderID,
 	if !shouldRefresh {
 		// Return existing token
 		b.mu.Unlock()
-		return cart.NewBearerCredential(conn.AccessToken), nil
+		return conn.AccessToken, nil
 	}
 
 	// Start a new in-flight call
 	call := &refreshCall{done: make(chan struct{})}
-	b.inFlight[string(provider)] = call
+	b.inFlight[provider] = call
 	b.mu.Unlock()
 
 	// Perform the refresh
-	tokenSet, err := b.refreshAccessToken(ctx, provider, flow, conn)
+	accessToken, refreshToken, expiresIn, err := refreshFn(conn.RefreshToken)
 
 	// Complete the call
 	b.mu.Lock()
-	delete(b.inFlight, string(provider))
+	delete(b.inFlight, provider)
 	b.mu.Unlock()
 
 	close(call.done)
-	call.tokenSet = tokenSet
+	call.accessToken = accessToken
 	call.err = err
+	call.refreshToken = refreshToken
+	call.expiresIn = expiresIn
+	call.receiptAt = time.Now().UTC()
 
 	if err != nil {
-		return nil, err
-	}
-
-	return cart.NewBearerCredential(tokenSet.AccessToken), nil
-}
-
-// refreshAccessToken performs the actual token refresh.
-func (b *TokenBroker) refreshAccessToken(ctx context.Context, provider cart.ProviderID, flow cart.OAuthFlow, conn *cart.Connection) (cart.TokenSet, error) {
-	var refreshToken string
-	if conn != nil {
-		refreshToken = conn.RefreshToken
-	}
-
-	if refreshToken == "" {
-		// No refresh token - can't refresh
-		return cart.TokenSet{}, nil
-	}
-
-	tokenSet, err := flow.RefreshAccessToken(ctx, refreshToken)
-	if err != nil {
-		return cart.TokenSet{}, err
+		return "", err
 	}
 
 	// Update the connection record with new tokens
-	expiresAt := tokenSet.ReceiptAt.Add(tokenSet.ExpiresIn)
-	newConn := &cart.Connection{
+	expiresAt := call.receiptAt.Add(call.expiresIn)
+	newConn := &Connection{
 		Provider:     provider,
-		State:        cart.StateConnected,
-		AccessToken:  tokenSet.AccessToken,
-		RefreshToken: tokenSet.RefreshToken,
+		State:        StateConnected,
+		AccessToken:  call.accessToken,
+		RefreshToken: call.refreshToken,
 		ExpiresAt:    &expiresAt,
 	}
 	if err := b.Directory.Write(ctx, newConn); err != nil {
-		return cart.TokenSet{}, err
+		return "", fmt.Errorf("failed to write connection: %w", err)
 	}
 
-	return tokenSet, nil
+	return call.accessToken, nil
 }
