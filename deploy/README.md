@@ -224,12 +224,23 @@ Pantry now reads barcode scans directly from the scanner's evdev device (`/dev/i
 
 ### Docker Configuration
 
-1. **Get the numeric gid of the "pantry" group:**
+1. **Configure `SCANNER_GID`:**
+
+   The container process runs as uid 65532 (from the distroless image). The udev rule grants access to this GID.
+
+   **Default (recommended):** Don't set `SCANNER_GID` in `.env` - it defaults to 65532:
    ```bash
-   getent group pantry | cut -d: -f3
+   # .env file - SCANNER_GID not needed, defaults to 65532
    ```
-   
-   Add this value as `SCANNER_GID` in your `.env` file.
+
+   **Custom group (advanced):** If you want a named group, create it with:
+   ```bash
+   sudo groupadd --gid 65532 pantry
+   ```
+   Then add to `.env`:
+   ```bash
+   SCANNER_GID=65532
+   ```
 
 2. **Ensure `SCANNER_DEVICE` is set** (defaults to `/dev/pantry-scanner`) in `.env`.
 

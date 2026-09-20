@@ -83,14 +83,28 @@ Bluetooth scanners appear as input devices and won't show in `lsusb`. Instead:
 
 ### Common Steps for Both Types
 
-5. Get the numeric gid of the "pantry" group:
+5. **Set the scanner group ID:**
+
+   The container process runs as uid 65532 (from the distroless image). The udev rule grants access to this GID.
+
+   **Default (recommended):** Don't set `SCANNER_GID` in `.env` - it defaults to 65532:
    ```bash
-   getent group pantry | cut -d: -f3
+   # .env file - SCANNER_GID not needed, defaults to 65532
    ```
 
-6. Add the `SCANNER_GID` to your `.env` file and run:
+   **Custom group (advanced):** If you prefer a named group, create it:
    ```bash
-   docker compose up -d
+   sudo groupadd --gid 65532 pantry
+   ```
+   Then add to `.env`:
+   ```bash
+   SCANNER_GID=65532
+   ```
+
+6. Run docker compose:
+   ```bash
+   cd /opt/pantry
+   sudo docker compose up -d
    ```
 
 7. Check health for scanner status:
