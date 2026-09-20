@@ -417,6 +417,7 @@ func TestSPAFallbackProperty(t *testing.T) {
 func TestSPAFallbackPlaceholderOnlyProperty(t *testing.T) {
 	rapid.Check(t, func(t *rapid.T) {
 		// Create asset tree with ONLY index.html (Placeholder_Assets case)
+		// index.html is at the root because NewHandlerFS opens "index.html" directly
 		assetTree := fstest.MapFS{
 			"index.html": &fstest.MapFile{
 				Data: []byte("<html><head><title>Placeholder</title></head><body>Placeholder Assets - run npm build</body></html>"),
@@ -465,7 +466,8 @@ func TestSPAFallbackPlaceholderOnlyProperty(t *testing.T) {
 func generateAssetTreeForFallback(t *rapid.T) fstest.MapFS {
 	tree := make(fstest.MapFS)
 
-	// Always include index.html with distinctive content
+	// index.html is at the root of the assets tree because NewHandlerFS expects
+	// to open "index.html" directly (like fs.Sub(embedded, "assets") would give)
 	tree["index.html"] = &fstest.MapFile{
 		Data: []byte("<html><head><title>SPA Root</title></head><body>Single Page Application Root Content</body></html>"),
 	}
