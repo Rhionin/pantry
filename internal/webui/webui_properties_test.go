@@ -156,15 +156,6 @@ func generateRequestPath(t *rapid.T, assetTree fstest.MapFS) string {
 		}
 		return "/" + strings.Join(pathParts, "/")
 	case 3:
-		// Directory path (should fallback)
-		for path := range assetTree {
-			if strings.Contains(path, "/") {
-				dir := "/" + strings.Split(path, "/")[0]
-				return dir
-			}
-		}
-		return "/somedir"
-	case 4:
 		// Traversal-like path (should be cleaned and fallback)
 		maliciousPaths := []string{
 			"/../etc/passwd",
@@ -518,7 +509,15 @@ func generateUnmatchedPath(t *rapid.T, assetTree fstest.MapFS) string {
 		// Paths that look like assets but don't exist
 		filename := rapid.StringMatching(`[a-z0-9-]+`).Draw(t, "fakeAssetName")
 		ext := rapid.SampledFrom([]string{".js", ".css", ".png", ".json"}).Draw(t, "fakeAssetExt")
-		return "/assets/" + filename + ext
+		
+		// Ensure the path doesn't exist in the tree (tree uses assets/XXX paths, not /assets/XXX)
+		checkPath := "assets/" + filename + ext
+		for assetTree[checkPath] != nil {
+			filename = filename + "x"
+			checkPath = "assets/" + filename + ext
+		}
+		
+		return "/" + checkPath
 	case 4:
 		// Directory paths (should fallback if they don't contain a real file)
 		dirname := rapid.StringMatching(`[a-z0-9-]+`).Draw(t, "dirname")
