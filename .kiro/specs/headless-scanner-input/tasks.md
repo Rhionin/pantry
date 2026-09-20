@@ -34,8 +34,8 @@ existing test call sites compile untouched.
 
 ## Tasks
 
-- [ ] 1. Implement `input_event` record parsing
-  - [ ] 1.1 Create `internal/scanlistener/device.go` with the `evKey`, `valuePress`,
+- [x] 1. Implement `input_event` record parsing
+  - [x] 1.1 Create `internal/scanlistener/device.go` with the `evKey`, `valuePress`,
     and `eventSize` constants, the `KeyEvent` struct (`Type uint16`, `Code uint16`,
     `Value int32`), `KeyEvent.IsKeyPress()`, and `readKeyEvent(r io.Reader)
     (KeyEvent, error)`
@@ -47,7 +47,7 @@ existing test call sites compile untouched.
       framing makes every subsequent offset untrustworthy
     - _Requirements: 1.2, 1.3_
 
-  - [ ] 1.2 Write unit tests for `readKeyEvent` and `IsKeyPress` in
+  - [x] 1.2 Write unit tests for `readKeyEvent` and `IsKeyPress` in
     `internal/scanlistener/device_test.go`
     - A well-formed 24-byte record decodes to the expected field values
     - Two concatenated records decode in order from one reader
@@ -56,8 +56,8 @@ existing test call sites compile untouched.
       `Value: 0` (release), `Value: 2` (auto-repeat), and any non-`evKey` type
     - _Requirements: 1.2, 1.3_
 
-- [ ] 2. Implement keycode decoding
-  - [ ] 2.1 Create `internal/scanlistener/keymap.go` with the `keyKind` enum
+- [x] 2. Implement keycode decoding
+  - [x] 2.1 Create `internal/scanlistener/keymap.go` with the `keyKind` enum
     (`keyUnmapped`, `keyPrintable`, `keyEnter`, `keyShift`) and `decodeKey(code
     uint16, shift bool) (rune, keyKind)`
     - Cover the digit row, `KEY_A`–`KEY_Z`, keypad digits `KEY_KP0`–`KEY_KP9`,
@@ -68,7 +68,7 @@ existing test call sites compile untouched.
       diagnosed on a machine with no monitor
     - _Requirements: 1.4, 1.5, 1.8_
 
-  - [ ] 2.2 Write unit tests for `decodeKey` in
+  - [x] 2.2 Write unit tests for `decodeKey` in
     `internal/scanlistener/keymap_test.go`
     - Digit row and keypad digits both decode to the same digit characters
     - Letters decode lowercase with `shift=false` and uppercase with `shift=true`
@@ -76,8 +76,8 @@ existing test call sites compile untouched.
       return `keyShift`; an arbitrary high keycode returns `keyUnmapped`
     - _Requirements: 1.4, 1.5, 1.8_
 
-- [ ] 3. Implement line assembly
-  - [ ] 3.1 Create `internal/scanlistener/assembler.go` with `lineAssembler`
+- [x] 3. Implement line assembly
+  - [x] 3.1 Create `internal/scanlistener/assembler.go` with `lineAssembler`
     (`buf []rune`, `shift bool`, `unmapped int`), `feed(e KeyEvent) (line string, ok
     bool)`, `reset()`, and an accessor for the unmapped count
     - `feed` returns `ok=true` exactly once per Enter key-press, carrying the
@@ -91,7 +91,7 @@ existing test call sites compile untouched.
       strands a shift key down cannot leak into the next connection
     - _Requirements: 1.4, 1.5, 1.6, 1.7, 1.8, 1.9, 2.3_
 
-  - [ ] 3.2 Write unit tests for `lineAssembler` in
+  - [x] 3.2 Write unit tests for `lineAssembler` in
     `internal/scanlistener/assembler_test.go`
     - A digit sequence followed by Enter yields that barcode exactly once, and a
       second `feed` of the same Enter does not re-emit it
@@ -106,17 +106,17 @@ existing test call sites compile untouched.
       assembled from scratch; `reset()` while shift is held clears the shift state
     - _Requirements: 1.5, 1.6, 1.7, 1.8, 1.9, 2.3_
 
-- [ ] 4. Checkpoint - parsing, decoding, and assembly compile and their tests pass
+- [x] 4. Checkpoint - parsing, decoding, and assembly compile and their tests pass
   - Ensure all tests pass, ask the user if questions arise.
 
-- [ ] 5. Implement the device-opening seam
-  - [ ] 5.1 Add the `OpenFunc` type to `internal/scanlistener/device.go`
+- [x] 5. Implement the device-opening seam
+  - [x] 5.1 Add the `OpenFunc` type to `internal/scanlistener/device.go`
     - `type OpenFunc func(path string) (dev io.ReadCloser, grabbed bool, err error)`,
       documenting that `grabbed=false` with a nil error is a usable device that
       other consumers can also read
     - _Requirements: 3.1, 3.2, 9.3_
 
-  - [ ] 5.2 Create `internal/scanlistener/device_linux.go` with `//go:build linux`
+  - [x] 5.2 Create `internal/scanlistener/device_linux.go` with `//go:build linux`
     implementing `openEvdev`
     - `os.OpenFile(path, os.O_RDONLY, 0)` — read-only, per Requirement 4.3
     - `unix.IoctlSetInt(fd, unix.EVIOCGRAB, 1)`; on failure, log and return
@@ -125,21 +125,21 @@ existing test call sites compile untouched.
       `go.mod`
     - _Requirements: 3.1, 3.2, 4.1, 4.3_
 
-  - [ ] 5.3 Create `internal/scanlistener/device_unsupported.go` with `//go:build
+  - [x] 5.3 Create `internal/scanlistener/device_unsupported.go` with `//go:build
     !linux` implementing `openEvdev` as an "unsupported platform" error
     - Keeps the module building and testing on a macOS or Windows development
       machine; CI runs on Linux, so the real implementation is still compiled
       and vetted on every push
     - _Requirements: 9.3_
 
-- [ ] 6. Rework `ScanListener` into a reconnecting device reader
-  - [ ] 6.1 Create `internal/scanlistener/status.go` with the `Status` struct
+- [x] 6. Rework `ScanListener` into a reconnecting device reader
+  - [x] 6.1 Create `internal/scanlistener/status.go` with the `Status` struct
     (`DevicePath`, `Connected`, `Grabbed`, `Mode`, `UnmappedKeys`, `LastScanAt`,
     `LastError`), a mutex-guarded holder, and `(*ScanListener).Status() Status`
     - JSON tags as specified in the design, with `LastError` omitted when empty
     - _Requirements: 1.9, 5.1_
 
-  - [ ] 6.2 Add `runDevice` and `readFrom` to `internal/scanlistener/listener.go`
+  - [x] 6.2 Add `runDevice` and `readFrom` to `internal/scanlistener/listener.go`
     - **Keep** the `Stdin io.Reader` field; add `Source Source`, `DevicePath
       string`, `Open OpenFunc`, and the initial/maximum backoff fields
     - `runDevice` loops while `ctx.Err() == nil`: open, and on error record the status,
@@ -155,14 +155,14 @@ existing test call sites compile untouched.
     - Treat a truncated record as a lost-framing read error: close and reconnect
     - _Requirements: 1.1, 2.1, 2.2, 2.3, 2.4, 2.5, 2.6, 2.7, 2.8, 3.3, 4.3_
 
-  - [ ] 6.3 Add a mode-change publisher hook to `ScanListener`
+  - [x] 6.3 Add a mode-change publisher hook to `ScanListener`
     - Add a `ModePublisher` field with an inline single-method interface
       (`PublishScannerModeEvent(mode scan.ScanDirection)`), called from
       `handleLine` when a Control_Barcode changes the mode; a nil publisher is a
       no-op so tests and a listener-less server need no stub
     - _Requirements: 5.3_
 
-  - [ ] 6.4 Extend `internal/scanlistener/listener_test.go` with device-path cases
+  - [x] 6.4 Extend `internal/scanlistener/listener_test.go` with device-path cases
     - Keep every existing stdin case, adding only `Source: SourceStdin` to its
       fixture; their assertions must not change (Requirement 10.7)
     - Add cases driven by an injected `OpenFunc` over a `bytes.Reader` of
@@ -183,7 +183,7 @@ existing test call sites compile untouched.
       removal, and carries the open error in `LastError`
     - _Requirements: 2.1, 2.2, 2.3, 2.4, 2.5, 2.6, 2.8, 3.3, 5.1, 5.3_
 
-  - [ ] 6.5 Create `internal/scanlistener/source.go` with the `Source` type, the
+  - [x] 6.5 Create `internal/scanlistener/source.go` with the `Source` type, the
     `SourceDevice` and `SourceStdin` constants, and `ParseSource(raw string)
     (Source, bool)`
     - An unset, empty, or unrecognized value yields `SourceDevice`; an
@@ -193,7 +193,7 @@ existing test call sites compile untouched.
       service manager
     - _Requirements: 7.5, 7.6, 7.7, 10.6_
 
-  - [ ] 6.6 Move today's stdin loop into `runStdin` and add the TTY mismatch guard
+  - [x] 6.6 Move today's stdin loop into `runStdin` and add the TTY mismatch guard
     - `runStdin` is the current `Run` body verbatim: `bufio.Scanner` over
       `l.Stdin` defaulting to `os.Stdin`, stopping on EOF or a read error with no
       retry, dispatching each line into `handleLine`
@@ -207,7 +207,7 @@ existing test call sites compile untouched.
       case the guard exists to catch
     - _Requirements: 10.1, 10.2, 10.3, 10.4, 10.5, 10.6_
 
-  - [ ] 6.7 Write unit tests for source selection and the stdin guard
+  - [x] 6.7 Write unit tests for source selection and the stdin guard
     - `source_test.go`: `ParseSource` table covering `"device"`, `"stdin"`, `""`,
       and an arbitrary other string
     - `listener_test.go`: with `Source: SourceStdin` and an injected `Stdin`,
@@ -216,19 +216,19 @@ existing test call sites compile untouched.
     - `Status()` reports the active source under each configuration
     - _Requirements: 7.5, 7.6, 7.7, 10.1, 10.2, 10.6_
 
-- [ ] 7. Checkpoint - the listener compiles against a faked device and its tests pass
+- [x] 7. Checkpoint - the listener compiles against a faked device and its tests pass
   - Run `go test -race ./internal/scanlistener/...` for the reconnect loop's
     context-cancellation goroutine and the status mutex
   - Ensure all tests pass, ask the user if questions arise.
 
-- [ ] 8. Surface Scanner_Status and mode events through existing routes
-  - [ ] 8.1 Add `PublishScannerModeEvent(mode scan.ScanDirection)` to
+- [x] 8. Surface Scanner_Status and mode events through existing routes
+  - [x] 8.1 Add `PublishScannerModeEvent(mode scan.ScanDirection)` to
     `internal/events/broadcaster.go`
     - Route through the existing private `publish`, matching the shape of
       `PublishScanEvent` and `PublishInventoryEvent`
     - _Requirements: 5.3_
 
-  - [ ] 8.2 Add variadic options to `server.NewHandler` in
+  - [x] 8.2 Add variadic options to `server.NewHandler` in
     `internal/server/server.go`
     - `type Option func(*config)`, `WithScannerStatus(fn func()
       scanlistener.Status)`, and `WithBroadcaster(b *events.Broadcaster)`
@@ -237,14 +237,14 @@ existing test call sites compile untouched.
       unchanged
     - _Requirements: 5.1, 5.3, 5.4_
 
-  - [ ] 8.3 Extend the `GET /health` handler with the scanner object
+  - [x] 8.3 Extend the `GET /health` handler with the scanner object
     - Keep the existing `"status":"ok"` field byte-for-byte; add a `scanner`
       object beside it built from the configured status function
     - Omit the `scanner` field entirely when no status function is configured
     - Register no new route
     - _Requirements: 5.1, 5.2, 5.4_
 
-  - [ ] 8.4 Add `apitest` coverage for the health response
+  - [x] 8.4 Add `apitest` coverage for the health response
     - In `internal/server`, using `handlerTestCase` / `runHandlerTests`: with no
       scanner status configured, `GET /health` returns 200 with `"status":"ok"`
       and no `scanner` field; with a stub status configured, the response
@@ -254,8 +254,8 @@ existing test call sites compile untouched.
       unmodified
     - _Requirements: 5.1, 5.2, 5.4_
 
-- [ ] 9. Configuration and lifecycle wiring in `cmd/server/main.go`
-  - [ ] 9.1 Add `SCANNER_DEVICE` and `SCAN_INPUT` to `loadScanListenerConfig`
+- [x] 9. Configuration and lifecycle wiring in `cmd/server/main.go`
+  - [x] 9.1 Add `SCANNER_DEVICE` and `SCAN_INPUT` to `loadScanListenerConfig`
     - Read both via the existing `envOrDefault` helper; `SCANNER_DEVICE` defaults
       to `/dev/pantry-scanner` and sets `DevicePath`; `SCAN_INPUT` goes through
       `scanlistener.ParseSource` and sets `Source`, logging a configuration error
@@ -264,7 +264,7 @@ existing test call sites compile untouched.
     - Keep the identical-control-barcode check returning `ok=false` unchanged
     - _Requirements: 7.1, 7.2, 7.3, 7.4_
 
-  - [ ] 9.2 Rewire `main()` for the broadcaster and status wiring
+  - [x] 9.2 Rewire `main()` for the broadcaster and status wiring
     - Construct `events.NewBroadcaster()` in `main`, pass it via
       `server.WithBroadcaster`, and pass `listener.Status` via
       `server.WithScannerStatus` when a listener was configured
@@ -274,7 +274,7 @@ existing test call sites compile untouched.
     - Assign `listener.ModePublisher = broadcaster`
     - _Requirements: 1.1, 5.1, 5.3_
 
-  - [ ] 9.3 Write unit tests for the configuration changes in
+  - [x] 9.3 Write unit tests for the configuration changes in
     `cmd/server/main_test.go`
     - `SCANNER_DEVICE` unset yields the default path; an explicit value
       overrides it; use `t.Setenv`, matching the existing `TestProductCacheTTL`
@@ -284,13 +284,13 @@ existing test call sites compile untouched.
     - Equal control barcodes still yield `ok=false`
     - _Requirements: 7.1, 7.3, 7.5, 7.6, 7.7_
 
-- [ ] 10. Checkpoint - server builds and starts with no scanner attached
+- [x] 10. Checkpoint - server builds and starts with no scanner attached
   - Confirm the server starts, serves `GET /health` with `connected: false`, and
     logs the resolved device path when `/dev/pantry-scanner` does not exist
   - Ensure all tests pass, ask the user if questions arise.
 
-- [ ] 11. Property tests for the capture path
-  - [ ] 11.1 Write a property test for event filtering
+- [x] 11. Property tests for the capture path
+  - [x] 11.1 Write a property test for event filtering
     - New file `internal/scanlistener/assembler_properties_test.go`
     - **Property 1: Only key-press events of the key type affect capture**
     - **Validates: Requirements 1.2, 1.3**
@@ -302,7 +302,7 @@ existing test call sites compile untouched.
       1: Only key-press events of the key type affect capture`
     - _Requirements: 1.2, 1.3_
 
-  - [ ] 11.2 Write a property test for Enter-delimited line assembly
+  - [x] 11.2 Write a property test for Enter-delimited line assembly
     - **Property 2: Line assembly is exactly delimited by Enter**
     - **Validates: Requirements 1.4, 1.6, 1.7**
     - Generate a list of printable-keycode segments, feed them separated by
@@ -313,14 +313,14 @@ existing test call sites compile untouched.
       2: Line assembly is exactly delimited by Enter`
     - _Requirements: 1.4, 1.6, 1.7_
 
-  - [ ] 11.3 Write a property test for unmapped-keycode skipping
+  - [x] 11.3 Write a property test for unmapped-keycode skipping
     - **Property 3: Unmapped keycodes are skipped without corrupting the line**
     - **Validates: Requirements 1.8, 1.9**
     - Minimum 100 iterations, tagged `Feature: headless-scanner-input, Property
       3: Unmapped keycodes are skipped without corrupting the line`
     - _Requirements: 1.8, 1.9_
 
-  - [ ] 11.4 Write a property test for shift scoping
+  - [x] 11.4 Write a property test for shift scoping
     - **Property 4: Shift state applies to exactly the keys pressed while held**
     - **Validates: Requirement 1.5**
     - Generate letter keycodes interleaved with shift press/release events;
@@ -330,7 +330,7 @@ existing test call sites compile untouched.
       4: Shift state applies to exactly the keys pressed while held`
     - _Requirements: 1.5_
 
-  - [ ] 11.5 Write a property test for mode persistence and buffer discard across
+  - [x] 11.5 Write a property test for mode persistence and buffer discard across
     reconnects
     - In `internal/scanlistener/listener_properties_test.go`
     - **Property 5: Mode transitions survive reconnects, partial lines do not**
@@ -344,7 +344,7 @@ existing test call sites compile untouched.
       5: Mode transitions survive reconnects, partial lines do not`
     - _Requirements: 2.3, 2.6_
 
-  - [ ] 11.6 Write a property test for backoff bounds
+  - [x] 11.6 Write a property test for backoff bounds
     - **Property 6: Reconnect backoff is bounded and reset by success**
     - **Validates: Requirements 2.4, 2.5**
     - Generate a sequence of open outcomes against an injected clock that records
@@ -355,7 +355,7 @@ existing test call sites compile untouched.
       6: Reconnect backoff is bounded and reset by success`
     - _Requirements: 2.4, 2.5_
 
-  - [ ] 11.7 Write a property test for HTTP availability under device failure
+  - [x] 11.7 Write a property test for HTTP availability under device failure
     - In `internal/server`, alongside the existing route-set properties
     - **Property 7: Device state never affects HTTP availability**
     - **Validates: Requirements 2.7, 5.2, 5.4**
@@ -366,11 +366,11 @@ existing test call sites compile untouched.
       7: Device state never affects HTTP availability`
     - _Requirements: 2.7, 5.2, 5.4_
 
-- [ ] 12. Checkpoint - full suite and race detector pass
+- [x] 12. Checkpoint - full suite and race detector pass
   - Ensure all tests pass, ask the user if questions arise.
 
-- [ ] 13. Deployment changes
-  - [ ] 13.1 Add `deploy/udev/99-pantry-scanner.rules`
+- [x] 13. Deployment changes
+  - [x] 13.1 Add `deploy/udev/99-pantry-scanner.rules`
     - Match `SUBSYSTEM=="input"` with `ATTRS{idVendor}`/`ATTRS{idProduct}`
       placeholders and `KERNEL=="event*"`; create `SYMLINK+="pantry-scanner"`
       with `GROUP="pantry"` and `MODE="0640"`
@@ -379,7 +379,7 @@ existing test call sites compile untouched.
       the service user to the `input` group instead would grant exactly that
     - _Requirements: 4.2, 8.1_
 
-  - [ ] 13.2 Update `deploy/docker-compose.yml`
+  - [x] 13.2 Update `deploy/docker-compose.yml`
     - Add the `devices:` mapping for `/dev/pantry-scanner`, a `group_add:` entry
       taking a numeric `SCANNER_GID`, and both `SCANNER_DEVICE` and
       `SCAN_INPUT: device` in `environment:`
@@ -389,13 +389,13 @@ existing test call sites compile untouched.
     - Keep the container running as `nonroot` with no added capabilities
     - _Requirements: 4.1, 4.2, 8.2, 8.3_
 
-  - [ ] 13.3 Update `deploy/.env.example`
+  - [x] 13.3 Update `deploy/.env.example`
     - Add `SCANNER_GID` and `SCANNER_DEVICE` with comments explaining how to
       obtain the gid and why the path is a udev symlink rather than
       `/dev/input/eventN`
     - _Requirements: 7.1, 8.2_
 
-  - [ ] 13.4 Rewrite the scanner sections of `deploy/README.md`
+  - [x] 13.4 Rewrite the scanner sections of `deploy/README.md`
     - Delete the "Barcode Scanner Setup" section's `docker attach` instructions,
       its stdin limitations, and the "Scanner Not Working" stdin troubleshooting
       steps; replace with the udev rule setup, finding the VID/PID via `lsusb`,
@@ -415,7 +415,7 @@ existing test call sites compile untouched.
       the scanner is emitting keycodes outside the US-layout map
     - _Requirements: 8.3, 8.4, 8.5, 8.6_
 
-  - [ ] 13.5 Document the local-development source in `cmd/server/README.md`
+  - [x] 13.5 Document the local-development source in `cmd/server/README.md`
     - State that `SCAN_INPUT=stdin go run ./cmd/server` reproduces today's
       behavior — type or scan a barcode into the terminal and press Enter — and
       that this is the only way to exercise control barcodes and mode switching
@@ -425,16 +425,16 @@ existing test call sites compile untouched.
       `connected: false` in `GET /health`
     - _Requirements: 10.1, 10.2, 10.3_
 
-- [ ] 14. Display the current mode in the web UI
-  - [ ] 14.1 Consume the scanner-mode SSE event in the frontend
+- [x] 14. Display the current mode in the web UI
+  - [x] 14.1 Consume the scanner-mode SSE event in the frontend
     - Handle the new event type in the existing SSE subscription and show the
       current mode persistently on the scan queue page, so an operator can tell
       stock-in from stock-out without scanning a test item
     - Add a component test alongside the existing `ScanQueuePage` tests
     - _Requirements: 5.3_
 
-- [ ] 15. Record the supersession in the `background-scan-listener` spec
-  - [ ] 15.1 Add a note to
+- [x] 15. Record the supersession in the `background-scan-listener` spec
+  - [x] 15.1 Add a note to
     `.kiro/specs/background-scan-listener/requirements.md` recording that
     Requirements 1.1 through 1.3 are narrowed by `headless-scanner-input` to
     apply only when `SCAN_INPUT=stdin`, that they remain in force under that
@@ -443,7 +443,7 @@ existing test call sites compile untouched.
       never-resume rule in 1.3 being applied to the hot-pluggable device path
     - _Requirements: none (documentation hygiene)_
 
-- [ ] 16. Final checkpoint - full suite, race detector, and coverage
+- [x] 16. Final checkpoint - full suite, race detector, and coverage
   - Run the full suite and confirm every test from tasks 1-14 passes
   - Run `go test -race ./internal/scanlistener/... ./internal/server/...`
   - Run `./scripts/test-coverage.sh` to enforce coverage thresholds and commit the
