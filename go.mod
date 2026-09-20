@@ -8,6 +8,7 @@ require (
 	github.com/justinrixx/retryhttp v1.1.1
 	github.com/steinfletcher/apitest v1.6.0
 	github.com/steinfletcher/apitest-jsonpath v1.7.2
+	github.com/stretchr/testify v1.7.0
 	gopkg.in/yaml.v3 v3.0.0-20200313102051-9f266ea9e77c
 	modernc.org/sqlite v1.34.5
 	pgregory.net/rapid v1.3.0
@@ -20,6 +21,7 @@ require (
 	github.com/dustin/go-humanize v1.0.1 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
 	github.com/ncruces/go-strftime v0.1.9 // indirect
+	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec // indirect
 	golang.org/x/sys v0.22.0 // indirect
 	modernc.org/libc v1.55.3 // indirect

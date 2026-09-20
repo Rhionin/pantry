@@ -313,6 +313,75 @@ func (r *Pantry) UpdateReplenishmentMode(ctx context.Context, itemID string, mod
 	return nil
 }
 
+// GetTargetQuantity returns the target_quantity for the given item, or nil if not found.
+func (r *Pantry) GetTargetQuantity(ctx context.Context, itemID string) (*int, error) {
+	row := r.db.QueryRowContext(ctx,
+		`SELECT target_quantity FROM items WHERE id = ?`,
+		itemID,
+	)
+
+	var qty sql.NullInt64
+	if err := row.Scan(&qty); err != nil {
+		return nil, fmt.Errorf("GetTargetQuantity: %w", err)
+	}
+
+	if qty.Valid {
+		q := int(qty.Int64)
+		return &q, nil
+	}
+	return nil, nil
+}
+
+// GetReplenishmentMode returns the replenishment_mode for the given item.
+// Returns TargetMode if not found (default per requirement 6.2).
+func (r *Pantry) GetReplenishmentMode(ctx context.Context, itemID string) (ReplenishmentMode, error) {
+	row := r.db.QueryRowContext(ctx,
+		`SELECT replenishment_mode FROM items WHERE id = ?`,
+		itemID,
+	)
+
+	var mode string
+	if err := row.Scan(&mode); err != nil {
+		return "", fmt.Errorf("GetReplenishmentMode: %w", err)
+	}
+
+	if mode == "" {
+		return TargetMode, nil
+	}
+	m := ReplenishmentMode(mode)
+	if !m.Valid() {
+		return TargetMode, nil
+	}
+	return m, nil
+}
+
+// List returns all item instances in the pantry, ordered by creation time.
+// Used for counting instances per item in provisioning.
+func (r *Pantry) List(ctx context.Context) ([]ItemInstance, error) {
+	rows, err := r.db.QueryContext(ctx,
+		`SELECT id, item_id, stock_in_at, expires_at, removed_at, removal_reason, created_at
+		 FROM item_instances WHERE removed_at IS NULL
+		 ORDER BY created_at ASC`,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("List: %w", err)
+	}
+	defer rows.Close()
+
+	var instances []ItemInstance
+	for rows.Next() {
+		instance, err := scanItemInstance(rows)
+		if err != nil {
+			return nil, fmt.Errorf("List scan: %w", err)
+		}
+		instances = append(instances, *instance)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("List rows: %w", err)
+	}
+	return instances, nil
+}
+
 // publishInventoryEvent fetches the aggregated InventoryItem for itemID and
 // publishes it via Broadcaster. It is a no-op if Broadcaster is nil, the
 // item can't be found, or the fetch fails, since the mutation that

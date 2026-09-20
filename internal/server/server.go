@@ -7,6 +7,7 @@ import (
 	"net/http"
 
 	"github.com/Rhionin/pantry/internal/cart"
+	"github.com/Rhionin/pantry/internal/cart/connection"
 	"github.com/Rhionin/pantry/internal/events"
 	"github.com/Rhionin/pantry/internal/inventory"
 	"github.com/Rhionin/pantry/internal/product"
@@ -152,6 +153,37 @@ func newAPIMux(
 	apiMux.HandleFunc("DELETE /api/shopping-list/items/{id}", HandleJSON(shoppingListItemDeleteHandler.Handle))
 	apiMux.HandleFunc("PATCH /api/shopping-list/items/{id}", HandleJSON(shoppingListItemUpdateHandler.Handle))
 	apiMux.HandleFunc("POST /api/shopping-list/export", HandleJSON(shoppingListExportHandler.Handle))
+
+	// Cart integration handlers
+	registry := cart.NewRegistry()
+	ledger := cart.NewLedger(db)
+	connDir := connection.NewDirectory(db)
+
+	// Note: The Kroger provider will be registered here when loadCartRegistry() is implemented
+	// For now, we wire the handlers with an empty registry (no-op behavior)
+
+	providersHandler := &ProvidersHandler{
+		Registry:      registry,
+		ConnectionDir: connDir,
+	}
+
+	listProvidersHandler := &ListProvidersHandler{ProvidersHandler: *providersHandler}
+	providerAuthorizeHandler := &ProviderAuthorizeHandler{ProvidersHandler: *providersHandler}
+	providerCallbackHandler := &ProviderCallbackHandler{ProvidersHandler: *providersHandler}
+	providerDisconnectHandler := &ProviderDisconnectHandler{ProvidersHandler: *providersHandler}
+	providerLedgerHandler := &ProviderLedgerHandler{
+		ProvidersHandler: *providersHandler,
+		Ledger:           ledger,
+	}
+	providerLedgerGetHandler := &ProviderLedgerGetHandler{ProviderLedgerHandler: *providerLedgerHandler}
+	providerLedgerResetHandler := &ProviderLedgerResetHandler{ProviderLedgerHandler: *providerLedgerHandler}
+
+	apiMux.HandleFunc("GET /api/providers", HandleJSON(listProvidersHandler.Handle))
+	apiMux.HandleFunc("GET /api/providers/{providerId}/authorize", HandleJSON(providerAuthorizeHandler.Handle))
+	apiMux.HandleFunc("GET /api/providers/{providerId}/callback", HandleJSON(providerCallbackHandler.Handle))
+	apiMux.HandleFunc("DELETE /api/providers/{providerId}/connection", HandleJSON(providerDisconnectHandler.Handle))
+	apiMux.HandleFunc("GET /api/providers/{providerId}/ledger", HandleJSON(providerLedgerGetHandler.Handle))
+	apiMux.HandleFunc("POST /api/providers/{providerId}/ledger/reset", HandleJSON(providerLedgerResetHandler.Handle))
 
 	return apiMux, scanQueue
 }

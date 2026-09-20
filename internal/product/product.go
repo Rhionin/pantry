@@ -295,6 +295,31 @@ func (r *Catalog) DeleteBarcodeMiss(ctx context.Context, barcode string) error {
 	return nil
 }
 
+// ListBarcodesForProduct returns all barcodes associated with a product,
+// sorted ascending lexicographically.
+func (r *Catalog) ListBarcodesForProduct(ctx context.Context, productID string) ([]string, error) {
+	rows, err := r.db.QueryContext(ctx,
+		`SELECT barcode FROM barcodes WHERE product_id = ? ORDER BY barcode ASC`,
+		productID)
+	if err != nil {
+		return nil, fmt.Errorf("ListBarcodesForProduct: %w", err)
+	}
+	defer rows.Close()
+
+	var barcodes []string
+	for rows.Next() {
+		var barcode string
+		if err := rows.Scan(&barcode); err != nil {
+			return nil, fmt.Errorf("ListBarcodesForProduct scan: %w", err)
+		}
+		barcodes = append(barcodes, barcode)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("ListBarcodesForProduct rows: %w", err)
+	}
+	return barcodes, nil
+}
+
 // nullableString converts an empty string to a SQL NULL so that optional text
 // columns are stored as NULL rather than empty string.
 func nullableString(s string) sql.NullString {
