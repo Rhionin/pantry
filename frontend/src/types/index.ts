@@ -25,6 +25,15 @@ export type ScanDirection = 'stock_in' | 'stock_out';
 
 export type ScanStatus = 'pending' | 'flagged' | 'committed' | 'cancelled';
 
+// Reserved control-barcode strings the backend classifies against, exposed via
+// GET /api/scanner/config so the browser recognizes the exact same values.
+// Matches scannerConfigResponse in internal/server/handler_scanner.go.
+export interface ScannerConfig {
+  stockInBarcode: string;
+  stockOutBarcode: string;
+  currentMode: ScanDirection;
+}
+
 export interface ScanEntry {
   id: string;
   userId: string;

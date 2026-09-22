@@ -44,6 +44,52 @@ func TestScanCreateHandlerLookupOutcomes(t *testing.T) {
 	runHandlerTests(t, tests)
 }
 
+// TestScanCreateHandler_ControlBarcodeUsesModeEndpoint documents how the
+// browser control-barcode gap is now closed. ScanCreateHandler itself still
+// treats any barcode it is given as a product scan; the fix is that the
+// browser no longer POSTs a recognized control barcode to /api/scans. Instead
+// it reads the reserved strings from GET /api/scanner/config and, on a match,
+// calls POST /api/scanner/mode, which switches the shared mode and broadcasts a
+// scanner_mode event rather than enqueuing a flagged product scan. This test
+// pins that supported flow: the config endpoint reports STOCK_IN, and posting
+// it to the mode endpoint switches the mode instead of creating a scan entry.
+func TestScanCreateHandler_ControlBarcodeUsesModeEndpoint(t *testing.T) {
+	tests := []handlerTestCase{
+		{
+			name: "STOCK_IN control barcode switches mode via /api/scanner/mode and creates no scan entry",
+			httpExchange: httpExchange{
+				method:         "GET",
+				path:           "/api/scanner/config",
+				expectedStatus: http.StatusOK,
+				assertions: []assertion{
+					{path: "$.stockInBarcode", value: "STOCK_IN"},
+					{path: "$.stockOutBarcode", value: "STOCK_OUT"},
+				},
+			},
+			afterRequest: exchanges(
+				httpExchange{
+					method:         "POST",
+					path:           "/api/scanner/mode",
+					body:           `{"mode":"stock_in"}`,
+					expectedStatus: http.StatusOK,
+					assertions: []assertion{
+						{path: "$.mode", value: "stock_in"},
+					},
+				},
+				httpExchange{
+					method:         "GET",
+					path:           "/api/scans",
+					query:          map[string]string{"userId": "user-scan-control"},
+					expectedStatus: http.StatusOK,
+					bodyContains:   []string{"[]"},
+				},
+			),
+		},
+	}
+
+	runHandlerTests(t, tests)
+}
+
 // TestScanCreateHandler_MergeBehavior locks in that a repeat POST /api/scans
 // for the same barcode/userId/direction while the first entry is still
 // pending or flagged merges into the existing entry (unitCount incremented)

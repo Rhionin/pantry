@@ -17,10 +17,20 @@ import (
 	"github.com/Rhionin/pantry/internal/webui"
 )
 
+// defaultStockInBarcode and defaultStockOutBarcode mirror the headless
+// listener's env defaults (STOCK_IN_CONTROL_BARCODE / STOCK_OUT_CONTROL_BARCODE
+// in cmd/server/main.go), so GET /api/scanner/config reports usable values even
+// when NewHandler is called without WithScannerConfig.
+const (
+	defaultStockInBarcode  = "STOCK_IN"
+	defaultStockOutBarcode = "STOCK_OUT"
+)
+
 // config holds the optional configuration for NewHandler.
 type config struct {
-	broadcaster *events.Broadcaster
-	statusFn    func() scanlistener.Status
+	broadcaster   *events.Broadcaster
+	statusFn      func() scanlistener.Status
+	scannerConfig ScannerConfig
 }
 
 // Option is a functional option for NewHandler.
@@ -32,6 +42,17 @@ type Option func(*config)
 func WithBroadcaster(b *events.Broadcaster) Option {
 	return func(c *config) {
 		c.broadcaster = b
+	}
+}
+
+// WithScannerConfig supplies the reserved control-barcode strings that
+// GET /api/scanner/config exposes to the browser, sourced from the same
+// env-derived values the headless listener uses. When unset, NewHandler falls
+// back to the "STOCK_IN"/"STOCK_OUT" defaults so behavior is unchanged out of
+// the box.
+func WithScannerConfig(cfg ScannerConfig) Option {
+	return func(c *config) {
+		c.scannerConfig = cfg
 	}
 }
 
@@ -107,6 +128,30 @@ func newAPIMux(
 
 	eventsHandler := &EventsHandler{Broadcaster: broadcaster}
 	apiMux.HandleFunc("GET /api/events", eventsHandler.Handle)
+
+	// Scanner mode + config handlers. The mode handler publishes through the
+	// same broadcaster GET /api/events uses, so a browser-initiated mode switch
+	// reaches every subscriber exactly as a headless control-barcode scan does.
+	// Fall back per field so a caller that sets only one control barcode keeps
+	// the value it provided instead of reverting both to defaults.
+	scannerConfig := ScannerConfig{StockInBarcode: defaultStockInBarcode, StockOutBarcode: defaultStockOutBarcode}
+	if cfg != nil {
+		if cfg.scannerConfig.StockInBarcode != "" {
+			scannerConfig.StockInBarcode = cfg.scannerConfig.StockInBarcode
+		}
+		if cfg.scannerConfig.StockOutBarcode != "" {
+			scannerConfig.StockOutBarcode = cfg.scannerConfig.StockOutBarcode
+		}
+	}
+	// One scannerMode instance is shared by the mode-switch and config handlers,
+	// so GET /api/scanner/config can seed a newly connected browser with the
+	// current direction instead of the browser guessing a default that may
+	// disagree with the backend.
+	mode := newScannerMode()
+	scannerModeHandler := &ScannerModeHandler{Mode: mode, Broadcaster: broadcaster}
+	scannerConfigHandler := &ScannerConfigHandler{Config: scannerConfig, Mode: mode}
+	apiMux.HandleFunc("POST /api/scanner/mode", HandleJSON(scannerModeHandler.Handle))
+	apiMux.HandleFunc("GET /api/scanner/config", HandleJSON(scannerConfigHandler.Handle))
 
 	// Product handlers
 	lookupHandler := &LookupHandler{Service: lookupService}

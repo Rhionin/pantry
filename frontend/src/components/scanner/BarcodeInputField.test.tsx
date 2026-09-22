@@ -50,4 +50,38 @@ describe('BarcodeInputField', () => {
     expect(input).toBeInTheDocument();
     expect(input).not.toHaveStyle({ display: 'none' });
   });
+
+  // Contract guard (FEAT-001): the field must fire onScan exactly once, with
+  // the fully assembled string, when the Enter terminator arrives -- never once
+  // per character. Note this does NOT reproduce the reported "one card per
+  // character" symptom: this controlled input reads its value from React state
+  // and only acts on Enter, so it would pass whether or not any per-character
+  // defect existed. The reported symptom originated on the POST/classification
+  // path (covered in ScanQueuePage.test.tsx), not in this component. This test
+  // exists to lock the fire-once-on-Enter contract against regressions.
+  it('fires onScan once with the assembled string on Enter, not once per keystroke', () => {
+    const onScan = vi.fn();
+    renderField(onScan);
+
+    const input = screen.getByLabelText(/barcode scanner input/i) as HTMLInputElement;
+    const controlBarcode = 'STOCK_IN';
+
+    // Simulate the scanner typing each character in turn. A controlled input
+    // reflects the cumulative value on every keystroke.
+    let buffered = '';
+    for (const char of controlBarcode) {
+      buffered += char;
+      fireEvent.keyDown(input, { key: char });
+      fireEvent.change(input, { target: { value: buffered } });
+    }
+
+    // No terminator yet: nothing should have fired mid-scan.
+    expect(onScan).not.toHaveBeenCalled();
+
+    // The single terminating Enter keystroke ends the scan.
+    fireEvent.keyDown(input, { key: 'Enter' });
+
+    expect(onScan).toHaveBeenCalledTimes(1);
+    expect(onScan).toHaveBeenCalledWith('STOCK_IN');
+  });
 });
