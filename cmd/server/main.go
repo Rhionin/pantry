@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/Rhionin/pantry/internal/app"
+	"github.com/Rhionin/pantry/internal/events"
 	"github.com/Rhionin/pantry/internal/product"
 	"github.com/Rhionin/pantry/internal/scanlistener"
 	"github.com/Rhionin/pantry/internal/server"
@@ -97,15 +98,26 @@ func main() {
 		MissTTL:   productMissTTL(),
 	}
 
-	handler, scanQueue := server.NewHandler(catalog, lookupService, refresher, sqlDB)
+	// One Broadcaster shared by the HTTP handlers and the headless listener, so
+	// a mode change from either capture path reaches the same GET /api/events
+	// subscribers.
+	broadcaster := events.NewBroadcaster()
+
+	stockInBarcode := envOrDefault("STOCK_IN_CONTROL_BARCODE", "STOCK_IN")
+	stockOutBarcode := envOrDefault("STOCK_OUT_CONTROL_BARCODE", "STOCK_OUT")
+
+	handler, scanQueue := server.NewHandler(catalog, lookupService, refresher, sqlDB,
+		server.WithBroadcaster(broadcaster),
+		server.WithScannerConfig(server.ScannerConfig{
+			StockInBarcode:  stockInBarcode,
+			StockOutBarcode: stockOutBarcode,
+		}),
+	)
 
 	if listener, ok := loadScanListenerConfigWithSource(); ok {
 		listener.Queue = scanQueue
 		listener.LookupService = lookupService
-		// Pass the broadcaster for mode events
-		// The handler has a broadcaster, but we need to extract it from the returned handler
-		// For now, create a new one; in production, use WithBroadcaster
-		listener.ModePublisher = nil
+		listener.ModePublisher = broadcaster
 		go listener.Run(context.Background())
 	}
 
