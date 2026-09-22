@@ -120,7 +120,7 @@ describe('ScanQueuePage', () => {
         return Promise.resolve(jsonResponse({ mode: body.mode }));
       }
       if (url.endsWith('/api/scanner/config')) {
-        return Promise.resolve(jsonResponse({ stockInBarcode: 'STOCK_IN', stockOutBarcode: 'STOCK_OUT' }));
+        return Promise.resolve(jsonResponse({ stockInBarcode: 'STOCK_IN', stockOutBarcode: 'STOCK_OUT', currentMode: 'stock_out' }));
       }
       if (url.endsWith('/api/scans') && init?.method === 'POST') {
         const body = init.body ? (JSON.parse(String(init.body)) as { barcode: string }) : { barcode: '' };
@@ -165,7 +165,7 @@ describe('ScanQueuePage', () => {
         return Promise.resolve(jsonResponse({ mode: body.mode }));
       }
       if (url.endsWith('/api/scanner/config')) {
-        return Promise.resolve(jsonResponse({ stockInBarcode: 'STOCK_IN', stockOutBarcode: 'STOCK_OUT' }));
+        return Promise.resolve(jsonResponse({ stockInBarcode: 'STOCK_IN', stockOutBarcode: 'STOCK_OUT', currentMode: 'stock_out' }));
       }
       if (url.endsWith('/api/scans') && init?.method === 'POST') {
         const body = init.body ? (JSON.parse(String(init.body)) as { barcode: string }) : { barcode: '' };
@@ -197,8 +197,8 @@ describe('ScanQueuePage', () => {
     expect(modePosts).toContain('stock_out');
   });
 
-  it('scanning a normal product barcode still creates a scan entry', async () => {
-    const scanPosts: string[] = [];
+  it('scanning a normal product barcode still creates a scan entry tagged with the current mode', async () => {
+    const scanPosts: Array<{ barcode: string; direction?: string }> = [];
     const modePosts: string[] = [];
     const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
@@ -208,16 +208,16 @@ describe('ScanQueuePage', () => {
         return Promise.resolve(jsonResponse({ mode: body.mode }));
       }
       if (url.endsWith('/api/scanner/config')) {
-        return Promise.resolve(jsonResponse({ stockInBarcode: 'STOCK_IN', stockOutBarcode: 'STOCK_OUT' }));
+        return Promise.resolve(jsonResponse({ stockInBarcode: 'STOCK_IN', stockOutBarcode: 'STOCK_OUT', currentMode: 'stock_out' }));
       }
       if (url.endsWith('/api/scans') && init?.method === 'POST') {
-        const body = init.body ? (JSON.parse(String(init.body)) as { barcode: string }) : { barcode: '' };
-        scanPosts.push(body.barcode);
+        const body = init.body ? (JSON.parse(String(init.body)) as { barcode: string; direction?: string }) : { barcode: '' };
+        scanPosts.push({ barcode: body.barcode, direction: body.direction });
         return Promise.resolve(jsonResponse(scanEntry({ id: 'created', barcode: body.barcode })));
       }
       if (url.includes('status=pending')) {
-        return Promise.resolve(jsonResponse(scanPosts.map((barcode, index) =>
-          scanEntry({ id: `created-${index}`, barcode }))));
+        return Promise.resolve(jsonResponse(scanPosts.map((post, index) =>
+          scanEntry({ id: `created-${index}`, barcode: post.barcode }))));
       }
       if (url.includes('status=flagged')) return Promise.resolve(jsonResponse([]));
       if (url === '/api/inventory' || url === '/api/products') return Promise.resolve(jsonResponse([]));
@@ -234,9 +234,54 @@ describe('ScanQueuePage', () => {
 
     // A normal product barcode is posted as a scan and rendered as a card.
     expect(await screen.findByText('Barcode: 0123456789012')).toBeInTheDocument();
-    expect(scanPosts).toEqual(['0123456789012']);
+    // The scan carries the current mode as its direction (stock_out here), so
+    // it lands in the same view as the selected direction.
+    expect(scanPosts).toEqual([{ barcode: '0123456789012', direction: 'stock_out' }]);
     // No mode switch is triggered for an ordinary barcode.
     expect(modePosts).toHaveLength(0);
+  });
+
+  it('a product barcode scanned after a control barcode is tagged with the switched-to direction', async () => {
+    const scanPosts: Array<{ barcode: string; direction?: string }> = [];
+    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith('/api/scanner/mode') && init?.method === 'POST') {
+        const body = init.body ? (JSON.parse(String(init.body)) as { mode: string }) : { mode: '' };
+        return Promise.resolve(jsonResponse({ mode: body.mode }));
+      }
+      if (url.endsWith('/api/scanner/config')) {
+        return Promise.resolve(jsonResponse({ stockInBarcode: 'STOCK_IN', stockOutBarcode: 'STOCK_OUT', currentMode: 'stock_out' }));
+      }
+      if (url.endsWith('/api/scans') && init?.method === 'POST') {
+        const body = init.body ? (JSON.parse(String(init.body)) as { barcode: string; direction?: string }) : { barcode: '' };
+        scanPosts.push({ barcode: body.barcode, direction: body.direction });
+        return Promise.resolve(jsonResponse(scanEntry({ id: 'created', barcode: body.barcode })));
+      }
+      if (url.includes('status=pending') || url.includes('status=flagged')) {
+        return Promise.resolve(jsonResponse([]));
+      }
+      if (url === '/api/inventory' || url === '/api/products') return Promise.resolve(jsonResponse([]));
+      throw new Error(`Unexpected request: ${url}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<MantineProvider><ScanQueuePage /></MantineProvider>);
+    await screen.findByText('No pending scans.');
+    expect(screen.getByText('STOCK OUT')).toBeInTheDocument();
+
+    const input = screen.getByLabelText(/barcode scanner input/i);
+    // Scan the STOCK_IN control barcode to switch mode.
+    fireEvent.change(input, { target: { value: 'STOCK_IN' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+    expect(await screen.findByText('STOCK IN')).toBeInTheDocument();
+
+    // Now scan a product barcode; it must be tagged stock_in, not stock_out.
+    fireEvent.change(input, { target: { value: '0123456789012' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+
+    await vi.waitFor(() =>
+      expect(scanPosts).toEqual([{ barcode: '0123456789012', direction: 'stock_in' }]),
+    );
   });
 
   it('scanning an unrecognized string still posts it as a product barcode', async () => {
@@ -250,7 +295,7 @@ describe('ScanQueuePage', () => {
         return Promise.resolve(jsonResponse({ mode: body.mode }));
       }
       if (url.endsWith('/api/scanner/config')) {
-        return Promise.resolve(jsonResponse({ stockInBarcode: 'STOCK_IN', stockOutBarcode: 'STOCK_OUT' }));
+        return Promise.resolve(jsonResponse({ stockInBarcode: 'STOCK_IN', stockOutBarcode: 'STOCK_OUT', currentMode: 'stock_out' }));
       }
       if (url.endsWith('/api/scans') && init?.method === 'POST') {
         const body = init.body ? (JSON.parse(String(init.body)) as { barcode: string }) : { barcode: '' };

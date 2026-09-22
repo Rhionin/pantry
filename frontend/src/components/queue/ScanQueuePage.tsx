@@ -67,11 +67,16 @@ export const ScanQueuePage = ({ userId = DEFAULT_USER_ID }: ScanQueuePageProps) 
   }, [loadQueue]);
 
   // Load the reserved control-barcode strings so captureBarcode can classify a
-  // scan as a mode switch instead of a product barcode. If the config cannot be
-  // loaded, classification falls back to off (no crash) and scans post as usual.
+  // scan as a mode switch instead of a product barcode, and seed the displayed
+  // mode from the backend's current direction so a browser that connects after
+  // a switch starts on the right mode. If the config cannot be loaded,
+  // classification falls back to off (no crash) and scans post as usual.
   useEffect(() => {
     void getScannerConfig()
-      .then(setScannerConfig)
+      .then((config) => {
+        setScannerConfig(config);
+        setScannerModeState(config.currentMode);
+      })
       .catch(() => setScannerConfig(null));
   }, []);
 
@@ -126,7 +131,10 @@ export const ScanQueuePage = ({ userId = DEFAULT_USER_ID }: ScanQueuePageProps) 
       return;
     }
     try {
-      await createScanEntry({ barcode, userId });
+      // Stamp the entry with the selected mode so browser scans land in the
+      // same view as the current direction, matching the headless listener
+      // which stamps each entry with its Current_Mode.
+      await createScanEntry({ barcode, direction: scannerMode, userId });
       await loadQueue();
     } catch (requestError) {
       setScanError(requestError instanceof Error ? requestError.message : 'Unable to add the scan.');

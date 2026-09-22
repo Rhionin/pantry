@@ -51,14 +51,15 @@ describe('BarcodeInputField', () => {
     expect(input).not.toHaveStyle({ display: 'none' });
   });
 
-  // Reproduction test B (FEAT-001): an HID scanner types a control barcode one
-  // character at a time (S, T, O, C, K, _, I, N) and only then sends the Enter
-  // terminator. The component contract is to buffer every keystroke and fire
-  // onScan exactly once, with the fully assembled string, when the terminator
-  // arrives -- never once per character. This drives the field the way a
-  // controlled React input receives rapid scanner keystrokes: each keystroke
-  // grows the input value before the single terminating Enter.
-  it('buffers per-character scanner keystrokes and calls onScan once with the assembled control barcode', () => {
+  // Contract guard (FEAT-001): the field must fire onScan exactly once, with
+  // the fully assembled string, when the Enter terminator arrives -- never once
+  // per character. Note this does NOT reproduce the reported "one card per
+  // character" symptom: this controlled input reads its value from React state
+  // and only acts on Enter, so it would pass whether or not any per-character
+  // defect existed. The reported symptom originated on the POST/classification
+  // path (covered in ScanQueuePage.test.tsx), not in this component. This test
+  // exists to lock the fire-once-on-Enter contract against regressions.
+  it('fires onScan once with the assembled string on Enter, not once per keystroke', () => {
     const onScan = vi.fn();
     renderField(onScan);
 

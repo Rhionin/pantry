@@ -84,12 +84,88 @@ func TestScannerConfigHandler_Defaults(t *testing.T) {
 				assertions: []assertion{
 					{path: "$.stockInBarcode", value: "STOCK_IN"},
 					{path: "$.stockOutBarcode", value: "STOCK_OUT"},
+					// Defaults to stock_in before any switch, matching the
+					// headless listener's newModeState.
+					{path: "$.currentMode", value: "stock_in"},
 				},
 			},
 		},
 	}
 
 	runHandlerTests(t, tests)
+}
+
+// TestScannerConfigHandler_ReflectsCurrentMode verifies GET /api/scanner/config
+// reports the mode set by a prior POST /api/scanner/mode against the same
+// handler, so a browser that connects after a switch starts on the current
+// direction. This is the reader of scannerMode that closes the write-only gap.
+func TestScannerConfigHandler_ReflectsCurrentMode(t *testing.T) {
+	handler, _ := setupTestWithDB(t)
+
+	// Default before any switch is stock_in.
+	if got := getCurrentMode(t, handler); got != "stock_in" {
+		t.Fatalf("initial currentMode = %q, want %q", got, "stock_in")
+	}
+
+	modeReq := httptest.NewRequest(http.MethodPost, "/api/scanner/mode", strings.NewReader(`{"mode":"stock_out"}`))
+	modeReq.Header.Set("Content-Type", "application/json")
+	modeRes := httptest.NewRecorder()
+	handler.ServeHTTP(modeRes, modeReq)
+	if modeRes.Code != http.StatusOK {
+		t.Fatalf("POST /api/scanner/mode status = %d, want %d", modeRes.Code, http.StatusOK)
+	}
+
+	if got := getCurrentMode(t, handler); got != "stock_out" {
+		t.Fatalf("currentMode after switch = %q, want %q", got, "stock_out")
+	}
+}
+
+func getCurrentMode(t *testing.T, handler http.Handler) string {
+	t.Helper()
+	req := httptest.NewRequest(http.MethodGet, "/api/scanner/config", nil)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("GET /api/scanner/config status = %d, want %d", w.Code, http.StatusOK)
+	}
+	var body struct {
+		CurrentMode string `json:"currentMode"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode config response: %v (%s)", err, w.Body.String())
+	}
+	return body.CurrentMode
+}
+
+// TestScannerConfigHandler_PartialConfigKeepsProvidedValue verifies that
+// WithScannerConfig falls back per field: setting only one control barcode
+// keeps that value and defaults only the unset one, instead of reverting both.
+func TestScannerConfigHandler_PartialConfigKeepsProvidedValue(t *testing.T) {
+	handler, _ := NewHandler(nil, nil, nil, nil, WithScannerConfig(ScannerConfig{
+		StockInBarcode: "IN-ONLY",
+	}))
+
+	req := httptest.NewRequest(http.MethodGet, "/api/scanner/config", nil)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("GET /api/scanner/config status = %d, want %d", w.Code, http.StatusOK)
+	}
+
+	var body struct {
+		StockInBarcode  string `json:"stockInBarcode"`
+		StockOutBarcode string `json:"stockOutBarcode"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode config response: %v (%s)", err, w.Body.String())
+	}
+	if body.StockInBarcode != "IN-ONLY" {
+		t.Errorf("stockInBarcode = %q, want %q (provided value must be kept)", body.StockInBarcode, "IN-ONLY")
+	}
+	if body.StockOutBarcode != "STOCK_OUT" {
+		t.Errorf("stockOutBarcode = %q, want default %q (unset field only)", body.StockOutBarcode, "STOCK_OUT")
+	}
 }
 
 // TestScannerConfigHandler_ConfiguredStrings verifies WithScannerConfig

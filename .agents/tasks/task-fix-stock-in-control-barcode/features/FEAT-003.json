@@ -42,6 +42,20 @@
       "frontend/src/types/index.ts (ScannerConfig type)",
       "frontend/src/components/queue/ScanQueuePage.tsx (load config on mount, classify control barcodes before posting, rename state setter to setScannerModeState)",
       "frontend/src/components/queue/ScanQueuePage.test.tsx (reworked test A + 3 new tests)"
-    ]
+    ],
+    "review_response_2026-09-22": {
+      "summary": "Addressed the 2026-09-22-045155 review. Made the two capture paths consistent and closed the write-only mode-state gap.",
+      "issue_1_browser_scans_ignore_mode": "FIXED. captureBarcode now posts product scans with direction: scannerMode, so a browser scan after a mode switch lands in the same view as the selected direction, matching the headless listener which stamps mode.get() on each entry. Behavior change is covered by two tests: the normal-barcode test now asserts direction 'stock_out', and a new test scans STOCK_IN then a product barcode and asserts the product is tagged 'stock_in'.",
+      "issue_3_write_only_mode": "FIXED. The single scannerMode instance is now shared by the mode-switch and config handlers; GET /api/scanner/config returns currentMode (reading scannerMode.get()). The browser seeds its displayed mode from config.currentMode on mount, so a browser connecting after a switch starts on the right direction. Backend test TestScannerConfigHandler_ReflectsCurrentMode proves config reflects a prior POST /api/scanner/mode against the same handler.",
+      "issue_4_partial_config_fallback": "FIXED. newAPIMux now falls back per field, so setting only one control barcode keeps the provided value and defaults only the unset one. Covered by TestScannerConfigHandler_PartialConfigKeepsProvidedValue.",
+      "issue_5_reproduction_test_b": "FIXED (reframed). Renamed the BarcodeInputField test to 'fires onScan once with the assembled string on Enter, not once per keystroke' and rewrote the comment to state it is a fire-once-on-Enter contract guard, not a reproduction of the reported per-character symptom (which originated on the POST/classification path).",
+      "issue_2_three_mode_states": "JUSTIFIED + documented. The headless listener intentionally keeps its own modeState because it stamps direction at scan time and must not depend on an HTTP handler being reachable. Reconciliation for display is deliberate eventual consistency via the shared scanner_mode SSE event; each capture path owns the direction it stamps on its own entries. This is now documented as a WHY comment on scannerMode in handler_scanner.go rather than left implicit. Fully unifying into one register across process boundaries is out of scope for the reported bug and would couple the device path to HTTP availability.",
+      "verification": {
+        "backend": "go build ./... clean; go test ./... all packages ok (server package green including 3 new/updated scanner tests).",
+        "frontend_test": "npm test -- --run: 20 files, 147 tests pass.",
+        "frontend_lint": "npm run lint clean.",
+        "frontend_build": "npm run build (tsc -b && vite build) succeeded."
+      }
+    }
   }
 }

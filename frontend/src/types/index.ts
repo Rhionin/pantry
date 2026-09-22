@@ -31,6 +31,7 @@ export type ScanStatus = 'pending' | 'flagged' | 'committed' | 'cancelled';
 export interface ScannerConfig {
   stockInBarcode: string;
   stockOutBarcode: string;
+  currentMode: ScanDirection;
 }
 
 export interface ScanEntry {
