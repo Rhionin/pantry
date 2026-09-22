@@ -85,11 +85,23 @@ jobs:
       - name: Determine image tags
         id: tags
         run: |
-          if [ "${{ github.event_name }}" = "push" ]; then
-            echo "tags=ghcr.io/rhionin/pantry:latest,ghcr.io/rhionin/pantry:master,ghcr.io/rhionin/pantry:${{ github.sha }}" >> $GITHUB_OUTPUT
+          # Build common tags array
+          TAGS="ghcr.io/rhionin/pantry:${{ github.sha }}"
+          
+          # Add branch name tag
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            BRANCH_NAME="${{ github.head_ref }}"
+            # Remove 'refs/heads/' prefix if present
+            BRANCH_NAME="${BRANCH_NAME#refs/heads/}"
+            # Replace slashes with dashes for valid tag
+            BRANCH_NAME="${BRANCH_NAME//\//-}"
+            TAGS="$TAGS,ghcr.io/rhionin/pantry:$BRANCH_NAME"
           else
-            echo "tags=ghcr.io/rhionin/pantry:${{ github.sha }}" >> $GITHUB_OUTPUT
+            # On master commit, add latest and master tags
+            TAGS="$TAGS,ghcr.io/rhionin/pantry:latest,ghcr.io/rhionin/pantry:master"
           fi
+          
+          echo "tags=$TAGS" >> $GITHUB_OUTPUT
 
       - name: Build and push container image
         uses: docker/build-push-action@v6
