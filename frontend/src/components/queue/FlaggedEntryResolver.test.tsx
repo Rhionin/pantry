@@ -1,10 +1,35 @@
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MantineProvider } from '@mantine/core';
 import { FlaggedEntryResolver } from './FlaggedEntryResolver';
 import type { Product, ScanEntry } from '../../types';
 
 HTMLElement.prototype.scrollIntoView = vi.fn();
+
+// Report prefers-reduced-motion so the MantineProvider theme below (which sets
+// respectReducedMotion) collapses transitions to zero duration. This keeps the
+// combobox dropdown and the resolve button's loader from scheduling a 150ms
+// timer that could fire a React state update after jsdom's window is torn
+// down, which otherwise fails the run with an unhandled ReferenceError even
+// though every assertion passes. Scoped to this file so it does not affect
+// components (e.g. ScanEntryCard) that assert on animated vs reduced-motion
+// behavior; vitest isolates each test file's jsdom environment.
+beforeEach(() => {
+  vi.stubGlobal(
+    'matchMedia',
+    (query: string) =>
+      ({
+        matches: /prefers-reduced-motion/.test(query),
+        media: query,
+        onchange: null,
+        addListener: () => {},
+        removeListener: () => {},
+        addEventListener: () => {},
+        removeEventListener: () => {},
+        dispatchEvent: () => false,
+      }) as unknown as MediaQueryList,
+  );
+});
 
 const flaggedEntry: ScanEntry = {
   id: 'scan-1',
@@ -40,9 +65,15 @@ const yogurt: Product = {
 const jsonResponse = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
 
+// respectReducedMotion, paired with the prefers-reduced-motion stub above,
+// collapses Mantine transitions (combobox dropdown, the resolve button's
+// loader) to zero duration. This stops a transition timer from outliving the
+// test and updating React state after jsdom's window is gone, which otherwise
+// fails the run with an unhandled ReferenceError even though every assertion
+// passes.
 const renderResolver = (onResolved = vi.fn()) => {
   render(
-    <MantineProvider>
+    <MantineProvider theme={{ respectReducedMotion: true }}>
       <FlaggedEntryResolver entry={flaggedEntry} onResolved={onResolved} />
     </MantineProvider>,
   );
