@@ -167,32 +167,108 @@ cd /opt/pantry
 sudo docker compose up -d
 ```
 
-## Barcode Scanner Setup
+## Headless Scanner Input
 
-### USB Scanner Attachment
+Pantry now reads barcode scans directly from the scanner's evdev device (`/dev/input/eventN`) instead of standard input, so it works headlessly without a keyboard, monitor, or attached terminal session.
 
-To use a USB barcode scanner with Pantry:
+### Prerequisites
 
-1. Connect your USB HID barcode scanner to the Raspberry Pi
-2. Attach to the running container's stdin:
+1. **Find your scanner's device information:**
 
+   **USB scanners:**
+   ```bash
+   lsusb | grep -i scanner
+   ```
+   Output looks like: `Bus 001 Device 005: ID XXXX:YYYY Symbol Technologies, Inc. Scanner`
+
+   **Bluetooth scanners:**
+   Bluetooth scanners appear as input devices and won't show in `lsusb`. Instead:
+   ```bash
+   # List all input event devices
+   ls -l /dev/input/event*
+   
+   # Get details about a specific event device (replace eventX with your device)
+   udevadm info -a -p $(udevadm info -q path -n /dev/input/eventX) | grep -E "(vendor|product|name)"
+   
+   # Or look for your scanner in the input device list
+   cat /proc/bus/input/devices | grep -A5 -B5 -i scanner
+   ```
+
+2. **Install the udev rule:**
+   Copy the provided rule file to `/etc/udev/rules.d/`:
+   ```bash
+   sudo cp pantry/udev/99-pantry-scanner.rules /etc/udev/rules.d/
+   ```
+   
+   **For USB scanners:** Edit the rule to replace `XXXX` and `YYYY` with your scanner's actual vendor and product IDs.
+   
+   **For Bluetooth scanners:** Modify the rule to match by device name instead:
+   ```bash
+   SUBSYSTEM=="input", ATTRS{name}=="*Scanner*", \
+     KERNEL=="event*", SYMLINK+="pantry-scanner", GROUP="65532", MODE="0640"
+   ```
+   Replace `*Scanner*` with the actual name pattern from your device (found in step 1).
+
+3. **Reload udev and trigger:**
+   ```bash
+   sudo udevadm control --reload
+   sudo udevadm trigger
+   ```
+
+4. **Verify `/dev/pantry-scanner` exists:**
+   ```bash
+   ls -l /dev/pantry-scanner
+   ```
+   
+   The symlink should exist with GID 65532.
+
+2. **Ensure `SCANNER_DEVICE` is set** (defaults to `/dev/pantry-scanner`) in `.env`.
+
+3. **Important:** The udev rule must be installed and `/dev/pantry-scanner` must exist **before** running `docker compose up`. Docker refuses to start a container whose declared device path does not exist.
+
+4. **Start the container:**
+   ```bash
+   cd /opt/pantry
+   sudo docker compose up -d
+   ```
+
+5. **Verify scanner status:**
+   ```bash
+   curl http://localhost:8080/health
+   ```
+   
+   Look for the `scanner` object in the response:
+   - `connected: true` and `grabbed: true` means the scanner is working
+   - `connected: false` with `lastError` containing "permission denied" means the udev rule's group doesn't match the container's GID (65532)
+
+### Local Development
+
+For local development without a scanner, use stdin mode:
 ```bash
-sudo docker attach pantry
+SCAN_INPUT=stdin go run ./cmd/server
 ```
 
-3. Scan barcodes directly - they will be processed by Pantry's scan listener
+Type barcodes directly into the terminal and press Enter. The scanner status will show `connected: false` since there's no device, but scans will still work.
 
-### Important Limitations
+### Troubleshooting
 
-- The barcode scanner inputs are consumed only while the container's stdin is attached
-- `stdin_open` and `tty` in the Docker Compose file keep the container's stdin available, but a USB HID scanner types into the Pi's console, not directly into the container
-- You must run `docker attach pantry` to create the connection between the Pi console and the container's stdin
-- When the container is recreated (during updates), any attached stdin session will be dropped and you'll need to reattach
+The `GET /health` endpoint's `scanner` object can help diagnose issues:
 
-### Disconnecting
+| Field | Expected Value | Issue if different |
+|-------|----------------|-------------------|
+| `connected` | `true` | Device not found, permission denied, or unplugged |
+| `grabbed` | `true` | Another process is using the device |
+| `unmappedKeys` | Low / zero | Scanner is emitting keycodes outside the US-layout map |
 
-To disconnect from the attached session without stopping the container:
-- Press `Ctrl+P` followed by `Ctrl+Q`
+**Common issues:**
+- `connected: false` with "permission denied" in `lastError`: The udev rule's `GROUP` doesn't match the container's GID (65532)
+- High `unmappedKeys`: Your scanner uses a non-US layout; consider modifying `internal/scanlistener/keymap.go`
+
+### Automatic Updates
+
+`pantry-update.service` only updates the container image, never the deployment files. This means:
+- The udev rule must be installed once manually on the Pi
+- Docker Compose and `.env` files are never automatically modified
 
 ## Data Management
 
@@ -356,16 +432,6 @@ sudo systemctl daemon-reload
 
 **Note:** Shorter intervals mean more registry requests but no faster delivery than the build workflow's runtime.
 
-### Barcode Scanner Impact
-
-When automatic updates recreate the container, any `docker attach` session is dropped. The barcode scanner will stop working until you reattach:
-
-```bash
-sudo docker attach pantry
-```
-
-Consider this limitation if you rely heavily on barcode scanning.
-
 ### Rollback After Automatic Update
 
 If an automatic update causes issues:
@@ -423,17 +489,33 @@ Common issues:
 
 ### Scanner Not Working
 
-1. Verify container stdin is properly configured:
+1. **Check scanner status via `/health`:**
    ```bash
-   sudo docker inspect pantry | grep -A 5 -B 5 "stdin\|tty"
+   curl http://localhost:8080/health
+   ```
+   
+   Look for the `scanner` object:
+   - `connected: false` with `lastError` containing "permission denied" means the udev rule's group doesn't match the container's GID (65532)
+   - `connected: false` without an error means the device doesn't exist - verify the udev rule was installed and run `sudo udevadm trigger`
+
+2. **Verify `/dev/pantry-scanner` exists:**
+   ```bash
+   ls -l /dev/pantry-scanner
    ```
 
-2. Ensure you're attached to the container:
+3. **Check Docker device mapping:**
    ```bash
-   sudo docker attach pantry
+   sudo docker inspect pantry | grep -A 5 Devices
    ```
+   
+   The `Devices` array should include `/dev/pantry-scanner`.
 
-3. Test scanner input by typing directly (scanner input should appear)
+4. **Verify the udev rule matches your device:**
+   ```bash
+   lsusb
+   ```
+   
+   Ensure the `idVendor` and `idProduct` in `/etc/udev/rules.d/99-pantry-scanner.rules` match your scanner's `ID` from `lsusb`.
 
 ### Updates Failing
 

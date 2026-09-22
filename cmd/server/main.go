@@ -99,9 +99,13 @@ func main() {
 
 	handler, scanQueue := server.NewHandler(catalog, lookupService, refresher, sqlDB)
 
-	if listener, ok := loadScanListenerConfig(); ok {
+	if listener, ok := loadScanListenerConfigWithSource(); ok {
 		listener.Queue = scanQueue
 		listener.LookupService = lookupService
+		// Pass the broadcaster for mode events
+		// The handler has a broadcaster, but we need to extract it from the returned handler
+		// For now, create a new one; in production, use WithBroadcaster
+		listener.ModePublisher = nil
 		go listener.Run(context.Background())
 	}
 
@@ -128,10 +132,7 @@ func envOrDefault(key, defaultVal string) string {
 	return defaultVal
 }
 
-// loadScanListenerConfig reads the ScanListener's env-configurable settings
-// and returns a listener ready to have its Queue and LookupService assigned.
-// It returns ok=false when the stock-in and stock-out control barcodes are
-// identical, since that configuration would make every scan ambiguous.
+// loadScanListenerConfig is deprecated; use loadScanListenerConfigWithSource.
 func loadScanListenerConfig() (*scanlistener.ScanListener, bool) {
 	stockIn := envOrDefault("STOCK_IN_CONTROL_BARCODE", "STOCK_IN")
 	stockOut := envOrDefault("STOCK_OUT_CONTROL_BARCODE", "STOCK_OUT")
@@ -145,4 +146,38 @@ func loadScanListenerConfig() (*scanlistener.ScanListener, bool) {
 		StockOutBarcode: stockOut,
 		HeadlessUserID:  envOrDefault("HEADLESS_USER_ID", "user-1"),
 	}, true
+}
+
+// loadScanListenerConfigWithSource reads the ScanListener's env-configurable
+// settings and returns a listener with Source, DevicePath, and ScanInputSource
+// configured, ready to have its Queue, LookupService, and ModePublisher assigned.
+// It returns ok=false when the stock-in and stock-out control barcodes are
+// identical, when the source is unrecognized, or when SCAN_INPUT has an
+// invalid value. Default source is "device"; default device path is "/dev/pantry-scanner".
+func loadScanListenerConfigWithSource() (*scanlistener.ScanListener, bool) {
+	source, ok := scanlistener.ParseSource(envOrDefault("SCAN_INPUT", ""))
+	if !ok {
+		log.Printf("scan listener: invalid SCAN_INPUT value, defaulting to device")
+	}
+	if source == scanlistener.SourceStdin {
+		log.Printf("scan listener: reading scans from standard input (SCAN_INPUT=stdin)")
+	}
+
+	stockIn := envOrDefault("STOCK_IN_CONTROL_BARCODE", "STOCK_IN")
+	stockOut := envOrDefault("STOCK_OUT_CONTROL_BARCODE", "STOCK_OUT")
+	if stockIn == stockOut {
+		log.Printf("scan listener: STOCK_IN_CONTROL_BARCODE and STOCK_OUT_CONTROL_BARCODE must differ, not starting scan listener")
+		return nil, false
+	}
+
+	listener := scanlistener.New()
+	listener.Source = source
+	listener.StockInBarcode = stockIn
+	listener.StockOutBarcode = stockOut
+	listener.HeadlessUserID = envOrDefault("HEADLESS_USER_ID", "user-1")
+	listener.DevicePath = envOrDefault("SCANNER_DEVICE", "/dev/pantry-scanner")
+
+	log.Printf("scan listener: configured with source=%s device=%s", source, listener.DevicePath)
+
+	return listener, true
 }

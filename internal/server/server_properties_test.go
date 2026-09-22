@@ -328,7 +328,7 @@ func buildComposedAndAPIHandlers(t *testing.T, seed func(env testEnv)) (http.Han
 	if seed != nil {
 		seed(envB)
 	}
-	apiMux, _ := newAPIMux(catalogB, lookupB, refresherB, envB.DB)
+	apiMux, _ := newAPIMux(catalogB, lookupB, refresherB, envB.DB, nil)
 
 	return composed, apiMux
 }

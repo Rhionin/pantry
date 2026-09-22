@@ -71,6 +71,11 @@ func (b *Broadcaster) PublishInventoryEvent(item inventory.InventoryItem) {
 	b.publish("inventory", item)
 }
 
+// PublishScannerModeEvent delivers mode to every currently-subscribed connection.
+func (b *Broadcaster) PublishScannerModeEvent(mode scan.ScanDirection) {
+	b.publish("scanner_mode", mode)
+}
+
 func (b *Broadcaster) publish(eventType string, payload any) {
 	data, err := json.Marshal(payload)
 	if err != nil {

@@ -30,6 +30,25 @@ jobs:
       
       - name: Run Go tests with coverage
         run: ./scripts/test-coverage.sh
+  
+  go-build-all-platforms:
+    name: Go build on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      
+      - name: Build all packages
+        run: go build ./...
 
   frontend:
     name: Frontend tests and linting

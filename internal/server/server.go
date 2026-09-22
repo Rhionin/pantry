@@ -3,6 +3,7 @@ package server
 
 import (
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"net/http"
 
@@ -10,10 +11,38 @@ import (
 	"github.com/Rhionin/pantry/internal/inventory"
 	"github.com/Rhionin/pantry/internal/product"
 	"github.com/Rhionin/pantry/internal/scan"
+	"github.com/Rhionin/pantry/internal/scanlistener"
 	"github.com/Rhionin/pantry/internal/shopping"
 	"github.com/Rhionin/pantry/internal/suggestion"
 	"github.com/Rhionin/pantry/internal/webui"
 )
+
+// config holds the optional configuration for NewHandler.
+type config struct {
+	broadcaster *events.Broadcaster
+	statusFn    func() scanlistener.Status
+}
+
+// Option is a functional option for NewHandler.
+type Option func(*config)
+
+// WithBroadcaster supplies an externally owned Broadcaster so the scan
+// listener can publish mode changes to the same subscribers the HTTP handlers
+// publish to. When unset, NewHandler creates its own, as today.
+func WithBroadcaster(b *events.Broadcaster) Option {
+	return func(c *config) {
+		c.broadcaster = b
+	}
+}
+
+// WithScannerStatus supplies the scan listener's status for GET /health. When
+// unset, the health response omits the scanner object entirely, which is what
+// every existing test sees.
+func WithScannerStatus(fn func() scanlistener.Status) Option {
+	return func(c *config) {
+		c.statusFn = fn
+	}
+}
 
 // NewHandler creates and configures the HTTP handler with all application
 // routes. It also returns the scan.Queue it constructs internally, already
@@ -26,9 +55,15 @@ func NewHandler(
 	lookupService *product.LookupService,
 	refresher *product.Refresher,
 	db *sql.DB,
+	opts ...Option,
 ) (http.Handler, *scan.Queue) {
+	cfg := &config{}
+	for _, opt := range opts {
+		opt(cfg)
+	}
+
 	// Build the API mux containing all existing routes
-	apiMux, scanQueue := newAPIMux(catalog, lookupService, refresher, db)
+	apiMux, scanQueue := newAPIMux(catalog, lookupService, refresher, db, cfg)
 
 	// Create root mux that composes API routes with web UI
 	root := http.NewServeMux()
@@ -49,14 +84,25 @@ func newAPIMux(
 	lookupService *product.LookupService,
 	refresher *product.Refresher,
 	db *sql.DB,
+	cfg *config,
 ) (*http.ServeMux, *scan.Queue) {
 	apiMux := http.NewServeMux()
 
 	broadcaster := events.NewBroadcaster()
+	if cfg != nil && cfg.broadcaster != nil {
+		broadcaster = cfg.broadcaster
+	}
 
 	apiMux.HandleFunc("GET /health", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprintln(w, `{"status":"ok"}`)
+
+		response := `{"status":"ok"}`
+		if cfg != nil && cfg.statusFn != nil {
+			status := cfg.statusFn()
+			scannerJSON, _ := json.Marshal(status)
+			response = fmt.Sprintf(`%s,"scanner":%s}`, response[:len(response)-1], scannerJSON)
+		}
+		fmt.Fprintln(w, response)
 	})
 
 	eventsHandler := &EventsHandler{Broadcaster: broadcaster}
