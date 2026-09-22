@@ -10,6 +10,7 @@ import type {
   Product,
   ScanDirection,
   ScanEntry,
+  ScannerConfig,
   ScanStatus,
   ShoppingListEntry,
   TargetQuantitySuggestion,
@@ -156,6 +157,25 @@ interface BatchCommitInput {
 
 export function batchCommitScanEntries(input: BatchCommitInput): Promise<BatchCommitResponse> {
   return apiFetch('/api/scans/batch-commit', { method: 'POST', body: JSON.stringify(input) });
+}
+
+// --- Scanner mode and config ---
+
+interface SetScannerModeResponse {
+  mode: ScanDirection;
+}
+
+// Switches the shared scanner mode and triggers a 'scanner_mode' SSE event so
+// every connected browser converges on the same direction (matches the
+// headless listener behavior). See internal/server/handler_scanner.go.
+export function setScannerMode(mode: ScanDirection): Promise<SetScannerModeResponse> {
+  return apiFetch('/api/scanner/mode', { method: 'POST', body: JSON.stringify({ mode }) });
+}
+
+// Returns the reserved control-barcode strings the backend classifies against
+// (defaults 'STOCK_IN'/'STOCK_OUT'), so the browser matches the exact values.
+export function getScannerConfig(): Promise<ScannerConfig> {
+  return apiFetch('/api/scanner/config');
 }
 
 // --- Inventory ---

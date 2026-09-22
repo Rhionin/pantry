@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Alert, Checkbox, Loader, Tabs, SimpleGrid, Stack, Text, Title } from '@mantine/core';
-import { createScanEntry, getInventoryList, listScanEntries } from '../../api/client';
-import type { InventoryItem, ScanEntry } from '../../types';
+import { createScanEntry, getInventoryList, getScannerConfig, listScanEntries, setScannerMode } from '../../api/client';
+import type { InventoryItem, ScanEntry, ScannerConfig } from '../../types';
 import { BarcodeInputField } from '../scanner/BarcodeInputField';
 import { BatchReviewPanel } from './BatchReviewPanel';
 import { ScanEntryCard } from './ScanEntryCard';
@@ -24,7 +24,8 @@ export const ScanQueuePage = ({ userId = DEFAULT_USER_ID }: ScanQueuePageProps) 
   const [inventory, setInventory] = useState<InventoryItem[]>([]);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [activeView, setActiveView] = useState<QueueView>('stock_out');
-  const [scannerMode, setScannerMode] = useState<QueueView>('stock_out');
+  const [scannerMode, setScannerModeState] = useState<QueueView>('stock_out');
+  const [scannerConfig, setScannerConfig] = useState<ScannerConfig | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [scanError, setScanError] = useState('');
@@ -65,6 +66,15 @@ export const ScanQueuePage = ({ userId = DEFAULT_USER_ID }: ScanQueuePageProps) 
     void Promise.resolve().then(loadQueue);
   }, [loadQueue]);
 
+  // Load the reserved control-barcode strings so captureBarcode can classify a
+  // scan as a mode switch instead of a product barcode. If the config cannot be
+  // loaded, classification falls back to off (no crash) and scans post as usual.
+  useEffect(() => {
+    void getScannerConfig()
+      .then(setScannerConfig)
+      .catch(() => setScannerConfig(null));
+  }, []);
+
   useEffect(() => {
     const eventSource = new EventSource('/api/events');
     eventSource.addEventListener('scan', (message) => {
@@ -78,7 +88,7 @@ export const ScanQueuePage = ({ userId = DEFAULT_USER_ID }: ScanQueuePageProps) 
     eventSource.addEventListener('scanner_mode', (message) => {
       const event = JSON.parse((message as MessageEvent).data) as ScannerModeEvent;
       if (event.mode === 'stock_in' || event.mode === 'stock_out') {
-        setScannerMode(event.mode);
+        setScannerModeState(event.mode);
       }
     });
     return () => eventSource.close();
@@ -89,8 +99,32 @@ export const ScanQueuePage = ({ userId = DEFAULT_USER_ID }: ScanQueuePageProps) 
     [inventory],
   );
 
+  // Classify a scanned string against the configured control barcodes using the
+  // same exact-match rule the backend classify() applies (no trimming or
+  // case-folding beyond what BarcodeInputField already trims). Returns the mode
+  // to switch to, or null when the string is an ordinary product barcode or the
+  // config has not loaded yet.
+  const classifyControlBarcode = (barcode: string): QueueView | null => {
+    if (scannerConfig === null) return null;
+    if (barcode === scannerConfig.stockInBarcode) return 'stock_in';
+    if (barcode === scannerConfig.stockOutBarcode) return 'stock_out';
+    return null;
+  };
+
   const captureBarcode = async (barcode: string) => {
     setScanError('');
+    const targetMode = classifyControlBarcode(barcode);
+    if (targetMode !== null) {
+      // Optimistically reflect the switch; the resulting scanner_mode SSE event
+      // keeps every subscriber consistent with this value.
+      setScannerModeState(targetMode);
+      try {
+        await setScannerMode(targetMode);
+      } catch (requestError) {
+        setScanError(requestError instanceof Error ? requestError.message : 'Unable to switch scanner mode.');
+      }
+      return;
+    }
     try {
       await createScanEntry({ barcode, userId });
       await loadQueue();

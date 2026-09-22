@@ -1,0 +1,47 @@
+{
+  "id": "FEAT-003",
+  "type": "fix",
+  "description": "Fix the reported bug on the browser capture path: recognize the reserved control barcodes (STOCK_IN / STOCK_OUT) before treating a scan as a product barcode, switch scanner mode via the backend endpoint from FEAT-002 instead of creating an 'Unknown product' scan entry, and harden the keystroke-buffering so a control barcode is assembled into one value rather than fragmenting into one card per character. This makes the two capture paths behave consistently and turns the FEAT-001 reproduction tests green.",
+  "status": "completed",
+  "steps": [
+    "In frontend/src/api/client.ts add typed wrappers for the FEAT-002 endpoints: one to POST the scanner mode (e.g. setScannerMode(mode: ScanDirection)) and one to GET the scanner config (control-barcode strings). Follow the existing apiFetch pattern and keep types in frontend/src/types/index.ts (reuse ScanDirection).",
+    "In frontend/src/components/queue/ScanQueuePage.tsx, load the control-barcode config (the stockIn/stockOut strings) on mount, and in captureBarcode classify the scanned string with an EXACT match against those strings BEFORE calling createScanEntry. On a control-barcode match: call setScannerMode(targetMode) instead of POSTing a scan, and do not create a scan entry. Let the resulting 'scanner_mode' SSE event update the existing scannerMode state (already wired via the EventSource 'scanner_mode' listener) so the displayed Mode alert reflects the switch; optimistically updating local state is acceptable as long as it stays consistent with the SSE event. Handle the config not being loaded yet gracefully (fall back to no classification rather than crashing).",
+    "Mirror the backend classify() semantics exactly: exact string comparison, no trimming or case-folding beyond what BarcodeInputField already produces (it trims surrounding whitespace on the assembled value). Do not hardcode 'STOCK_IN'/'STOCK_OUT' in the component; use the values from the config endpoint so custom env-configured control barcodes work.",
+    "Harden frontend/src/components/scanner/BarcodeInputField.tsx if FEAT-001 test B revealed a buffering defect that fragments a scan into per-character onScan calls (e.g. a controlled-input value race where rapid keystrokes are dropped or each keystroke is mis-terminated). Keep the component's contract: buffer keystrokes until the terminator (Enter) and fire onScan once with the full assembled barcode. If FEAT-001 concluded the component's buffering is already correct and the per-character symptom is fully explained by the missing classification, state that in findings and make no behavioral change here beyond what the tests require.",
+    "Make the FEAT-001 reproduction tests A and B pass. Add/extend tests as needed: scanning STOCK_IN (and STOCK_OUT) through the field switches the displayed mode and creates no scan card; scanning a normal product barcode still creates a scan entry (regression guard for 3.5-style consistency); an unrecognized string is still posted as a product barcode.",
+    "Run `npm run lint` and fix any issues; ensure no leftover debug artifacts (note: a stray ScanEntryCard.tsx.bak exists in the repo but is unrelated; do not touch it unless the task requires)."
+  ],
+  "acceptance_criteria": [
+    "Scanning the STOCK_IN control barcode in the browser switches the scanner mode to STOCK IN and creates NO 'Unknown product' scan entry; scanning STOCK_OUT switches to STOCK OUT.",
+    "Scanning a normal product barcode still creates a scan entry exactly as before (no regression).",
+    "The control-barcode strings the frontend matches against come from the backend config endpoint (FEAT-002), not hardcoded, so custom env values work.",
+    "The BarcodeInputField assembles a control barcode into a single onScan call; the FEAT-001 per-character reproduction test passes.",
+    "FEAT-001 reproduction tests A and B are green; `npm test -- --run` and `npm run lint` pass from frontend/."
+  ],
+  "verification": [
+    "Run `npm test -- --run` from frontend/ and confirm all tests pass, including the previously-failing FEAT-001 reproduction tests A and B.",
+    "Run `npm run lint` from frontend/ and confirm no errors.",
+    "Run `npm run build` from frontend/ to confirm the TypeScript build succeeds with the new client wrappers and types.",
+    "Run `go test ./...` from repo root to confirm the backend remains green after any shared-config changes."
+  ],
+  "blocked_reason": null,
+  "findings": {
+    "implementation": "Frontend half of the fix, browser capture path only. (1) client.ts: added setScannerMode(mode: ScanDirection) -> POST /api/scanner/mode {mode} returning {mode}, and getScannerConfig() -> GET /api/scanner/config returning {stockInBarcode, stockOutBarcode}, both using the existing apiFetch pattern. Added a ScannerConfig type to types/index.ts and reused the existing ScanDirection type. (2) ScanQueuePage.tsx: loads the scanner config on mount via a dedicated useEffect (getScannerConfig, falling back to null on failure so classification is simply off and never crashes). captureBarcode now classifies the assembled barcode with classifyControlBarcode BEFORE createScanEntry: on an EXACT match against config.stockInBarcode/stockOutBarcode it optimistically sets local scannerMode state and calls setScannerMode(targetMode), and does NOT POST a scan; the existing 'scanner_mode' SSE listener still updates state so all subscribers stay consistent. Ordinary and unrecognized strings fall through to createScanEntry unchanged.",
+    "naming_collision": "The client function is named setScannerMode, which collided with the existing React state setter also named setScannerMode. Renamed the state setter to setScannerModeState (both the useState declaration and the SSE 'scanner_mode' listener that calls it) so the imported client function can keep the intuitive name. No behavioral change.",
+    "classify_semantics": "Mirrors backend classify() exactly: strict === comparison against the configured strings, no trimming or case-folding beyond what BarcodeInputField already does (it trims the assembled value on Enter). Control strings come only from GET /api/scanner/config, never hardcoded, so custom STOCK_IN_CONTROL_BARCODE/STOCK_OUT_CONTROL_BARCODE env values work. Verified by the 'unrecognized string' test: lowercase 'stock_in' does NOT match and is posted as a product barcode.",
+    "barcodeinputfield_unchanged": "Per FEAT-001, the buffering is already correct (test B is a passing guard proving onScan fires exactly once with the assembled value). Made NO behavioral change to BarcodeInputField.tsx. Test B remains green.",
+    "tests": "ScanQueuePage.test.tsx: reworked FEAT-001 reproduction test A to also serve /api/scanner/config and /api/scanner/mode and assert the mode endpoint receives 'stock_in' (test A now GREEN). Added three tests: STOCK_OUT control barcode switches to STOCK OUT without posting (using an SSE 'scanner_mode' dispatch to first move to STOCK IN so the change is observable); a normal product barcode '0123456789012' still creates a scan card and triggers no mode switch (regression guard); an unrecognized lowercase 'stock_in' is still posted as a product barcode with no mode switch (exact-case guard). Existing tests whose fetch mocks throw on unexpected requests are unaffected: the on-mount config fetch becomes a caught rejection and classification falls back to off.",
+    "verification": {
+      "frontend_test": "PASS: `npm test -- --run` = 20 files, 146 tests (143 baseline+A now green, +3 new tests). Test A green, test B still green.",
+      "frontend_lint": "PASS: `npm run lint` clean.",
+      "frontend_build": "PASS: `npm run build` (tsc -b && vite build) succeeded.",
+      "backend_test": "PASS: `go test ./...` from repo root, all packages ok. No backend changes were needed."
+    },
+    "files_touched": [
+      "frontend/src/api/client.ts (setScannerMode, getScannerConfig)",
+      "frontend/src/types/index.ts (ScannerConfig type)",
+      "frontend/src/components/queue/ScanQueuePage.tsx (load config on mount, classify control barcodes before posting, rename state setter to setScannerModeState)",
+      "frontend/src/components/queue/ScanQueuePage.test.tsx (reworked test A + 3 new tests)"
+    ]
+  }
+}
