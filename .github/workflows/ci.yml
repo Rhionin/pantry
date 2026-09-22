@@ -85,10 +85,10 @@ jobs:
       - name: Determine image tags
         id: tags
         run: |
-          # Build common tags array
+          # Build common tags array - always include commit hash
           TAGS="ghcr.io/rhionin/pantry:${{ github.sha }}"
           
-          # Add branch name tag
+          # Add branch name tag for all builds (PR and master)
           if [ "${{ github.event_name }}" = "pull_request" ]; then
             BRANCH_NAME="${{ github.head_ref }}"
             # Remove 'refs/heads/' prefix if present
