@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import { MantineProvider } from '@mantine/core';
 import { ScanQueuePage } from './ScanQueuePage';
 import type { ScanEntry } from '../../types';
@@ -99,6 +99,48 @@ describe('ScanQueuePage', () => {
       '/api/scans?userId=user-1&status=flagged',
       expect.any(Object),
     );
+  });
+
+  // Reproduction test A (FEAT-001): scanning the STOCK_IN control barcode in
+  // the browser must switch the displayed scanner mode to STOCK IN and must NOT
+  // POST the literal control string 'STOCK_IN' as a product scan. Against
+  // current code this FAILS because the browser capture path
+  // (BarcodeInputField -> captureBarcode -> POST /api/scans) never classifies
+  // the reserved control barcodes, so 'STOCK_IN' is sent as a product barcode
+  // and no mode switch occurs. This test is the acceptance gate for the fix in
+  // FEAT-002/FEAT-003.
+  it('scanning the STOCK_IN control barcode switches to STOCK IN mode without posting a scan', async () => {
+    const scanPosts: string[] = [];
+    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith('/api/scans') && init?.method === 'POST') {
+        const body = init.body ? (JSON.parse(String(init.body)) as { barcode: string }) : { barcode: '' };
+        scanPosts.push(body.barcode);
+        return Promise.resolve(jsonResponse(scanEntry({ id: 'created', barcode: body.barcode })));
+      }
+      if (url.includes('status=pending') || url.includes('status=flagged')) {
+        return Promise.resolve(jsonResponse([]));
+      }
+      if (url === '/api/inventory' || url === '/api/products') return Promise.resolve(jsonResponse([]));
+      throw new Error(`Unexpected request: ${url}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<MantineProvider><ScanQueuePage /></MantineProvider>);
+    await screen.findByText('No pending scans.');
+
+    // The page defaults to STOCK OUT; scanning STOCK_IN must flip it to STOCK IN.
+    expect(screen.getByText('STOCK OUT')).toBeInTheDocument();
+
+    const input = screen.getByLabelText(/barcode scanner input/i);
+    fireEvent.change(input, { target: { value: 'STOCK_IN' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+
+    // The control barcode must switch the displayed mode to STOCK IN.
+    expect(await screen.findByText('STOCK IN')).toBeInTheDocument();
+
+    // The literal control string must never be posted as a product scan.
+    expect(scanPosts).not.toContain('STOCK_IN');
   });
 
   it('adds a scan pushed over the event stream without an extra fetch', async () => {

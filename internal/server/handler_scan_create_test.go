@@ -44,6 +44,36 @@ func TestScanCreateHandlerLookupOutcomes(t *testing.T) {
 	runHandlerTests(t, tests)
 }
 
+// TestScanCreateHandler_ControlBarcodeCurrentlyFlagged is a FEAT-001
+// characterization test documenting the backend side of the browser
+// control-barcode gap: POST /api/scans with the reserved STOCK_IN control
+// barcode currently creates an ordinary flagged scan entry (no product match)
+// and performs NO mode switch, because ScanCreateHandler does not classify
+// control barcodes the way the headless scanlistener does. This asserts the
+// present (buggy) behavior on purpose and MUST be updated in FEAT-002 once the
+// browser path gains a mode-switch endpoint that classifies STOCK_IN/STOCK_OUT
+// instead of enqueuing them as product scans.
+func TestScanCreateHandler_ControlBarcodeCurrentlyFlagged(t *testing.T) {
+	tests := []handlerTestCase{
+		{
+			name: "STOCK_IN control barcode is currently enqueued as a flagged scan (no mode switch) - FEAT-002 will change this",
+			httpExchange: httpExchange{
+				method:         "POST",
+				path:           "/api/scans",
+				body:           `{"barcode":"STOCK_IN","userId":"user-scan-control"}`,
+				expectedStatus: http.StatusCreated,
+				assertions: []assertion{
+					{path: "$.status", value: "flagged"},
+					{path: "$.productId", value: nil},
+					{path: "$.barcode", value: "STOCK_IN"},
+				},
+			},
+		},
+	}
+
+	runHandlerTests(t, tests)
+}
+
 // TestScanCreateHandler_MergeBehavior locks in that a repeat POST /api/scans
 // for the same barcode/userId/direction while the first entry is still
 // pending or flagged merges into the existing entry (unitCount incremented)
