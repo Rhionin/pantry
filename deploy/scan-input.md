@@ -83,23 +83,9 @@ Bluetooth scanners appear as input devices and won't show in `lsusb`. Instead:
 
 ### Common Steps for Both Types
 
-5. **Set the scanner group ID:**
+5. **Group ID:**
 
-   The container process runs as uid 65532 (from the distroless image). The udev rule grants access to this GID.
-
-   **Default (recommended):** Don't set `SCANNER_GID` in `.env` - it defaults to 65532:
-   ```bash
-   # .env file - SCANNER_GID not needed, defaults to 65532
-   ```
-
-   **Custom group (advanced):** If you prefer a named group, create it:
-   ```bash
-   sudo groupadd --gid 65532 pantry
-   ```
-   Then add to `.env`:
-   ```bash
-   SCANNER_GID=65532
-   ```
+   The container process runs as uid 65532 (from the distroless image). The udev rule grants access to GID 65532. No configuration needed in `.env` - the default works.
 
 6. Run docker compose:
    ```bash
@@ -113,4 +99,4 @@ Bluetooth scanners appear as input devices and won't show in `lsusb`. Instead:
    ```
    Look for the `scanner` object:
    - `connected: true` and `grabbed: true` means the scanner is working
-   - `connected: false` with `lastError` containing "permission denied" means the udev rule's group doesn't match `SCANNER_GID`
+   - `connected: false` with `lastError` containing "permission denied" means the udev rule's group doesn't match the container's GID (65532)

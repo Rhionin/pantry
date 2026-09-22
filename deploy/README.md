@@ -205,7 +205,7 @@ Pantry now reads barcode scans directly from the scanner's evdev device (`/dev/i
    **For Bluetooth scanners:** Modify the rule to match by device name instead:
    ```bash
    SUBSYSTEM=="input", ATTRS{name}=="*Scanner*", \
-     KERNEL=="event*", SYMLINK+="pantry-scanner", GROUP="pantry", MODE="0640"
+     KERNEL=="event*", SYMLINK+="pantry-scanner", GROUP="65532", MODE="0640"
    ```
    Replace `*Scanner*` with the actual name pattern from your device (found in step 1).
 
@@ -220,27 +220,7 @@ Pantry now reads barcode scans directly from the scanner's evdev device (`/dev/i
    ls -l /dev/pantry-scanner
    ```
    
-   The symlink should exist and have the expected group ownership.
-
-### Docker Configuration
-
-1. **Configure `SCANNER_GID`:**
-
-   The container process runs as uid 65532 (from the distroless image). The udev rule grants access to this GID.
-
-   **Default (recommended):** Don't set `SCANNER_GID` in `.env` - it defaults to 65532:
-   ```bash
-   # .env file - SCANNER_GID not needed, defaults to 65532
-   ```
-
-   **Custom group (advanced):** If you want a named group, create it with:
-   ```bash
-   sudo groupadd --gid 65532 pantry
-   ```
-   Then add to `.env`:
-   ```bash
-   SCANNER_GID=65532
-   ```
+   The symlink should exist with GID 65532.
 
 2. **Ensure `SCANNER_DEVICE` is set** (defaults to `/dev/pantry-scanner`) in `.env`.
 
@@ -259,7 +239,7 @@ Pantry now reads barcode scans directly from the scanner's evdev device (`/dev/i
    
    Look for the `scanner` object in the response:
    - `connected: true` and `grabbed: true` means the scanner is working
-   - `connected: false` with `lastError` containing "permission denied" means the udev rule's group doesn't match `SCANNER_GID`
+   - `connected: false` with `lastError` containing "permission denied" means the udev rule's group doesn't match the container's GID (65532)
 
 ### Local Development
 
@@ -281,7 +261,7 @@ The `GET /health` endpoint's `scanner` object can help diagnose issues:
 | `unmappedKeys` | Low / zero | Scanner is emitting keycodes outside the US-layout map |
 
 **Common issues:**
-- `connected: false` with "permission denied" in `lastError`: The udev rule's `GROUP` doesn't match `SCANNER_GID` in `.env`
+- `connected: false` with "permission denied" in `lastError`: The udev rule's `GROUP` doesn't match the container's GID (65532)
 - High `unmappedKeys`: Your scanner uses a non-US layout; consider modifying `internal/scanlistener/keymap.go`
 
 ### Automatic Updates
@@ -515,7 +495,7 @@ Common issues:
    ```
    
    Look for the `scanner` object:
-   - `connected: false` with `lastError` containing "permission denied" means the udev rule's group doesn't match `SCANNER_GID`
+   - `connected: false` with `lastError` containing "permission denied" means the udev rule's group doesn't match the container's GID (65532)
    - `connected: false` without an error means the device doesn't exist - verify the udev rule was installed and run `sudo udevadm trigger`
 
 2. **Verify `/dev/pantry-scanner` exists:**
