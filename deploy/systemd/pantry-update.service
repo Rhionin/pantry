@@ -8,4 +8,6 @@ Type=oneshot
 TimeoutStartSec=15min
 WorkingDirectory=/opt/pantry
 ExecStart=/usr/bin/docker compose -f /opt/pantry/docker-compose.yml pull
-ExecStart=/usr/bin/docker compose -f /opt/pantry/docker-compose.yml up -d
+# Only run docker compose up -d if pantry.service is active (scanner connected).
+# If the scanner is disconnected, pantry.service is inactive and this is a no-op.
+ExecStart=/bin/sh -c 'systemctl is-active --quiet pantry.service && /usr/bin/docker compose -f /opt/pantry/docker-compose.yml up -d || true'

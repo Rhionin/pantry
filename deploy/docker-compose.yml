@@ -2,7 +2,10 @@ services:
   pantry:
     image: ghcr.io/rhionin/pantry:${PANTRY_IMAGE_TAG:-latest}
     container_name: pantry
-    restart: unless-stopped
+    # Lifecycle is owned by pantry.service (udev-driven). on-failure allows Docker
+    # to restart the container only if it crashes while the scanner is connected.
+    # unless-stopped would fight the udev mechanism by trying to start at boot.
+    restart: on-failure
     ports:
       - "${HOST_PORT:-8080}:8080"
     environment:

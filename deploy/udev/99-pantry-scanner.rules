@@ -27,10 +27,27 @@
 # For either type, uncomment the appropriate rule below and replace the
 # placeholder values with your scanner's actual identifiers.
 
+# udev-device unit integration for systemd
+# ----------------------------------------
+# To have the Pantry container start/stop automatically when the scanner
+# connects/disconnects, add TAG+="systemd" and ENV{SYSTEMD_WANTS}="pantry.service"
+# to these rules. TAG+="systemd" makes systemd track the device and auto-create
+# a device unit alias dev-pantry\x2dscanner.device. ENV{SYSTEMD_WANTS} fires only
+# on the udev add action and starts the named unit.
+#
+# After installing the udev rule, reload and trigger with:
+#   sudo udevadm control --reload
+#   sudo udevadm trigger --action=add    # use 'add', not 'change' or 'reload'
+#
+# If the scanner is already connected, run the above to create the device unit
+# and start the pantry.service (which will start the container).
+
 # USB scanner example (uncomment and edit):
 # SUBSYSTEM=="input", ATTRS{idVendor}=="XXXX", ATTRS{idProduct}=="YYYY", \
-#   KERNEL=="event*", SYMLINK+="pantry-scanner", GROUP="65532", MODE="0640"
+#   KERNEL=="event*", SYMLINK+="pantry-scanner", GROUP="65532", MODE="0640", \
+#   TAG+="systemd", ENV{SYSTEMD_WANTS}="pantry.service"
 
 # Bluetooth scanner example (uncomment and edit - replace *Scanner* with actual name):
 # SUBSYSTEM=="input", ATTRS{name}=="*Scanner*", \
-#   KERNEL=="event*", SYMLINK+="pantry-scanner", GROUP="65532", MODE="0640"
+#   KERNEL=="event*", SYMLINK+="pantry-scanner", GROUP="65532", MODE="0640", \
+#   TAG+="systemd", ENV{SYSTEMD_WANTS}="pantry.service"
