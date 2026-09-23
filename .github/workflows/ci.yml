@@ -132,3 +132,5 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
           tags: ${{ steps.tags.outputs.tags }}
+          build-args: |
+            COMMIT_HASH=${{ github.sha }}
