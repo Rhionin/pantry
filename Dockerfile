@@ -1,5 +1,7 @@
 # syntax=docker/dockerfile:1
 
+ARG COMMIT_HASH=unknown
+
 # Frontend build stage
 FROM --platform=$BUILDPLATFORM node:24-alpine AS frontend
 WORKDIR /src/frontend
@@ -22,6 +24,9 @@ RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} \
 
 # Runtime stage
 FROM gcr.io/distroless/static-debian12:nonroot
+ARG COMMIT_HASH
+LABEL org.opencontainers.image.revision="${COMMIT_HASH}"
+LABEL com.rhionin.pantry.commit="${COMMIT_HASH}"
 COPY --from=build /out/pantry-server /usr/local/bin/pantry-server
 COPY --from=build --chown=nonroot:nonroot /data /data
 ENV ADDR=":8080" DB_PATH="/data/pantry.db"
