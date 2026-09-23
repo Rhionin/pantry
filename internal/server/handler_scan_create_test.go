@@ -90,6 +90,72 @@ func TestScanCreateHandler_ControlBarcodeUsesModeEndpoint(t *testing.T) {
 	runHandlerTests(t, tests)
 }
 
+// TestScanCreateHandler_DefaultModeIngestContract pins the backend half of the
+// "scans not appearing" fix: a scan taken in the default scanner mode
+// (stock_in) is persisted and returned by GET /api/scans with its direction
+// intact. A missed lookup here yields flagged; a found product yields pending.
+// Either way the entry is retrievable, so the backend ingest path is never the
+// reason a default-mode scan fails to show up in the UI.
+func TestScanCreateHandler_DefaultModeIngestContract(t *testing.T) {
+	tests := []handlerTestCase{
+		{
+			name: "flagged default-mode scan is returned by GET /api/scans with direction stock_in",
+			httpExchange: httpExchange{
+				method:         "POST",
+				path:           "/api/scans",
+				body:           `{"barcode":"901234567890","userId":"user-default-mode","direction":"stock_in"}`,
+				expectedStatus: http.StatusCreated,
+				assertions: []assertion{
+					{path: "$.direction", value: "stock_in"},
+					{path: "$.status", value: "flagged"},
+				},
+			},
+			afterRequest: exchanges(
+				httpExchange{
+					method:         "GET",
+					path:           "/api/scans",
+					query:          map[string]string{"userId": "user-default-mode"},
+					expectedStatus: http.StatusOK,
+					assertions: []assertion{
+						{path: "$[0].direction", value: "stock_in"},
+						{path: "$[0].status", value: "flagged"},
+						{path: "$[0].barcode", value: "901234567890"},
+					},
+				},
+			),
+		},
+		{
+			name:  "pending default-mode scan for a known product is returned with direction stock_in",
+			setup: setupProductWithBarcode("prod-default-mode", "Default Mode Product", "Test", "808080808080"),
+			httpExchange: httpExchange{
+				method:         "POST",
+				path:           "/api/scans",
+				body:           `{"barcode":"808080808080","userId":"user-default-mode-found","direction":"stock_in"}`,
+				expectedStatus: http.StatusCreated,
+				assertions: []assertion{
+					{path: "$.direction", value: "stock_in"},
+					{path: "$.status", value: "pending"},
+				},
+			},
+			afterRequest: exchanges(
+				httpExchange{
+					method:         "GET",
+					path:           "/api/scans",
+					query:          map[string]string{"userId": "user-default-mode-found", "status": "pending"},
+					expectedStatus: http.StatusOK,
+					assertions: []assertion{
+						{path: "$[0].direction", value: "stock_in"},
+						{path: "$[0].status", value: "pending"},
+						{path: "$[0].productId", value: "prod-default-mode"},
+					},
+				},
+			),
+		},
+	}
+
+	runHandlerTests(t, tests)
+}
+
 // TestScanCreateHandler_MergeBehavior locks in that a repeat POST /api/scans
 // for the same barcode/userId/direction while the first entry is still
 // pending or flagged merges into the existing entry (unitCount incremented)

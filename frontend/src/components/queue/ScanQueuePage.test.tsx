@@ -81,6 +81,9 @@ describe('ScanQueuePage', () => {
         ]));
       }
       if (url === '/api/inventory' || url === '/api/products') return Promise.resolve(jsonResponse([]));
+      if (url.endsWith('/api/scanner/config')) {
+        return Promise.resolve(jsonResponse({ stockInBarcode: 'STOCK_IN', stockOutBarcode: 'STOCK_OUT', currentMode: 'stock_out' }));
+      }
       throw new Error(`Unexpected request: ${url}`);
     });
     vi.stubGlobal('fetch', fetchMock);
@@ -131,6 +134,9 @@ describe('ScanQueuePage', () => {
         return Promise.resolve(jsonResponse([]));
       }
       if (url === '/api/inventory' || url === '/api/products') return Promise.resolve(jsonResponse([]));
+      if (url.endsWith('/api/scanner/config')) {
+        return Promise.resolve(jsonResponse({ stockInBarcode: 'STOCK_IN', stockOutBarcode: 'STOCK_OUT', currentMode: 'stock_out' }));
+      }
       throw new Error(`Unexpected request: ${url}`);
     });
     vi.stubGlobal('fetch', fetchMock);
@@ -176,6 +182,9 @@ describe('ScanQueuePage', () => {
         return Promise.resolve(jsonResponse([]));
       }
       if (url === '/api/inventory' || url === '/api/products') return Promise.resolve(jsonResponse([]));
+      if (url.endsWith('/api/scanner/config')) {
+        return Promise.resolve(jsonResponse({ stockInBarcode: 'STOCK_IN', stockOutBarcode: 'STOCK_OUT', currentMode: 'stock_out' }));
+      }
       throw new Error(`Unexpected request: ${url}`);
     });
     vi.stubGlobal('fetch', fetchMock);
@@ -221,6 +230,9 @@ describe('ScanQueuePage', () => {
       }
       if (url.includes('status=flagged')) return Promise.resolve(jsonResponse([]));
       if (url === '/api/inventory' || url === '/api/products') return Promise.resolve(jsonResponse([]));
+      if (url.endsWith('/api/scanner/config')) {
+        return Promise.resolve(jsonResponse({ stockInBarcode: 'STOCK_IN', stockOutBarcode: 'STOCK_OUT', currentMode: 'stock_out' }));
+      }
       throw new Error(`Unexpected request: ${url}`);
     });
     vi.stubGlobal('fetch', fetchMock);
@@ -261,6 +273,9 @@ describe('ScanQueuePage', () => {
         return Promise.resolve(jsonResponse([]));
       }
       if (url === '/api/inventory' || url === '/api/products') return Promise.resolve(jsonResponse([]));
+      if (url.endsWith('/api/scanner/config')) {
+        return Promise.resolve(jsonResponse({ stockInBarcode: 'STOCK_IN', stockOutBarcode: 'STOCK_OUT', currentMode: 'stock_out' }));
+      }
       throw new Error(`Unexpected request: ${url}`);
     });
     vi.stubGlobal('fetch', fetchMock);
@@ -306,6 +321,9 @@ describe('ScanQueuePage', () => {
         return Promise.resolve(jsonResponse([]));
       }
       if (url === '/api/inventory' || url === '/api/products') return Promise.resolve(jsonResponse([]));
+      if (url.endsWith('/api/scanner/config')) {
+        return Promise.resolve(jsonResponse({ stockInBarcode: 'STOCK_IN', stockOutBarcode: 'STOCK_OUT', currentMode: 'stock_out' }));
+      }
       throw new Error(`Unexpected request: ${url}`);
     });
     vi.stubGlobal('fetch', fetchMock);
@@ -329,6 +347,9 @@ describe('ScanQueuePage', () => {
         return Promise.resolve(jsonResponse([]));
       }
       if (url === '/api/inventory' || url === '/api/products') return Promise.resolve(jsonResponse([]));
+      if (url.endsWith('/api/scanner/config')) {
+        return Promise.resolve(jsonResponse({ stockInBarcode: 'STOCK_IN', stockOutBarcode: 'STOCK_OUT', currentMode: 'stock_out' }));
+      }
       throw new Error(`Unexpected request: ${url}`);
     });
     vi.stubGlobal('fetch', fetchMock);
@@ -355,6 +376,9 @@ describe('ScanQueuePage', () => {
       }
       if (url.includes('status=flagged')) return Promise.resolve(jsonResponse([]));
       if (url === '/api/inventory' || url === '/api/products') return Promise.resolve(jsonResponse([]));
+      if (url.endsWith('/api/scanner/config')) {
+        return Promise.resolve(jsonResponse({ stockInBarcode: 'STOCK_IN', stockOutBarcode: 'STOCK_OUT', currentMode: 'stock_out' }));
+      }
       throw new Error(`Unexpected request: ${url}`);
     });
     vi.stubGlobal('fetch', fetchMock);
@@ -384,7 +408,7 @@ describe('ScanQueuePage', () => {
     expect(eventSource.closed).toBe(true);
   });
 
-  it('defaults to Stock_Out_View on initial mount', async () => {
+  it('shows the view matching the seeded scanner mode on initial mount (stock_out here)', async () => {
     const fetchMock = vi.fn((input: RequestInfo | URL) => {
       const url = String(input);
       if (url.includes('status=pending')) {
@@ -395,14 +419,19 @@ describe('ScanQueuePage', () => {
       }
       if (url.includes('status=flagged')) return Promise.resolve(jsonResponse([]));
       if (url === '/api/inventory' || url === '/api/products') return Promise.resolve(jsonResponse([]));
+      // The seeded scanner mode drives the default visible tab; stock_out here.
+      if (url.endsWith('/api/scanner/config')) {
+        return Promise.resolve(jsonResponse({ stockInBarcode: 'STOCK_IN', stockOutBarcode: 'STOCK_OUT', currentMode: 'stock_out' }));
+      }
       throw new Error(`Unexpected request: ${url}`);
     });
     vi.stubGlobal('fetch', fetchMock);
 
     render(<MantineProvider><ScanQueuePage /></MantineProvider>);
 
-    // Verify the Tabs component renders with Stock_Out_View as the default
-    await screen.findByRole('tablist');
+    // The visible tab follows the seeded scanner mode (stock_out). Wait for
+    // the seeded view to settle before asserting the active tab.
+    await screen.findByText('Barcode: 111');
 
     // Find tabs by their ID attributes to ensure we get the correct tab elements
     const stockOutTab = screen.getByRole('tab', { name: 'Stock out' });
@@ -413,7 +442,7 @@ describe('ScanQueuePage', () => {
     expect(stockInTab).toHaveAttribute('aria-selected', 'false');
 
     // Verify the grid shows only stock_out entries (direction === 'stock_out' or null)
-    const cards = await screen.findAllByRole('article');
+    const cards = screen.getAllByRole('article');
     expect(cards).toHaveLength(1);
     expect(within(cards[0]).getByText('Barcode: 111')).toBeInTheDocument();
 
@@ -427,7 +456,7 @@ describe('ScanQueuePage', () => {
     expect(within(cardsAfterSwitch[0]).getByText('Barcode: 222')).toBeInTheDocument();
   });
 
-  it('defaults to Stock_Out_View on a fresh mount after prior instance was switched to Stock_In_View', async () => {
+  it('follows the seeded scanner mode on a fresh mount after a prior instance was switched to Stock_In_View', async () => {
     const fetchMock = vi.fn((input: RequestInfo | URL) => {
       const url = String(input);
       if (url.includes('status=pending')) {
@@ -438,14 +467,18 @@ describe('ScanQueuePage', () => {
       }
       if (url.includes('status=flagged')) return Promise.resolve(jsonResponse([]));
       if (url === '/api/inventory' || url === '/api/products') return Promise.resolve(jsonResponse([]));
+      if (url.endsWith('/api/scanner/config')) {
+        return Promise.resolve(jsonResponse({ stockInBarcode: 'STOCK_IN', stockOutBarcode: 'STOCK_OUT', currentMode: 'stock_out' }));
+      }
       throw new Error(`Unexpected request: ${url}`);
     });
     vi.stubGlobal('fetch', fetchMock);
 
     const { unmount } = render(<MantineProvider><ScanQueuePage /></MantineProvider>);
 
-    // First mount: switch to Stock_In_View
-    await screen.findByRole('tablist');
+    // First mount: let the seeded stock_out view settle, then switch to
+    // Stock_In_View.
+    await screen.findByText('Barcode: 111');
     const stockInTab = screen.getByRole('tab', { name: 'Stock in' });
     stockInTab.click();
 
@@ -457,21 +490,21 @@ describe('ScanQueuePage', () => {
 
     unmount();
 
-    // Second mount: should default back to Stock_Out_View (no persistence)
+    // Second mount: the prior manual tab switch does not persist, so the
+    // visible tab again follows the seeded scanner mode (stock_out here).
     render(<MantineProvider><ScanQueuePage /></MantineProvider>);
 
-    // Verify the Tabs component renders with Stock_Out_View as the default on fresh mount
+    // Let the seeded stock_out view settle before asserting the active tab.
+    const cards2 = await screen.findAllByRole('article');
+    expect(cards2).toHaveLength(1);
+    expect(within(cards2[0]).getByText('Barcode: 111')).toBeInTheDocument();
+
     const stockOutTab2 = screen.getByRole('tab', { name: 'Stock out' });
     const stockInTab2 = screen.getByRole('tab', { name: 'Stock in' });
 
     // Verify Stock_Out tab is selected (aria-selected="true" for active, "false" for inactive)
     expect(stockOutTab2).toHaveAttribute('aria-selected', 'true');
     expect(stockInTab2).toHaveAttribute('aria-selected', 'false');
-
-    // Verify the grid shows only stock_out entries again
-    const cards2 = await screen.findAllByRole('article');
-    expect(cards2).toHaveLength(1);
-    expect(within(cards2[0]).getByText('Barcode: 111')).toBeInTheDocument();
 
     // Verify clicking Stock_In tab still works on the fresh mount
     stockInTab2.click();
@@ -480,6 +513,51 @@ describe('ScanQueuePage', () => {
     const cardsAfterSwitch2 = await screen.findAllByRole('article');
     expect(cardsAfterSwitch2).toHaveLength(1);
     expect(within(cardsAfterSwitch2[0]).getByText('Barcode: 222')).toBeInTheDocument();
+  });
+
+  // Regression (FEAT-003): the backend defaults the scanner mode to stock_in,
+  // so a product scanned right after load is tagged stock_in. If the visible
+  // tab were hardcoded to stock_out, that card would be filed under the hidden
+  // Stock-in tab and nothing would appear in the active view (the reported
+  // bug). The visible tab must follow the seeded mode so the card shows up
+  // without any manual tab switch. This fails against the pre-fix code.
+  it('a scan taken in the default stock_in mode is visible in the active view without switching tabs', async () => {
+    const scanPosts: Array<{ barcode: string; direction?: string }> = [];
+    const createdEntries: ScanEntry[] = [];
+    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith('/api/scanner/config')) {
+        return Promise.resolve(jsonResponse({ stockInBarcode: 'STOCK_IN', stockOutBarcode: 'STOCK_OUT', currentMode: 'stock_in' }));
+      }
+      if (url.endsWith('/api/scans') && init?.method === 'POST') {
+        const body = init.body ? (JSON.parse(String(init.body)) as { barcode: string; direction?: string }) : { barcode: '' };
+        scanPosts.push({ barcode: body.barcode, direction: body.direction });
+        const entry = scanEntry({ id: 'created', barcode: body.barcode, direction: 'stock_in' });
+        createdEntries.push(entry);
+        return Promise.resolve(jsonResponse(entry));
+      }
+      if (url.includes('status=pending')) return Promise.resolve(jsonResponse(createdEntries));
+      if (url.includes('status=flagged')) return Promise.resolve(jsonResponse([]));
+      if (url === '/api/inventory' || url === '/api/products') return Promise.resolve(jsonResponse([]));
+      throw new Error(`Unexpected request: ${url}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<MantineProvider><ScanQueuePage /></MantineProvider>);
+    await screen.findByText('No pending scans.');
+
+    // The seeded mode is stock_in, so the Stock in tab is the active view.
+    expect(await screen.findByText('STOCK IN')).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: 'Stock in' })).toHaveAttribute('aria-selected', 'true');
+
+    const input = screen.getByLabelText(/barcode scanner input/i);
+    fireEvent.change(input, { target: { value: '0123456789012' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+
+    // The scan is tagged stock_in and its card is visible without a manual
+    // tab switch (it would be hidden under the Stock-in tab pre-fix).
+    expect(await screen.findByText('Barcode: 0123456789012')).toBeInTheDocument();
+    expect(scanPosts).toEqual([{ barcode: '0123456789012', direction: 'stock_in' }]);
   });
 
   it('Stock_In_View renders only direction === "stock_in" entries', async () => {
@@ -494,18 +572,23 @@ describe('ScanQueuePage', () => {
       }
       if (url.includes('status=flagged')) return Promise.resolve(jsonResponse([]));
       if (url === '/api/inventory' || url === '/api/products') return Promise.resolve(jsonResponse([]));
+      if (url.endsWith('/api/scanner/config')) {
+        return Promise.resolve(jsonResponse({ stockInBarcode: 'STOCK_IN', stockOutBarcode: 'STOCK_OUT', currentMode: 'stock_out' }));
+      }
       throw new Error(`Unexpected request: ${url}`);
     });
     vi.stubGlobal('fetch', fetchMock);
 
     render(<MantineProvider><ScanQueuePage /></MantineProvider>);
 
-    // Click on Stock_In tab to activate Stock_In_View
+    // Let the seeded stock_out view settle, then switch to Stock_In_View.
+    await screen.findByText('Barcode: 222');
     const stockInTab = screen.getByRole('tab', { name: 'Stock in' });
     stockInTab.click();
 
     // Verify only the stock_in entry is rendered
-    const cards = await screen.findAllByRole('article');
+    await screen.findByText('Barcode: 111');
+    const cards = screen.getAllByRole('article');
     expect(cards).toHaveLength(1);
     expect(within(cards[0]).getByText('Barcode: 111')).toBeInTheDocument();
   });
@@ -522,6 +605,9 @@ describe('ScanQueuePage', () => {
       }
       if (url.includes('status=flagged')) return Promise.resolve(jsonResponse([]));
       if (url === '/api/inventory' || url === '/api/products') return Promise.resolve(jsonResponse([]));
+      if (url.endsWith('/api/scanner/config')) {
+        return Promise.resolve(jsonResponse({ stockInBarcode: 'STOCK_IN', stockOutBarcode: 'STOCK_OUT', currentMode: 'stock_out' }));
+      }
       throw new Error(`Unexpected request: ${url}`);
     });
     vi.stubGlobal('fetch', fetchMock);
@@ -548,6 +634,9 @@ describe('ScanQueuePage', () => {
       }
       if (url.includes('status=flagged')) return Promise.resolve(jsonResponse([]));
       if (url === '/api/inventory' || url === '/api/products') return Promise.resolve(jsonResponse([]));
+      if (url.endsWith('/api/scanner/config')) {
+        return Promise.resolve(jsonResponse({ stockInBarcode: 'STOCK_IN', stockOutBarcode: 'STOCK_OUT', currentMode: 'stock_out' }));
+      }
       throw new Error(`Unexpected request: ${url}`);
     });
     vi.stubGlobal('fetch', fetchMock);
@@ -577,6 +666,9 @@ describe('ScanQueuePage', () => {
       }
       if (url.includes('status=flagged')) return Promise.resolve(jsonResponse([]));
       if (url === '/api/inventory' || url === '/api/products') return Promise.resolve(jsonResponse([]));
+      if (url.endsWith('/api/scanner/config')) {
+        return Promise.resolve(jsonResponse({ stockInBarcode: 'STOCK_IN', stockOutBarcode: 'STOCK_OUT', currentMode: 'stock_out' }));
+      }
       throw new Error(`Unexpected request: ${url}`);
     });
     vi.stubGlobal('fetch', fetchMock);
@@ -615,7 +707,10 @@ describe('ScanQueuePage', () => {
         }
         if (url.includes('status=flagged')) return Promise.resolve(jsonResponse([]));
         if (url === '/api/inventory' || url === '/api/products') return Promise.resolve(jsonResponse([]));
-        throw new Error(`Unexpected request: ${url}`);
+        if (url.endsWith('/api/scanner/config')) {
+        return Promise.resolve(jsonResponse({ stockInBarcode: 'STOCK_IN', stockOutBarcode: 'STOCK_OUT', currentMode: 'stock_out' }));
+      }
+      throw new Error(`Unexpected request: ${url}`);
       });
       vi.stubGlobal('fetch', fetchMock);
 
@@ -664,18 +759,23 @@ describe('ScanQueuePage', () => {
         }
         if (url.includes('status=flagged')) return Promise.resolve(jsonResponse([]));
         if (url === '/api/inventory' || url === '/api/products') return Promise.resolve(jsonResponse([]));
-        throw new Error(`Unexpected request: ${url}`);
+        if (url.endsWith('/api/scanner/config')) {
+        return Promise.resolve(jsonResponse({ stockInBarcode: 'STOCK_IN', stockOutBarcode: 'STOCK_OUT', currentMode: 'stock_out' }));
+      }
+      throw new Error(`Unexpected request: ${url}`);
       });
       vi.stubGlobal('fetch', fetchMock);
 
       render(<MantineProvider><ScanQueuePage /></MantineProvider>);
 
-      // Switch to Stock_In_View first
+      // Let the seeded stock_out view settle, then switch to Stock_In_View.
+      await screen.findByText('Barcode: 222');
       const stockInTab = screen.getByRole('tab', { name: 'Stock in' });
       stockInTab.click();
 
       // Verify Stock_In_View displays the stock_in entry
-      let cards = await screen.findAllByRole('article');
+      await screen.findByText('Barcode: 111');
+      let cards = screen.getAllByRole('article');
       const cardsInStockInView = cards.filter((card) => {
         try {
           within(card).getByText('Barcode: 111');
@@ -726,7 +826,10 @@ describe('ScanQueuePage', () => {
         }
         if (url.includes('status=flagged')) return Promise.resolve(jsonResponse([]));
         if (url === '/api/inventory' || url === '/api/products') return Promise.resolve(jsonResponse([]));
-        throw new Error(`Unexpected request: ${url}`);
+        if (url.endsWith('/api/scanner/config')) {
+        return Promise.resolve(jsonResponse({ stockInBarcode: 'STOCK_IN', stockOutBarcode: 'STOCK_OUT', currentMode: 'stock_out' }));
+      }
+      throw new Error(`Unexpected request: ${url}`);
       });
       vi.stubGlobal('fetch', fetchMock);
 
@@ -787,7 +890,10 @@ describe('ScanQueuePage', () => {
         }
         if (url.includes('status=flagged')) return Promise.resolve(jsonResponse([]));
         if (url === '/api/inventory' || url === '/api/products') return Promise.resolve(jsonResponse([]));
-        throw new Error(`Unexpected request: ${url}`);
+        if (url.endsWith('/api/scanner/config')) {
+        return Promise.resolve(jsonResponse({ stockInBarcode: 'STOCK_IN', stockOutBarcode: 'STOCK_OUT', currentMode: 'stock_out' }));
+      }
+      throw new Error(`Unexpected request: ${url}`);
       });
       vi.stubGlobal('fetch', fetchMock);
 
@@ -853,7 +959,10 @@ describe('ScanQueuePage', () => {
         }
         if (url.includes('status=flagged')) return Promise.resolve(jsonResponse([]));
         if (url === '/api/inventory' || url === '/api/products') return Promise.resolve(jsonResponse([]));
-        throw new Error(`Unexpected request: ${url}`);
+        if (url.endsWith('/api/scanner/config')) {
+        return Promise.resolve(jsonResponse({ stockInBarcode: 'STOCK_IN', stockOutBarcode: 'STOCK_OUT', currentMode: 'stock_out' }));
+      }
+      throw new Error(`Unexpected request: ${url}`);
       });
       vi.stubGlobal('fetch', fetchMock);
 
@@ -917,7 +1026,10 @@ describe('ScanQueuePage', () => {
           ]));
         }
         if (url === '/api/inventory' || url === '/api/products') return Promise.resolve(jsonResponse([]));
-        throw new Error(`Unexpected request: ${url}`);
+        if (url.endsWith('/api/scanner/config')) {
+        return Promise.resolve(jsonResponse({ stockInBarcode: 'STOCK_IN', stockOutBarcode: 'STOCK_OUT', currentMode: 'stock_out' }));
+      }
+      throw new Error(`Unexpected request: ${url}`);
       });
       vi.stubGlobal('fetch', fetchMock);
 
@@ -938,7 +1050,10 @@ describe('ScanQueuePage', () => {
         }
         if (url.includes('status=flagged')) return Promise.resolve(jsonResponse([]));
         if (url === '/api/inventory' || url === '/api/products') return Promise.resolve(jsonResponse([]));
-        throw new Error(`Unexpected request: ${url}`);
+        if (url.endsWith('/api/scanner/config')) {
+        return Promise.resolve(jsonResponse({ stockInBarcode: 'STOCK_IN', stockOutBarcode: 'STOCK_OUT', currentMode: 'stock_out' }));
+      }
+      throw new Error(`Unexpected request: ${url}`);
       });
       vi.stubGlobal('fetch', fetchMock);
 
@@ -959,7 +1074,10 @@ describe('ScanQueuePage', () => {
         }
         if (url.includes('status=flagged')) return Promise.resolve(jsonResponse([]));
         if (url === '/api/inventory' || url === '/api/products') return Promise.resolve(jsonResponse([]));
-        throw new Error(`Unexpected request: ${url}`);
+        if (url.endsWith('/api/scanner/config')) {
+        return Promise.resolve(jsonResponse({ stockInBarcode: 'STOCK_IN', stockOutBarcode: 'STOCK_OUT', currentMode: 'stock_out' }));
+      }
+      throw new Error(`Unexpected request: ${url}`);
       });
       vi.stubGlobal('fetch', fetchMock);
 
@@ -996,7 +1114,10 @@ describe('ScanQueuePage', () => {
         }
         if (url.includes('status=flagged')) return Promise.resolve(jsonResponse([]));
         if (url === '/api/inventory' || url === '/api/products') return Promise.resolve(jsonResponse([]));
-        throw new Error(`Unexpected request: ${url}`);
+        if (url.endsWith('/api/scanner/config')) {
+        return Promise.resolve(jsonResponse({ stockInBarcode: 'STOCK_IN', stockOutBarcode: 'STOCK_OUT', currentMode: 'stock_out' }));
+      }
+      throw new Error(`Unexpected request: ${url}`);
       });
       vi.stubGlobal('fetch', fetchMock);
 
@@ -1030,7 +1151,10 @@ describe('ScanQueuePage', () => {
         }
         if (url.includes('status=flagged')) return Promise.resolve(jsonResponse([]));
         if (url === '/api/inventory' || url === '/api/products') return Promise.resolve(jsonResponse([]));
-        throw new Error(`Unexpected request: ${url}`);
+        if (url.endsWith('/api/scanner/config')) {
+        return Promise.resolve(jsonResponse({ stockInBarcode: 'STOCK_IN', stockOutBarcode: 'STOCK_OUT', currentMode: 'stock_out' }));
+      }
+      throw new Error(`Unexpected request: ${url}`);
       });
       vi.stubGlobal('fetch', fetchMock);
 
@@ -1090,7 +1214,10 @@ describe('ScanQueuePage', () => {
         }
         if (url.includes('status=flagged')) return Promise.resolve(jsonResponse([]));
         if (url === '/api/inventory' || url === '/api/products') return Promise.resolve(jsonResponse([]));
-        throw new Error(`Unexpected request: ${url}`);
+        if (url.endsWith('/api/scanner/config')) {
+        return Promise.resolve(jsonResponse({ stockInBarcode: 'STOCK_IN', stockOutBarcode: 'STOCK_OUT', currentMode: 'stock_out' }));
+      }
+      throw new Error(`Unexpected request: ${url}`);
       });
       vi.stubGlobal('fetch', fetchMock);
 
@@ -1133,7 +1260,10 @@ describe('ScanQueuePage', () => {
         }
         if (url.includes('status=flagged')) return Promise.resolve(jsonResponse([]));
         if (url === '/api/inventory' || url === '/api/products') return Promise.resolve(jsonResponse([]));
-        throw new Error(`Unexpected request: ${url}`);
+        if (url.endsWith('/api/scanner/config')) {
+        return Promise.resolve(jsonResponse({ stockInBarcode: 'STOCK_IN', stockOutBarcode: 'STOCK_OUT', currentMode: 'stock_out' }));
+      }
+      throw new Error(`Unexpected request: ${url}`);
       });
       vi.stubGlobal('fetch', fetchMock);
 
@@ -1169,7 +1299,10 @@ describe('ScanQueuePage', () => {
         }
         if (url.includes('status=flagged')) return Promise.resolve(jsonResponse([]));
         if (url === '/api/inventory' || url === '/api/products') return Promise.resolve(jsonResponse([]));
-        throw new Error(`Unexpected request: ${url}`);
+        if (url.endsWith('/api/scanner/config')) {
+        return Promise.resolve(jsonResponse({ stockInBarcode: 'STOCK_IN', stockOutBarcode: 'STOCK_OUT', currentMode: 'stock_out' }));
+      }
+      throw new Error(`Unexpected request: ${url}`);
       });
       vi.stubGlobal('fetch', fetchMock);
 
