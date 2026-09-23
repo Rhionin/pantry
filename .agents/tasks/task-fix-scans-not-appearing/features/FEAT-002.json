@@ -2,7 +2,7 @@
   "id": "FEAT-002",
   "type": "feat",
   "description": "Add concise stdout logging on the scan-ingest paths so the user can `tail` the container logs to confirm the server is receiving scanner input. This is an explicit user request and is independent of the frontend fix in FEAT-003. Cover BOTH ingest paths: the HTTP POST /api/scans path (browser/manual scans) and the headless scanlistener device/stdin path. Logs go to stdout via the standard `log` package, matching the existing style already used in internal/scanlistener/listener.go (log.Printf).",
-  "status": "in_progress",
+  "status": "completed",
   "steps": [
     "In internal/server/handler_scan_create.go, add a log line on the POST /api/scans path using the standard `log` package (add the import). Log when a scan is received and the resulting entry after CreateScanEntry: include barcode, direction (render nil direction readably, e.g. 'unset'), and the resulting entry id, status, and unitCount. Follow AGENTS.md style: user-friendly message, no function names, no redundant WHAT comments. Example shape: `log.Printf(\"scan received: barcode=%q direction=%s user=%s\", ...)` on entry, and `log.Printf(\"scan queued: id=%s barcode=%q direction=%s status=%s unitCount=%d\", ...)` after creation. Keep it to signal, not noise (do not log on every validation error path beyond what is useful).",
     "Confirm the headless path in internal/scanlistener/listener.go createEntry() already logs failures; ADD a success log line there too when an entry is created, mirroring the HTTP path fields (barcode, direction, resulting entry id/status). Match the existing `scan listener: ...` prefix style used throughout that file. Do not duplicate the failure logs that already exist.",
