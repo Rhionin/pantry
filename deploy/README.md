@@ -26,13 +26,26 @@ New to this? Follow these steps in order on your Raspberry Pi and you'll have Pa
    sudo cp .env.example .env
    ```
 
-5. **Start Pantry.** This downloads the Pantry software and starts it running in the background:
+5. **Install the scanner udev rule.** Copy the provided rule file to `/etc/udev/rules.d/` and edit it with your scanner's identifiers (see [Headless Scanner Input](#headless-scanner-input) for details). This also enables automatic start/stop of the container when the scanner connects or disconnects.
+
+6. **Install the pantry.service unit.** This systemd unit owns the container's lifecycle and starts it automatically when the scanner is detected:
 
    ```bash
-   sudo docker compose up -d
+   sudo cp /opt/pantry/systemd/pantry.service /etc/systemd/system/
+   sudo systemctl daemon-reload
    ```
+   
+   Do **not** run `systemctl enable` on pantry.service — it's activated purely by udev device events, not at boot.
 
-6. **Check it works.** Run this on the Pi. It should print `{"status":"ok"}`:
+7. **Start Pantry.** With the scanner connected, run:
+
+   ```bash
+   sudo udevadm trigger --action=add
+   ```
+   
+   This fires the udev add event and starts the container automatically via pantry.service. You can also power-cycle the scanner to trigger the same behavior.
+
+8. **Check it works.** Run this on the Pi. It should print `{"status":"ok"}`:
 
    ```bash
    curl http://localhost:8080/health
@@ -96,7 +109,7 @@ Copy the deployment files to your Pi:
 sudo mkdir -p /opt/pantry
 
 # Copy the entire deploy/ directory contents from this repository to /opt/pantry
-# This includes: docker-compose.yml, .env.example, and systemd/
+# This includes: docker-compose.yml, .env.example, systemd/, and udev/
 
 # Navigate to deployment directory
 cd /opt/pantry
@@ -106,14 +119,26 @@ sudo cp .env.example .env
 sudo nano .env  # Edit configuration as needed
 ```
 
-### 3. Start Pantry
+### 4. **Install the scanner udev rule.** Copy the provided rule file to `/etc/udev/rules.d/` and edit it with your scanner's identifiers (see [Headless Scanner Input](#headless-scanner-input) for details). This also enables automatic start/stop of the container when the scanner connects or disconnects.
 
-```bash
-cd /opt/pantry
-sudo docker compose up -d
-```
+5. **Install the pantry.service unit.** This systemd unit owns the container's lifecycle and starts it automatically when the scanner is detected:
 
-### 4. Verify Deployment
+   ```bash
+   sudo cp /opt/pantry/systemd/pantry.service /etc/systemd/system/
+   sudo systemctl daemon-reload
+   ```
+   
+   Do **not** run `systemctl enable` on pantry.service — it's activated purely by udev device events, not at boot.
+
+6. **Start Pantry.** With the scanner connected, run:
+
+   ```bash
+   sudo udevadm trigger --action=add
+   ```
+   
+   This fires the udev add event and starts the container automatically via pantry.service. You can also power-cycle the scanner to trigger the same behavior.
+
+7. **Verify Deployment**
 
 Check that Pantry is running:
 
@@ -173,49 +198,31 @@ Pantry now reads barcode scans directly from the scanner's evdev device (`/dev/i
 
 ### Prerequisites
 
-1. **Find your scanner's device information:**
-
-   **USB scanners:**
-   ```bash
-   lsusb | grep -i scanner
-   ```
-   Output looks like: `Bus 001 Device 005: ID XXXX:YYYY Symbol Technologies, Inc. Scanner`
-
-   **Bluetooth scanners:**
-   Bluetooth scanners appear as input devices and won't show in `lsusb`. Instead:
-   ```bash
-   # List all input event devices
-   ls -l /dev/input/event*
-   
-   # Get details about a specific event device (replace eventX with your device)
-   udevadm info -a -p $(udevadm info -q path -n /dev/input/eventX) | grep -E "(vendor|product|name)"
-   
-   # Or look for your scanner in the input device list
-   cat /proc/bus/input/devices | grep -A5 -B5 -i scanner
-   ```
-
-2. **Install the udev rule:**
+1. **Install the scanner udev rule with systemd integration:**
    Copy the provided rule file to `/etc/udev/rules.d/`:
    ```bash
-   sudo cp pantry/udev/99-pantry-scanner.rules /etc/udev/rules.d/
+   sudo cp /opt/pantry/udev/99-pantry-scanner.rules /etc/udev/rules.d/
    ```
    
-   **For USB scanners:** Edit the rule to replace `XXXX` and `YYYY` with your scanner's actual vendor and product IDs.
+   **For USB scanners:** Edit the rule to replace `XXXX` and `YYYY` with your scanner's actual vendor and product IDs, and uncomment both the `SUBSYSTEM` line and the `TAG+="systemd", ENV{SYSTEMD_WANTS}="pantry.service"` line.
    
-   **For Bluetooth scanners:** Modify the rule to match by device name instead:
+   **For Bluetooth scanners:** Modify the rule to match by device name instead and uncomment the `TAG+="systemd", ENV{SYSTEMD_WANTS}="pantry.service"` line:
    ```bash
    SUBSYSTEM=="input", ATTRS{name}=="*Scanner*", \
-     KERNEL=="event*", SYMLINK+="pantry-scanner", GROUP="65532", MODE="0640"
+     KERNEL=="event*", SYMLINK+="pantry-scanner", GROUP="65532", MODE="0640", \
+     TAG+="systemd", ENV{SYSTEMD_WANTS}="pantry.service"
    ```
    Replace `*Scanner*` with the actual name pattern from your device (found in step 1).
 
-3. **Reload udev and trigger:**
+2. **Reload udev and trigger:**
    ```bash
    sudo udevadm control --reload
-   sudo udevadm trigger
+   sudo udevadm trigger --action=add    # use 'add', not 'change' or 'reload'
    ```
+   
+   The `--action=add` flag is essential — a plain `udevadm trigger` defaults to `change` and won't fire `SYSTEMD_WANTS`.
 
-4. **Verify `/dev/pantry-scanner` exists:**
+3. **Verify `/dev/pantry-scanner` exists:**
    ```bash
    ls -l /dev/pantry-scanner
    ```
@@ -226,11 +233,22 @@ Pantry now reads barcode scans directly from the scanner's evdev device (`/dev/i
 
 3. **Important:** The udev rule must be installed and `/dev/pantry-scanner` must exist **before** running `docker compose up`. Docker refuses to start a container whose declared device path does not exist.
 
-4. **Start the container:**
+4. **Install the pantry.service unit.** This systemd unit owns the container's lifecycle and starts it automatically when the scanner is detected:
+
    ```bash
-   cd /opt/pantry
-   sudo docker compose up -d
+   sudo cp /opt/pantry/systemd/pantry.service /etc/systemd/system/
+   sudo systemctl daemon-reload
    ```
+   
+   Do **not** run `systemctl enable` on pantry.service — it's activated purely by udev device events, not at boot.
+
+5. **Start the container.** With the scanner connected, run:
+
+   ```bash
+   sudo udevadm trigger --action=add
+   ```
+   
+   This fires the udev add event and starts the container automatically via pantry.service. You can also power-cycle the scanner to trigger the same behavior.
 
 5. **Verify scanner status:**
    ```bash
@@ -487,6 +505,25 @@ Common issues:
 - Port conflict: Another service using port 8080
 - Image pull failure: Check network connectivity and authentication
 
+**If `/dev/pantry-scanner` exists but the container never starts:**
+The container lifecycle is now driven by systemd's `pantry.service`, which is activated by udev device events. Check:
+
+```bash
+# Verify the device unit exists and is active
+systemctl status dev-pantry\x2dscanner.device
+
+# Verify pantry.service is active
+systemctl status pantry.service
+
+# Check the service logs
+journalctl -u pantry.service
+```
+
+If the scanner is already connected but nothing happened, fire an add event:
+```bash
+sudo udevadm trigger --action=add
+```
+
 ### Scanner Not Working
 
 1. **Check scanner status via `/health`:**
@@ -498,10 +535,14 @@ Common issues:
    - `connected: false` with `lastError` containing "permission denied" means the udev rule's group doesn't match the container's GID (65532)
    - `connected: false` without an error means the device doesn't exist - verify the udev rule was installed and run `sudo udevadm trigger`
 
-2. **Verify `/dev/pantry-scanner` exists:**
+2. **Verify `/dev/pantry-scanner` exists and the device unit is active:**
    ```bash
    ls -l /dev/pantry-scanner
+   systemctl status dev-pantry\x2dscanner.device
+   systemctl status pantry.service
    ```
+   
+   Both should show `active`. If the scanner exists but `pantry.service` is inactive, run `sudo udevadm trigger --action=add`.
 
 3. **Check Docker device mapping:**
    ```bash

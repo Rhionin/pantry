@@ -32,20 +32,25 @@ work through stdin.
 2. Create the udev rule at `/etc/udev/rules.d/99-pantry-scanner.rules`:
    ```bash
    SUBSYSTEM=="input", ATTRS{idVendor}=="XXXX", ATTRS{idProduct}=="YYYY", \
-     KERNEL=="event*", SYMLINK+="pantry-scanner", GROUP="pantry", MODE="0640"
+     KERNEL=="event*", SYMLINK+="pantry-scanner", GROUP="65532", MODE="0640", \
+     TAG+="systemd", ENV{SYSTEMD_WANTS}="pantry.service"
    ```
    Replace `XXXX` and `YYYY` with your scanner's actual vendor and product IDs.
 
 3. Reload udev and trigger:
    ```bash
    sudo udevadm control --reload
-   sudo udevadm trigger
+   sudo udevadm trigger --action=add    # use 'add', not 'change' or 'reload'
    ```
 
-4. Verify `/dev/pantry-scanner` exists:
+4. Verify `/dev/pantry-scanner` exists and the device unit is active:
    ```bash
    ls -l /dev/pantry-scanner
+   systemctl status dev-pantry\x2dscanner.device
+   systemctl status pantry.service
    ```
+
+   If the scanner is already connected but the container hasn't started, the `--action=add` trigger above should have fired. You can also power-cycle the scanner.
 
 ### Bluetooth Barcode Scanners
 
@@ -66,37 +71,46 @@ Bluetooth scanners appear as input devices and won't show in `lsusb`. Instead:
 2. Create the udev rule at `/etc/udev/rules.d/99-pantry-scanner.rules`:
    ```bash
    SUBSYSTEM=="input", ATTRS{name}=="*Scanner*", \
-     KERNEL=="event*", SYMLINK+="pantry-scanner", GROUP="pantry", MODE="0640"
+     KERNEL=="event*", SYMLINK+="pantry-scanner", GROUP="65532", MODE="0640", \
+     TAG+="systemd", ENV{SYSTEMD_WANTS}="pantry.service"
    ```
    Replace `*Scanner*` with the actual name pattern from your device.
 
 3. Reload udev and trigger:
    ```bash
    sudo udevadm control --reload
-   sudo udevadm trigger
+   sudo udevadm trigger --action=add    # use 'add', not 'change' or 'reload'
    ```
 
-4. Verify `/dev/pantry-scanner` exists:
+4. Verify `/dev/pantry-scanner` exists and the device unit is active:
    ```bash
    ls -l /dev/pantry-scanner
+   systemctl status dev-pantry\x2dscanner.device
+   systemctl status pantry.service
    ```
+
+   If the scanner is already connected but the container hasn't started, the `--action=add` trigger above should have fired. You can also power-cycle the scanner.
 
 ### Common Steps for Both Types
 
-5. **Group ID:**
+5. **Install the pantry.service unit.** This systemd unit owns the container's lifecycle and starts it automatically when the scanner is detected:
 
-   The container process runs as uid 65532 (from the distroless image). The udev rule grants access to GID 65532. No configuration needed in `.env` - the default works.
-
-6. Run docker compose:
    ```bash
-   cd /opt/pantry
-   sudo docker compose up -d
+   sudo cp /opt/pantry/systemd/pantry.service /etc/systemd/system/
+   sudo systemctl daemon-reload
    ```
+   
+   Do **not** run `systemctl enable` on pantry.service — it's activated purely by udev device events, not at boot.
 
-7. Check health for scanner status:
+6. **Check health for scanner status:**
    ```bash
    curl http://localhost:8080/health
    ```
    Look for the `scanner` object:
    - `connected: true` and `grabbed: true` means the scanner is working
    - `connected: false` with `lastError` containing "permission denied" means the udev rule's group doesn't match the container's GID (65532)
+
+   If `/dev/pantry-scanner` exists but the container hasn't started, fire an add event:
+   ```bash
+   sudo udevadm trigger --action=add
+   ```

@@ -1,0 +1,12 @@
+[Unit]
+Description=Pantry container service
+BindsTo=dev-pantry\x2dscanner.device
+After=dev-pantry\x2dscanner.device docker.service
+Wants=docker.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+WorkingDirectory=/opt/pantry
+ExecStart=/usr/bin/docker compose -f /opt/pantry/docker-compose.yml up -d
+ExecStop=/usr/bin/docker compose -f /opt/pantry/docker-compose.yml stop
