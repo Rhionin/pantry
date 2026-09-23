@@ -246,10 +246,12 @@ func (l *ScanListener) createEntry(ctx context.Context, barcode string, directio
 	}
 
 	entry := scan.NewEntryFromLookup(userID, barcode, lookup, &direction, l.now())
-	if _, err := l.Queue.CreateScanEntry(ctx, entry); err != nil {
+	created, err := l.Queue.CreateScanEntry(ctx, entry)
+	if err != nil {
 		log.Printf("scan listener: create scan entry for %q failed: %v", barcode, err)
 		return
 	}
+	log.Printf("scan listener: scan queued: id=%s barcode=%q direction=%s status=%s", created.ID, created.Barcode, direction, created.Status)
 	l.status.setLastScanAt(entry.ScannedAt)
 }
 

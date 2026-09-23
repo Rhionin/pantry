@@ -2,11 +2,21 @@ package server
 
 import (
 	"context"
+	"log"
 	"time"
 
 	"github.com/Rhionin/pantry/internal/product"
 	"github.com/Rhionin/pantry/internal/scan"
 )
+
+// directionLabel renders a scan direction for logs, showing "unset" for a nil
+// direction so operators can tell an unset scan apart from a stock-in one.
+func directionLabel(direction *scan.ScanDirection) string {
+	if direction == nil {
+		return "unset"
+	}
+	return string(*direction)
+}
 
 type ScanCreateHandler struct {
 	Queue interface {
@@ -33,6 +43,8 @@ func (h *ScanCreateHandler) Handle(req Request[createScanRequest, struct{}]) (Cr
 		return Created{}, BadRequest("userId is required")
 	}
 
+	log.Printf("scan received: barcode=%q direction=%s user=%s", req.Body.Barcode, directionLabel(req.Body.Direction), req.Body.UserID)
+
 	// Look up the product for this barcode
 	lookupResult, err := h.LookupService.Lookup(req.Context, req.Body.Barcode, req.Body.UserID)
 	if err != nil {
@@ -51,6 +63,8 @@ func (h *ScanCreateHandler) Handle(req Request[createScanRequest, struct{}]) (Cr
 	if err != nil {
 		return Created{}, InternalError(err)
 	}
+
+	log.Printf("scan queued: id=%s barcode=%q direction=%s status=%s unitCount=%d", created.ID, created.Barcode, directionLabel(created.Direction), created.Status, created.UnitCount)
 
 	return Created{Value: created}, nil
 }
