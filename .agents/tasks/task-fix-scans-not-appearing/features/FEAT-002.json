@@ -1,0 +1,26 @@
+{
+  "id": "FEAT-002",
+  "type": "feat",
+  "description": "Add concise stdout logging on the scan-ingest paths so the user can `tail` the container logs to confirm the server is receiving scanner input. This is an explicit user request and is independent of the frontend fix in FEAT-003. Cover BOTH ingest paths: the HTTP POST /api/scans path (browser/manual scans) and the headless scanlistener device/stdin path. Logs go to stdout via the standard `log` package, matching the existing style already used in internal/scanlistener/listener.go (log.Printf).",
+  "status": "completed",
+  "steps": [
+    "In internal/server/handler_scan_create.go, add a log line on the POST /api/scans path using the standard `log` package (add the import). Log when a scan is received and the resulting entry after CreateScanEntry: include barcode, direction (render nil direction readably, e.g. 'unset'), and the resulting entry id, status, and unitCount. Follow AGENTS.md style: user-friendly message, no function names, no redundant WHAT comments. Example shape: `log.Printf(\"scan received: barcode=%q direction=%s user=%s\", ...)` on entry, and `log.Printf(\"scan queued: id=%s barcode=%q direction=%s status=%s unitCount=%d\", ...)` after creation. Keep it to signal, not noise (do not log on every validation error path beyond what is useful).",
+    "Confirm the headless path in internal/scanlistener/listener.go createEntry() already logs failures; ADD a success log line there too when an entry is created, mirroring the HTTP path fields (barcode, direction, resulting entry id/status). Match the existing `scan listener: ...` prefix style used throughout that file. Do not duplicate the failure logs that already exist.",
+    "Ensure a control-barcode mode switch is also observable: in the scanlistener handleLine control-barcode branch and/or the ScannerModeHandler, a brief log line noting the mode switch is acceptable and useful, but keep it minimal and only if it does not add noise. (Optional; prioritize the scan-received/scan-queued lines.)",
+    "Keep messages free of internal function names and avoid WHAT comments; add a short WHY/godoc comment only if it clarifies intent.",
+    "Build the backend: `go build ./...`."
+  ],
+  "acceptance_criteria": [
+    "POST /api/scans logs a line to stdout when a scan is received and when the entry is queued, including barcode, direction (nil rendered readably), and resulting id/status/unitCount.",
+    "The headless scanlistener logs a success line (not only failures) when it creates an entry, including barcode, direction, and resulting id/status, using the existing `scan listener:` prefix style.",
+    "Log messages contain no Go function names and no redundant WHAT comments (AGENTS.md code style).",
+    "`go build ./...` succeeds and `go vet ./...` (scoped to exclude node_modules) is clean for the changed files."
+  ],
+  "verification": [
+    "go build ./... exits 0",
+    "go test $(go list ./... | grep -v node_modules) exits 0",
+    "Read handler_scan_create.go and listener.go to confirm the log.Printf lines exist with the described fields and AGENTS.md-compliant messages"
+  ],
+  "blocked_reason": null,
+  "findings": "Added stdout logging on both scan-ingest paths. HTTP POST /api/scans (internal/server/handler_scan_create.go): logs 'scan received' after basic validation with barcode/direction/user, and 'scan queued' after CreateScanEntry with id/barcode/direction/status/unitCount. Added a small directionLabel helper that renders a nil direction as 'unset'. Headless scanlistener (internal/scanlistener/listener.go createEntry): captured the created entry and added a matching 'scan listener: scan queued: ...' success line with id/barcode/direction/status; existing failure logs left unchanged. Did NOT add the optional control-barcode mode-switch log to keep noise down. Verified with `go build ./...` (ok), `go vet` on the two changed packages (clean), and `go test $(go list ./... | grep -v node_modules)` (all packages ok). Scoped the test run per the sandbox node_modules artifact note."
+}

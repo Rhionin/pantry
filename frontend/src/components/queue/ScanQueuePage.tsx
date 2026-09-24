@@ -23,13 +23,20 @@ export const ScanQueuePage = ({ userId = DEFAULT_USER_ID }: ScanQueuePageProps) 
   const [entries, setEntries] = useState<ScanEntry[]>([]);
   const [inventory, setInventory] = useState<InventoryItem[]>([]);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
-  const [activeView, setActiveView] = useState<QueueView>('stock_out');
-  const [scannerMode, setScannerModeState] = useState<QueueView>('stock_out');
+  const [activeView, setActiveView] = useState<QueueView>('stock_in');
+  const [scannerMode, setScannerModeState] = useState<QueueView>('stock_in');
   const [scannerConfig, setScannerConfig] = useState<ScannerConfig | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [scanError, setScanError] = useState('');
   
+  // Move the scanner mode and keep the visible tab following it, so a scan
+  // taken in the current direction lands in the tab the user is looking at.
+  const applyScannerMode = useCallback((mode: QueueView) => {
+    setScannerModeState(mode);
+    setActiveView(mode);
+  }, []);
+
   const handleViewChange = (value: string | null) => {
     if (value !== 'stock_in' && value !== 'stock_out') return;
     setActiveView(value);
@@ -75,10 +82,10 @@ export const ScanQueuePage = ({ userId = DEFAULT_USER_ID }: ScanQueuePageProps) 
     void getScannerConfig()
       .then((config) => {
         setScannerConfig(config);
-        setScannerModeState(config.currentMode);
+        applyScannerMode(config.currentMode);
       })
       .catch(() => setScannerConfig(null));
-  }, []);
+  }, [applyScannerMode]);
 
   useEffect(() => {
     const eventSource = new EventSource('/api/events');
@@ -93,11 +100,11 @@ export const ScanQueuePage = ({ userId = DEFAULT_USER_ID }: ScanQueuePageProps) 
     eventSource.addEventListener('scanner_mode', (message) => {
       const event = JSON.parse((message as MessageEvent).data) as ScannerModeEvent;
       if (event.mode === 'stock_in' || event.mode === 'stock_out') {
-        setScannerModeState(event.mode);
+        applyScannerMode(event.mode);
       }
     });
     return () => eventSource.close();
-  }, []);
+  }, [applyScannerMode]);
 
   const itemIdByProductId = useMemo(
     () => new Map(inventory.map((inventoryItem) => [inventoryItem.item.productId, inventoryItem.item.id])),
@@ -122,7 +129,7 @@ export const ScanQueuePage = ({ userId = DEFAULT_USER_ID }: ScanQueuePageProps) 
     if (targetMode !== null) {
       // Optimistically reflect the switch; the resulting scanner_mode SSE event
       // keeps every subscriber consistent with this value.
-      setScannerModeState(targetMode);
+      applyScannerMode(targetMode);
       try {
         await setScannerMode(targetMode);
       } catch (requestError) {
