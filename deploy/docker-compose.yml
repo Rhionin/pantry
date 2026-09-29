@@ -15,12 +15,21 @@ services:
       STOCK_OUT_CONTROL_BARCODE: ${STOCK_OUT_CONTROL_BARCODE:-STOCK_OUT}
       HEADLESS_USER_ID: ${HEADLESS_USER_ID:-user-1}
       SCAN_INPUT: device
-      SCANNER_DEVICE: /dev/pantry-scanner
+      SCANNER_DEVICE: ${SCANNER_DEVICE:-/dev/input/pantry-scanner}
       SCANNER_GID: ${SCANNER_GID:-65532}
     volumes:
       - pantry-data:/data
-    devices:
-      - /dev/pantry-scanner:/dev/pantry-scanner
+      # Bind-mount the /dev/input directory (not a single node) so that device
+      # nodes udev creates later become visible inside the container without
+      # recreating it. Read-only is safe: openEvdev opens O_RDONLY, and
+      # EVIOCGRAB does not require write permission.
+      - /dev/input:/dev/input:ro
+    device_cgroup_rules:
+      # Grant the input device class (char major 13) read access at the cgroup layer.
+      # This is an allowance, not a grant—file ownership and mode still decide what
+      # is openable. Without this, the container cannot open the node even though
+      # it can see it after the mount.
+      - 'c 13:* r'
     group_add:
       - "${SCANNER_GID:-65532}"
 

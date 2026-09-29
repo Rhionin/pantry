@@ -165,7 +165,7 @@ func loadScanListenerConfig() (*scanlistener.ScanListener, bool) {
 // configured, ready to have its Queue, LookupService, and ModePublisher assigned.
 // It returns ok=false when the stock-in and stock-out control barcodes are
 // identical, when the source is unrecognized, or when SCAN_INPUT has an
-// invalid value. Default source is "device"; default device path is "/dev/pantry-scanner".
+// invalid value. Default source is "device"; default device path is "/dev/input/pantry-scanner".
 func loadScanListenerConfigWithSource() (*scanlistener.ScanListener, bool) {
 	source, ok := scanlistener.ParseSource(envOrDefault("SCAN_INPUT", ""))
 	if !ok {
@@ -187,7 +187,7 @@ func loadScanListenerConfigWithSource() (*scanlistener.ScanListener, bool) {
 	listener.StockInBarcode = stockIn
 	listener.StockOutBarcode = stockOut
 	listener.HeadlessUserID = envOrDefault("HEADLESS_USER_ID", "user-1")
-	listener.DevicePath = envOrDefault("SCANNER_DEVICE", "/dev/pantry-scanner")
+	listener.DevicePath = envOrDefault("SCANNER_DEVICE", "/dev/input/pantry-scanner")
 
 	log.Printf("scan listener: configured with source=%s device=%s", source, listener.DevicePath)
 

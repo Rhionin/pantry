@@ -62,7 +62,7 @@ type ScanListener struct {
 func New() *ScanListener {
 	return &ScanListener{
 		Source:         SourceDevice,
-		DevicePath:     "/dev/pantry-scanner",
+		DevicePath:     "/dev/input/pantry-scanner",
 		Stdin:          os.Stdin,
 		status:         newStatus(),
 		initialBackoff: defaultInitialBackoff,
