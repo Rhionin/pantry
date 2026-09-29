@@ -1,0 +1,37 @@
+{
+  "id": "FEAT-001",
+  "type": "chore",
+  "description": "Establish a green baseline and pin the invariant that Design B depends on: the server must start, serve HTTP, and report an honest scanner status when the configured scanner device path does not exist, and must connect when the device appears later. Most of this behavior already exists in internal/scanlistener (runDevice retries Open with backoff, capped at 30s) and cmd/server/main.go (listener runs in a goroutine started before http.ListenAndServe). The job here is to VERIFY that with tests and close any gap, so FEAT-002's deployment change is provably safe rather than hopefully safe. Add no production behavior in this feature.",
+  "status": "pending",
+  "steps": [
+    "Check out the working branch, which ALREADY EXISTS and already contains this task's files: `git fetch origin && git checkout feature/scanner-hotplug-resilience`. Do not create a new branch. Do not branch from feature/udev-driven-container-lifecycle and do not cherry-pick from it. Confirm the branch descends from master with `git merge-base --is-ancestor master HEAD` (exit 0 means yes), record the merge-base SHA in findings, and commit all subsequent work to this branch.",
+    "Record a baseline: from repo root run `go build ./...`, `go test ./...`, and `./scripts/test-coverage.sh`. Record each result plus the reported coverage percentage and the COVERAGE_THRESHOLD value from scripts/test-coverage.sh (currently 74.9) in findings. If anything already fails on a clean checkout, record it precisely so later features are not blamed for pre-existing breakage. Do NOT run frontend tests; npm is unavailable in this sandbox.",
+    "Read internal/scanlistener/listener.go and document in findings the exact reconnect contract, citing line numbers: the runDevice loop, the initial backoff constant (defaultInitialBackoff = 250ms), the cap (defaultMaxBackoff = 30s), the doubling in nextBackoff, and the fact that backoff resets to initial on a successful open. State the resulting worst-case delay between a scanner appearing and the app reading from it.",
+    "Read cmd/server/main.go and document in findings that the listener is started with `go listener.Run(context.Background())` (line ~121) before `http.ListenAndServe` (line ~125), so a missing or unopenable device cannot block or fail HTTP startup. Quote the two lines.",
+    "Inventory existing coverage for the missing-device path. Search internal/scanlistener/*_test.go and internal/server/*_test.go for tests that already exercise: (a) Open returning an error and being retried, (b) scanner status reporting connected=false with a lastError, (c) a successful open after prior failures. Record in findings exactly which of the three are already covered and by which test names. The ScanListener struct has an injectable `Open OpenFunc` field and unexported initialBackoff/maxBackoff fields for testing — use them rather than touching real devices.",
+    "Close only the genuine gaps found in the previous step. For any of (a)/(b)/(c) not already covered, add a focused unit test in internal/scanlistener that injects an Open func failing N times then succeeding, with initialBackoff/maxBackoff set to microseconds so the test is fast, and asserts the observable status transitions. Follow the existing test style in that package. If all three are already covered, add NO new tests and say so explicitly in findings — do not pad.",
+    "Add one API-level test in internal/server asserting that GET /health succeeds and reports scanner connected=false when the configured device path does not exist. Follow the handlerTestCase / runHandlerTests framework in internal/server/test_runner_test.go per AGENTS.md; use internal/server/handler_scan_headless_test.go as the closest existing pattern (it already constructs a ScanListener with DevicePath \"/dev/pantry-scanner\" and asserts a devicePath field in the health payload). Assert against literal expected values, not mocks returning undefined.",
+    "Re-run `go build ./...`, `go test ./...`, and `./scripts/test-coverage.sh`. All must pass. If test-coverage.sh auto-raises COVERAGE_THRESHOLD because coverage improved, commit that change along with the tests — that is the script's intended behavior per AGENTS.md.",
+    "Commit with a message describing the verification added, e.g. `test: pin missing-device tolerance for scanner hot-plug`. Do not commit to master."
+  ],
+  "acceptance_criteria": [
+    "Branch feature/scanner-hotplug-resilience is checked out, descends from master, and its merge-base SHA is recorded in findings. No new branch was created.",
+    "findings records baseline results for `go build ./...`, `go test ./...`, and `./scripts/test-coverage.sh` including the coverage percentage and threshold.",
+    "findings documents the reconnect contract with line-number citations: 250ms initial backoff, 30s cap, doubling, reset on success, and the resulting worst-case pickup delay of 30 seconds.",
+    "findings documents that the listener runs in a goroutine started before http.ListenAndServe, quoting both lines.",
+    "findings contains an explicit inventory of which missing-device behaviors were already covered by existing tests and which were not.",
+    "A test exists asserting GET /health returns success and reports scanner connected=false when the device path does not exist.",
+    "`go test ./...` passes and `./scripts/test-coverage.sh` passes; coverage did not drop below threshold.",
+    "No existing test or log statement was deleted."
+  ],
+  "verification": [
+    "`git log --oneline -1 master` and `git merge-base --is-ancestor master HEAD` confirm the branch descends from master and not from feature/udev-driven-container-lifecycle.",
+    "`go build ./...` exits 0.",
+    "`go test ./...` exits 0 with all packages ok.",
+    "`./scripts/test-coverage.sh` exits 0 and prints PASS.",
+    "`git diff master --stat` shows changes confined to test files, the pre-existing .agents/tasks/task-scanner-hotplug-resilience/ plan files, and optionally scripts/test-coverage.sh for an auto-raised threshold; no production .go file and no file under frontend/ or deploy/ is modified in this feature.",
+    "`git diff master -- internal/ | grep '^-.*log\\.Printf'` produces no output, proving no log statement was removed."
+  ],
+  "blocked_reason": null,
+  "findings": {}
+}
