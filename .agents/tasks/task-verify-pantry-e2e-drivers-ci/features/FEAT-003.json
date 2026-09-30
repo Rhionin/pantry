@@ -1,0 +1,29 @@
+{
+  "id": "FEAT-003",
+  "type": "chore",
+  "description": "Part 2c: Wire verification into CI so the user flows are checked automatically on PRs. Today .github/workflows/ci.yml's `frontend` job runs `npx tsc -b`, `npm run lint`, and `npx vitest --run` but does NOT run the Playwright e2e suite - so the (now-fixed in FEAT-001) specs never run in CI. Add an e2e step/job that boots the app and runs `playwright test`, reusing the fixed specs. Design it to run reliably on GitHub's ubuntu-latest runners (real processes persist there, unlike this sandbox): set up Go and Node, install deps, install Playwright browsers with `npx playwright install --with-deps chromium`, and let playwright.config.ts's webServer boot the Go API + Vite (the config already does this via `go run ../cmd/server` + `npm run dev`). CI-safety rules: this workflow change will be routed through a PR by the orchestrator (never pushed to master directly); the workflow must never dump the whole environment - reference only specific env vars. Depends on FEAT-001 (specs must be green first).",
+  "status": "pending",
+  "steps": [
+    "Read the current .github/workflows/ci.yml jobs (go, go-build-all-platforms, shell, frontend, docker) to match existing style (actions versions: checkout@v4, setup-go@v5 with go-version-file: go.mod + cache, setup-node@v4 with node-version-file: frontend/.nvmrc + cache: npm + cache-dependency-path: frontend/package-lock.json).",
+    "Add e2e coverage. Preferred: a new job `e2e` (name e.g. 'Frontend e2e') on ubuntu-latest that: checks out; sets up Go via setup-go@v5 (go-version-file: go.mod, cache: true) because playwright.config.ts's webServer runs `go run ../cmd/server`; sets up Node via setup-node@v4 (node-version-file: frontend/.nvmrc, cache: npm, cache-dependency-path: frontend/package-lock.json); runs `npm ci` in frontend; installs browsers with `npx playwright install --with-deps chromium`; then runs the suite with `npx playwright test` (working-directory: frontend, matching the frontend job's defaults.run.working-directory pattern). The config's webServer starts the API (DISABLE_EXTERNAL_PRODUCT_LOOKUP=true, tmp DB) and Vite and tears them down, so no manual server management is needed. Alternatively fold these steps into the existing `frontend` job after vitest; a separate job is cleaner and parallelizes. Choose one and implement it.",
+    "Keep it environment-safe: do not add any step that prints `env`, `printenv`, `set`, or otherwise dumps the whole environment. Only reference specific variables if needed (the app-level env like DISABLE_EXTERNAL_PRODUCT_LOOKUP is already set inside playwright.config.ts's webServer command, so the workflow itself likely needs no secrets or env at all).",
+    "If a separate `e2e` job is added and the `docker` job's `needs:` should gate on e2e too, consider whether to add `e2e` to docker's needs list. Keep the change minimal and justified; do not alter unrelated jobs' behavior. Do not remove or weaken existing jobs.",
+    "Optionally upload the Playwright HTML report / traces on failure via actions/upload-artifact@v4 with `if: failure()` and a specific path (frontend/playwright-report or frontend/test-results), since playwright.config.ts sets trace: 'retain-on-failure'. This aids debugging and is standard; keep it optional and specific-path only (no broad globs, no env dumps).",
+    "Validate the workflow YAML is well-formed (e.g. parse it) and that job/step names, indentation, and action versions are consistent with the rest of ci.yml. Since this sandbox cannot run GitHub Actions, verification is: YAML parses cleanly, the e2e job structure mirrors the proven local run (npm ci -> playwright install --with-deps chromium -> playwright test), and the same `npx playwright test` command is confirmed green locally in FEAT-001. State clearly in findings that the CI file itself was validated structurally (not executed) and must be merged via PR.",
+    "Do NOT push the workflow or open a PR - the orchestrator does that. Leave the edited .github/workflows/ci.yml in the working tree."
+  ],
+  "acceptance_criteria": [
+    ".github/workflows/ci.yml runs the Playwright e2e suite on pull_request to master (either a new `e2e` job or an added step in the `frontend` job), setting up Go + Node, running `npm ci`, `npx playwright install --with-deps chromium`, and `npx playwright test`, relying on playwright.config.ts's webServer to boot/tear down the app.",
+    "The workflow references only specific env vars (if any) and contains no step that dumps the whole environment (no bare `env`/`printenv`/`set`).",
+    "Existing jobs (go, go-build-all-platforms, shell, frontend, docker) are preserved and not weakened.",
+    "The ci.yml YAML parses cleanly and mirrors the existing style (action versions, node/go setup, working-directory conventions).",
+    "The same `npx playwright test` invocation the CI job runs was proven green locally in FEAT-001."
+  ],
+  "verification": [
+    "Parse .github/workflows/ci.yml as YAML to confirm it is well-formed (e.g. python3 -c 'import yaml,sys; yaml.safe_load(open(\".github/workflows/ci.yml\"))').",
+    "Manually confirm the e2e job/step sequence matches the locally-proven run: npm ci; npx playwright install --with-deps chromium; npx playwright test.",
+    "grep the workflow to confirm no bare env-dump commands were introduced."
+  ],
+  "blocked_reason": null,
+  "findings": ""
+}
