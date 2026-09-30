@@ -179,7 +179,8 @@ cmd_install() {
   # Poll for health
   log_info "Waiting for Pantry to become healthy..."
   local deadline=$((SECONDS + 60))
-  local host_port=$(grep "^HOST_PORT=" /opt/pantry/.env | cut -d= -f2)
+  local host_port
+  host_port=$(grep "^HOST_PORT=" /opt/pantry/.env | cut -d= -f2)
   host_port=${host_port:-8080}
 
   while [[ $SECONDS -lt $deadline ]]; do
@@ -279,7 +280,7 @@ cmd_rule() {
   if [[ ${#candidates[@]} -eq 0 ]]; then
     log_warn "No scanner candidates found in /proc/bus/input/devices"
     log_info "Devices available:"
-    cat /proc/bus/input/devices | grep "^N: " || true
+    grep "^N: " /proc/bus/input/devices || true
     fatal "Please manually create the udev rule at /etc/udev/rules.d/99-pantry-scanner.rules"
   fi
 
@@ -331,10 +332,11 @@ cmd_status() {
   fi
 
   # 2. .env file
+  local image_tag="" host_port="" scanner_device=""
   if [[ -f /opt/pantry/.env ]]; then
-    local image_tag=$(grep "^PANTRY_IMAGE_TAG=" /opt/pantry/.env | cut -d= -f2 || echo "latest")
-    local host_port=$(grep "^HOST_PORT=" /opt/pantry/.env | cut -d= -f2 || echo "8080")
-    local scanner_device=$(grep "^SCANNER_DEVICE=" /opt/pantry/.env | cut -d= -f2 || echo "/dev/input/pantry-scanner")
+    image_tag=$(grep "^PANTRY_IMAGE_TAG=" /opt/pantry/.env | cut -d= -f2 || echo "latest")
+    host_port=$(grep "^HOST_PORT=" /opt/pantry/.env | cut -d= -f2 || echo "8080")
+    scanner_device=$(grep "^SCANNER_DEVICE=" /opt/pantry/.env | cut -d= -f2 || echo "/dev/input/pantry-scanner")
     log_success ".env present: PANTRY_IMAGE_TAG=$image_tag, HOST_PORT=$host_port, SCANNER_DEVICE=$scanner_device"
   else
     log_error ".env not found at /opt/pantry/.env"
@@ -343,7 +345,8 @@ cmd_status() {
 
   # 3. /dev/input exists
   if [[ -d /dev/input ]]; then
-    local fs_type=$(stat -f /dev/input -c "%T" 2>/dev/null || echo "unknown")
+    local fs_type
+    fs_type=$(stat -f /dev/input -c "%T" 2>/dev/null || echo "unknown")
     if [[ "$fs_type" == "tmpfs" ]] || [[ "$fs_type" == "devtmpfs" ]]; then
       log_success "/dev/input exists on devtmpfs"
     else
@@ -369,7 +372,8 @@ cmd_status() {
   # 5. Scanner device resolves
   if [[ -n "${scanner_device:-}" ]]; then
     if readlink -f "$scanner_device" > /dev/null 2>&1; then
-      local resolved=$(readlink -f "$scanner_device")
+      local resolved
+      resolved=$(readlink -f "$scanner_device")
       log_success "Scanner device resolves: $scanner_device -> $resolved"
     else
       log_error "Scanner device does not resolve: $scanner_device"
@@ -387,8 +391,7 @@ cmd_status() {
 
   # 7. Health check
   if [[ -n "${host_port:-}" ]]; then
-    if curl -sf "http://localhost:$host_port/health" > /dev/null 2>&1; then
-      local health=$(curl -s "http://localhost:$host_port/health" | grep -o '"status":"ok"')
+    if curl -sf "http://localhost:$host_port/health" | grep -q '"status":"ok"'; then
       log_success "GET /health returns ok"
     else
       log_error "GET /health failed or timed out"
