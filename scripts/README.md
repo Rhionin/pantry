@@ -17,12 +17,12 @@ Runs all tests with coverage and enforces a minimum coverage threshold.
 - Calculates total line coverage percentage
 - Enforces minimum coverage threshold (configurable)
 - Exits with non-zero code if tests fail or coverage is below threshold
-- **Automatically updates the threshold** when coverage increases (ratchet mechanism)
+- **Automatically updates the threshold** when actual coverage pulls more than 0.5% ahead of it (ratchet mechanism)
 
 **Configuration:**
 The `COVERAGE_THRESHOLD` variable is set at the top of the script. 
 
-**Important:** When the script detects that coverage has increased beyond the current threshold, it automatically updates itself to use the new, higher coverage value as the threshold. This creates a "ratchet" effect where coverage can only go up, never down. When this happens, commit the updated script file to preserve the new baseline.
+**Important:** When the script detects that actual coverage has moved more than 0.5% above the current threshold, it automatically updates itself to use the new, higher coverage value as the threshold. The 0.5% gap gives coverage some wiggle room to drift up and down in small doses during development without tripping the ratchet, while still enforcing a generally-increasing baseline over time. When the threshold does update, commit the updated script file to preserve the new baseline.
 
 ### show-coverage.sh
 

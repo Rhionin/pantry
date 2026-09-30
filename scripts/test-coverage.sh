@@ -44,10 +44,12 @@ if awk "BEGIN {exit !($COVERAGE < $COVERAGE_THRESHOLD)}"; then
 else
     echo -e "${GREEN}PASS: Coverage ${COVERAGE}% meets or exceeds threshold${NC}"
     
-    # If coverage has improved, update the threshold in this script
-    if awk "BEGIN {exit !($COVERAGE > $COVERAGE_THRESHOLD)}"; then
+    # If the codified threshold has fallen more than 0.5% behind actual
+    # coverage, ratchet it up. Small fluctuations (within 0.5%) are left alone
+    # so coverage can wobble during development without tripping the ratchet.
+    if awk "BEGIN {exit !(($COVERAGE - $COVERAGE_THRESHOLD) > 0.5)}"; then
         echo ""
-        echo -e "${CYAN}Coverage increased! Updating threshold from ${COVERAGE_THRESHOLD}% to ${COVERAGE}%${NC}"
+        echo -e "${CYAN}Coverage is more than 0.5% ahead of the threshold! Updating threshold from ${COVERAGE_THRESHOLD}% to ${COVERAGE}%${NC}"
         
         # Get the directory where this script is located
         SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
