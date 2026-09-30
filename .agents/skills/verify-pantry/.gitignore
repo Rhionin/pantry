@@ -1,0 +1,4 @@
+# Verification scaffolding produced by scripts/pantry-verify.sh.
+# The skill files (SKILL.md, features/, scripts/) are committed; run output is not.
+.bin/
+evidence/
