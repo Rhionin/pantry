@@ -4,35 +4,21 @@ This guide covers deploying Pantry on a Raspberry Pi using Docker Compose.
 
 ## Quick Start
 
-New to this? Follow these steps in order on your Raspberry Pi and you'll have Pantry running with automatic updates. Each step says what it does. For options, backups, and troubleshooting, use the reference sections further down.
+New to this? Follow these steps in order on your Raspberry Pi and you'll have Pantry running. The setup script does the heavy lifting; each step says what it does. For options, backups, and troubleshooting, use the reference sections further down.
 
 1. **What you need.** A Raspberry Pi running 64-bit Raspberry Pi OS, and the ability to open a terminal. (See [Supported Platform](#supported-platform) below for exact hardware and OS details.)
 
-2. **Install Docker.** Docker is the engine that runs Pantry. Run:
+2. **Get the Pantry files onto the Pi.** The deployment files live in this repository's `deploy/` folder: `docker-compose.yml`, `.env.example`, `setup.sh`, and the `systemd/` and `udev/` folders. Copy that whole folder onto your Pi (for example, clone the repo with `git`, or copy with a USB drive or `scp`).
+
+3. **Run the setup script.** From the `deploy/` folder you copied over:
 
    ```bash
-   curl -fsSL https://get.docker.com | sh
-   sudo usermod -aG docker $USER
+   sudo ./setup.sh install
    ```
 
-   Then **log out and log back in** so the second command takes effect.
+   This installs Docker if needed, copies the deployment files into `/opt/pantry`, creates your configuration, installs the scanner udev rule, starts Pantry, and waits until it reports healthy. It is safe to re-run: it never overwrites configuration values you already set.
 
-3. **Get the Pantry files onto the Pi.** The deployment files live in this repository's `deploy/` folder: `docker-compose.yml`, `.env.example`, and the `systemd/` folder. Copy that whole folder into `/opt/pantry` on your Pi (for example, clone the repo with `git` and copy the `deploy/` contents, or copy them over with a USB drive or `scp`). Use exactly `/opt/pantry`, because the automatic-update files expect that path.
-
-4. **Create the config file.** This holds your settings; the defaults work fine to get started, and you can edit it later (see the [Configuration](#configuration) table). Run:
-
-   ```bash
-   cd /opt/pantry
-   sudo cp .env.example .env
-   ```
-
-5. **Start Pantry.** This downloads the Pantry software and starts it running in the background:
-
-   ```bash
-   sudo docker compose up -d
-   ```
-
-6. **Check it works.** Run this on the Pi. It should print `{"status":"ok"}`:
+4. **Check it works.** The installer already polled `/health` for you, but you can confirm any time. This should print `{"status":"ok"}`:
 
    ```bash
    curl http://localhost:8080/health
@@ -40,18 +26,13 @@ New to this? Follow these steps in order on your Raspberry Pi and you'll have Pa
 
    You can also open `http://<pi-ip-address>:8080` in a web browser on any device on the same network.
 
-7. **Turn on automatic updates.** This copies in two small helper files and switches on a timer that checks for and installs new versions of Pantry for you:
+5. **See the full picture.** Run the diagnostic any time to see the whole chain from udev rule to scan ingestion:
 
    ```bash
-   sudo cp /opt/pantry/systemd/pantry-update.service /etc/systemd/system/
-   sudo cp /opt/pantry/systemd/pantry-update.timer /etc/systemd/system/
-   sudo systemctl daemon-reload
-   sudo systemctl enable --now pantry-update.timer
+   sudo ./setup.sh status
    ```
 
-   Once this is on, every new version installs automatically with no approval step, and the updater runs as root because it controls Docker. See [⚠️ Important Considerations](#️-important-considerations) below for the full picture. Don't turn this on if you've pinned Pantry to a specific version (see [Pinning to Specific Versions](#pinning-to-specific-versions)), because the updater would keep looking for updates it should not apply.
-
-That's it. Pantry will now keep itself up to date.
+**The scanner is optional at every step.** Pantry starts and serves the web UI whether or not a barcode scanner is attached, and you can connect or disconnect the scanner at any time — see [Headless Scanner Input](#headless-scanner-input).
 
 The rest of this guide is reference material: configuration options, backups, the barcode scanner, rolling back, and troubleshooting.
 
@@ -63,6 +44,8 @@ Pantry is packaged as a `linux/arm64` container image and requires 64-bit Raspbe
 
 ## First-Time Setup
 
+The recommended path is `sudo ./setup.sh install`, which performs every step below in order and verifies the result. The steps are documented here so you understand what the script does and can run them by hand if you prefer.
+
 ### 1. Install Docker and Docker Compose
 
 Install Docker and the Compose plugin on your Raspberry Pi:
@@ -71,14 +54,11 @@ Install Docker and the Compose plugin on your Raspberry Pi:
 # Update system packages
 sudo apt update && sudo apt upgrade -y
 
-# Install Docker
+# Install Docker (this is what setup.sh runs)
 curl -fsSL https://get.docker.com | sh
 
 # Add your user to the docker group (requires logout/login to take effect)
 sudo usermod -aG docker $USER
-
-# Install Docker Compose plugin (if not already included)
-sudo apt install docker-compose-plugin
 
 # Verify installation
 docker --version
@@ -87,44 +67,52 @@ docker compose version
 
 Log out and back in for the group membership to take effect.
 
-### 2. Set Up Deployment Files
+### 2. Set up deployment files and configuration
 
-Copy the deployment files to your Pi:
+`setup.sh install` copies the whole `deploy/` tree to `/opt/pantry` (including `systemd/` and `udev/`) and reconciles `.env`. To do it by hand:
 
 ```bash
 # Create deployment directory
 sudo mkdir -p /opt/pantry
 
-# Copy the entire deploy/ directory contents from this repository to /opt/pantry
-# This includes: docker-compose.yml, .env.example, and systemd/
+# Copy the entire deploy/ directory contents to /opt/pantry
+# (docker-compose.yml, .env.example, setup.sh, systemd/, udev/)
 
-# Navigate to deployment directory
+# Create your config from the example; the defaults work to get started
 cd /opt/pantry
-
-# Copy and customize environment file
 sudo cp .env.example .env
-sudo nano .env  # Edit configuration as needed
+sudo nano .env  # edit if needed — see the Configuration table below
 ```
 
-### 3. Start Pantry
+The script's `.env` handling is idempotent: it creates `.env` from `.env.example` only when it is absent, and on later runs appends only keys that are missing, never touching a value you already set. A pinned `PANTRY_IMAGE_TAG` therefore survives re-running `install`.
+
+### 3. Install the scanner udev rule
+
+```bash
+sudo ./setup.sh rule
+```
+
+This detects your scanner and writes `/etc/udev/rules.d/99-pantry-scanner.rules` with a symlink at `/dev/input/pantry-scanner`. See [Headless Scanner Input](#headless-scanner-input) for how to do it manually or for a Bluetooth scanner. This step is optional — Pantry runs without it — but scanning won't work until a matching rule exists.
+
+### 4. Start Pantry
 
 ```bash
 cd /opt/pantry
 sudo docker compose up -d
 ```
 
-### 4. Verify Deployment
+The container starts whether or not the scanner is attached. There is **no ordering requirement**: you can install the udev rule and attach the scanner before or after starting the container, in any order.
 
-Check that Pantry is running:
+### 5. Verify deployment
 
 ```bash
-# Health check
+# Health check — should return {"status":"ok"}
 curl http://localhost:8080/health
 
-# Expected response: {"status":"ok"}
+# Full chain diagnostic
+sudo ./setup.sh status
 
-# Access the web UI
-# Open http://<pi-ip-address>:8080 in a browser on your network
+# Access the web UI at http://<pi-ip-address>:8080 from any device on your network
 ```
 
 ## Manual Update Procedure
@@ -143,6 +131,8 @@ Docker Compose will automatically:
 - Preserve your data volume across updates
 - Apply your `.env` configuration to the new container
 
+Recreating the container briefly drops the scanner session, but the listener reconnects on its own within 30 seconds — no manual step is needed.
+
 ## Configuration
 
 All configuration is handled through environment variables in `/opt/pantry/.env`. Copy from `.env.example` and modify as needed:
@@ -157,6 +147,8 @@ All configuration is handled through environment variables in `/opt/pantry/.env`
 | `STOCK_IN_CONTROL_BARCODE` | `STOCK_IN` | Barcode to scan for switching scanner to "stock in" mode |
 | `STOCK_OUT_CONTROL_BARCODE` | `STOCK_OUT` | Barcode to scan for switching scanner to "stock out" mode |
 | `HEADLESS_USER_ID` | `user-1` | User ID for headless scan operations (when no user is logged in) |
+| `SCANNER_DEVICE` | `/dev/input/pantry-scanner` | Path to the scanner's stable symlink created by the udev rule. Point at a concrete `/dev/input/eventN` to bypass the symlink while debugging |
+| `SCANNER_GID` | `65532` | Numeric group ID the container process joins so it can read the `0640` scanner node |
 
 **Note:** The variables `ADDR` and `DB_PATH` are pinned by the Docker Compose file and should not be overridden. To change the host port, use `HOST_PORT` instead of modifying `ADDR`.
 
@@ -169,7 +161,15 @@ sudo docker compose up -d
 
 ## Headless Scanner Input
 
-Pantry now reads barcode scans directly from the scanner's evdev device (`/dev/input/eventN`) instead of standard input, so it works headlessly without a keyboard, monitor, or attached terminal session.
+Pantry reads barcode scans directly from the scanner's evdev device (`/dev/input/eventN`) instead of standard input, so it works headlessly without a keyboard, monitor, or attached terminal session.
+
+**The container starts whether or not the scanner is attached, and the scanner may be connected or disconnected at any time.** There is no requirement to install the udev rule or attach the scanner before starting the container.
+
+### How hot-plug works
+
+- The container bind-mounts the `/dev/input` **directory** rather than a single device node. Nodes that udev creates later — when you plug the scanner in — become visible inside the running container automatically, with no recreation.
+- The application retries opening the device with exponential backoff, from 250 ms up to a 30 s cap. A scanner that appears (at boot, on plug-in, or on Bluetooth wake) is picked up **within 30 seconds** with no operator action.
+- The web UI is served the entire time, independent of scanner state. Disconnecting the scanner does not stop, restart, or recreate the container.
 
 ### Prerequisites
 
@@ -179,67 +179,71 @@ Pantry now reads barcode scans directly from the scanner's evdev device (`/dev/i
    ```bash
    lsusb | grep -i scanner
    ```
-   Output looks like: `Bus 001 Device 005: ID XXXX:YYYY Symbol Technologies, Inc. Scanner`
+   Output looks like: `Bus 001 Device 005: ID XXXX:YYYY Symbol Technologies, Inc. Scanner`. The `XXXX` is the vendor ID and `YYYY` is the product ID.
 
    **Bluetooth scanners:**
    Bluetooth scanners appear as input devices and won't show in `lsusb`. Instead:
    ```bash
    # List all input event devices
    ls -l /dev/input/event*
-   
+
    # Get details about a specific event device (replace eventX with your device)
    udevadm info -a -p $(udevadm info -q path -n /dev/input/eventX) | grep -E "(vendor|product|name)"
-   
+
    # Or look for your scanner in the input device list
    cat /proc/bus/input/devices | grep -A5 -B5 -i scanner
    ```
 
-2. **Install the udev rule:**
-   Copy the provided rule file to `/etc/udev/rules.d/`:
+2. **Install the udev rule.** The primary method is the setup script, which detects the device and writes the rule for you:
    ```bash
-   sudo cp pantry/udev/99-pantry-scanner.rules /etc/udev/rules.d/
+   sudo ./setup.sh rule
    ```
-   
-   **For USB scanners:** Edit the rule to replace `XXXX` and `YYYY` with your scanner's actual vendor and product IDs.
-   
-   **For Bluetooth scanners:** Modify the rule to match by device name instead:
+
+   **Manual fallback.** Copy the example rule and edit it:
    ```bash
-   SUBSYSTEM=="input", ATTRS{name}=="*Scanner*", \
-     KERNEL=="event*", SYMLINK+="pantry-scanner", GROUP="65532", MODE="0640"
+   sudo cp /opt/pantry/udev/99-pantry-scanner.rules /etc/udev/rules.d/
+   ```
+
+   **For USB scanners**, uncomment the USB example and set the vendor/product IDs. The rule matches on `ENV{ID_VENDOR_ID}` and `ENV{ID_MODEL_ID}` (set directly on the event device by udev's `input_id` builtin) rather than `ATTRS{idVendor}`/`ATTRS{idProduct}`, which must walk the parent chain and are order-sensitive:
+   ```
+   SUBSYSTEM=="input", KERNEL=="event*", ENV{ID_VENDOR_ID}=="XXXX", ENV{ID_MODEL_ID}=="YYYY", \
+     SYMLINK+="input/pantry-scanner", GROUP="65532", MODE="0640"
+   ```
+
+   **For Bluetooth scanners**, match by device name instead:
+   ```
+   SUBSYSTEM=="input", KERNEL=="event*", ATTRS{name}=="*Scanner*", \
+     SYMLINK+="input/pantry-scanner", GROUP="65532", MODE="0640"
    ```
    Replace `*Scanner*` with the actual name pattern from your device (found in step 1).
+
+   Note the symlink is `input/pantry-scanner`, which resolves to `/dev/input/pantry-scanner`. It **must** live under `/dev/input` because the container bind-mounts only that directory; a symlink elsewhere would neither exist nor resolve inside the container.
 
 3. **Reload udev and trigger:**
    ```bash
    sudo udevadm control --reload
-   sudo udevadm trigger
+   sudo udevadm trigger --subsystem-match=input --action=add
    ```
 
-4. **Verify `/dev/pantry-scanner` exists:**
+4. **Verify `/dev/input/pantry-scanner` exists:**
    ```bash
-   ls -l /dev/pantry-scanner
+   ls -l /dev/input/pantry-scanner
    ```
-   
-   The symlink should exist with GID 65532.
+   The symlink should exist with GID 65532 on its target node.
 
-2. **Ensure `SCANNER_DEVICE` is set** (defaults to `/dev/pantry-scanner`) in `.env`.
+5. **Ensure `SCANNER_DEVICE` is set** (defaults to `/dev/input/pantry-scanner`) in `.env`.
 
-3. **Important:** The udev rule must be installed and `/dev/pantry-scanner` must exist **before** running `docker compose up`. Docker refuses to start a container whose declared device path does not exist.
-
-4. **Start the container:**
-   ```bash
-   cd /opt/pantry
-   sudo docker compose up -d
-   ```
-
-5. **Verify scanner status:**
+6. **Verify scanner status:**
    ```bash
    curl http://localhost:8080/health
    ```
-   
    Look for the `scanner` object in the response:
    - `connected: true` and `grabbed: true` means the scanner is working
-   - `connected: false` with `lastError` containing "permission denied" means the udev rule's group doesn't match the container's GID (65532)
+   - `connected: false` is a fully supported state — the container still runs and the UI still works; the scanner is simply absent or not yet readable
+
+### Security: per-device scoping
+
+Per-device scoping now comes from the scanner node's **ownership and mode**, not from the container seeing only one node. The container bind-mounts all of `/dev/input`, but the udev rule grants only the scanner's node `GROUP="65532"` mode `0640`. Every other input node stays `root:input` mode `0600`, so the container process (uid 65532, group 65532) can open the scanner and nothing else. This is why Pantry does not become a keylogger for every attached keyboard, and it is why the service user is deliberately **not** added to the `input` group — doing so would grant read access to every input device on the box.
 
 ### Local Development
 
@@ -252,23 +256,33 @@ Type barcodes directly into the terminal and press Enter. The scanner status wil
 
 ### Troubleshooting
 
-The `GET /health` endpoint's `scanner` object can help diagnose issues:
+First, distinguish the two very different situations that both show `connected: false`:
+
+- **Scanner absent** — no scanner is plugged in. This is a fully **supported** state: the container is running, `/health` returns `status: ok`, and the web UI works. Nothing is wrong. Plug the scanner in and it is picked up within 30 seconds.
+- **Scanner present but unreadable** — the scanner is attached but Pantry cannot read it. This is the case worth investigating. The `lastError` field tells you which of three causes applies, in the order worth checking:
+
+| `lastError` | Meaning | Fix |
+|---|---|---|
+| `ENOENT` / no such file | The udev rule did not match, so no symlink was created | Fix the rule's match keys (`ENV{ID_VENDOR_ID}`/`ENV{ID_MODEL_ID}` for USB, `ATTRS{name}` for Bluetooth) and re-run `sudo ./setup.sh rule` |
+| `EACCES` / permission denied | The node's group is not 65532 | Fix `GROUP` in the rule or `SCANNER_GID` in `.env`, then reload udev |
+| `EPERM` / operation not permitted | The device cgroup denied the open | `device_cgroup_rules` is not taking effect — do **not** fall back to `privileged: true` or reintroduce a `devices:` entry; see `ACCEPTANCE.md` |
+
+The `GET /health` `scanner` object also reports:
 
 | Field | Expected Value | Issue if different |
 |-------|----------------|-------------------|
-| `connected` | `true` | Device not found, permission denied, or unplugged |
-| `grabbed` | `true` | Another process is using the device |
-| `unmappedKeys` | Low / zero | Scanner is emitting keycodes outside the US-layout map |
+| `grabbed` | `true` | Another process is using the device (the exclusive grab failed — capture still works) |
+| `unmappedKeys` | Low / zero | Scanner is emitting keycodes outside the US-layout map; consider modifying `internal/scanlistener/keymap.go` |
 
-**Common issues:**
-- `connected: false` with "permission denied" in `lastError`: The udev rule's `GROUP` doesn't match the container's GID (65532)
-- High `unmappedKeys`: Your scanner uses a non-US layout; consider modifying `internal/scanlistener/keymap.go`
+The image is **distroless**, so `docker exec pantry sh` does not work. Use `sudo ./setup.sh logs`, `sudo docker compose logs pantry`, `GET /health`, and `sudo ./setup.sh status` for all runtime introspection.
 
-### Automatic Updates
+### Automatic Updates and the scanner
 
 `pantry-update.service` only updates the container image, never the deployment files. This means:
-- The udev rule must be installed once manually on the Pi
+- The udev rule is installed once (via `sudo ./setup.sh rule`) and is not touched by updates
 - Docker Compose and `.env` files are never automatically modified
+
+When an update recreates the container, the scanner session is dropped, but the listener reconnects on its own within 30 seconds. While iterating, run `sudo ./setup.sh freeze` to mask the update timer so an update doesn't change the target mid-experiment; run `sudo ./setup.sh thaw` to restore it.
 
 ## Data Management
 
@@ -336,8 +350,10 @@ PANTRY_IMAGE_TAG=a1b2c3d4e5f6789012345678901234567890abcd
 
 Available tags:
 - `latest` - Most recent build from master branch
-- `master` - Alias for latest master branch build  
+- `master` - Alias for latest master branch build
 - `<commit-sha>` - Specific commit (full SHA)
+
+A pinned tag is preserved across re-runs of `sudo ./setup.sh install` and is never silently reset to `latest`.
 
 ### Rolling Back
 
@@ -356,14 +372,14 @@ If you need to rollback to a previous version:
 
 ## Automatic Updates (Optional)
 
-For automatic updates, you can install systemd units that periodically check for and apply new releases.
+For automatic updates, you can install systemd units that periodically check for and apply new releases. `setup.sh install` does **not** enable them by default — pass `--with-updates` or enable them manually when you are done iterating.
 
 ### ⚠️ Important Considerations
 
 **Before enabling automatic updates, understand:**
 - The service runs as root because it drives the Docker daemon
 - Enabling automatic updates means **every push to master deploys unattended** with no approval step
-- Container recreation will drop any attached barcode scanner session
+- Container recreation drops the attached scanner session, but the listener reconnects on its own within 30 seconds
 - If you pin to a specific commit SHA, leave automatic updates disabled (they would run forever finding nothing)
 
 ### Installation
@@ -387,6 +403,12 @@ For automatic updates, you can install systemd units that periodically check for
    ```
 
 ### Management
+
+**Freeze / thaw during iteration:**
+```bash
+sudo ./setup.sh freeze   # mask the timer so updates don't change the target
+sudo ./setup.sh thaw     # unmask it when you're done
+```
 
 **Check status:**
 ```bash
@@ -467,7 +489,7 @@ If the repository becomes private, you'll need to authenticate:
 # Create a GitHub personal access token with 'read:packages' permission
 # Then login on the Pi:
 sudo docker login ghcr.io
-# Username: your-github-username  
+# Username: your-github-username
 # Password: your-personal-access-token
 ```
 
@@ -477,6 +499,11 @@ The credentials are stored in root's Docker config, which is the identity the up
 
 ### Container Won't Start
 
+Start with the full-chain diagnostic:
+```bash
+sudo ./setup.sh status
+```
+
 Check logs:
 ```bash
 sudo docker compose logs pantry
@@ -484,38 +511,48 @@ sudo docker compose logs pantry
 
 Common issues:
 - Database permissions: Ensure the `/data` volume is writable by uid 65532
-- Port conflict: Another service using port 8080
+- Port conflict: Another service using port 8080 (change `HOST_PORT` in `.env`)
 - Image pull failure: Check network connectivity and authentication
+
+Note the image is distroless, so `docker exec pantry sh` does not work — use logs and `/health` instead.
 
 ### Scanner Not Working
 
-1. **Check scanner status via `/health`:**
+1. **Run the diagnostic first — it names the broken link:**
+   ```bash
+   sudo ./setup.sh status
+   ```
+
+2. **Upgrading from a pre-hot-plug version? Check `SCANNER_DEVICE`.**
+   ```bash
+   grep '^SCANNER_DEVICE=' /opt/pantry/.env
+   ```
+   An older `.env` pinned `SCANNER_DEVICE=/dev/pantry-scanner`, and the container can no longer open that path — the symlink now lives at `/dev/input/pantry-scanner`. Running `sudo ./setup.sh install` migrates this obsolete default automatically; after it runs, the value should be `/dev/input/pantry-scanner`. (A custom path you set on purpose is left untouched.) Apply it with `cd /opt/pantry && sudo docker compose up -d`. Symptom of the stale value: logs show `failed to open device /dev/pantry-scanner: no such file or directory` and `status` reports the old path.
+
+3. **Check scanner status via `/health`:**
    ```bash
    curl http://localhost:8080/health
    ```
-   
-   Look for the `scanner` object:
-   - `connected: false` with `lastError` containing "permission denied" means the udev rule's group doesn't match the container's GID (65532)
-   - `connected: false` without an error means the device doesn't exist - verify the udev rule was installed and run `sudo udevadm trigger`
+   Then use the `lastError` table in [Headless Scanner Input → Troubleshooting](#troubleshooting) to tell `ENOENT` (rule didn't match), `EACCES` (wrong group), and `EPERM` (cgroup denied) apart — they have different fixes. Remember that `connected: false` with **no** error and no scanner attached is normal and supported.
 
-2. **Verify `/dev/pantry-scanner` exists:**
+4. **Verify `/dev/input/pantry-scanner` exists:**
    ```bash
-   ls -l /dev/pantry-scanner
+   ls -l /dev/input/pantry-scanner
    ```
+   If it is missing while the scanner is attached — and especially if the scanner's keystrokes are appearing in the Pi's terminal — the udev rule is not matching. The scanner echoing to the console is the tell: the rule that would grant the node to GID 65532 and create the symlink never fired. Regenerate it with `sudo ./setup.sh rule` (which now matches USB scanners on vendor/product IDs) and confirm with `ls -l /dev/input/pantry-scanner`.
 
-3. **Check Docker device mapping:**
+5. **Check the container's mounts** (there is no longer a `Devices` array — the scanner is a directory bind mount now):
    ```bash
-   sudo docker inspect pantry | grep -A 5 Devices
+   sudo docker inspect -f '{{json .Mounts}}' pantry
    ```
-   
-   The `Devices` array should include `/dev/pantry-scanner`.
+   The `Mounts` array should include the `/dev/input` bind mount.
 
-4. **Verify the udev rule matches your device:**
+6. **Verify the udev rule matches your device:**
    ```bash
-   lsusb
+   lsusb                              # USB
+   cat /proc/bus/input/devices        # any input device
    ```
-   
-   Ensure the `idVendor` and `idProduct` in `/etc/udev/rules.d/99-pantry-scanner.rules` match your scanner's `ID` from `lsusb`.
+   Ensure the `ENV{ID_VENDOR_ID}`/`ENV{ID_MODEL_ID}` (USB) or `ATTRS{name}` (Bluetooth) in `/etc/udev/rules.d/99-pantry-scanner.rules` match your scanner, then re-run `sudo ./setup.sh rule`.
 
 ### Updates Failing
 

@@ -17,11 +17,15 @@ import (
 // internal/server's handlers (const userID = "user-1").
 const defaultHeadlessUserID = "user-1"
 
-// defaultInitialBackoff is the initial delay before retrying a missing device.
-const defaultInitialBackoff = 250 * time.Millisecond
+// defaultPollInterval is how often runDevice retries opening a missing device.
+// A fixed 1s poll means a device that appears is picked up within a second.
+const defaultPollInterval = 1 * time.Second
 
-// defaultMaxBackoff is the maximum delay between retries.
-const defaultMaxBackoff = 30 * time.Second
+// defaultMissingLogInterval throttles the "still missing" log line. The first
+// failure after a disconnect is logged immediately; subsequent failures are
+// logged at most once per this interval, so a device left unplugged does not
+// flood the log with one line per poll.
+const defaultMissingLogInterval = 30 * time.Second
 
 // ScanListener reads barcode scans from standard input or an evdev device,
 // depending on the configured Source, and feeds Product_Barcodes into the
@@ -53,21 +57,23 @@ type ScanListener struct {
 	// Now supplies the current time. Defaults to time.Now when nil.
 	Now func() time.Time
 
-	// initialBackoff and maxBackoff are for testing.
-	initialBackoff time.Duration
-	maxBackoff     time.Duration
+	// pollInterval and missingLogInterval are configurable for testing.
+	// pollInterval is how often a missing device is retried; missingLogInterval
+	// throttles the repeated "still missing" log line.
+	pollInterval       time.Duration
+	missingLogInterval time.Duration
 }
 
 // New creates a new ScanListener with default values.
 func New() *ScanListener {
 	return &ScanListener{
-		Source:         SourceDevice,
-		DevicePath:     "/dev/pantry-scanner",
-		Stdin:          os.Stdin,
-		status:         newStatus(),
-		initialBackoff: defaultInitialBackoff,
-		maxBackoff:     defaultMaxBackoff,
-		Open:           openEvdev,
+		Source:             SourceDevice,
+		DevicePath:         "/dev/input/pantry-scanner",
+		Stdin:              os.Stdin,
+		status:             newStatus(),
+		pollInterval:       defaultPollInterval,
+		missingLogInterval: defaultMissingLogInterval,
+		Open:               openEvdev,
 	}
 }
 
@@ -130,21 +136,33 @@ func (l *ScanListener) isStdinTTY() bool {
 	return true // Assume stdin is a TTY; real detection needs go-isatty
 }
 
-// runDevice reads Key_Events from the evdev device with reconnect logic.
+// runDevice reads Key_Events from the evdev device, retrying a missing device
+// on a fixed poll interval. The "still missing" log line is throttled: the
+// first failure after a disconnect is logged immediately, then at most once
+// per missingLogInterval, so an unplugged scanner does not flood the log with
+// one line per poll. A successful (re)connect is always logged right away.
 func (l *ScanListener) runDevice(ctx context.Context) {
 	l.status.setSource(SourceDevice)
 
-	backoff := l.initialBackoff
+	// zero time means "no missing failure has been logged since the last
+	// successful connection", so the next failure logs immediately.
+	var lastMissingLog time.Time
+
 	for ctx.Err() == nil {
 		dev, grabbed, err := l.Open(l.DevicePath)
 		if err != nil {
 			l.status.setConnected(false, false)
 			l.status.setError(err)
-			log.Printf("scan listener: failed to open device %s: %v, retrying in %s", l.DevicePath, err, backoff)
-			if !l.sleep(ctx, backoff) {
+
+			now := l.now()
+			if lastMissingLog.IsZero() || now.Sub(lastMissingLog) >= l.missingLogInterval {
+				log.Printf("scan listener: device %s not available: %v, retrying every %s", l.DevicePath, err, l.pollInterval)
+				lastMissingLog = now
+			}
+
+			if !l.sleep(ctx, l.pollInterval) {
 				return
 			}
-			backoff = l.nextBackoff(backoff)
 			continue
 		}
 
@@ -153,7 +171,9 @@ func (l *ScanListener) runDevice(ctx context.Context) {
 		l.status.setError(nil)
 		log.Printf("scan listener: connected to device %s", l.DevicePath)
 
-		backoff = l.initialBackoff // reset on success
+		// Reset the throttle so a future disconnect logs immediately again.
+		lastMissingLog = time.Time{}
+
 		l.readFrom(ctx, dev)
 		dev.Close()
 		l.status.setConnected(false, false)
@@ -206,15 +226,6 @@ func (l *ScanListener) sleep(ctx context.Context, d time.Duration) bool {
 	case <-time.After(d):
 		return true
 	}
-}
-
-// nextBackoff returns the next backoff delay, capped at maxBackoff.
-func (l *ScanListener) nextBackoff(current time.Duration) time.Duration {
-	next := current * 2
-	if next > l.maxBackoff {
-		next = l.maxBackoff
-	}
-	return next
 }
 
 func (l *ScanListener) handleLine(ctx context.Context, barcode string, mode *modeState) {

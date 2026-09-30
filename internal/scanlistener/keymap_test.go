@@ -51,9 +51,12 @@ func TestDecodeKey(t *testing.T) {
 		{"KEY_KP9", 0x5b, false, '9', keyPrintable},
 
 		// Enter keys
-		{"KEY_ENTER (0x2a)", 0x2a, false, 0, keyEnter},
+		{"KEY_ENTER (0x1c)", 0x1c, false, 0, keyEnter},
+		{"KEY_KPENTER (0x60, numpad)", 0x60, false, 0, keyEnter},
+
+		// Shift keys
+		{"KEY_LEFTSHIFT (0x2a)", 0x2a, false, 0, keyShift},
 		{"KEY_RIGHTSHIFT (0x36)", 0x36, false, 0, keyShift},
-		{"KEY_ENTER (0x9c, numpad)", 0x9c, false, 0, keyEnter},
 
 		// Space
 		{"KEY_SPACE", 0x39, false, ' ', keyPrintable},

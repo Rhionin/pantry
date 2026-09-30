@@ -258,6 +258,8 @@ func decodeKey(code uint16, shift bool) (rune, keyKind) {
 			return '?', keyPrintable
 		}
 		return '/', keyPrintable
+	case 0x2a: // KEY_LEFTSHIFT
+		return 0, keyShift
 	case 0x36: // KEY_RIGHTSHIFT
 		return 0, keyShift
 	}
@@ -290,9 +292,9 @@ func decodeKey(code uint16, shift bool) (rune, keyKind) {
 	switch code {
 	case 0x39: // KEY_SPACE
 		return ' ', keyPrintable
-	case 0x2a: // KEY_ENTER
+	case 0x1c: // KEY_ENTER
 		return 0, keyEnter
-	case 0x9c: // KEY_ENTER (numpad enter)
+	case 0x60: // KEY_KPENTER (numpad enter)
 		return 0, keyEnter
 	}
 
