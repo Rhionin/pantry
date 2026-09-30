@@ -61,6 +61,10 @@ export const getEntriesForView = (entries: ScanEntry[], view: QueueView): ScanEn
     ? entries.filter((entry) => entry.direction === 'stock_in')
     : entries.filter((entry) => entry.direction === 'stock_out' || entry.direction === null);
 
+// Formats a review count for the queue tab badge, capping anything above 99 as
+// '99+' so the badge stays a single compact token.
+export const formatReviewCount = (count: number): string => (count > 99 ? '99+' : String(count));
+
 // Applies one incoming Scan_Event to the currently displayed list: upserts it
 // if its status is still displayable (pending/flagged), or removes any entry
 // with the same id if it isn't (committed/cancelled). Requirements 4.2, 4.3.

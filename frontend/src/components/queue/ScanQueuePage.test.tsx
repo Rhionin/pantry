@@ -1385,4 +1385,92 @@ describe('ScanQueuePage', () => {
       expect(stockInCheckbox).toBeChecked(); // Now selected
     });
   });
+
+  describe('Queue tab review-count badges', () => {
+    const seedQueue = (entries: ScanEntry[]) =>
+      vi.fn((input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url.includes('status=pending')) return Promise.resolve(jsonResponse(entries));
+        if (url.includes('status=flagged')) return Promise.resolve(jsonResponse([]));
+        if (url === '/api/inventory' || url === '/api/products') return Promise.resolve(jsonResponse([]));
+        if (url.endsWith('/api/scanner/config')) {
+          return Promise.resolve(jsonResponse({ stockInBarcode: 'STOCK_IN', stockOutBarcode: 'STOCK_OUT', currentMode: 'stock_out' }));
+        }
+        throw new Error(`Unexpected request: ${url}`);
+      });
+
+    it('shows a per-tab count badge for each direction, including null-direction entries under stock out', async () => {
+      vi.stubGlobal('fetch', seedQueue([
+        scanEntry({ id: 'in-1', barcode: '111', direction: 'stock_in' }),
+        scanEntry({ id: 'out-1', barcode: '222', direction: 'stock_out' }),
+        scanEntry({ id: 'null-1', barcode: '333', direction: null }),
+      ]));
+
+      render(<MantineProvider><ScanQueuePage /></MantineProvider>);
+
+      const stockInTab = await screen.findByRole('tab', { name: /Stock in/ });
+      const stockOutTab = screen.getByRole('tab', { name: /Stock out/ });
+      // stock_in has one entry; stock_out is the catchall for stock_out + null.
+      expect(within(stockInTab).getByText('1')).toBeInTheDocument();
+      expect(within(stockOutTab).getByText('2')).toBeInTheDocument();
+    });
+
+    it('hides the badge for a direction with an empty queue but keeps the tab', async () => {
+      vi.stubGlobal('fetch', seedQueue([
+        scanEntry({ id: 'out-1', barcode: '222', direction: 'stock_out' }),
+      ]));
+
+      render(<MantineProvider><ScanQueuePage /></MantineProvider>);
+
+      const stockInTab = await screen.findByRole('tab', { name: /Stock in/ });
+      const stockOutTab = screen.getByRole('tab', { name: /Stock out/ });
+      // Both tabs remain visible; only the empty stock_in tab has no badge.
+      expect(stockInTab).toBeInTheDocument();
+      expect(within(stockOutTab).getByText('1')).toBeInTheDocument();
+      expect(within(stockInTab).queryByText(/\d/)).not.toBeInTheDocument();
+    });
+
+    it('caps a count above 99 as "99+"', async () => {
+      const manyStockIn = Array.from({ length: 150 }, (_unused, index) =>
+        scanEntry({ id: `in-${index}`, barcode: String(index), direction: 'stock_in' }));
+
+      vi.stubGlobal('fetch', seedQueue(manyStockIn));
+
+      render(<MantineProvider><ScanQueuePage /></MantineProvider>);
+
+      const stockInTab = await screen.findByRole('tab', { name: /Stock in/ });
+      expect(within(stockInTab).getByText('99+')).toBeInTheDocument();
+    });
+
+    it('shows exactly "99" at the cap boundary without the plus', async () => {
+      const ninetyNineStockIn = Array.from({ length: 99 }, (_unused, index) =>
+        scanEntry({ id: `in-${index}`, barcode: String(index), direction: 'stock_in' }));
+
+      vi.stubGlobal('fetch', seedQueue(ninetyNineStockIn));
+
+      render(<MantineProvider><ScanQueuePage /></MantineProvider>);
+
+      const stockInTab = await screen.findByRole('tab', { name: /Stock in/ });
+      expect(within(stockInTab).getByText('99')).toBeInTheDocument();
+    });
+
+    it('drops a tab badge live when its queue empties over the event stream', async () => {
+      vi.stubGlobal('fetch', seedQueue([
+        scanEntry({ id: 'in-1', barcode: '111', direction: 'stock_in' }),
+        scanEntry({ id: 'out-1', barcode: '222', direction: 'stock_out' }),
+      ]));
+
+      render(<MantineProvider><ScanQueuePage /></MantineProvider>);
+
+      const stockInTab = await screen.findByRole('tab', { name: /Stock in/ });
+      expect(within(stockInTab).getByText('1')).toBeInTheDocument();
+
+      // Committing the only stock_in entry removes it from the displayed list.
+      const eventSource = FakeEventSource.instances[0];
+      eventSource.dispatch('scan', scanEntry({ id: 'in-1', barcode: '111', direction: 'stock_in', status: 'committed' }));
+
+      await vi.waitFor(() => expect(within(stockInTab).queryByText(/\d/)).not.toBeInTheDocument());
+      expect(stockInTab).toBeInTheDocument();
+    });
+  });
 });

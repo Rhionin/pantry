@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Alert, Checkbox, Loader, Tabs, SimpleGrid, Stack, Text, Title } from '@mantine/core';
+import { Alert, Badge, Checkbox, Loader, Tabs, SimpleGrid, Stack, Text, Title } from '@mantine/core';
 import { createScanEntry, getInventoryList, getScannerConfig, listScanEntries, setScannerMode } from '../../api/client';
 import type { InventoryItem, ScanEntry, ScannerConfig } from '../../types';
 import { BarcodeInputField } from '../scanner/BarcodeInputField';
 import { BatchReviewPanel } from './BatchReviewPanel';
 import { ScanEntryCard } from './ScanEntryCard';
-import { getEntriesForView, isBatchEligible, mergeScanEvent, pruneSelection, sortScansChronologically, toggleSelectAll } from './queueUtils';
+import { formatReviewCount, getEntriesForView, isBatchEligible, mergeScanEvent, pruneSelection, sortScansChronologically, toggleSelectAll } from './queueUtils';
 
 const DEFAULT_USER_ID = 'user-1';
 
@@ -42,6 +42,9 @@ export const ScanQueuePage = ({ userId = DEFAULT_USER_ID }: ScanQueuePageProps) 
     setActiveView(value);
     setSelectedIds([]);
   };
+
+  const stockInCount = useMemo(() => getEntriesForView(entries, 'stock_in').length, [entries]);
+  const stockOutCount = useMemo(() => getEntriesForView(entries, 'stock_out').length, [entries]);
 
   const viewEntries = useMemo(() => getEntriesForView(entries, activeView), [entries, activeView]);
   const viewEntryIds = useMemo(() => new Set(viewEntries.map((entry) => entry.id)), [viewEntries]);
@@ -168,8 +171,22 @@ export const ScanQueuePage = ({ userId = DEFAULT_USER_ID }: ScanQueuePageProps) 
       </Alert>
       <Tabs value={activeView} onChange={handleViewChange}>
         <Tabs.List>
-          <Tabs.Tab value="stock_in">Stock in</Tabs.Tab>
-          <Tabs.Tab value="stock_out">Stock out</Tabs.Tab>
+          <Tabs.Tab
+            value="stock_in"
+            rightSection={stockInCount > 0
+              ? <Badge size="sm" circle aria-hidden>{formatReviewCount(stockInCount)}</Badge>
+              : undefined}
+          >
+            Stock in
+          </Tabs.Tab>
+          <Tabs.Tab
+            value="stock_out"
+            rightSection={stockOutCount > 0
+              ? <Badge size="sm" circle aria-hidden>{formatReviewCount(stockOutCount)}</Badge>
+              : undefined}
+          >
+            Stock out
+          </Tabs.Tab>
         </Tabs.List>
       </Tabs>
       <Checkbox
