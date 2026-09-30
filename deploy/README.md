@@ -523,24 +523,31 @@ Note the image is distroless, so `docker exec pantry sh` does not work — use l
    sudo ./setup.sh status
    ```
 
-2. **Check scanner status via `/health`:**
+2. **Upgrading from a pre-hot-plug version? Check `SCANNER_DEVICE`.**
+   ```bash
+   grep '^SCANNER_DEVICE=' /opt/pantry/.env
+   ```
+   An older `.env` pinned `SCANNER_DEVICE=/dev/pantry-scanner`, and the container can no longer open that path — the symlink now lives at `/dev/input/pantry-scanner`. Running `sudo ./setup.sh install` migrates this obsolete default automatically; after it runs, the value should be `/dev/input/pantry-scanner`. (A custom path you set on purpose is left untouched.) Apply it with `cd /opt/pantry && sudo docker compose up -d`. Symptom of the stale value: logs show `failed to open device /dev/pantry-scanner: no such file or directory` and `status` reports the old path.
+
+3. **Check scanner status via `/health`:**
    ```bash
    curl http://localhost:8080/health
    ```
    Then use the `lastError` table in [Headless Scanner Input → Troubleshooting](#troubleshooting) to tell `ENOENT` (rule didn't match), `EACCES` (wrong group), and `EPERM` (cgroup denied) apart — they have different fixes. Remember that `connected: false` with **no** error and no scanner attached is normal and supported.
 
-3. **Verify `/dev/input/pantry-scanner` exists:**
+4. **Verify `/dev/input/pantry-scanner` exists:**
    ```bash
    ls -l /dev/input/pantry-scanner
    ```
+   If it is missing while the scanner is attached — and especially if the scanner's keystrokes are appearing in the Pi's terminal — the udev rule is not matching. The scanner echoing to the console is the tell: the rule that would grant the node to GID 65532 and create the symlink never fired. Regenerate it with `sudo ./setup.sh rule` (which now matches USB scanners on vendor/product IDs) and confirm with `ls -l /dev/input/pantry-scanner`.
 
-4. **Check the container's mounts** (there is no longer a `Devices` array — the scanner is a directory bind mount now):
+5. **Check the container's mounts** (there is no longer a `Devices` array — the scanner is a directory bind mount now):
    ```bash
    sudo docker inspect -f '{{json .Mounts}}' pantry
    ```
    The `Mounts` array should include the `/dev/input` bind mount.
 
-5. **Verify the udev rule matches your device:**
+6. **Verify the udev rule matches your device:**
    ```bash
    lsusb                              # USB
    cat /proc/bus/input/devices        # any input device

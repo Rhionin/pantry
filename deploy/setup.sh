@@ -232,6 +232,17 @@ cmd_reconcile_env() {
     return
   fi
 
+  # Migrate the obsolete default SCANNER_DEVICE path. A .env written by a
+  # pre-hotplug version pinned SCANNER_DEVICE=/dev/pantry-scanner. That was
+  # never an operator choice — it was the old default — and the container can
+  # no longer open it, since the symlink now lives under /dev/input. Rewrite
+  # only that exact obsolete default; a custom path an operator set on purpose
+  # (anything other than the old default) is left untouched.
+  if grep -q '^SCANNER_DEVICE=/dev/pantry-scanner$' /opt/pantry/.env; then
+    sed -i 's|^SCANNER_DEVICE=/dev/pantry-scanner$|SCANNER_DEVICE=/dev/input/pantry-scanner|' /opt/pantry/.env
+    log_warn "Migrated obsolete SCANNER_DEVICE=/dev/pantry-scanner -> /dev/input/pantry-scanner"
+  fi
+
   # Append missing keys from .env.example
   local added=0
   while IFS='=' read -r key value; do
@@ -261,11 +272,20 @@ cmd_rule() {
   require_root
   log_info "Generating udev rule for barcode scanner..."
 
-  # Find candidates from /proc/bus/input/devices
-  local candidates=()
+  # Find candidates from /proc/bus/input/devices. Each device block has an
+  # "I:" line (Bus/Vendor/Product) and an "N: Name=..." line. We capture both
+  # so a USB scanner can be matched on vendor/product (robust) rather than on
+  # its name string alone.
+  local candidate_names=() candidate_vids=() candidate_pids=()
   if [[ -f /proc/bus/input/devices ]]; then
+    local cur_vid="" cur_pid="" cur_bus=""
     while IFS= read -r line; do
-      if [[ "$line" =~ ^N:\ Name= ]]; then
+      if [[ "$line" =~ ^I:\ Bus= ]]; then
+        # e.g. "I: Bus=0003 Vendor=05e0 Product=1200 Version=0100"
+        cur_bus=$(printf '%s\n' "$line" | sed -n 's/.*Bus=\([0-9a-fA-F]*\).*/\1/p')
+        cur_vid=$(printf '%s\n' "$line" | sed -n 's/.*Vendor=\([0-9a-fA-F]*\).*/\1/p')
+        cur_pid=$(printf '%s\n' "$line" | sed -n 's/.*Product=\([0-9a-fA-F]*\).*/\1/p')
+      elif [[ "$line" =~ ^N:\ Name= ]]; then
         local name="${line#*Name=\"}"
         name="${name%\"*}"
         # Filter for likely scanner devices (avoid generic HID keyboards).
@@ -273,7 +293,9 @@ cmd_rule() {
         # "BARCODE", etc. all match; it is restored immediately after.
         shopt -s nocasematch
         if [[ "$name" =~ (scanner|barcode) ]]; then
-          candidates+=("$name")
+          candidate_names+=("$name")
+          candidate_vids+=("$cur_vid")
+          candidate_pids+=("$cur_pid")
         fi
         shopt -u nocasematch
       fi
@@ -281,31 +303,55 @@ cmd_rule() {
   fi
 
   # Show candidates or use first
-  if [[ ${#candidates[@]} -eq 0 ]]; then
+  if [[ ${#candidate_names[@]} -eq 0 ]]; then
     log_warn "No scanner candidates found in /proc/bus/input/devices"
     log_info "Devices available:"
     grep "^N: " /proc/bus/input/devices || true
     fatal "Please manually create the udev rule at /etc/udev/rules.d/99-pantry-scanner.rules"
   fi
 
-  if [[ ${#candidates[@]} -gt 1 ]]; then
+  if [[ ${#candidate_names[@]} -gt 1 ]]; then
     log_warn "Multiple scanner candidates found. Using the first:"
-    log_info "${candidates[0]}"
+    log_info "${candidate_names[0]}"
   else
-    log_success "Found scanner: ${candidates[0]}"
+    log_success "Found scanner: ${candidate_names[0]}"
   fi
 
-  local scanner_name="${candidates[0]}"
-  local rule_content="# Pantry Scanner udev rule - auto-generated
+  local scanner_name="${candidate_names[0]}"
+  local scanner_vid="${candidate_vids[0]}"
+  local scanner_pid="${candidate_pids[0]}"
+
+  # Prefer matching on vendor/product IDs when available (robust, not
+  # order-sensitive). udev's input_id builtin lowercases these into
+  # ENV{ID_VENDOR_ID}/ENV{ID_MODEL_ID}. Fall back to the device name for
+  # Bluetooth or when IDs are absent.
+  local rule_content
+  if [[ -n "$scanner_vid" && -n "$scanner_pid" ]]; then
+    local vid_lc pid_lc
+    vid_lc=$(printf '%s' "$scanner_vid" | tr '[:upper:]' '[:lower:]')
+    pid_lc=$(printf '%s' "$scanner_pid" | tr '[:upper:]' '[:lower:]')
+    log_info "Matching on vendor=$vid_lc product=$pid_lc"
+    rule_content="# Pantry Scanner udev rule - auto-generated for \"$scanner_name\"
+SUBSYSTEM==\"input\", KERNEL==\"event*\", ENV{ID_VENDOR_ID}==\"$vid_lc\", ENV{ID_MODEL_ID}==\"$pid_lc\", \\
+  SYMLINK+=\"input/pantry-scanner\", GROUP=\"65532\", MODE=\"0640\"
+"
+  else
+    log_info "No vendor/product IDs found; matching on device name"
+    rule_content="# Pantry Scanner udev rule - auto-generated
 SUBSYSTEM==\"input\", KERNEL==\"event*\", ATTRS{name}==\"$scanner_name\", \\
   SYMLINK+=\"input/pantry-scanner\", GROUP=\"65532\", MODE=\"0640\"
 "
+  fi
 
   local rule_file="/etc/udev/rules.d/99-pantry-scanner.rules"
-  
-  # Only write if content differs
-  if [[ ! -f "$rule_file" ]] || ! grep -q "ATTRS{name}==\"$scanner_name\"" "$rule_file" 2>/dev/null; then
-    echo "$rule_content" > "$rule_file"
+
+  # Only write if the installed content differs from what we would generate.
+  # Comparing the whole content (not just the match key) means an outdated
+  # rule — e.g. one from a pre-hotplug version whose SYMLINK was still
+  # "pantry-scanner" instead of "input/pantry-scanner" — is correctly
+  # rewritten on re-run.
+  if [[ ! -f "$rule_file" ]] || [[ "$(cat "$rule_file")" != "$rule_content" ]]; then
+    printf '%s' "$rule_content" > "$rule_file"
     log_success "Wrote $rule_file"
   else
     log_success "$rule_file already up to date"
@@ -373,15 +419,31 @@ cmd_status() {
     log_warn "udev rule not installed at /etc/udev/rules.d/99-pantry-scanner.rules"
   fi
 
-  # 5. Scanner device resolves
+  # 5. Scanner device resolves to a real node, and 6. that node is group
+  #    65532 / mode 0640. A missing scanner is a SUPPORTED state, not a
+  #    failure — the container still runs and /health still returns ok — so
+  #    it is reported as PASS-with-note. What operators care about is the
+  #    other case: a scanner PRESENT but unreadable.
   if [[ -n "${scanner_device:-}" ]]; then
-    if readlink -f "$scanner_device" > /dev/null 2>&1; then
+    # readlink -f succeeds on a non-existent path (it just echoes it back),
+    # so test for actual existence with -e, not readlink's exit status.
+    if [[ -e "$scanner_device" ]]; then
       local resolved
       resolved=$(readlink -f "$scanner_device")
       log_success "Scanner device resolves: $scanner_device -> $resolved"
+
+      # 6. Group and mode on the resolved node.
+      local node_group node_mode
+      node_group=$(stat -c "%g" "$resolved" 2>/dev/null || echo "?")
+      node_mode=$(stat -c "%a" "$resolved" 2>/dev/null || echo "?")
+      if [[ "$node_group" == "65532" && "$node_mode" == "640" ]]; then
+        log_success "Scanner node is group 65532 mode 0640 (readable by the container)"
+      else
+        log_error "Scanner node is group $node_group mode $node_mode, expected group 65532 mode 0640 — scanner is PRESENT but the container cannot read it (EACCES). Fix GROUP in the udev rule or SCANNER_GID in .env, then: sudo ./setup.sh rule"
+        failed=$((failed + 1))
+      fi
     else
-      log_error "Scanner device does not resolve: $scanner_device"
-      failed=$((failed + 1))
+      log_warn "Scanner device $scanner_device does not exist — scanner absent (SUPPORTED: container runs and /health is ok). If a scanner IS attached, the udev rule did not match (ENOENT): fix its match keys and run 'sudo ./setup.sh rule'"
     fi
   fi
 
