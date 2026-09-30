@@ -129,7 +129,7 @@ func TestRunDevice_Success(t *testing.T) {
 
 	// Build a valid input_event record for "123456" followed by Enter
 	var buf bytes.Buffer
-	for _, code := range []uint16{0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x2a} { // 1,2,3,4,5,6,Enter
+	for _, code := range []uint16{0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x1c} { // 1,2,3,4,5,6,Enter
 		buf.Write(make([]byte, 16)) // padding for timeval
 		binary.Write(&buf, binary.LittleEndian, uint16(evKey))
 		binary.Write(&buf, binary.LittleEndian, code)
@@ -362,7 +362,7 @@ func TestGrabFailureNonFatal(t *testing.T) {
 
 	// Build a valid input_event for "123" followed by Enter
 	var buf bytes.Buffer
-	for _, code := range []uint16{0x02, 0x03, 0x04, 0x2a} { // 1,2,3,Enter
+	for _, code := range []uint16{0x02, 0x03, 0x04, 0x1c} { // 1,2,3,Enter
 		buf.Write(make([]byte, 16))
 		binary.Write(&buf, binary.LittleEndian, uint16(evKey))
 		binary.Write(&buf, binary.LittleEndian, code)

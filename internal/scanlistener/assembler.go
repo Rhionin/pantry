@@ -11,9 +11,12 @@ type lineAssembler struct {
 // feed processes one Key_Event. It returns ok=true exactly once per Enter,
 // with the accumulated line; every other event returns ok=false.
 func (a *lineAssembler) feed(e KeyEvent) (line string, ok bool) {
-	// Shift key handling: Value=1 is press (set shift), Value=0 is release (clear shift)
-	// Key code 0x36 is KEY_RIGHTSHIFT
-	if e.Type == evKey && e.Code == 0x36 {
+	// Shift key handling: Value=1 is press (set shift), Value=0 is release
+	// (clear shift). 0x2a is KEY_LEFTSHIFT, 0x36 is KEY_RIGHTSHIFT — both must
+	// be tracked so shifted characters decode correctly regardless of which
+	// shift the scanner emits. This must run before IsKeyPress() below, since
+	// the release event (Value=0) also needs to clear the flag.
+	if e.Type == evKey && (e.Code == 0x2a || e.Code == 0x36) {
 		if e.Value == valuePress {
 			a.shift = true
 		} else {

@@ -12,17 +12,17 @@ func TestLineAssembler(t *testing.T) {
 	}{
 		{
 			name:   "single barcode",
-			events: []KeyEvent{{Type: evKey, Code: 0x02, Value: valuePress}, {Type: evKey, Code: 0x03, Value: valuePress}, {Type: evKey, Code: 0x2a, Value: valuePress}}, // 1, 2, Enter
+			events: []KeyEvent{{Type: evKey, Code: 0x02, Value: valuePress}, {Type: evKey, Code: 0x03, Value: valuePress}, {Type: evKey, Code: 0x1c, Value: valuePress}}, // 1, 2, Enter
 			want:   []string{"12"},
 		},
 		{
 			name:   "multiple barcodes",
-			events: []KeyEvent{{Type: evKey, Code: 0x02, Value: valuePress}, {Type: evKey, Code: 0x2a, Value: valuePress}, {Type: evKey, Code: 0x03, Value: valuePress}, {Type: evKey, Code: 0x2a, Value: valuePress}}, // 1, Enter, 2, Enter
+			events: []KeyEvent{{Type: evKey, Code: 0x02, Value: valuePress}, {Type: evKey, Code: 0x1c, Value: valuePress}, {Type: evKey, Code: 0x03, Value: valuePress}, {Type: evKey, Code: 0x1c, Value: valuePress}}, // 1, Enter, 2, Enter
 			want:   []string{"1", "2"},
 		},
 		{
 			name:   "empty line",
-			events: []KeyEvent{{Type: evKey, Code: 0x2a, Value: valuePress}}, // Enter only
+			events: []KeyEvent{{Type: evKey, Code: 0x1c, Value: valuePress}}, // Enter only
 			want:   []string{""},
 		},
 		{
@@ -32,7 +32,7 @@ func TestLineAssembler(t *testing.T) {
 				{Type: evKey, Code: 0x1e, Value: valuePress}, // A
 				{Type: evKey, Code: 0x36, Value: 0},          // shift up (release)
 				{Type: evKey, Code: 0x1e, Value: valuePress}, // a
-				{Type: evKey, Code: 0x2a, Value: valuePress}, // Enter
+				{Type: evKey, Code: 0x1c, Value: valuePress}, // Enter
 			},
 			want: []string{"Aa"},
 		},
@@ -42,7 +42,7 @@ func TestLineAssembler(t *testing.T) {
 				{Type: evKey, Code: 0x02, Value: valuePress}, // 1
 				{Type: evKey, Code: 0xff, Value: valuePress}, // unmapped
 				{Type: evKey, Code: 0x03, Value: valuePress}, // 2
-				{Type: evKey, Code: 0x2a, Value: valuePress}, // Enter
+				{Type: evKey, Code: 0x1c, Value: valuePress}, // Enter
 			},
 			want: []string{"12"},
 		},
@@ -53,7 +53,7 @@ func TestLineAssembler(t *testing.T) {
 				{Type: evKey, Code: 0x02, Value: 0},           // 1 release
 				{Type: evKey, Code: 0x03, Value: valuePress},  // 2 press
 				{Type: evKey, Code: 0x03, Value: 0},           // 2 release
-				{Type: evKey, Code: 0x2a, Value: valuePress},  // Enter
+				{Type: evKey, Code: 0x1c, Value: valuePress},  // Enter
 			},
 			want: []string{"12"},
 		},
@@ -63,7 +63,7 @@ func TestLineAssembler(t *testing.T) {
 				{Type: evKey, Code: 0x02, Value: valuePress}, // 1
 				{Type: 0x00, Code: 0, Value: 0},             // SYN_REPORT
 				{Type: evKey, Code: 0x03, Value: valuePress}, // 2
-				{Type: evKey, Code: 0x2a, Value: valuePress}, // Enter
+				{Type: evKey, Code: 0x1c, Value: valuePress}, // Enter
 			},
 			want: []string{"12"},
 		},
@@ -71,7 +71,7 @@ func TestLineAssembler(t *testing.T) {
 			name: "reset clears buffer",
 			events: []KeyEvent{
 				{Type: evKey, Code: 0x02, Value: valuePress}, // 1
-				{Type: evKey, Code: 0x2a, Value: valuePress}, // Enter (to ensure there's something to reset)
+				{Type: evKey, Code: 0x1c, Value: valuePress}, // Enter (to ensure there's something to reset)
 			},
 			want: []string{"1"},
 		},
@@ -108,7 +108,7 @@ func TestLineAssembler(t *testing.T) {
 				if ok && line != "" {
 					t.Errorf("after reset, feed '1' = %q, true, want empty string, false", line)
 				}
-				line, ok = a.feed(KeyEvent{Type: evKey, Code: 0x2a, Value: valuePress}) // Enter
+				line, ok = a.feed(KeyEvent{Type: evKey, Code: 0x1c, Value: valuePress}) // Enter
 				if !ok || line != "1" {
 					t.Errorf("after reset, feed Enter = %q, %v, want %q, true", line, ok, "1")
 				}
@@ -125,7 +125,7 @@ func TestLineAssembler_UnmappedCount(t *testing.T) {
 	a.feed(KeyEvent{Type: evKey, Code: 0x02, Value: valuePress}) // 1
 	a.feed(KeyEvent{Type: evKey, Code: 0xff, Value: valuePress})  // unmapped
 	a.feed(KeyEvent{Type: evKey, Code: 0x100, Value: valuePress}) // unmapped
-	a.feed(KeyEvent{Type: evKey, Code: 0x2a, Value: valuePress})  // Enter
+	a.feed(KeyEvent{Type: evKey, Code: 0x1c, Value: valuePress})  // Enter
 
 	if a.UnmappedCount() != 2 {
 		t.Errorf("UnmappedCount = %d, want 2", a.UnmappedCount())
