@@ -95,8 +95,12 @@ export const setScannerMode = async (
  * so the caller scans in the correct mode (use setScannerMode for stock_out).
  *
  * When expirationDate is provided, it is typed into the card's `Expiration
- * date` input and committed on blur (the field patches on blur, so we press Tab
- * to fire the PATCH before approving). After approval the card detaches.
+ * date` input and committed on blur. The field patches on blur via
+ * `PATCH /api/scans/:id`, and approving commits the entry to inventory through
+ * a separate request, so we must WAIT for that PATCH to persist before
+ * approving. Otherwise a slow runner can commit the instance before its date
+ * lands, leaving an instance with no expiry (the stock-out-oldest flake).
+ * After approval the card detaches.
  */
 export const commitSelectedScan = async (
   page: Page,
@@ -106,8 +110,28 @@ export const commitSelectedScan = async (
   if (expirationDate !== undefined) {
     const expiry = scanCard.getByLabel('Expiration date')
     await expiry.fill(expirationDate)
-    // Blur so the onBlur PATCH persists the date before we approve.
-    await expiry.press('Tab')
+    // The date field persists on blur via PATCH /api/scans/:id, and approving
+    // commits the entry to inventory through a separate request. We MUST wait
+    // for that PATCH to land before approving: otherwise a slow runner can
+    // process the commit before the date is persisted, committing an instance
+    // with no expiry (the stock-out-oldest flake that only surfaced under CI
+    // latency). Arm the response listener before blurring so we never miss it.
+    //
+    // Pressing Tab does NOT blur this composite date input (the browser moves
+    // focus between its day/month/year segments), so the onBlur PATCH only ever
+    // fired when Approve was clicked - racing the commit. Blur explicitly to
+    // fire the PATCH deterministically, then await it.
+    const patchResponse = page.waitForResponse(
+      (response) =>
+        /\/api\/scans\/[^/]+$/.test(new URL(response.url()).pathname) &&
+        response.request().method() === 'PATCH' &&
+        response.ok(),
+    )
+    await expiry.blur()
+    await patchResponse
+    // The persisted value is echoed back on re-render; confirm the observable
+    // state has settled before we approve.
+    await expect(expiry).toHaveValue(expirationDate)
   }
   await scanCard.getByRole('button', { name: 'Approve', exact: true }).click()
   await expect(scanCard).toHaveCount(0)
