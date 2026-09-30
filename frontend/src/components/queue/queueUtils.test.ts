@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import fc from 'fast-check';
 import type { ScanEntry, ScanStatus } from '../../types';
-import { getEntriesForView, isValidUnitCount, mergeScanEvent, pruneSelection, toggleSelectAll, isBatchEligible } from './queueUtils';
+import { formatReviewCount, getEntriesForView, isValidUnitCount, mergeScanEvent, pruneSelection, toggleSelectAll, isBatchEligible } from './queueUtils';
 
 const DISPLAYABLE_SCAN_STATUSES: ScanStatus[] = ['pending', 'flagged'];
 
@@ -298,6 +298,32 @@ describe('toggleSelectAll', () => {
     ), { numRuns: 100 });
   });
 });
+describe('formatReviewCount', () => {
+  it('renders a small count verbatim', () => {
+    expect(formatReviewCount(0)).toBe('0');
+    expect(formatReviewCount(7)).toBe('7');
+  });
+
+  it('renders exactly 99 at the cap boundary without the plus', () => {
+    expect(formatReviewCount(99)).toBe('99');
+  });
+
+  it('caps anything above 99 as "99+"', () => {
+    expect(formatReviewCount(100)).toBe('99+');
+    expect(formatReviewCount(4321)).toBe('99+');
+  });
+
+  it('caps every count over 99 and shows the exact value otherwise', () => {
+    fc.assert(fc.property(
+      fc.integer({ min: 0, max: 10000 }),
+      (count) => {
+        const expected = count > 99 ? '99+' : String(count);
+        expect(formatReviewCount(count)).toBe(expected);
+      },
+    ), { numRuns: 100 });
+  });
+});
+
 describe('getEntriesForView', () => {
   // Feature: scan-queue-polish, Property 3: Every entry belongs to exactly one queue view
   //
