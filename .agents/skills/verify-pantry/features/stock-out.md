@@ -8,8 +8,8 @@ stock.
 
 ## Sub-features
 
-- `stock-out-mode` switching to the Stock out tab (or scanning the stock-out
-  control barcode) puts new scans in `stock_out` direction.
+- `stock-out-mode` scanning the stock-out control barcode puts new scans in
+  `stock_out` direction (the Stock out tab only changes the view, not the mode).
 - `stock-out-scan` scanning a stocked product in stock-out mode creates a pending
   stock-out card.
 - `stock-out-oldest` approving with no instance selected removes the
@@ -19,10 +19,10 @@ stock.
 
 ## How to get to it (user POV)
 
-- Open `Scan Queue` (`/`), select the `Stock out` tab, and scan a product that
-  already has inventory.
-- Or scan the configured stock-out control barcode (default `STOCK_OUT`) to
-  switch the shared scanner mode, then scan the product.
+- Open `Scan Queue` (`/`), scan the configured stock-out control barcode
+  (default `STOCK_OUT`) to switch the shared scanner mode, then scan a product
+  that already has inventory. The `Stock out` tab changes the view you look at,
+  but the scan's direction comes from the scanner mode, not the tab.
 
 ## Driving it with Playwright
 
@@ -37,9 +37,11 @@ Preconditions:
 - **Stock two instances.** For each of two expiration dates: scan in stock-in
   mode, set the card's `getByLabel('Expiration date')`, and approve. Inventory
   `instanceCount` for the product is `2`.
-- **Switch to stock out.** `page.getByRole('tab', { name: 'Stock out'
-  }).click()` (or scan the `STOCK_OUT` control barcode). New scans now carry
-  `stock_out`.
+- **Switch to stock out.** Scan the `STOCK_OUT` control barcode via
+  `setScannerMode(page, 'stock_out')` and wait for the `Mode: stock_out` banner.
+  New scans now carry `stock_out`. The Stock in/Stock out Tabs only change the
+  VIEW, not the scanner mode, so clicking the tab alone leaves scans in
+  `stock_in`.
 - **Scan for stock out.** `scanBarcode(page, barcode)`; the card appears under
   the Stock out tab. Leave the instance selector unset to exercise oldest-first.
 - **Approve.** `card.getByRole('button', { name: 'Approve', exact: true
@@ -51,6 +53,8 @@ Preconditions:
 - **Proof.** `captureProof(page, 'stock-out', { remainingInstanceCount })` with
   the instance list visible, so the surviving expiry date is in the ARIA
   snapshot.
+
+`scripts/drive-stock-out.mjs` is this recipe, verified end to end.
 
 ## Gotchas
 

@@ -69,8 +69,11 @@ behavior, then uses exactly these four H2 sections in order:
   approve it, and confirm the unit lands in inventory. Proven end to end by
   `scripts/drive-stock-in.mjs`.
 - [Resolve a flagged scan](./flagged-resolution.md) — an unknown barcode flags;
-  create a product for it and turn it into an approvable pending scan.
+  create a product for it and turn it into an approvable pending scan. Proven end
+  to end by `scripts/drive-flagged-resolution.mjs`.
 - [Stock out oldest-first](./stock-out.md) — switch to stock-out mode, scan a
-  stocked product, and confirm the earliest-expiring instance is consumed.
+  stocked product, and confirm the earliest-expiring instance is consumed. Proven
+  end to end by `scripts/drive-stock-out.mjs`.
 - [Shopping list](./shopping-list.md) — derive a restock gap from a target
-  quantity, or add an item manually, then mark it purchased.
+  quantity, or add an item manually, then mark it purchased. Proven end to end by
+  `scripts/drive-shopping-list.mjs`.

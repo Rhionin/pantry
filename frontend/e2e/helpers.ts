@@ -39,6 +39,12 @@ export const createKnownProduct = async (
   expect(overrideResponse.ok()).toBe(true)
 }
 
+/**
+ * Type a barcode into the HID scanner input and press Enter, the way a physical
+ * scanner does. The scan is stamped with the queue's current scanner mode, so
+ * the caller must switch the mode first when a stock_out scan is wanted.
+ * Returns the scan card locator for that barcode.
+ */
 export const scanBarcode = async (page: Page, barcode: string): Promise<Locator> => {
   const scannerInput = page.getByRole('textbox', { name: 'Barcode scanner input' })
   await scannerInput.fill(barcode)
@@ -49,18 +55,61 @@ export const scanBarcode = async (page: Page, barcode: string): Promise<Locator>
   return scanCard
 }
 
+/**
+ * Reset the scanner to stock_in mode so a spec starts from a known direction.
+ * Scanner mode is server-side global state that persists for the whole
+ * `npx playwright test` run (one webServer, one DB), so a prior spec that
+ * switched to stock_out would otherwise leak into the next. This scans the
+ * STOCK_IN control barcode only when the banner is not already stock_in.
+ */
+export const resetToStockIn = async (page: Page): Promise<void> => {
+  // Wait for the mode banner to settle (it is seeded async from
+  // GET /api/scanner/config) before deciding whether a switch is needed.
+  await expect(page.getByRole('alert').filter({ hasText: /^Mode: stock_(in|out)/ })).toBeVisible()
+  if (await page.getByText('Mode: stock_in').isVisible()) return
+  await setScannerMode(page, 'stock_in')
+}
+
+/**
+ * Switch the scanner mode the way a user does: scan a reserved control barcode.
+ * A control barcode does NOT create a scan card - ScanQueuePage.captureBarcode
+ * classifies it, calls setScannerMode, and returns early - so we wait for the
+ * on-screen `Mode: <mode>` banner instead of a card. The default control
+ * strings are 'STOCK_IN' / 'STOCK_OUT' (GET /api/scanner/config).
+ */
+export const setScannerMode = async (
+  page: Page,
+  mode: 'stock_in' | 'stock_out',
+): Promise<void> => {
+  const controlBarcode = mode === 'stock_out' ? 'STOCK_OUT' : 'STOCK_IN'
+  const scannerInput = page.getByRole('textbox', { name: 'Barcode scanner input' })
+  await scannerInput.fill(controlBarcode)
+  await scannerInput.press('Enter')
+  await expect(page.getByText(`Mode: ${mode}`)).toBeVisible()
+}
+
+/**
+ * Approve a single pending scan through its per-card Approve button, the real
+ * current flow (see .agents/skills/verify-pantry/scripts/drive-stock-in.mjs).
+ * Direction is not set here: it is stamped from the scanner mode at scan time,
+ * so the caller scans in the correct mode (use setScannerMode for stock_out).
+ *
+ * When expirationDate is provided, it is typed into the card's `Expiration
+ * date` input and committed on blur (the field patches on blur, so we press Tab
+ * to fire the PATCH before approving). After approval the card detaches.
+ */
 export const commitSelectedScan = async (
   page: Page,
   scanCard: Locator,
-  direction: 'stock_in' | 'stock_out',
   expirationDate?: string,
 ): Promise<void> => {
-  await scanCard.getByRole('checkbox', { name: 'Select for batch review' }).check()
-  await page.getByLabel('Direction').selectOption(direction)
   if (expirationDate !== undefined) {
-    await page.getByLabel('Expiration date').fill(expirationDate)
+    const expiry = scanCard.getByLabel('Expiration date')
+    await expiry.fill(expirationDate)
+    // Blur so the onBlur PATCH persists the date before we approve.
+    await expiry.press('Tab')
   }
-  await page.getByRole('button', { name: 'Commit 1 selected' }).click()
+  await scanCard.getByRole('button', { name: 'Approve', exact: true }).click()
   await expect(scanCard).toHaveCount(0)
 }
 

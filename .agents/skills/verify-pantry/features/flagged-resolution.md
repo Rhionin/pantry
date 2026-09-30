@@ -48,6 +48,11 @@ Preconditions:
   after the flag clears, so the ARIA snapshot shows the product name in place of
   the `Flagged` badge.
 
+`scripts/drive-flagged-resolution.mjs` is this recipe, verified end to end. It
+scans the unknown barcode in stock_in mode, so the resolved entry carries a
+direction and is approvable; the driver approves it and confirms `1 can` lands
+in inventory.
+
 ## Gotchas
 
 - The distinguishing signal is the `Flagged` badge, not the absence of a card. A

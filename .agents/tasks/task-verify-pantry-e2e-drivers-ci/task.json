@@ -1,0 +1,7 @@
+{
+  "task_id": "task-verify-pantry-e2e-drivers-ci",
+  "task_description": "Three sequenced follow-ups on the pantry repo's verify-pantry work: (2a) fix the stale frontend/e2e Playwright specs + helpers so they match the real current UI and pass; (2b) add three proven verify-pantry drivers (flagged-resolution, stock-out oldest-first, shopping-list) mirroring drive-stock-in.mjs and prove each green via pantry-verify.sh, updating the feature docs; (2c) wire the e2e suite into CI (.github/workflows/ci.yml) to run on PRs, safely (specific env vars only, merged via PR by the orchestrator). Order matters: 2a establishes the confirmed selectors that 2b and 2c depend on.",
+  "status": "in_progress",
+  "feature_order": ["FEAT-001", "FEAT-002", "FEAT-003"],
+  "blocked_reason": null
+}
