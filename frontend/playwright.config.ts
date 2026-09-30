@@ -17,6 +17,11 @@ const serverBinary = join('..', 'bin', 'pantry-server')
 export default defineConfig({
   testDir: './e2e',
   fullyParallel: false,
+  // Keep this at 1. The e2e run boots a single Go API + single SQLite DB, and
+  // scanner mode is server-global state. Running specs concurrently would let one
+  // spec's mode switch (e.g. flipping to stock-out) corrupt another spec's
+  // in-flight scan, producing flaky failures. Raising the worker count safely
+  // would first require per-worker server/DB isolation.
   workers: 1,
   webServer: [
     {
