@@ -278,11 +278,10 @@ cmd_rule() {
   # its name string alone.
   local candidate_names=() candidate_vids=() candidate_pids=()
   if [[ -f /proc/bus/input/devices ]]; then
-    local cur_vid="" cur_pid="" cur_bus=""
+    local cur_vid="" cur_pid=""
     while IFS= read -r line; do
       if [[ "$line" =~ ^I:\ Bus= ]]; then
         # e.g. "I: Bus=0003 Vendor=05e0 Product=1200 Version=0100"
-        cur_bus=$(printf '%s\n' "$line" | sed -n 's/.*Bus=\([0-9a-fA-F]*\).*/\1/p')
         cur_vid=$(printf '%s\n' "$line" | sed -n 's/.*Vendor=\([0-9a-fA-F]*\).*/\1/p')
         cur_pid=$(printf '%s\n' "$line" | sed -n 's/.*Product=\([0-9a-fA-F]*\).*/\1/p')
       elif [[ "$line" =~ ^N:\ Name= ]]; then
