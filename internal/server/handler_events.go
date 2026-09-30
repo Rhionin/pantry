@@ -22,14 +22,19 @@ func (h *EventsHandler) Handle(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Subscribe before flushing the response headers. A client that observes
+	// the 200 OK is then guaranteed to already be subscribed, so an event
+	// published immediately after the client's request returns cannot slip
+	// through the gap between headers being sent and the subscription being
+	// registered.
+	messages, unsubscribe := h.Broadcaster.Subscribe()
+	defer unsubscribe()
+
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
 	w.WriteHeader(http.StatusOK)
 	flusher.Flush()
-
-	messages, unsubscribe := h.Broadcaster.Subscribe()
-	defer unsubscribe()
 
 	for {
 		select {

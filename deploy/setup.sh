@@ -268,10 +268,14 @@ cmd_rule() {
       if [[ "$line" =~ ^N:\ Name= ]]; then
         local name="${line#*Name=\"}"
         name="${name%\"*}"
-        # Filter for likely scanner devices (avoid generic HID keyboards)
-        if [[ "$name" =~ -i.*scanner|barcode ]]; then
+        # Filter for likely scanner devices (avoid generic HID keyboards).
+        # nocasematch makes the =~ test case-insensitive so "Scanner",
+        # "BARCODE", etc. all match; it is restored immediately after.
+        shopt -s nocasematch
+        if [[ "$name" =~ (scanner|barcode) ]]; then
           candidates+=("$name")
         fi
+        shopt -u nocasematch
       fi
     done < /proc/bus/input/devices
   fi
