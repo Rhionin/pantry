@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/binary"
 	"io"
+	"log"
 	"strings"
 	"testing"
 	"time"
@@ -112,8 +113,8 @@ func TestRunDevice_OpenFail(t *testing.T) {
 	listener.Queue = &fakeQueue{}
 	listener.LookupService = &fakeLookup{}
 
-	// Set a very short backoff for testing
-	listener.maxBackoff = 0
+	// Set a very short poll interval for testing
+	listener.pollInterval = 0
 
 	listener.Run(ctx)
 
@@ -251,9 +252,9 @@ func TestOpenAlwaysFails(t *testing.T) {
 	listener.Queue = &fakeQueue{}
 	listener.LookupService = &fakeLookup{}
 
-	// Set microsecond backoffs for fast test execution
-	listener.initialBackoff = 1 * time.Microsecond
-	listener.maxBackoff = 10 * time.Microsecond
+	// Set a microsecond poll interval for fast test execution
+	listener.pollInterval = 1 * time.Microsecond
+	listener.missingLogInterval = 1 * time.Microsecond
 
 	listener.Run(ctx)
 
@@ -295,8 +296,8 @@ func TestOpenFailsThenSucceeds(t *testing.T) {
 	listener.Queue = &fakeQueue{}
 	listener.LookupService = &fakeLookup{}
 
-	listener.initialBackoff = 1 * time.Microsecond
-	listener.maxBackoff = 10 * time.Microsecond
+	listener.pollInterval = 1 * time.Microsecond
+	listener.missingLogInterval = 1 * time.Microsecond
 
 	listener.Run(ctx)
 
@@ -403,33 +404,106 @@ func TestGrabFailureNonFatal(t *testing.T) {
 	}
 }
 
-// TestNextBackoffDoubles tests that nextBackoff doubles and saturates at maxBackoff.
-func TestNextBackoffDoubles(t *testing.T) {
+// TestReconnectPollDefaults verifies the compiled-in poll and missing-log
+// intervals: retry every 1s, throttle the "still missing" log to every 30s.
+func TestReconnectPollDefaults(t *testing.T) {
 	listener := New()
-	listener.initialBackoff = 1 * time.Millisecond
-	listener.maxBackoff = 30 * time.Millisecond
+	if listener.pollInterval != 1*time.Second {
+		t.Errorf("default pollInterval = %v, want %v", listener.pollInterval, 1*time.Second)
+	}
+	if listener.missingLogInterval != 30*time.Second {
+		t.Errorf("default missingLogInterval = %v, want %v", listener.missingLogInterval, 30*time.Second)
+	}
+}
 
-	current := listener.initialBackoff
-	expected := listener.initialBackoff
+// TestMissingDeviceLogThrottled verifies that when the device is missing, the
+// "not available" line is logged on the first failure and then at most once
+// per missingLogInterval — not on every poll — while the loop keeps retrying
+// every pollInterval.
+func TestMissingDeviceLogThrottled(t *testing.T) {
+	// Capture log output.
+	var logBuf bytes.Buffer
+	origOut := log.Writer()
+	log.SetOutput(&logBuf)
+	defer log.SetOutput(origOut)
 
-	// Verify doubling
-	for i := 0; i < 5; i++ {
-		current = listener.nextBackoff(current)
-		expected = expected * 2
-		if expected > listener.maxBackoff {
-			expected = listener.maxBackoff
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	// Drive time with a fake clock so the throttle window is deterministic.
+	// Each open attempt advances the clock by 1s (the poll interval), so the
+	// 30s throttle window should permit exactly one log line per 30 attempts.
+	var nowNanos int64
+	attempts := 0
+	openFunc := func(path string) (io.ReadCloser, bool, error) {
+		attempts++
+		if attempts >= 90 { // stop after ~3 throttle windows
+			cancel()
 		}
-		if current != expected {
-			t.Errorf("nextBackoff iteration %d: got %v, want %v", i, current, expected)
-		}
+		return nil, false, io.EOF
 	}
 
-	// Verify saturation: after reaching maxBackoff, it should stay at maxBackoff
-	for i := 0; i < 3; i++ {
-		current = listener.nextBackoff(current)
-		if current != listener.maxBackoff {
-			t.Errorf("after saturation, nextBackoff should stay at maxBackoff, got %v", current)
+	listener := New()
+	listener.Source = SourceDevice
+	listener.Open = openFunc
+	listener.Queue = &fakeQueue{}
+	listener.LookupService = &fakeLookup{}
+	listener.pollInterval = 0 // don't actually sleep in the test
+	listener.missingLogInterval = 30 * time.Second
+	listener.Now = func() time.Time {
+		t := time.Unix(0, nowNanos)
+		nowNanos += int64(time.Second) // each call advances 1s
+		return t
+	}
+
+	listener.Run(ctx)
+
+	// Over ~90 attempts advancing 1s each (~90s of virtual time) with a 30s
+	// throttle, the "not available" line should appear only a handful of
+	// times (roughly once per 30s window), never once per attempt.
+	logged := strings.Count(logBuf.String(), "not available")
+	if logged == 0 {
+		t.Fatal("expected at least one 'not available' log line")
+	}
+	if logged > 5 {
+		t.Errorf("'not available' logged %d times over ~90 polls; throttle not applied (expected ~3)", logged)
+	}
+}
+
+// TestReconnectLogsImmediatelyOnRecovery verifies that when the device becomes
+// available after being missing, the "connected" line is logged right away
+// (not throttled).
+func TestReconnectLogsImmediatelyOnRecovery(t *testing.T) {
+	var logBuf bytes.Buffer
+	origOut := log.Writer()
+	log.SetOutput(&logBuf)
+	defer log.SetOutput(origOut)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	attempts := 0
+	openFunc := func(path string) (io.ReadCloser, bool, error) {
+		attempts++
+		if attempts < 3 {
+			return nil, false, io.EOF // missing for the first two polls
 		}
+		cancel() // stop after the successful connect
+		return io.NopCloser(bytes.NewReader(nil)), true, nil
+	}
+
+	listener := New()
+	listener.Source = SourceDevice
+	listener.Open = openFunc
+	listener.Queue = &fakeQueue{}
+	listener.LookupService = &fakeLookup{}
+	listener.pollInterval = 0
+	listener.missingLogInterval = 30 * time.Second
+
+	listener.Run(ctx)
+
+	if !strings.Contains(logBuf.String(), "connected to device") {
+		t.Error("expected 'connected to device' to be logged immediately on recovery")
 	}
 }
 
