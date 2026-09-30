@@ -1,6 +1,8 @@
 package cart
 
 import (
+	"net/http"
+	"net/http/httptest"
 	"testing"
 )
 
@@ -206,5 +208,66 @@ func (m *mockProvider) Capabilities() Capabilities {
 		Confirmation: ConfirmNone,
 		Mutation:     MutateAddOnly,
 		Identity:     IdentityDerived,
+	}
+}
+
+
+// Each capability type reports the dimension name used in error messages.
+func TestCapability_Dimension(t *testing.T) {
+	tests := []struct {
+		name string
+		got  string
+		want string
+	}{
+		{"auth", AuthNone.Dimension(), "auth"},
+		{"delivery", DeliveryServerPush.Dimension(), "delivery"},
+		{"confirmation", ConfirmPerLine.Dimension(), "confirmation"},
+		{"mutation", MutateFull.Dimension(), "mutation"},
+		{"identity", IdentityDerived.Dimension(), "identity"},
+		{"provider_id", ProviderID("kroger").Dimension(), "provider_id"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if tt.got != tt.want {
+				t.Errorf("Dimension() = %q, want %q", tt.got, tt.want)
+			}
+		})
+	}
+}
+
+func newRequest(t *testing.T) *http.Request {
+	t.Helper()
+	req := httptest.NewRequest(http.MethodPost, "https://example.com/cart", nil)
+	return req
+}
+
+// NoCredential.Apply leaves the request headers untouched.
+func TestNoCredential_Apply(t *testing.T) {
+	req := newRequest(t)
+	NoCredential{}.Apply(req)
+	if got := req.Header.Get("Authorization"); got != "" {
+		t.Errorf("Authorization = %q, want empty", got)
+	}
+}
+
+// NewBearerCredential builds a credential whose Apply sets a bearer Authorization header.
+func TestNewBearerCredential_Apply(t *testing.T) {
+	req := newRequest(t)
+	NewBearerCredential("tok-123").Apply(req)
+	if got := req.Header.Get("Authorization"); got != "Bearer tok-123" {
+		t.Errorf("Authorization = %q, want %q", got, "Bearer tok-123")
+	}
+}
+
+// HeaderCredential.Apply sets its configured header to its value.
+func TestHeaderCredential_Apply(t *testing.T) {
+	req := newRequest(t)
+	HeaderCredential{name: "X-API-Key", value: "secret-value"}.Apply(req)
+	if got := req.Header.Get("X-API-Key"); got != "secret-value" {
+		t.Errorf("X-API-Key = %q, want %q", got, "secret-value")
+	}
+	if got := req.Header.Get("Authorization"); got != "" {
+		t.Errorf("Authorization = %q, want empty", got)
 	}
 }

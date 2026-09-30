@@ -10,19 +10,19 @@ import (
 // TokenBroker implements result-sharing single flight for token refresh.
 // Every waiting caller receives the token the one in-progress exchange produced.
 type TokenBroker struct {
-	mu       sync.Mutex
-	inFlight map[string]*refreshCall
+	mu        sync.Mutex
+	inFlight  map[string]*refreshCall
 	Directory *Directory
 }
 
 // refreshCall holds a pending token exchange.
 type refreshCall struct {
-	done chan struct{}
-	err  error
-	accessToken string
+	done         chan struct{}
+	err          error
+	accessToken  string
 	refreshToken string
-	expiresIn   time.Duration
-	receiptAt   time.Time
+	expiresIn    time.Duration
+	receiptAt    time.Time
 }
 
 // NewTokenBroker creates a new TokenBroker.
@@ -80,17 +80,19 @@ func (b *TokenBroker) AccessToken(ctx context.Context, provider string, refreshF
 	// Perform the refresh
 	accessToken, refreshToken, expiresIn, err := refreshFn(conn.RefreshToken)
 
-	// Complete the call
-	b.mu.Lock()
-	delete(b.inFlight, provider)
-	b.mu.Unlock()
-
-	close(call.done)
+	// Populate the result before closing done: waiting callers read these fields
+	// as soon as the channel closes, so the writes must happen-before the close.
 	call.accessToken = accessToken
 	call.err = err
 	call.refreshToken = refreshToken
 	call.expiresIn = expiresIn
 	call.receiptAt = time.Now().UTC()
+
+	b.mu.Lock()
+	delete(b.inFlight, provider)
+	b.mu.Unlock()
+
+	close(call.done)
 
 	if err != nil {
 		return "", err

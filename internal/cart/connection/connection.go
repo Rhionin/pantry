@@ -10,14 +10,21 @@ import (
 	"time"
 )
 
+// connectionUserID is the placeholder owner for every connection record until an
+// auth layer supplies a real user. The rest of the server uses the same "user-1"
+// placeholder (see handler_inventory_list.go). The provider_connections schema
+// requires user_id NOT NULL and keys uniqueness on (user_id, provider_id), so the
+// Directory API's provider-only key resolves to this fixed user.
+const connectionUserID = "user-1"
+
 // ConnectionState is the connection state of one provider.
 type ConnectionState string
 
 const (
-	StateNotRequired   ConnectionState = "not_required"
-	StateConnected     ConnectionState = "connected"
+	StateNotRequired    ConnectionState = "not_required"
+	StateConnected      ConnectionState = "connected"
 	StateReauthRequired ConnectionState = "reauth_required"
-	StateDisconnected  ConnectionState = "disconnected"
+	StateDisconnected   ConnectionState = "disconnected"
 )
 
 // Connection is server-side only. No JSON tags: this type is never marshalled.
@@ -97,16 +104,17 @@ func (d *Directory) Read(ctx context.Context, provider string) (*Connection, err
 // Write creates or updates the connection record for one provider.
 func (d *Directory) Write(ctx context.Context, conn *Connection) error {
 	_, err := d.db.ExecContext(ctx,
-		`INSERT INTO provider_connections (provider_id, state, access_token, refresh_token, access_token_expires_at, auth_state, auth_state_at)
-		 VALUES (?, ?, ?, ?, ?, ?, ?)
-		 ON CONFLICT(provider_id) DO UPDATE SET
+		`INSERT INTO provider_connections (id, user_id, provider_id, state, access_token, refresh_token, access_token_expires_at, auth_state, auth_state_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+		 ON CONFLICT(user_id, provider_id) DO UPDATE SET
 		     state = excluded.state,
 		     access_token = excluded.access_token,
 		     refresh_token = excluded.refresh_token,
 		     access_token_expires_at = excluded.access_token_expires_at,
 		     auth_state = excluded.auth_state,
 		     auth_state_at = excluded.auth_state_at`,
-		conn.Provider, string(conn.State), conn.AccessToken, conn.RefreshToken,
+		connectionUserID+":"+conn.Provider, connectionUserID, conn.Provider,
+		string(conn.State), conn.AccessToken, conn.RefreshToken,
 		conn.ExpiresAt, conn.AuthState, conn.AuthStateAt)
 	return err
 }
@@ -139,8 +147,8 @@ func (d *Directory) GenerateAuthState(ctx context.Context, provider, state strin
 // callback carrying an error parameter, and discard the state in every case.
 func (d *Directory) ConsumeAuthState(ctx context.Context, provider, state string) (bool, error) {
 	var (
-		storedState  string
-		storedAt     time.Time
+		storedState string
+		storedAt    time.Time
 	)
 
 	err := d.db.QueryRowContext(ctx,
@@ -153,22 +161,19 @@ func (d *Directory) ConsumeAuthState(ctx context.Context, provider, state string
 		return false, err
 	}
 
-	// Check if state matches
+	// A single-use state is discarded whether accepted or rejected, so a mismatched
+	// or expired guess cannot be retried against the same stored value.
+	if _, err := d.db.ExecContext(ctx,
+		`UPDATE provider_connections SET auth_state = NULL, auth_state_at = NULL WHERE provider_id = ?`,
+		provider); err != nil {
+		return false, err
+	}
+
 	if storedState != state {
 		return false, nil
 	}
-
-	// Check if expired (600 seconds)
 	if time.Since(storedAt) > 600*time.Second {
 		return false, nil
-	}
-
-	// Discard the state
-	_, err = d.db.ExecContext(ctx,
-		`UPDATE provider_connections SET auth_state = NULL, auth_state_at = NULL WHERE provider_id = ?`,
-		provider)
-	if err != nil {
-		return false, err
 	}
 
 	return true, nil

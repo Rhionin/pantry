@@ -76,68 +76,65 @@ func (s *Script) WithTokenExchangeError(err error) *Script {
 	return s
 }
 
-// FakeProvider implements cart.Provider with behavior controlled by a Script.
-type FakeProvider struct {
-	id           cart.ProviderID
-	displayName  string
-	caps         cart.Capabilities
-	script       *Script
-	calls        []string
-	callsMu      sync.Mutex
+// fakeCore holds the state every fake provider shares: its declared identity,
+// the controlling Script, and the recorded call log. The behavior mixins below
+// embed it so a composite provider records into one shared log.
+type fakeCore struct {
+	id          cart.ProviderID
+	displayName string
+	caps        cart.Capabilities
+	script      *Script
+
+	callsMu sync.Mutex
+	calls   []string
 }
 
-// NewFake returns a provider declaring exactly caps, implementing exactly the
-// narrow interfaces those capabilities require — and no others.
-func NewFake(caps cart.Capabilities, script *Script) cart.Provider {
-	return &FakeProvider{
-		id:          cart.ProviderID("test-" + string(caps.Auth) + "-" + string(caps.Delivery)),
-		displayName: "Test Provider",
-		caps:        caps,
-		script:      script,
-	}
-}
+func (f *fakeCore) ID() cart.ProviderID              { return f.id }
+func (f *fakeCore) DisplayName() string              { return f.displayName }
+func (f *fakeCore) Capabilities() cart.Capabilities  { return f.caps }
 
-func (f *FakeProvider) ID() cart.ProviderID {
-	return f.id
-}
-
-func (f *FakeProvider) DisplayName() string {
-	return f.displayName
-}
-
-func (f *FakeProvider) Capabilities() cart.Capabilities {
-	return f.caps
-}
-
-func (f *FakeProvider) recordCall(name string) {
+func (f *fakeCore) recordCall(name string) {
 	f.callsMu.Lock()
 	defer f.callsMu.Unlock()
 	f.calls = append(f.calls, name)
 }
 
-func (f *FakeProvider) Calls() []string {
+// Calls returns a copy of the method invocations recorded so far, in order.
+func (f *fakeCore) Calls() []string {
 	f.callsMu.Lock()
 	defer f.callsMu.Unlock()
-	// Return a copy to prevent mutation
 	result := make([]string, len(f.calls))
 	copy(result, f.calls)
 	return result
 }
 
-// FakeOAuthFlow implements cart.OAuthFlow for testing.
-type FakeOAuthFlow struct {
-	script *Script
-}
+// The behavior mixins below each embed *fakeCore. A composite provider is one
+// struct that embeds *fakeCore plus exactly the mixins its capabilities
+// require, so its method set satisfies exactly the corresponding narrow cart
+// interfaces and no others. NewFake selects the composite for a caps profile.
 
-func (f *FakeOAuthFlow) AuthorizationScope() string {
-	return "test:scope"
-}
+// Each mixin holds a named *fakeCore rather than embedding it, so a composite
+// can embed several mixins without ambiguous promotion of the core methods.
 
-func (f *FakeOAuthFlow) AuthorizationURL(state string) (string, error) {
+type oauthFlow struct{ core *fakeCore }
+
+func (f oauthFlow) AuthorizationScope() string { return "test:scope" }
+
+func (f oauthFlow) AuthorizationURL(state string) (string, error) {
 	return "https://example.com/auth?" + state, nil
 }
 
-func (f *FakeOAuthFlow) ExchangeCode(ctx context.Context, code string) (cart.TokenSet, error) {
+func (f oauthFlow) ExchangeCode(ctx context.Context, code string) (cart.TokenSet, error) {
+	f.core.recordCall("ExchangeCode")
+	return f.core.nextTokenExchange()
+}
+
+func (f oauthFlow) RefreshAccessToken(ctx context.Context, refreshToken string) (cart.TokenSet, error) {
+	f.core.recordCall("RefreshAccessToken")
+	return f.core.nextTokenExchange()
+}
+
+func (f *fakeCore) nextTokenExchange() (cart.TokenSet, error) {
 	f.script.mu.Lock()
 	defer f.script.mu.Unlock()
 	if len(f.script.tokenExchanges) == 0 {
@@ -148,94 +145,222 @@ func (f *FakeOAuthFlow) ExchangeCode(ctx context.Context, code string) (cart.Tok
 	return result.TokenSet, result.Err
 }
 
-func (f *FakeOAuthFlow) RefreshAccessToken(ctx context.Context, refreshToken string) (cart.TokenSet, error) {
-	f.script.mu.Lock()
-	defer f.script.mu.Unlock()
-	if len(f.script.tokenExchanges) == 0 {
-		return cart.TokenSet{}, nil
-	}
-	result := f.script.tokenExchanges[0]
-	f.script.tokenExchanges = f.script.tokenExchanges[1:]
-	return result.TokenSet, result.Err
+type staticCredential struct{ core *fakeCore }
+
+func (f staticCredential) Credential() cart.Credential {
+	f.core.recordCall("Credential")
+	return cart.NewBearerCredential("test-api-key")
 }
 
-// FakeStaticCredential implements cart.StaticCredential for testing.
-type FakeStaticCredential struct {
-	cred cart.Credential
-}
+type serverPush struct{ core *fakeCore }
 
-func (f *FakeStaticCredential) Credential() cart.Credential {
-	return f.cred
-}
+func (f serverPush) Add(ctx context.Context, cred cart.Credential, req cart.ProvisionRequest) (cart.ProvisionResult, error) {
+	f.core.recordCall("Add")
+	f.core.script.mu.Lock()
+	defer f.core.script.mu.Unlock()
 
-// FakeServerPush implements cart.ServerPush for testing.
-type FakeServerPush struct {
-	script *Script
-}
-
-func (f *FakeServerPush) Add(ctx context.Context, cred cart.Credential, req cart.ProvisionRequest) (cart.ProvisionResult, error) {
-	f.script.mu.Lock()
-	defer f.script.mu.Unlock()
-	
-	var disposition cart.ResultDisposition
-	if len(f.script.dispositions) > 0 {
-		disposition = f.script.dispositions[0]
-		f.script.dispositions = f.script.dispositions[1:]
-	} else {
-		disposition = cart.DispositionAccepted
+	disposition := cart.DispositionAccepted
+	if len(f.core.script.dispositions) > 0 {
+		disposition = f.core.script.dispositions[0]
+		f.core.script.dispositions = f.core.script.dispositions[1:]
 	}
 
 	return cart.ProvisionResult{
 		Disposition: disposition,
-		PerLine:     f.script.lineResults,
+		PerLine:     f.core.script.lineResults,
 		Status:      200,
 	}, nil
 }
 
-// FakeHandoffBuilder implements cart.HandoffBuilder for testing.
-type FakeHandoffBuilder struct {
-	script *Script
-}
+type handoffBuilder struct{ core *fakeCore }
 
-func (f *FakeHandoffBuilder) BuildHandoff(req cart.ProvisionRequest) (cart.HandoffArtifact, error) {
+func (f handoffBuilder) BuildHandoff(req cart.ProvisionRequest) (cart.HandoffArtifact, error) {
+	f.core.recordCall("BuildHandoff")
 	return cart.HandoffArtifact{
 		URL:  "https://example.com/handoff",
 		Data: map[string]string{"key": "value"},
 	}, nil
 }
 
-// FakeDerivedIdentity implements cart.DerivedIdentity for testing.
-type FakeDerivedIdentity struct {
-	script *Script
-}
+type derivedIdentity struct{ core *fakeCore }
 
-func (f *FakeDerivedIdentity) DeriveIdentity(barcode string) (cart.ProductIdentity, bool) {
-	identity, ok := f.script.identityLookups[barcode]
+func (f derivedIdentity) DeriveIdentity(barcode string) (cart.ProductIdentity, bool) {
+	f.core.recordCall("DeriveIdentity")
+	f.core.script.mu.Lock()
+	defer f.core.script.mu.Unlock()
+	identity, ok := f.core.script.identityLookups[barcode]
 	return identity, ok
 }
 
-// FakeLookedUpIdentity implements cart.LookedUpIdentity for testing.
-type FakeLookedUpIdentity struct {
-	script *Script
-}
+type lookedUpIdentity struct{ core *fakeCore }
 
-func (f *FakeLookedUpIdentity) LookUpIdentity(ctx context.Context, cred cart.Credential, barcode string) (cart.ProductIdentity, bool, error) {
-	identity, ok := f.script.identityLookups[barcode]
+func (f lookedUpIdentity) LookUpIdentity(ctx context.Context, cred cart.Credential, barcode string) (cart.ProductIdentity, bool, error) {
+	f.core.recordCall("LookUpIdentity")
+	f.core.script.mu.Lock()
+	defer f.core.script.mu.Unlock()
+	identity, ok := f.core.script.identityLookups[barcode]
 	return identity, ok, nil
 }
 
-// FakeLineUpdater implements cart.LineUpdater for testing.
-type FakeLineUpdater struct {
-	script *Script
-}
+type lineUpdater struct{ core *fakeCore }
 
-func (f *FakeLineUpdater) UpdateLine(ctx context.Context, cred cart.Credential, line cart.ProvisionLine) (cart.ProvisionResult, error) {
+func (f lineUpdater) UpdateLine(ctx context.Context, cred cart.Credential, line cart.ProvisionLine) (cart.ProvisionResult, error) {
+	f.core.recordCall("UpdateLine")
 	return cart.ProvisionResult{Disposition: cart.DispositionAccepted, Status: 200}, nil
 }
 
-// FakeLineRemover implements cart.LineRemover for testing.
-type FakeLineRemover struct{}
+type lineRemover struct{ core *fakeCore }
 
-func (f *FakeLineRemover) RemoveLine(ctx context.Context, cred cart.Credential, identity cart.ProductIdentity) (cart.ProvisionResult, error) {
+func (f lineRemover) RemoveLine(ctx context.Context, cred cart.Credential, identity cart.ProductIdentity) (cart.ProvisionResult, error) {
+	f.core.recordCall("RemoveLine")
 	return cart.ProvisionResult{Disposition: cart.DispositionAccepted, Status: 200}, nil
+}
+
+// Calls exposes the recorded invocations on any composite NewFake returns.
+type Calls interface {
+	Calls() []string
+}
+
+// NewFake returns a provider declaring exactly caps and satisfying the narrow
+// cart interfaces those capabilities require. The returned value always
+// satisfies cart.Provider and the Calls interface. Its auth dimension selects
+// the auth interface: OAuthFlow for oauth2, StaticCredential for api_key,
+// neither for none. Its delivery dimension selects ServerPush or HandoffBuilder,
+// and its identity dimension selects DerivedIdentity or LookedUpIdentity. The
+// mutation interfaces LineUpdater and LineRemover are always present; the engine
+// dispatches to them only when the declared mutation capability warrants, so
+// their presence on a lower-mutation fake is inert.
+//
+// The concrete composite is one of the twelve auth-by-delivery-by-identity
+// shapes below, chosen so that the method set matches the auth, delivery, and
+// identity dimensions exactly rather than by embedding nil interfaces.
+func NewFake(caps cart.Capabilities, script *Script) cart.Provider {
+	if script == nil {
+		script = NewScript()
+	}
+	core := &fakeCore{
+		id:          cart.ProviderID("test-" + string(caps.Auth) + "-" + string(caps.Delivery)),
+		displayName: "Test Provider",
+		caps:        caps,
+		script:      script,
+	}
+	return buildComposite(core)
+}
+
+// mutations carries the mutation mixins every composite embeds.
+type mutations struct {
+	lineUpdater
+	lineRemover
+}
+
+func newMutations(core *fakeCore) mutations {
+	return mutations{lineUpdater{core}, lineRemover{core}}
+}
+
+// The twelve composites cover auth (none, oauth2, api_key) by delivery
+// (server_push, client_handoff) by identity (derived, looked_up). Each embeds
+// *fakeCore for the Provider and Calls methods, its delivery and identity
+// mixins, its mutation mixins, and, when auth requires it, an auth mixin.
+
+type pushDerived struct {
+	*fakeCore
+	serverPush
+	derivedIdentity
+	mutations
+}
+type pushLookedUp struct {
+	*fakeCore
+	serverPush
+	lookedUpIdentity
+	mutations
+}
+type handoffDerived struct {
+	*fakeCore
+	handoffBuilder
+	derivedIdentity
+	mutations
+}
+type handoffLookedUp struct {
+	*fakeCore
+	handoffBuilder
+	lookedUpIdentity
+	mutations
+}
+
+type oauthPushDerived struct {
+	pushDerived
+	oauthFlow
+}
+type oauthPushLookedUp struct {
+	pushLookedUp
+	oauthFlow
+}
+type oauthHandoffDerived struct {
+	handoffDerived
+	oauthFlow
+}
+type oauthHandoffLookedUp struct {
+	handoffLookedUp
+	oauthFlow
+}
+
+type apiKeyPushDerived struct {
+	pushDerived
+	staticCredential
+}
+type apiKeyPushLookedUp struct {
+	pushLookedUp
+	staticCredential
+}
+type apiKeyHandoffDerived struct {
+	handoffDerived
+	staticCredential
+}
+type apiKeyHandoffLookedUp struct {
+	handoffLookedUp
+	staticCredential
+}
+
+func buildComposite(core *fakeCore) cart.Provider {
+	base := func() any {
+		push := core.caps.Delivery == cart.DeliveryServerPush
+		derived := core.caps.Identity == cart.IdentityDerived
+		switch {
+		case push && derived:
+			return pushDerived{core, serverPush{core}, derivedIdentity{core}, newMutations(core)}
+		case push && !derived:
+			return pushLookedUp{core, serverPush{core}, lookedUpIdentity{core}, newMutations(core)}
+		case !push && derived:
+			return handoffDerived{core, handoffBuilder{core}, derivedIdentity{core}, newMutations(core)}
+		default:
+			return handoffLookedUp{core, handoffBuilder{core}, lookedUpIdentity{core}, newMutations(core)}
+		}
+	}()
+
+	switch core.caps.Auth {
+	case cart.AuthOAuth2:
+		switch b := base.(type) {
+		case pushDerived:
+			return oauthPushDerived{b, oauthFlow{core}}
+		case pushLookedUp:
+			return oauthPushLookedUp{b, oauthFlow{core}}
+		case handoffDerived:
+			return oauthHandoffDerived{b, oauthFlow{core}}
+		default:
+			return oauthHandoffLookedUp{b.(handoffLookedUp), oauthFlow{core}}
+		}
+	case cart.AuthAPIKey:
+		switch b := base.(type) {
+		case pushDerived:
+			return apiKeyPushDerived{b, staticCredential{core}}
+		case pushLookedUp:
+			return apiKeyPushLookedUp{b, staticCredential{core}}
+		case handoffDerived:
+			return apiKeyHandoffDerived{b, staticCredential{core}}
+		default:
+			return apiKeyHandoffLookedUp{b.(handoffLookedUp), staticCredential{core}}
+		}
+	default:
+		return base.(cart.Provider)
+	}
 }
