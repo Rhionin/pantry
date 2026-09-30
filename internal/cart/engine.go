@@ -252,7 +252,7 @@ func (e *Engine) Provision(ctx context.Context, userID string, providerID Provid
 				}
 			}
 		case ConfirmPerRequest:
-			// per_request: all accounted entries are confirmed
+			// per_request: every accounted entry is confirmed
 			for _, line := range req.Lines {
 				for _, item := range line.Accounts {
 					outcomes = append(outcomes, EntryOutcome{
@@ -263,7 +263,7 @@ func (e *Engine) Provision(ctx context.Context, userID string, providerID Provid
 						Outcome:  OutcomeConfirmed,
 						Reason:   "", // not used for confirmed
 					})
-					acceptedCount += len(line.Accounts)
+					acceptedCount++
 				}
 			}
 		case ConfirmNone:
@@ -284,7 +284,7 @@ func (e *Engine) Provision(ctx context.Context, userID string, providerID Provid
 
 		// Update ledger for accepted items
 		if acceptedCount > 0 {
-			if err := e.updateLedgerAndAdjustments(ctx, providerID, req, result); err != nil {
+			if err := e.updateLedgerAndAdjustments(ctx, providerID, req); err != nil {
 				// If ledger update fails, we have a partial failure
 				return ProvisionReport{
 					Provider:  providerID,
@@ -344,10 +344,14 @@ func (e *Engine) getComputedEntries(ctx context.Context, providerID ProviderID, 
 		allItemIDs[itemID] = true
 	}
 
-	// Get modes and targets from items
+	// Get modes, targets, product IDs, and names from items.
+	// A shopping-list entry keys on the pantry item (items.id); its product
+	// (items.product_id) is what barcodes and catalog names key on, so resolve
+	// and carry the product ID here.
 	itemModes := make(map[string]ReplenishmentMode)
 	itemTargets := make(map[string]*int)
 	itemNames := make(map[string]string)
+	itemProductIDs := make(map[string]string)
 	for itemID := range allItemIDs {
 		mode, err := e.pantry.GetReplenishmentMode(ctx, itemID)
 		if err != nil {
@@ -362,13 +366,17 @@ func (e *Engine) getComputedEntries(ctx context.Context, providerID ProviderID, 
 		}
 		itemTargets[itemID] = target
 
-		// Get product name
-		product, err := e.catalog.GetProductByID(ctx, itemID)
+		item, err := e.pantry.GetItem(ctx, itemID)
 		if err != nil {
-			return nil, fmt.Errorf("failed to get product %s: %w", itemID, err)
+			return nil, fmt.Errorf("failed to get item %s: %w", itemID, err)
 		}
-		if product != nil {
-			itemNames[itemID] = product.Name
+		if item != nil {
+			itemProductIDs[itemID] = item.ProductID
+			if item.Product != nil {
+				itemNames[itemID] = item.Product.Name
+			} else {
+				itemNames[itemID] = "Unknown"
+			}
 		} else {
 			itemNames[itemID] = "Unknown"
 		}
@@ -448,11 +456,12 @@ func (e *Engine) getComputedEntries(ctx context.Context, providerID ProviderID, 
 		}
 
 		result = append(result, ResolvedItem{
-			EntryID:  entryID,
-			ItemID:   entry.ItemID,
-			Name:     itemNames[entry.ItemID],
-			Identity: "",
-			Quantity: entry.Quantity,
+			EntryID:   entryID,
+			ItemID:    entry.ItemID,
+			ProductID: itemProductIDs[entry.ItemID],
+			Name:      itemNames[entry.ItemID],
+			Identity:  "",
+			Quantity:  entry.Quantity,
 		})
 	}
 
@@ -482,10 +491,10 @@ func (e *Engine) resolveIdentities(ctx context.Context, provider Provider, caps 
 	}
 
 	for _, entry := range entries {
-		// Get product barcodes
-		barcodes, err := e.catalog.ListBarcodesForProduct(ctx, entry.ItemID)
+		// Barcodes key on the product (products.id), not the pantry item.
+		barcodes, err := e.catalog.ListBarcodesForProduct(ctx, entry.ProductID)
 		if err != nil {
-			return nil, nil, fmt.Errorf("failed to list barcodes for %s: %w", entry.ItemID, err)
+			return nil, nil, fmt.Errorf("failed to list barcodes for %s: %w", entry.ProductID, err)
 		}
 
 		// Try each barcode until we find a valid identity
@@ -591,8 +600,9 @@ func (e *Engine) batchRequests(providerID ProviderID, items []ResolvedItem, caps
 	return batches
 }
 
-// updateLedgerAndAdjustments updates the ledger and clears adjustments for accepted items.
-func (e *Engine) updateLedgerAndAdjustments(ctx context.Context, providerID ProviderID, req ProvisionRequest, result ProvisionResult) error {
+// updateLedgerAndAdjustments advances the ledger and clears adjustments for
+// every line of an accepted request, atomically in one transaction.
+func (e *Engine) updateLedgerAndAdjustments(ctx context.Context, providerID ProviderID, req ProvisionRequest) error {
 	// Create a transaction
 	tx, err := e.ledger.db.Begin()
 	if err != nil {
@@ -602,23 +612,11 @@ func (e *Engine) updateLedgerAndAdjustments(ctx context.Context, providerID Prov
 
 	currentTime := time.Now().UTC()
 
-	// For per_request confirmation, all lines are confirmed
-	// For per_line, check PerLine map
-	confirmedLines := make(map[ProductIdentity]bool)
-	if result.Disposition == DispositionAccepted {
-		if result.PerLine != nil {
-			confirmedLines = result.PerLine
-		} else {
-			// per_request or none - all lines confirmed
-			for _, line := range req.Lines {
-				confirmedLines[line.Identity] = true
-			}
-		}
-	}
-
 	for _, line := range req.Lines {
-		// Update ledger
-		_, err := e.ledger.Advance(ctx, providerID, line.Accounts[0].ItemID, line.Quantity, currentTime)
+		// Advance the ledger inside the same transaction as the adjustment
+		// clears, so both commit together and neither contends for a second
+		// connection against a single-connection SQLite pool.
+		_, err := e.ledger.AdvanceTx(ctx, tx, providerID, line.Accounts[0].ItemID, line.Quantity, currentTime)
 		if err != nil {
 			return fmt.Errorf("failed to advance ledger: %w", err)
 		}

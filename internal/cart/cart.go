@@ -259,12 +259,18 @@ type ProductIdentity string
 
 // ResolvedItem is one shopping list entry paired with the identity resolved for
 // its product and the quantity that entry contributes.
+//
+// ItemID is the pantry item (items.id); the ledger, outcomes, and adjustments
+// are keyed by it. ProductID is that item's products.id, and barcodes and
+// catalog records are keyed by it, so identity resolution must use ProductID,
+// not ItemID.
 type ResolvedItem struct {
-	EntryID  string
-	ItemID   string
-	Name     string
-	Identity ProductIdentity
-	Quantity int // 1..999
+	EntryID   string
+	ItemID    string
+	ProductID string
+	Name      string
+	Identity  ProductIdentity
+	Quantity  int // 1..999
 }
 
 // ProvisionLine is one identity/quantity pair submitted to a provider.

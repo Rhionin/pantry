@@ -48,7 +48,10 @@ func (l *Ledger) ListForProvider(ctx context.Context, p ProviderID) (map[string]
 	return result, nil
 }
 
-// Advance adds qty to the requested_quantity for one provider/item.
+// AdvanceTx adds qty to the requested_quantity for one provider/item inside an
+// existing transaction, so the advance is atomic with the caller's other
+// statements (clearing adjustments) and never contends for a second connection
+// against a single-connection SQLite pool.
 // The advance is an INSERT ... ON CONFLICT(provider_id, item_id) DO UPDATE SET
 // requested_quantity = requested_quantity + excluded.requested_quantity, performing
 // the read-modify-write in SQL so no lost update is possible.
@@ -56,8 +59,8 @@ func (l *Ledger) ListForProvider(ctx context.Context, p ProviderID) (map[string]
 // as an absent column rather than a rule to remember.
 // The advance is additionally conditional on the boundary the operation computed against
 // (WHERE ledger_boundary = ?). Zero rows affected means a stock-in intervened.
-func (l *Ledger) Advance(ctx context.Context, provider ProviderID, itemID string, qty int, boundary time.Time) (int64, error) {
-	result, err := l.db.ExecContext(ctx,
+func (l *Ledger) AdvanceTx(ctx context.Context, tx *sql.Tx, provider ProviderID, itemID string, qty int, boundary time.Time) (int64, error) {
+	result, err := tx.ExecContext(ctx,
 		`INSERT INTO fulfillment_ledger (provider_id, item_id, requested_quantity, ledger_boundary)
 		 VALUES (?, ?, ?, ?)
 		 ON CONFLICT(provider_id, item_id) DO UPDATE SET
