@@ -14,8 +14,9 @@ inventory changes only when the bought item is later stocked in.
   with the shortfall quantity.
 - `shopping-manual-add` a user adds a `Manual` entry by choosing a pantry item
   and quantity in the `Add an item` form.
-- `shopping-purchase` `Mark <product> purchased` removes the entry from the list.
-- `shopping-remove` `Remove <product>` removes a manual entry.
+- `shopping-purchase` `Mark <product> purchased` removes the entry from the list
+  (works on both materialized derived entries and manual entries).
+- `shopping-remove` `Remove <product>` removes an entry.
 
 ## How to get to it (user POV)
 
@@ -43,28 +44,38 @@ Preconditions:
   current stock falls below the target.
 - **See the derived entry.** Open `Shopping List`. In the `Shopping list entries`
   table, the product's row shows the shortfall quantity (for example `1 <unit>`)
-  and a `Derived` source badge.
-- **Add a manual item (alternative).** In `Add an item`, choose the product in
-  the `Pantry item` select, set `Quantity`, and click `getByRole('button', {
-  name: 'Add to shopping list' })`. A row with a `Manual` badge appears.
+  and a `Derived` source badge. The backend materializes derived entries
+  (`shopping.SyncDerivedItems`), so this row carries a real id and exposes the
+  `Mark <product> purchased` / `Remove <product>` actions.
 - **Mark purchased.** Click `getByRole('button', { name: 'Mark <product>
-  purchased' })`. The row leaves the list; an emptied list shows `Your shopping
-  list is empty.`
+  purchased' })` on the derived row. The row leaves the list; an emptied list
+  shows `Your shopping list is empty.` (A `Manual` entry added through the `Add
+  an item` form — `Pantry item` select + `Quantity` + `Add to shopping list` —
+  behaves the same way.)
 - **Confirm inventory is unchanged by purchase.** `readInventory(page)` shows the
   same `instanceCount` as before the purchase (purchasing marks intent, it does
   not stock in).
 - **Proof.** `captureProof(page, 'shopping-list', { source, quantity })` with the
   entries table (or the empty state after purchase) visible.
 
+`scripts/drive-shopping-list.mjs` is this recipe, verified end to end. It marks
+the materialized derived row purchased directly and confirms inventory stays at
+`1 bag`.
+
 ## Gotchas
 
 - A derived entry only appears after a target quantity is set AND current stock is
   below it. Setting the target alone, with stock at or above target, derives
   nothing.
-- Derived entries have an empty id and no action buttons until they are
-  materialized; the `Mark ... purchased` and `Remove ...` buttons show the
-  product name in their accessible label, so target the exact `Mark <product>
-  purchased` string.
+- The API-backed list the page shows materializes derived entries
+  (`shopping.SyncDerivedItems`), so a `Derived` row carries a real id and DOES
+  render `Mark <product> purchased` / `Remove <product>` buttons — you can mark
+  the derived shortfall purchased directly. The empty-id/no-action-buttons case
+  applies only to the frontend-only pure fallback (`deriveShoppingListEntries`),
+  not the list the page renders. The buttons carry the product name in their
+  accessible label, so target the exact `Mark <product> purchased` string.
+- Marking a shortfall purchased dismisses it; the purchased gap stays hidden
+  until the on-hand quantity changes, so the row does not immediately reappear.
 - Marking a derived shortfall purchased does not add inventory. Do not assert an
   inventory increase from the purchase step; assert it only after a subsequent
   stock-in.

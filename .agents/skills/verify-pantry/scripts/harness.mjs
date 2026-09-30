@@ -63,6 +63,20 @@ export async function scanBarcode(page, barcode) {
   return card;
 }
 
+// Switch the scanner mode the way a user does: scan a reserved control barcode.
+// A control barcode does NOT create a scan card - ScanQueuePage.captureBarcode
+// classifies it, calls setScannerMode, and returns early server-side - so we
+// wait for the on-screen `Mode: <mode>` banner instead of a card. The default
+// control strings are 'STOCK_IN' / 'STOCK_OUT' (GET /api/scanner/config). This
+// mirrors e2e/helpers.ts::setScannerMode.
+export async function setScannerMode(page, mode) {
+  const controlBarcode = mode === 'stock_out' ? 'STOCK_OUT' : 'STOCK_IN';
+  const input = page.getByRole('textbox', { name: 'Barcode scanner input' });
+  await input.fill(controlBarcode);
+  await input.press('Enter');
+  await page.getByText(`Mode: ${mode}`).waitFor({ state: 'visible', timeout: 10_000 });
+}
+
 // Capture proof: an ARIA snapshot of the page and a full-page screenshot, plus
 // any structured side-effect object the caller wants recorded. All three land
 // in EVIDENCE_DIR/<name>.* so they survive script-level cleanup.
