@@ -2,7 +2,7 @@
 
 ARG COMMIT_HASH=unknown
 ARG COMMIT_TIME=
-ARG COMMIT_SUBJECT=
+ARG COMMIT_SUBJECT_B64=
 
 # Frontend build stage
 FROM --platform=$BUILDPLATFORM node:24-alpine AS frontend
@@ -21,16 +21,19 @@ RUN go mod download
 COPY . .
 COPY --from=frontend /src/frontend/dist/ ./internal/webui/assets/
 RUN mkdir -p /data
-# Redeclared so this stage inherits the global defaults. $$ leaves the values
-# for the shell: a commit subject spliced into this script would break on
-# quotes, so the subject is base64-encoded before -ldflags -X.
+# Redeclared so this stage inherits the global build-args. ${COMMIT_*} is
+# substituted here, before the shell runs. $$COMMIT_HASH must not be used:
+# the build shell is PID 1, so $$ expands to "1" and the binary is stamped
+# with 1COMMIT_HASH. The subject arrives base64-encoded so quotes and spaces
+# never enter this line.
 ARG COMMIT_HASH
 ARG COMMIT_TIME
-ARG COMMIT_SUBJECT
-RUN set -eu; \
-    subject_b64=$(printf '%s' "$$COMMIT_SUBJECT" | base64 | tr -d '\n'); \
+ARG COMMIT_SUBJECT_B64
+RUN case "${COMMIT_HASH}" in *COMMIT_HASH*) echo "COMMIT_HASH was not substituted" >&2; exit 1 ;; esac; \
+    case "${COMMIT_TIME}" in *COMMIT_TIME*) echo "COMMIT_TIME was not substituted" >&2; exit 1 ;; esac; \
     CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} \
-    go build -trimpath -ldflags "-s -w -X github.com/Rhionin/pantry/internal/buildinfo.Commit=$$COMMIT_HASH -X github.com/Rhionin/pantry/internal/buildinfo.CommittedAt=$$COMMIT_TIME -X github.com/Rhionin/pantry/internal/buildinfo.subjectStamp=$$subject_b64" \
+    go build -trimpath \
+    -ldflags="-s -w -X github.com/Rhionin/pantry/internal/buildinfo.Commit=${COMMIT_HASH} -X github.com/Rhionin/pantry/internal/buildinfo.CommittedAt=${COMMIT_TIME} -X github.com/Rhionin/pantry/internal/buildinfo.subjectStamp=${COMMIT_SUBJECT_B64}" \
     -o /out/pantry-server ./cmd/server
 
 # Runtime stage
