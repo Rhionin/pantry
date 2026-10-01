@@ -182,13 +182,11 @@ jobs:
         id: commit
         run: |
           # Same commit the image is tagged with (github.sha / the checkout).
-          # The subject is one line so it survives the build-args list.
-          delimiter="EOF_COMMIT_SUBJECT"
+          # Base64 keeps the subject a single build-arg: quotes and spaces
+          # never reach the Dockerfile, where $$ would be the shell PID.
           {
             echo "time=$(git log -1 --format=%cI)"
-            echo "subject<<${delimiter}"
-            git log -1 --format=%s | tr -d '\r' | head -n 1
-            echo "${delimiter}"
+            echo "subject_b64=$(git log -1 --format=%s | tr -d '\r\n' | base64 -w 0)"
           } >> "$GITHUB_OUTPUT"
 
       - name: Build and push container image
@@ -204,4 +202,4 @@ jobs:
           build-args: |
             COMMIT_HASH=${{ github.sha }}
             COMMIT_TIME=${{ steps.commit.outputs.time }}
-            COMMIT_SUBJECT=${{ steps.commit.outputs.subject }}
+            COMMIT_SUBJECT_B64=${{ steps.commit.outputs.subject_b64 }}
