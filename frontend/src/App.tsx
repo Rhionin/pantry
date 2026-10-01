@@ -20,7 +20,7 @@ function App() {
   return (
     <BrowserRouter>
       <RouteTelemetry />
-      <AppShell header={{ height: 60 }} footer={{ height: 56 }} padding="md">
+      <AppShell className="app-shell" header={{ height: 60 }} padding="md">
         <AppShell.Header>
           <Group h="100%" px="md" justify="space-between">
             <Title order={3}>Pantry</Title>
@@ -38,8 +38,17 @@ function App() {
             <Route path="/shopping" element={<ShoppingListPage />} />
           </Routes>
         </AppShell.Main>
-        <AppShell.Footer style={{ borderTop: 'none', background: 'transparent' }}>
-          <Group h="100%" px="md" justify="flex-end" align="center">
+        <AppShell.Footer
+          className="build-footer"
+          style={{
+            position: 'static',
+            height: 'auto',
+            transform: 'none',
+            borderTop: 'none',
+            background: 'transparent',
+          }}
+        >
+          <Group px="md" py={6} justify="flex-end" align="center">
             <BuildStamp />
           </Group>
         </AppShell.Footer>
