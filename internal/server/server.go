@@ -128,6 +128,7 @@ func newAPIMux(
 
 	eventsHandler := &EventsHandler{Broadcaster: broadcaster}
 	apiMux.HandleFunc("GET /api/events", eventsHandler.Handle)
+	apiMux.HandleFunc("GET /api/build", HandleJSON(handleBuildInfo))
 
 	// Scanner mode + config handlers. The mode handler publishes through the
 	// same broadcaster GET /api/events uses, so a browser-initiated mode switch

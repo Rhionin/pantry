@@ -3,6 +3,7 @@
 // internal/server/server.go and the individual handler files.
 import type {
   BatchCommitResponse,
+  BuildInfo,
   InventoryItem,
   ItemInstance,
   ItemInstanceWithStatus,
@@ -251,4 +252,10 @@ export interface ExportShoppingListResponse {
 
 export function exportShoppingList(): Promise<ExportShoppingListResponse> {
   return apiFetch('/api/shopping-list/export', { method: 'POST' });
+}
+
+// --- Build identity ---
+
+export function getBuildInfo(): Promise<BuildInfo> {
+  return apiFetch('/api/build');
 }
