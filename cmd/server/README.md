@@ -56,6 +56,8 @@ For Raspberry Pi deployment with a USB barcode scanner:
 3. The container will automatically reconnect if the scanner is unplugged
    and replugged
 
+Public HTTPS, for a hostname you own, is an optional step on top of that LAN install. See `deploy/README.md` (Public Internet access). It does not add a login.
+
 ### Health Endpoint
 
 The `/health` endpoint includes scanner status when the listener is configured:

@@ -8,7 +8,7 @@ New to this? Follow these steps in order on your Raspberry Pi and you'll have Pa
 
 1. **What you need.** A Raspberry Pi running 64-bit Raspberry Pi OS, and the ability to open a terminal. (See [Supported Platform](#supported-platform) below for exact hardware and OS details.)
 
-2. **Get the Pantry files onto the Pi.** The deployment files live in this repository's `deploy/` folder: `docker-compose.yml`, `.env.example`, `setup.sh`, and the `systemd/` and `udev/` folders. Copy that whole folder onto your Pi (for example, clone the repo with `git`, or copy with a USB drive or `scp`).
+2. **Get the Pantry files onto the Pi.** The deployment files live in this repository's `deploy/` folder: `docker-compose.yml`, `Caddyfile`, `.env.example`, `setup.sh`, and the `systemd/` and `udev/` folders. Copy that whole folder onto your Pi (for example, clone the repo with `git`, or copy with a USB drive or `scp`).
 
 3. **Run the setup script.** From the `deploy/` folder you copied over:
 
@@ -31,6 +31,8 @@ New to this? Follow these steps in order on your Raspberry Pi and you'll have Pa
    ```bash
    sudo ./setup.sh status
    ```
+
+6. **Optional: open it to the public internet.** The steps above stay on your home network. To serve the same UI at a hostname you own, such as `https://pantry.rhionin.com`, follow [Public Internet access](#public-internet-access). That setup does not add a login.
 
 **The scanner is optional at every step.** Pantry starts and serves the web UI whether or not a barcode scanner is attached, and you can connect or disconnect the scanner at any time — see [Headless Scanner Input](#headless-scanner-input).
 
@@ -76,7 +78,7 @@ Log out and back in for the group membership to take effect.
 sudo mkdir -p /opt/pantry
 
 # Copy the entire deploy/ directory contents to /opt/pantry
-# (docker-compose.yml, .env.example, setup.sh, systemd/, udev/)
+# (docker-compose.yml, Caddyfile, .env.example, setup.sh, systemd/, udev/)
 
 # Create your config from the example; the defaults work to get started
 cd /opt/pantry
@@ -115,6 +117,148 @@ sudo ./setup.sh status
 # Access the web UI at http://<pi-ip-address>:8080 from any device on your network
 ```
 
+## Public Internet access
+
+This puts the Pantry UI on a hostname you already own, with HTTPS, using the same Docker Compose stack. The recommended name is a subdomain (`pantry.rhionin.com`) so the bare domain can stay unused.
+
+**There is no login.** Anyone who can open the URL can view and change inventory, the scan queue, and the shopping list. Add access control only when you are ready to build it; this path does not.
+
+LAN access stays as it is. `http://<pi-ip>:8080` keeps working on the home network. Do not forward port 8080 on the router.
+
+The path below is Caddy in the `public` Compose profile, a Let's Encrypt certificate, and an A record at Squarespace. It needs a public IPv4 address and the ability to forward TCP ports 80 and 443. If your ISP uses CGNAT, skip to [When port forwarding cannot work](#when-port-forwarding-cannot-work).
+
+### 1. Confirm the Pi is reachable from the internet
+
+On the Pi:
+
+```bash
+curl -4 https://ifconfig.me
+```
+
+That prints the address the internet sees. On your router, open the WAN / internet status page and read the WAN IP.
+
+- If those two addresses match, and the WAN address is not in `10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`, or `100.64.0.0/10`, port forwarding can work.
+- If they differ, or the router WAN address is in one of those ranges, the ISP is using CGNAT. Forwarding ports will not make the Pi reachable. Use [Cloudflare Tunnel](#when-port-forwarding-cannot-work) instead.
+
+Reserve a DHCP lease for the Pi (or set a static LAN address) so the forward does not follow the Pi to a new address later.
+
+### 2. Forward ports on the router
+
+Create two forwards to the Pi's LAN address:
+
+| WAN (external) | Pi (internal) |
+|----------------|---------------|
+| TCP 80 | TCP 80 |
+| TCP 443 | TCP 443 |
+
+UDP 443 is optional. It enables HTTP/3. The site works with only the two TCP forwards.
+
+Do not forward port 8080.
+
+If the Pi itself is running a firewall (`sudo ufw status` says `active`), allow the proxy ports without opening 8080 to the world:
+
+```bash
+sudo ufw allow 80/tcp
+sudo ufw allow 443/tcp
+sudo ufw allow 443/udp
+sudo ufw allow from 192.168.0.0/16 to any port 8080 proto tcp
+sudo ufw allow from 10.0.0.0/8 to any port 8080 proto tcp
+```
+
+Leave a firewall that is currently inactive turned off. Enabling it without an SSH allow rule can lock you out of the Pi.
+
+### 3. Point the Squarespace domain at that address
+
+`rhionin.com` stays registered at Squarespace. You are adding one DNS record, not moving the domain.
+
+1. Open the [Squarespace domains dashboard](https://account.squarespace.com/domains) and sign in.
+2. Click **rhionin.com**.
+3. Click **DNS**, then **DNS Settings**.
+4. Under **Custom records**, click **Add record**.
+5. Set:
+   - **Type:** A
+   - **Host:** `pantry`  
+     Squarespace appends `.rhionin.com`. Do not type the full name, and do not type `https://`.
+   - **Data** (IP address): the IPv4 from `curl -4 https://ifconfig.me`
+6. Save the record.
+
+Leave the Squarespace default records for `@` and `www` alone. A new host named `pantry` does not conflict with them. Use host `@` only if you want `https://rhionin.com` itself; in that case delete the Squarespace default A and CNAME records for `@` first, because a custom record cannot override those presets.
+
+Squarespace does not offer a TTL field; their DNS is commonly cached for about four hours. Check that the record has landed before asking for a certificate:
+
+```bash
+dig +short pantry.rhionin.com A
+```
+
+The answer must be the same address `curl -4 https://ifconfig.me` prints. If `dig` is not installed, `getent hosts pantry.rhionin.com` is enough. This often updates within an hour and can take up to a day.
+
+When your home IP changes, edit this same A record. The certificate is for the hostname, so HTTPS starts working again as soon as DNS matches the new address. Squarespace has no dynamic-DNS service; updating the record is a manual step.
+
+### 4. Start the proxy
+
+On the Pi, edit `/opt/pantry/.env` (create the LAN install first with `sudo ./setup.sh install` if you have not):
+
+```bash
+PUBLIC_HOST=pantry.rhionin.com
+ACME_EMAIL=you@example.com
+```
+
+`PUBLIC_HOST` is the hostname only. `ACME_EMAIL` is where Let's Encrypt sends expiry notices. It is not a Pantry account.
+
+```bash
+sudo ./setup.sh publish
+```
+
+That refreshes `docker-compose.yml` and `Caddyfile` into `/opt/pantry`, then starts [Caddy](https://caddyserver.com/) on ports 80 and 443. Caddy requests a Let's Encrypt certificate for `PUBLIC_HOST` and renews it on its own. Starting the proxy accepts the Let's Encrypt subscriber agreement.
+
+Certificates are stored in the Docker volume `caddy-data`. Do not delete that volume to "retry" a failure: Let's Encrypt rate-limits repeat issuances (on the order of five duplicate certificates per hostname per week).
+
+### 5. Prove it is public
+
+From a phone on cellular data, not the home Wi-Fi:
+
+```bash
+curl -fsS https://pantry.rhionin.com/health
+```
+
+Expect `{"status":"ok",...}`. Then open `https://pantry.rhionin.com` in the phone's browser and confirm the pantry UI loads. The scan queue and inventory pages keep a live connection to `/api/events`; new scans should show up without a refresh.
+
+`sudo ./setup.sh unpublish` stops only the proxy. The LAN site keeps running. Clear `PUBLIC_HOST` as well if an automatic-update timer is enabled, or the next update will start the proxy again.
+
+### When something fails
+
+Logs from the proxy:
+
+```bash
+cd /opt/pantry
+sudo docker compose --profile public logs --tail=80 caddy
+```
+
+| What you see | What to fix |
+|--------------|-------------|
+| `NXDOMAIN`, or `dig` returns no address | The Squarespace A record is missing or still cached. Wait, then check `dig +short pantry.rhionin.com A` again. |
+| Certificate error mentioning timeout, connection refused, or `404` from another site | Port 80 is not reaching this Pi. Re-check the router forward and that no other program is bound to port 80. |
+| Browser warning, certificate name mismatch | `PUBLIC_HOST` and the Squarespace host are not the same name. They must match exactly. |
+| `https://` works at home but not on cellular | The phone is still using the LAN address, or the forward is wrong. Test on cellular. |
+| UI loads, but the scan queue never updates live | `/api/events` is being buffered. `deploy/Caddyfile` must keep `flush_interval -1` on that path. Re-run `sudo ./setup.sh publish` after pulling a fresh `Caddyfile`. |
+
+### When port forwarding cannot work
+
+Two free options, neither of which is wired into this repo. Pick one; do not run them in front of Caddy at the same time.
+
+**Cloudflare Tunnel** (fits `pantry.rhionin.com` when you cannot forward ports). Create a free Cloudflare account, add `rhionin.com`, and let Cloudflare show you two nameservers. In Squarespace: **Domains → rhionin.com → DNS → Nameservers → use custom nameservers**, and paste those two. That moves DNS for the whole domain to Cloudflare; the registration stays at Squarespace. Then install `cloudflared` on the Pi and route the hostname to `http://127.0.0.1:8080`. The tunnel login writes a credential on the Pi. Leave it there; do not commit it. No ports to forward, and a changing home IP does not matter.
+
+**Tailscale Funnel** (fits a stable URL when you do not need `rhionin.com`). The free personal tier can expose the Pi as a `*.ts.net` name without opening ports. Putting a Squarespace name on Funnel is more work than the Caddy path; use Funnel when a Tailscale hostname is enough.
+
+### Keeping HTTPS across automatic updates
+
+`pantry-update.sh` includes the `public` profile only when `PUBLIC_HOST` is set, so a timer pull renews the proxy instead of forgetting it. `sudo ./setup.sh publish` copies the updated unit into `/etc/systemd/system/` if that unit is already installed. If you enabled the timer before this change and have not run `publish` yet:
+
+```bash
+sudo cp /opt/pantry/systemd/pantry-update.service /etc/systemd/system/
+sudo systemctl daemon-reload
+```
+
 ## Manual Update Procedure
 
 To update to the latest version:
@@ -140,7 +284,9 @@ All configuration is handled through environment variables in `/opt/pantry/.env`
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `PANTRY_IMAGE_TAG` | `latest` | Container image tag to deploy. Use `latest` for newest build, `master` for master branch, or full commit SHA to pin version |
-| `HOST_PORT` | `8080` | Host port to expose Pantry service. Container always uses port 8080 internally |
+| `HOST_PORT` | `8080` | Host port to expose Pantry service on the LAN. Container always uses port 8080 internally. Do not forward this port on the router |
+| `PUBLIC_HOST` | empty | Hostname for the public HTTPS proxy, such as `pantry.rhionin.com`. Empty keeps the install LAN-only. No `https://` |
+| `ACME_EMAIL` | empty | Email Let's Encrypt uses for certificate expiry notices. Required when `PUBLIC_HOST` is set. Not a Pantry login |
 | `PRODUCT_CACHE_TTL` | `720h` | How long to cache product lookups (720h = 30 days) |
 | `PRODUCT_MISS_TTL` | `168h` | How long to cache "not found" results (168h = 7 days) |
 | `DISABLE_EXTERNAL_PRODUCT_LOOKUP` | `false` | Set to `true` to disable external API calls for product information. This also keeps product contribution local |
@@ -162,6 +308,8 @@ After changing configuration:
 cd /opt/pantry
 sudo docker compose up -d
 ```
+
+Setting `PUBLIC_HOST` does not publish the site by itself. Run `sudo ./setup.sh publish` so the `public` profile starts. A plain `docker compose up` leaves that profile off.
 
 ## Headless Scanner Input
 
@@ -282,7 +430,7 @@ The image is **distroless**, so `docker exec pantry sh` does not work. Use `sudo
 
 ### Automatic Updates and the scanner
 
-`pantry-update.service` only updates the container image, never the deployment files. This means:
+`pantry-update.service` only updates the container image, never the deployment files. When `PUBLIC_HOST` is set, the update script also refreshes the public HTTPS proxy; see [Keeping HTTPS across automatic updates](#keeping-https-across-automatic-updates). This means:
 - The udev rule is installed once (via `sudo ./setup.sh rule`) and is not touched by updates
 - Docker Compose and `.env` files are never automatically modified
 
@@ -394,7 +542,7 @@ For automatic updates, you can install systemd units that periodically check for
    # Should output: /usr/bin/docker
    ```
 
-2. Install the systemd units:
+2. Install the systemd units. The service runs `/opt/pantry/systemd/pantry-update.sh`, which `setup.sh install` copies into place and marks executable. When `PUBLIC_HOST` is set, that script keeps the HTTPS proxy in the update.
    ```bash
    sudo cp /opt/pantry/systemd/pantry-update.service /etc/systemd/system/
    sudo cp /opt/pantry/systemd/pantry-update.timer /etc/systemd/system/
@@ -500,6 +648,14 @@ sudo docker login ghcr.io
 The credentials are stored in root's Docker config, which is the identity the update service runs as.
 
 ## Troubleshooting
+
+### Public website doesn't load
+
+See [Public Internet access](#public-internet-access). The usual causes are the Squarespace A record not pointing at this Pi yet, or router ports 80 and 443 not forwarded. From `/opt/pantry`:
+
+```bash
+sudo docker compose --profile public logs --tail=80 caddy
+```
 
 ### Container Won't Start
 

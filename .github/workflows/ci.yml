@@ -60,8 +60,8 @@ jobs:
       - name: Install shellcheck
         run: sudo apt-get update && sudo apt-get install -y shellcheck
       
-      - name: Lint deploy/setup.sh
-        run: shellcheck deploy/setup.sh
+      - name: Lint deploy shell scripts
+        run: shellcheck deploy/setup.sh deploy/systemd/pantry-update.sh
 
   frontend:
     name: Frontend tests and linting
