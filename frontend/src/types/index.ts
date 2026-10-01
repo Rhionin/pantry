@@ -124,6 +124,12 @@ export interface LookupResult {
   source: string;
 }
 
+// Matches buildInfoResponse in internal/server/handler_build.go.
+// commit is the full git SHA the image is tagged with, or "unknown".
+export interface BuildInfo {
+  commit: string;
+}
+
 // Matches batchCommitResponse in internal/server/handler_scan_batch_commit.go.
 export interface BatchCommitResponse {
   updatedCount: number;

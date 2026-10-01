@@ -87,6 +87,16 @@ func TestWebUIRouting(t *testing.T) {
 			afterRequest: assertBodyExcludesPlaceholder,
 		},
 		{
+			name: "GET /api/build returns JSON and not the SPA",
+			httpExchange: httpExchange{
+				method:         "GET",
+				url:            "/api/build",
+				expectedStatus: http.StatusOK,
+				bodyContains:   []string{`"commit":`},
+			},
+			afterRequest: assertContentTypePrefix("application/json"),
+		},
+		{
 			name: "GET /api/nope returns 404",
 			httpExchange: httpExchange{
 				method:         "GET",

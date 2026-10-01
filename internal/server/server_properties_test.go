@@ -10,7 +10,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Rhionin/pantry/internal/buildinfo"
 	"github.com/Rhionin/pantry/internal/product"
+	"github.com/go-json-experiment/json"
 	"pgregory.net/rapid"
 )
 
@@ -100,7 +102,8 @@ func generateUnregisteredAPIPath(t *rapid.T) string {
 func isRegisteredGetPath(path string) bool {
 	switch path {
 	case "/api/products", "/api/products/lookup", "/api/scans", "/api/scans/history",
-		"/api/inventory", "/api/shopping-list", "/api/events":
+		"/api/inventory", "/api/shopping-list", "/api/events", "/api/build",
+		"/api/scanner/config":
 		return true
 	}
 	// Wildcard GET routes: /api/suggestions/{itemId},
@@ -215,6 +218,12 @@ func generateRegisteredRequest(t *rapid.T) registeredRequest {
 			return registeredRequest{http.MethodGet, "/health", ""}
 		},
 		func(t *rapid.T) registeredRequest {
+			return registeredRequest{http.MethodGet, "/api/build", ""}
+		},
+		func(t *rapid.T) registeredRequest {
+			return registeredRequest{http.MethodGet, "/api/scanner/config", ""}
+		},
+		func(t *rapid.T) registeredRequest {
 			return registeredRequest{http.MethodGet, "/api/products", ""}
 		},
 		func(t *rapid.T) registeredRequest {
@@ -268,6 +277,48 @@ var dynamicField = regexp.MustCompile(
 // differ only in those dynamic fields.
 func normalizeBody(body []byte) []byte {
 	return dynamicField.ReplaceAll(body, []byte("<dynamic>"))
+}
+
+// TestBuildEndpointReportsStampedCommit checks that GET /api/build echoes the
+// commit the binary was stamped with. Release images set that stamp from the
+// same SHA the container tag uses, so any stamp, including the "unknown"
+// default, must come back unchanged and must not be the SPA document.
+func TestBuildEndpointReportsStampedCommit(t *testing.T) {
+	original := buildinfo.Commit
+	t.Cleanup(func() { buildinfo.Commit = original })
+
+	handler, _ := setupTestWithDB(t)
+
+	rapid.Check(t, func(t *rapid.T) {
+		commit := rapid.String().Draw(t, "commit")
+		buildinfo.Commit = commit
+
+		req := httptest.NewRequest(http.MethodGet, "/api/build", nil)
+		w := httptest.NewRecorder()
+		handler.ServeHTTP(w, req)
+
+		res := w.Result()
+		body, err := io.ReadAll(res.Body)
+		res.Body.Close()
+		if err != nil {
+			t.Fatalf("read body: %v", err)
+		}
+		if res.StatusCode != http.StatusOK {
+			t.Fatalf("GET /api/build status = %d, want 200; body = %q", res.StatusCode, body)
+		}
+		if ct := res.Header.Get("Content-Type"); !strings.HasPrefix(ct, "application/json") {
+			t.Fatalf("Content-Type = %q, want application/json; body = %q", ct, body)
+		}
+		var decoded struct {
+			Commit string `json:"commit"`
+		}
+		if err := json.Unmarshal(body, &decoded); err != nil {
+			t.Fatalf("decode body %q: %v", body, err)
+		}
+		if decoded.Commit != commit {
+			t.Fatalf("commit = %q, want %q", decoded.Commit, commit)
+		}
+	})
 }
 
 // buildComposedAndAPIHandlers builds the composed root handler and a bare

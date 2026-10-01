@@ -19,8 +19,13 @@ RUN go mod download
 COPY . .
 COPY --from=frontend /src/frontend/dist/ ./internal/webui/assets/
 RUN mkdir -p /data
+# Stamp the same SHA the image is tagged with so GET /api/build can report it.
+# Inherits the global default ("unknown") when CI does not pass COMMIT_HASH.
+ARG COMMIT_HASH
 RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} \
-    go build -trimpath -ldflags="-s -w" -o /out/pantry-server ./cmd/server
+    go build -trimpath \
+    -ldflags="-s -w -X github.com/Rhionin/pantry/internal/buildinfo.Commit=${COMMIT_HASH}" \
+    -o /out/pantry-server ./cmd/server
 
 # Runtime stage
 FROM gcr.io/distroless/static-debian12:nonroot
