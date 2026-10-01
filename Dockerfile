@@ -21,10 +21,10 @@ RUN go mod download
 COPY . .
 COPY --from=frontend /src/frontend/dist/ ./internal/webui/assets/
 RUN mkdir -p /data
-# Redeclared so this stage inherits the global build-args. ${COMMIT_*} is
-# substituted here, before the shell runs. $$COMMIT_HASH must not be used:
-# the build shell is PID 1, so $$ expands to "1" and the binary is stamped
-# with 1COMMIT_HASH. The subject arrives base64-encoded so quotes and spaces
+# Redeclared so this stage inherits the global build-args. Docker exports
+# those args into this shell, which expands ${COMMIT_*}. $$COMMIT_HASH must
+# not be used: $$ is the shell's PID, so the binary is stamped with
+# 1COMMIT_HASH. The subject arrives base64-encoded so quotes and spaces
 # never enter this line.
 ARG COMMIT_HASH
 ARG COMMIT_TIME
