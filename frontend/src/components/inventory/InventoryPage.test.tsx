@@ -56,9 +56,9 @@ const inventoryItem = (
   needsAttention,
 });
 
-const jsonResponse = (body: unknown) =>
+const jsonResponse = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), {
-    status: 200,
+    status,
     headers: { 'Content-Type': 'application/json' },
   });
 
@@ -173,5 +173,75 @@ describe('InventoryPage', () => {
     unmount();
 
     expect(eventSource.closed).toBe(true);
+  });
+
+  it('requires the exact confirmation phrase before wiping inventory', async () => {
+    let inventory = [inventoryItem('bread', 'Sourdough', 'Bakery', false)];
+    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      const method = init?.method ?? 'GET';
+      if (url === '/api/inventory/wipe' && method === 'POST') {
+        inventory = [];
+        return Promise.resolve(jsonResponse({}));
+      }
+      if (url === '/api/inventory' && method === 'GET') {
+        return Promise.resolve(jsonResponse(inventory));
+      }
+      return Promise.reject(new Error(`Unexpected request: ${method} ${url}`));
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<MantineProvider><InventoryPage /></MantineProvider>);
+    await screen.findByText('Sourdough');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Wipe inventory' }));
+    const confirmButton = await screen.findByRole('button', { name: 'Confirm wipe' });
+    expect(confirmButton).toBeDisabled();
+
+    fireEvent.change(screen.getByLabelText('Type WIPE INVENTORY to confirm'), {
+      target: { value: 'wipe inventory' },
+    });
+    expect(confirmButton).toBeDisabled();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    fireEvent.change(screen.getByLabelText('Type WIPE INVENTORY to confirm'), {
+      target: { value: 'WIPE INVENTORY' },
+    });
+    expect(confirmButton).toBeEnabled();
+    fireEvent.click(confirmButton);
+
+    expect(await screen.findByText('Your inventory is empty.')).toBeInTheDocument();
+    expect(screen.queryByText('Sourdough')).not.toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledWith('/api/inventory/wipe', expect.objectContaining({
+      method: 'POST',
+      body: JSON.stringify({ confirmation: 'WIPE INVENTORY' }),
+    }));
+  });
+
+  it('keeps the displayed inventory when a wipe is rejected', async () => {
+    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      const method = init?.method ?? 'GET';
+      if (url === '/api/inventory/wipe' && method === 'POST') {
+        return Promise.resolve(jsonResponse({ error: 'Type WIPE INVENTORY to confirm wiping the inventory.' }, 400));
+      }
+      if (url === '/api/inventory' && method === 'GET') {
+        return Promise.resolve(jsonResponse([inventoryItem('bread', 'Sourdough', 'Bakery', false)]));
+      }
+      return Promise.reject(new Error(`Unexpected request: ${method} ${url}`));
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<MantineProvider><InventoryPage /></MantineProvider>);
+    await screen.findByText('Sourdough');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Wipe inventory' }));
+    fireEvent.change(await screen.findByLabelText('Type WIPE INVENTORY to confirm'), {
+      target: { value: 'WIPE INVENTORY' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm wipe' }));
+
+    expect(await screen.findByText('Type WIPE INVENTORY to confirm wiping the inventory.')).toBeInTheDocument();
+    expect(screen.getByText('Sourdough')).toBeInTheDocument();
   });
 });

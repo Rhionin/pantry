@@ -881,3 +881,115 @@ func TestUpdateTargetQuantity_UnknownItem_NoPublish(t *testing.T) {
 		t.Errorf("expected 0 published events, got %d", len(broadcaster.published))
 	}
 }
+
+func TestWipe_ClearsOneUsersStockAndLeavesProductLookup(t *testing.T) {
+	pantry, catalog, db := newTestPantry(t)
+	ctx := context.Background()
+	now := time.Now()
+
+	if err := catalog.CreateProduct(ctx, product.Product{
+		ID: "prod-1", Name: "Milk", Category: "Dairy",
+	}); err != nil {
+		t.Fatalf("CreateProduct: %v", err)
+	}
+	if err := catalog.UpsertBarcodeMapping(ctx, "111", "prod-1", "global", ""); err != nil {
+		t.Fatalf("UpsertBarcodeMapping: %v", err)
+	}
+	if err := catalog.RecordBarcodeMiss(ctx, "unknown-barcode", now); err != nil {
+		t.Fatalf("RecordBarcodeMiss: %v", err)
+	}
+
+	for _, userID := range []string{"user-1", "user-2"} {
+		item, err := pantry.GetOrCreateItem(ctx, userID, "prod-1")
+		if err != nil {
+			t.Fatalf("GetOrCreateItem %s: %v", userID, err)
+		}
+		if _, err := pantry.AddInstance(ctx, inventory.ItemInstance{
+			ItemID: item.ID, StockInAt: now,
+		}); err != nil {
+			t.Fatalf("AddInstance %s: %v", userID, err)
+		}
+		if _, err := db.ExecContext(ctx,
+			`INSERT INTO consumption_events (id, item_id, consumed_at) VALUES (?, ?, ?)`,
+			"cons-"+userID, item.ID, now); err != nil {
+			t.Fatalf("consumption event %s: %v", userID, err)
+		}
+		if _, err := db.ExecContext(ctx,
+			`INSERT INTO shopping_list_items (id, user_id, item_id, quantity, source) VALUES (?, ?, ?, 1, 'manual')`,
+			"shop-"+userID, userID, item.ID); err != nil {
+			t.Fatalf("shopping item %s: %v", userID, err)
+		}
+	}
+	if _, err := db.ExecContext(ctx,
+		`INSERT INTO scan_entries (id, user_id, barcode, scanned_at, direction, unit_count, status, product_id)
+		 VALUES ('scan-1', 'user-1', '111', ?, 'stock_in', 1, 'pending', 'prod-1')`, now); err != nil {
+		t.Fatalf("scan entry: %v", err)
+	}
+
+	if err := pantry.Wipe(ctx, "user-1"); err != nil {
+		t.Fatalf("Wipe: %v", err)
+	}
+
+	wiped, err := pantry.ListItems(ctx, "user-1")
+	if err != nil {
+		t.Fatalf("ListItems user-1: %v", err)
+	}
+	if len(wiped) != 0 {
+		t.Fatalf("user-1 items after wipe: got %d, want 0", len(wiped))
+	}
+
+	kept, err := pantry.ListItems(ctx, "user-2")
+	if err != nil {
+		t.Fatalf("ListItems user-2: %v", err)
+	}
+	if len(kept) != 1 {
+		t.Fatalf("user-2 items after wipe: got %d, want 1", len(kept))
+	}
+	instances, err := pantry.ListItemInstances(ctx, kept[0].ID)
+	if err != nil {
+		t.Fatalf("ListItemInstances user-2: %v", err)
+	}
+	if len(instances) != 1 {
+		t.Fatalf("user-2 instances after wipe: got %d, want 1", len(instances))
+	}
+
+	products, err := catalog.ListProducts(ctx)
+	if err != nil {
+		t.Fatalf("ListProducts: %v", err)
+	}
+	if len(products) != 1 || products[0].Name != "Milk" {
+		t.Fatalf("products after wipe: got %+v", products)
+	}
+	found, err := catalog.LookupByBarcode(ctx, "111", "user-1")
+	if err != nil {
+		t.Fatalf("LookupByBarcode: %v", err)
+	}
+	if found == nil || found.Name != "Milk" {
+		t.Fatalf("barcode lookup after wipe: got %+v", found)
+	}
+	miss, err := catalog.GetBarcodeMiss(ctx, "unknown-barcode")
+	if err != nil {
+		t.Fatalf("GetBarcodeMiss: %v", err)
+	}
+	if miss == nil {
+		t.Fatal("barcode miss was deleted")
+	}
+
+	assertCount(t, db, `SELECT COUNT(*) FROM consumption_events WHERE id = 'cons-user-1'`, 0)
+	assertCount(t, db, `SELECT COUNT(*) FROM consumption_events WHERE id = 'cons-user-2'`, 1)
+	assertCount(t, db, `SELECT COUNT(*) FROM shopping_list_items WHERE user_id = 'user-1'`, 0)
+	assertCount(t, db, `SELECT COUNT(*) FROM shopping_list_items WHERE user_id = 'user-2'`, 1)
+	assertCount(t, db, `SELECT COUNT(*) FROM scan_entries`, 1)
+	assertCount(t, db, `SELECT COUNT(*) FROM item_instances WHERE item_id IN (SELECT id FROM items WHERE user_id = 'user-1')`, 0)
+}
+
+func assertCount(t *testing.T, db *sql.DB, query string, want int) {
+	t.Helper()
+	var got int
+	if err := db.QueryRow(query).Scan(&got); err != nil {
+		t.Fatalf("count %s: %v", query, err)
+	}
+	if got != want {
+		t.Fatalf("count %s: got %d, want %d", query, got, want)
+	}
+}

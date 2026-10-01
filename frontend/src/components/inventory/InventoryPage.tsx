@@ -7,6 +7,7 @@ import { SuggestionPanel } from '../suggestions/SuggestionPanel';
 import { ItemInstanceList } from './ItemInstanceList';
 import { ItemRow } from './ItemRow';
 import { mergeInventoryEvent } from './inventoryUtils';
+import { WipeInventoryDialog } from './WipeInventoryDialog';
 
 interface InventorySectionProps {
   heading: string;
@@ -130,6 +131,12 @@ export const InventoryPage = () => {
           />
         </Stack>
       )}
+      <WipeInventoryDialog
+        onWiped={() => {
+          setSelectedItemId(null);
+          void loadInventory();
+        }}
+      />
     </Stack>
   );
 };

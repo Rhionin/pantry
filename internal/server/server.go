@@ -196,11 +196,13 @@ func newAPIMux(
 	inventoryInstancesListHandler := &InventoryInstancesListHandler{Pantry: pantry}
 	inventoryInstanceCreateHandler := &InventoryInstanceCreateHandler{Pantry: pantry}
 	inventoryInstanceDeleteHandler := &InventoryInstanceDeleteHandler{Pantry: pantry}
+	inventoryWipeHandler := &InventoryWipeHandler{Pantry: pantry}
 
 	apiMux.HandleFunc("GET /api/inventory", HandleJSON(inventoryListHandler.Handle))
 	apiMux.HandleFunc("GET /api/inventory/{itemId}/instances", HandleJSON(inventoryInstancesListHandler.Handle))
 	apiMux.HandleFunc("POST /api/inventory/{itemId}/instances", HandleJSON(inventoryInstanceCreateHandler.Handle))
 	apiMux.HandleFunc("DELETE /api/inventory/instances/{instanceId}", HandleJSON(inventoryInstanceDeleteHandler.Handle))
+	apiMux.HandleFunc("POST /api/inventory/wipe", HandleJSON(inventoryWipeHandler.Handle))
 
 	// Suggestion and target-quantity handlers
 	consumptionLog := suggestion.NewConsumptionLog(db)

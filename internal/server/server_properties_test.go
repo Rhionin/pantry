@@ -248,6 +248,9 @@ func generateRegisteredRequest(t *rapid.T) registeredRequest {
 			return registeredRequest{http.MethodDelete, "/api/inventory/instances/" + id.Draw(t, "instanceId"), ""}
 		},
 		func(t *rapid.T) registeredRequest {
+			return registeredRequest{http.MethodPost, "/api/inventory/wipe", `{"confirmation":"` + inventoryWipeConfirmation + `"}`}
+		},
+		func(t *rapid.T) registeredRequest {
 			return registeredRequest{http.MethodDelete, "/api/shopping-list/items/" + id.Draw(t, "shoppingItemId"), ""}
 		},
 	}

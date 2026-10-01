@@ -13,10 +13,12 @@
 // @playwright/test ships as CommonJS; import the default and destructure.
 import { createRequire } from 'node:module';
 import { mkdir, writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 const require = createRequire(import.meta.url);
-const { chromium } = require('/projects/sandbox/pantry/frontend/node_modules/@playwright/test');
+const scriptDir = dirname(fileURLToPath(import.meta.url));
+const { chromium } = require(join(scriptDir, '../../../../frontend/node_modules/@playwright/test'));
 
 export const WEB_URL = process.env.PANTRY_WEB_URL ?? 'http://127.0.0.1:5173';
 export const API_URL = process.env.PANTRY_API_URL ?? 'http://127.0.0.1:18080';
