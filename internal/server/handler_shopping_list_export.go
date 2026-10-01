@@ -9,7 +9,7 @@ import (
 )
 
 // ShoppingListExportHandler handles POST /api/shopping-list/export.
-// It fetches the current shopping list and submits it to the cart exporter.
+// It submits the replenishment list, including store-brand pooling, to the cart exporter.
 type ShoppingListExportHandler struct {
 	ShoppingList interface {
 		ListManualItems(ctx context.Context, userID string) ([]shopping.ShoppingListItem, error)
@@ -33,28 +33,17 @@ func (h *ShoppingListExportHandler) Handle(req Request[struct{}, struct{}]) (*sh
 		return nil, InternalError(err)
 	}
 
-	deriveInputs := make([]shopping.DeriveInput, 0, len(items))
-	for _, item := range items {
-		if item.TargetQuantity == nil {
-			continue
-		}
-		instances, err := h.Pantry.ListItemInstances(req.Context, item.ID)
-		if err != nil {
-			return nil, InternalError(err)
-		}
-		deriveInputs = append(deriveInputs, shopping.DeriveInput{
-			ItemID:         item.ID,
-			TargetQuantity: *item.TargetQuantity,
-			CurrentCount:   len(instances),
-		})
-	}
-
-	derived := shopping.DeriveShoppingList(deriveInputs)
-
 	manualItems, err := h.ShoppingList.ListManualItems(req.Context, userID)
 	if err != nil {
 		return nil, InternalError(err)
 	}
+
+	counts, err := loadInstanceCounts(req.Context, h.Pantry.ListItemInstances, items)
+	if err != nil {
+		return nil, InternalError(err)
+	}
+
+	derived := replenishmentEntries(items, counts, manualItems)
 
 	manualEntries := make([]shopping.ManualEntry, len(manualItems))
 	for i, m := range manualItems {
