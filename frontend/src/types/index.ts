@@ -19,6 +19,43 @@ export interface ProductSummary {
 
 export interface Product extends ProductSummary {
   createdAt: string; // ISO 8601
+  source?: 'user' | 'external';
+}
+
+export interface ContributionSettings {
+  enabled: boolean;
+  configured: boolean;
+}
+
+export type ContributionStatus =
+  | 'disabled'
+  | 'already_upstream'
+  | 'not_configured'
+  | 'submitted'
+  | 'failed';
+
+export interface ContributionReceipt {
+  status: ContributionStatus;
+  database?: ExternalSource;
+  barcode?: string;
+  detail?: string;
+}
+
+export interface ProductWriteResult extends Product {
+  contribution?: ContributionReceipt;
+}
+
+export interface ProductDetail extends Product {
+  barcodes: string[];
+}
+
+export interface ProductWriteInput {
+  name: string;
+  category: string;
+  unitOfMeasure: string;
+  contribute?: boolean;
+  contributeTo?: ExternalSource;
+  barcode?: string;
 }
 
 export type ScanDirection = 'stock_in' | 'stock_out';

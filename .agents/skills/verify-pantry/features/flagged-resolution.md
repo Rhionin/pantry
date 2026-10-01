@@ -11,6 +11,9 @@ on the spot, turning the flagged scan into a normal pending scan.
   badge and no approval checkbox.
 - `flag-create` the card's `Create new product` fieldset creates a product and
   binds it to the barcode.
+- `flag-contribute` sharing is off until `Let me contribute products I type in`
+  is switched on, and a product is still not sent unless `Contribute this
+  product` is checked. With no Product Opener account, the product stays local.
 - `flag-search` an existing product can be attached via the `Search products`
   combobox and `Use selected product`.
 - `flag-becomes-pending` after resolution the card loses `Flagged`, shows the
@@ -64,3 +67,6 @@ in inventory.
 - The combobox `Search products` opens on focus and filters as you type; when
   attaching an existing product, wait for the option before `Use selected
   product`, which is disabled until a product is selected.
+- Leave `Let me contribute products I type in` off to resolve a flagged scan
+  without sharing. The create button does not contribute unless that switch is
+  on and `Contribute this product` is also checked.

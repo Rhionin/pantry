@@ -21,9 +21,11 @@ go run ./cmd/server
 | `DB_PATH` | `pantry.db` | SQLite database path |
 | `PRODUCT_CACHE_TTL` | `720h` | Product cache TTL before refresh |
 | `PRODUCT_MISS_TTL` | `168h` | Miss cache TTL before retry |
-| `DISABLE_EXTERNAL_PRODUCT_LOOKUP` | `false` | Disable external API calls |
+| `DISABLE_EXTERNAL_PRODUCT_LOOKUP` | `false` | Disable external API calls. Also keeps product contribution local |
 | `PANTRY_RETAILER_API_KEY` | empty | Store price API key. Empty keeps live prices off. A key alone does not fetch prices until a retailer adapter is connected. Sales you note in the app still apply. |
 | `PANTRY_RETAILER_API_URL` | empty | Reserved base URL for that adapter |
+| `PRODUCT_OPENER_USER_ID` | empty | Optional Product Opener account. Both this and the password must be set before an opted-in product can be sent |
+| `PRODUCT_OPENER_PASSWORD` | empty | Password for that account. Never invent one |
 | `STOCK_IN_CONTROL_BARCODE` | `STOCK_IN` | Barcode to switch to stock-in mode |
 | `STOCK_OUT_CONTROL_BARCODE` | `STOCK_OUT` | Barcode to switch to stock-out mode |
 | `HEADLESS_USER_ID` | `user-1` | User ID for headless scan operations |

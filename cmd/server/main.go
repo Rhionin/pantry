@@ -107,6 +107,16 @@ func main() {
 	stockOutBarcode := envOrDefault("STOCK_OUT_CONTROL_BARCODE", "STOCK_OUT")
 
 	listener, listenerOK := loadScanListenerConfigWithSource()
+
+	// Sharing stays local until an account is configured. The in-app switch
+	// still defaults off, so credentials alone never send a product.
+	contributor := product.NewContributorFromEnv(os.Getenv)
+	if contributor.Configured() {
+		log.Println("product contribution: signed in to Product Opener; products are sent only when someone opts in")
+	} else {
+		log.Println("product contribution: not signed in; opted-in products stay in this pantry")
+	}
+
 	opts := []server.Option{
 		server.WithBroadcaster(broadcaster),
 		server.WithScannerConfig(server.ScannerConfig{
@@ -114,6 +124,7 @@ func main() {
 			StockOutBarcode: stockOutBarcode,
 		}),
 		server.WithRetailerDeals(os.Getenv("PANTRY_RETAILER_API_KEY"), os.Getenv("PANTRY_RETAILER_API_URL")),
+		server.WithContributor(contributor),
 	}
 	if listenerOK {
 		opts = append(opts, server.WithScannerStatus(listener.Status))

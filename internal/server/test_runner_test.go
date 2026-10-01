@@ -50,6 +50,10 @@ type handlerTestCase struct {
 	// afterRequest verifies behavior after the primary request.
 	// Prefer exchanges() over direct DB queries.
 	afterRequest func(env testEnv)
+
+	// contributor, when set, is the Product Opener writer wired into the
+	// handler. Nil keeps sharing local.
+	contributor product.UpstreamContributor
 }
 
 // assertion wraps a JSONPath assertion for cleaner test tables.
@@ -85,7 +89,8 @@ type testEnv struct {
 	OpenFoodFacts *fakeProductOpener // alias for backward compatibility
 	Refresher     *product.Refresher
 	Clock         *fakeClock
-	MissTTL       time.Duration  // injected into LookupService, used by exchanges()
+	MissTTL       time.Duration // injected into LookupService, used by exchanges()
+	Contributor   product.UpstreamContributor
 	Res           *http.Response // populated only inside afterRequest callbacks
 }
 
@@ -93,7 +98,7 @@ type testEnv struct {
 func runHandlerTests(t *testing.T, tests []handlerTestCase) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			handler, env := setupTestWithDB(t)
+			handler, env := setupTestWithContributor(t, tt.contributor)
 
 			if tt.setup != nil {
 				tt.setup(env)
@@ -225,13 +230,17 @@ func exchanges(exs ...httpExchange) func(env testEnv) {
 		if env.Clock != nil {
 			now = env.Clock.Now
 		}
+		var opts []Option
+		if env.Contributor != nil {
+			opts = append(opts, WithContributor(env.Contributor))
+		}
 		handler, _ := NewHandler(env.ProductStore, &product.LookupService{
 			Catalog:   env.ProductStore,
 			Upstream:  env.Upstream,
 			Refresher: env.Refresher,
 			Now:       now,
 			MissTTL:   env.MissTTL,
-		}, env.Refresher, env.DB)
+		}, env.Refresher, env.DB, opts...)
 
 		for i, ex := range exs {
 			env.T.Run("", func(t *testing.T) {
