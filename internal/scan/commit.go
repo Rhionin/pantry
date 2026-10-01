@@ -71,6 +71,19 @@ func (r *Queue) CommitStockIn(ctx context.Context, scanEntry *ScanEntry) error {
 		return fmt.Errorf("update scan entry: %w", err)
 	}
 
+	// Reset the ledger for this item if a Ledger is configured.
+	// This happens inside the transaction so a crash after tx.Commit()
+	// would leave instances on the shelf and a ledger still claiming
+	// units are outstanding.
+	if r.Ledger != nil {
+		// Reset every provider's row for this item inside the stock-in
+		// transaction. A crash after commit must not leave units on the shelf
+		// while the ledger still claims they are outstanding.
+		if err := r.Ledger.ResetForItemTx(ctx, tx, itemID, scanEntry.ScannedAt); err != nil {
+			return fmt.Errorf("reset ledger: %w", err)
+		}
+	}
+
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("commit transaction: %w", err)
 	}

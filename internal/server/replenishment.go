@@ -41,6 +41,8 @@ func replenishmentNeeds(items []inventory.Item, counts map[string]int) []shoppin
 }
 
 type shoppingProvision struct {
+	Items   []inventory.Item
+	Counts  map[string]int
 	Manual  []shopping.ShoppingListItem
 	Derived []shopping.DerivedEntry
 	Merged  []shopping.ManualEntry
@@ -87,6 +89,8 @@ func loadShoppingProvision(ctx context.Context, userID string, pantry pantryList
 		manualEntries[i] = shopping.ManualEntry{ItemID: item.ItemID, Quantity: item.Quantity}
 	}
 	return shoppingProvision{
+		Items:   items,
+		Counts:  counts,
 		Manual:  manual,
 		Derived: derived,
 		Merged:  shopping.MergeEntries(derived, manualEntries),

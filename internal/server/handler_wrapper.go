@@ -24,6 +24,11 @@ type Created struct {
 	Value any
 }
 
+// SeeOther redirects the browser. Location must not carry a credential.
+type SeeOther struct {
+	Location string
+}
+
 // handlerFunc is a handler function that takes a parsed request and returns a response.
 type handlerFunc[TBody, TPathParams, TResp any] func(req Request[TBody, TPathParams]) (TResp, error)
 
@@ -60,6 +65,11 @@ func HandleJSON[TBody, TPathParams, TResp any](fn handlerFunc[TBody, TPathParams
 		if err != nil {
 			status := httpStatusFromError(err)
 			writeError(w, status, err.Error())
+			return
+		}
+
+		if redir, ok := any(resp).(SeeOther); ok {
+			http.Redirect(w, r, redir.Location, http.StatusSeeOther)
 			return
 		}
 

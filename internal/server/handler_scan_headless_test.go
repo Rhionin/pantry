@@ -152,5 +152,3 @@ func TestHealthWithoutScannerStatus(t *testing.T) {
 		t.Error("response includes scanner field when none configured")
 	}
 }
-
-

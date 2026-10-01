@@ -12,8 +12,8 @@ import (
 // makeEvent constructs a ConsumptionEvent for the given item at the given time offset (seconds from epoch).
 func makeEvent(itemID string, offsetSec int64) ConsumptionEvent {
 	return ConsumptionEvent{
-		ID:        "e",
-		ItemID:    itemID,
+		ID:         "e",
+		ItemID:     itemID,
 		ConsumedAt: time.Unix(offsetSec, 0),
 	}
 }

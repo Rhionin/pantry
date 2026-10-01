@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/Rhionin/pantry/internal/app"
+	"github.com/Rhionin/pantry/internal/cart"
 	"github.com/Rhionin/pantry/internal/product"
 	_ "modernc.org/sqlite"
 )
@@ -88,7 +89,8 @@ func setupTestWithContributor(t *testing.T, contributor product.UpstreamContribu
 		MissTTL:   5 * time.Minute,
 	}
 
-	var opts []Option
+	registry := cart.NewRegistry()
+	opts := []Option{WithCartRegistry(registry, cart.NewLedger(db))}
 	if contributor != nil {
 		opts = append(opts, WithContributor(contributor))
 	}
@@ -109,6 +111,7 @@ func setupTestWithContributor(t *testing.T, contributor product.UpstreamContribu
 		Clock:         clock,
 		MissTTL:       missTTL,
 		Contributor:   contributor,
+		Registry:      registry,
 	}
 
 	return handler, env

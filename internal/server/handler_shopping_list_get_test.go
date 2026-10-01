@@ -90,7 +90,9 @@ func TestShoppingListGet(t *testing.T) {
 				path:           "/api/shopping-list/export",
 				expectedStatus: http.StatusOK,
 				assertions: []assertion{
-					{path: "$.exported", value: float64(2)},
+					// Nothing is sent while no provider is configured. The pooled
+					// lines above are what a configured provider would receive.
+					{path: "$.exported", value: float64(0)},
 				},
 			}),
 		},

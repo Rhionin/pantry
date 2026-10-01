@@ -79,7 +79,7 @@ try {
   await page.getByText(/Kroger Cut Green Beans is on sale at \$0\.79/).waitFor({ state: 'visible', timeout: 10_000 });
   await page.getByText(/This list buys Great Value Cut Green Beans/).waitFor({ state: 'visible' });
   await page.getByRole('button', { name: 'Export to cart' }).click();
-  await page.getByText('Shopping list exported').waitFor({ state: 'visible', timeout: 10_000 });
+  await page.getByText('Nothing was sent. Connect a store to add these items to a cart.').waitFor({ state: 'visible', timeout: 10_000 });
 
   await page.getByRole('button', { name: 'Take the deal on Kroger Cut Green Beans' }).click();
   await page.getByRole('button', { name: 'Keep Great Value Cut Green Beans' }).waitFor({ state: 'visible' });

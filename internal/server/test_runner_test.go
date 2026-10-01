@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Rhionin/pantry/internal/cart"
 	"github.com/Rhionin/pantry/internal/product"
 	"github.com/steinfletcher/apitest"
 	jsonpath "github.com/steinfletcher/apitest-jsonpath"
@@ -35,6 +36,10 @@ type httpExchange struct {
 	// "the response is the HTML document containing X", which JSONPath
 	// assertions cannot express.
 	bodyContains []string
+
+	// bodyExcludes asserts that the response body does not contain each
+	// substring. Use it to prove a secret was not echoed.
+	bodyExcludes []string
 }
 
 // handlerTestCase defines a single HTTP handler test case for table-driven testing.
@@ -92,6 +97,7 @@ type testEnv struct {
 	MissTTL       time.Duration // injected into LookupService, used by exchanges()
 	Contributor   product.UpstreamContributor
 	Res           *http.Response // populated only inside afterRequest callbacks
+	Registry      *cart.Registry // the registry wired into the handler under test
 }
 
 // runHandlerTests executes a table of handler test cases.
@@ -210,6 +216,24 @@ func buildExpectations(req *apitest.Request, ex httpExchange) *apitest.Response 
 		})
 	}
 
+	if len(ex.bodyExcludes) > 0 {
+		forbidden := ex.bodyExcludes
+		expect = expect.Assert(func(res *http.Response, _ *http.Request) error {
+			b, err := io.ReadAll(res.Body)
+			if err != nil {
+				return fmt.Errorf("read response body: %w", err)
+			}
+			res.Body = io.NopCloser(bytes.NewReader(b))
+			body := string(b)
+			for _, secret := range forbidden {
+				if strings.Contains(body, secret) {
+					return fmt.Errorf("response body contains forbidden substring %q", secret)
+				}
+			}
+			return nil
+		})
+	}
+
 	return expect
 }
 
@@ -230,7 +254,11 @@ func exchanges(exs ...httpExchange) func(env testEnv) {
 		if env.Clock != nil {
 			now = env.Clock.Now
 		}
-		var opts []Option
+		registry := env.Registry
+		if registry == nil {
+			registry = cart.NewRegistry()
+		}
+		opts := []Option{WithCartRegistry(registry, cart.NewLedger(env.DB))}
 		if env.Contributor != nil {
 			opts = append(opts, WithContributor(env.Contributor))
 		}

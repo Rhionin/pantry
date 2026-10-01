@@ -76,6 +76,13 @@ func NewEntryFromLookup(userID, barcode string, lookup product.LookupResult, dir
 type Queue struct {
 	db *sql.DB
 
+	// Ledger resets the fulfillment ledger for items when stock-in occurs.
+	// Only required when providers are configured and the ledger needs
+	// to be reset on new stock.
+	Ledger interface {
+		ResetForItemTx(ctx context.Context, tx *sql.Tx, itemID string, at time.Time) error
+	}
+
 	// Broadcaster publishes a Scan_Event (and, for commit paths, an
 	// Inventory_Event) after each successful mutation. Nil in every existing
 	// test and in any caller that doesn't need live updates; publish calls

@@ -20,13 +20,17 @@ import {
   getInventoryList,
   getShoppingConsiderations,
   getShoppingList,
+  listProviders,
   markShoppingListItemPurchased,
   removeShoppingListItem,
   saveBrandPreference,
   saveItemDeal,
+  setReplenishmentMode,
+  setShoppingListAdjustment,
 } from '../../api/client';
-import type { InventoryItem, ShoppingConsideration, ShoppingConsiderations, ShoppingListEntry } from '../../types';
-import { CartExportButton } from './CartExportButton';
+import type { InventoryItem, ProviderInfo, ReplenishmentMode, ShoppingConsideration, ShoppingConsiderations, ShoppingListEntry } from '../../types';
+import { ProviderPanel } from './ProviderPanel';
+import { ProvisionButton } from './ProvisionButton';
 
 const requestErrorMessage = (error: unknown, fallback: string) =>
   error instanceof Error ? error.message : fallback;
@@ -55,6 +59,7 @@ const offerSentence = (note: ShoppingConsideration) => {
 
 export const ShoppingListPage = () => {
   const [entries, setEntries] = useState<ShoppingListEntry[]>([]);
+  const [providers, setProviders] = useState<ProviderInfo[]>([]);
   const [inventory, setInventory] = useState<InventoryItem[]>([]);
   const [notes, setNotes] = useState<ShoppingConsiderations>(emptyNotes);
   const [accepted, setAccepted] = useState<Record<string, string>>({});
@@ -67,10 +72,13 @@ export const ShoppingListPage = () => {
   const [error, setError] = useState('');
 
   const refresh = useCallback(async () => {
+    const providerRows = await listProviders();
+    const target = providerRows.find((row) => row.credentialsConfigured) ?? providerRows[0];
     const [shoppingEntries, inventoryItems] = await Promise.all([
-      getShoppingList(),
+      getShoppingList(target?.id),
       getInventoryList(),
     ]);
+    setProviders(providerRows);
     setEntries(shoppingEntries);
     setInventory(inventoryItems);
     try {
@@ -96,6 +104,31 @@ export const ShoppingListPage = () => {
     void Promise.resolve().then(loadShoppingList);
   }, [loadShoppingList]);
 
+  const targetProvider = providers.find((row) => row.credentialsConfigured) ?? providers[0] ?? null;
+
+  const changeMode = async (entry: ShoppingListEntry, mode: ReplenishmentMode) => {
+    setError('');
+    try {
+      await setReplenishmentMode(entry.itemId, mode);
+      await loadShoppingList();
+    } catch (requestError) {
+      setError(requestErrorMessage(requestError, 'Unable to change the replenishment mode.'));
+    }
+  };
+
+  const changeAdjustment = async (entry: ShoppingListEntry, value: number | string) => {
+    if (entry.id === '' || targetProvider === null) return;
+    const nextQuantity = typeof value === 'number' ? value : Number(value);
+    if (!Number.isInteger(nextQuantity) || nextQuantity < 0 || nextQuantity > 999) return;
+    setError('');
+    try {
+      await setShoppingListAdjustment(entry.id, entry.provider || targetProvider.id, nextQuantity);
+      await loadShoppingList();
+    } catch (requestError) {
+      setError(requestErrorMessage(requestError, 'Unable to save the quantity adjustment.'));
+    }
+  };
+
   // A taken deal only applies while that offer is still the one on the line.
   // Deriving it here drops a stale choice when the notes refresh, without
   // writing state from an effect.
@@ -103,9 +136,7 @@ export const ShoppingListPage = () => {
     const next: Record<string, string> = {};
     for (const [lineId, useId] of Object.entries(accepted)) {
       const note = notes.considerations.find((item) => item.lineItemId === lineId);
-      if (note?.offer?.itemId === useId) {
-        next[lineId] = useId;
-      }
+      if (note?.offer?.itemId === useId) next[lineId] = useId;
     }
     return next;
   }, [accepted, notes]);
@@ -221,10 +252,16 @@ export const ShoppingListPage = () => {
 
   return (
     <Stack gap="sm">
-      <Group justify="space-between">
+      <Group justify="space-between" align="flex-start">
         <Title order={1} size="h3">Shopping list</Title>
-        <CartExportButton disabled={entries.length === 0} useItemIds={acceptedDeals} />
+        <ProvisionButton
+          provider={targetProvider}
+          entries={entries}
+          useItemIds={acceptedDeals}
+          onFinished={() => void loadShoppingList()}
+        />
       </Group>
+      <ProviderPanel providers={providers} onChanged={() => void loadShoppingList()} />
       {!loading && notes.considerations.length > 0 && (
         <Alert variant="light" color="teal" title={offers.length > 0 ? 'A sale to consider' : 'Brand notes'}>
           <Stack gap="xs">
@@ -379,7 +416,47 @@ export const ShoppingListPage = () => {
                         )}
                       </Stack>
                     </Table.Td>
-                    <Table.Td>{entry.quantity} {unit}</Table.Td>
+                    <Table.Td>
+                      <Stack gap={4}>
+                        <Text>{entry.quantity} {unit}</Text>
+                        {entry.adjustment !== undefined && entry.computedQuantity !== undefined && (
+                          <Text size="sm" c="dimmed">Computed {entry.computedQuantity} {unit}</Text>
+                        )}
+                        {entry.replenishmentMode && (
+                          <NativeSelect
+                            size="xs"
+                            aria-label={`Replenishment mode for ${productName}`}
+                            value={entry.replenishmentMode}
+                            data={[
+                              { value: 'target', label: 'Restock to target' },
+                              { value: 'replenish', label: 'Replace what was used' },
+                            ]}
+                            onChange={(event) => void changeMode(entry, event.currentTarget.value as ReplenishmentMode)}
+                          />
+                        )}
+                        {entry.id !== '' && targetProvider !== null && (
+                          <NumberInput
+                            size="xs"
+                            aria-label={`Provision quantity for ${productName}`}
+                            min={0}
+                            max={999}
+                            step={1}
+                            allowDecimal={false}
+                            defaultValue={entry.quantity}
+                            key={`${entry.id}-${entry.quantity}`}
+                            onBlur={(event) => void changeAdjustment(entry, event.currentTarget.value)}
+                            w={120}
+                          />
+                        )}
+                        {entry.basis && (
+                          <Text size="xs" c="dimmed">
+                            {entry.replenishmentMode === 'replenish'
+                              ? `${entry.basis.consumedUnits} used, ${entry.basis.requested} already requested`
+                              : `${entry.basis.instanceCount} on hand${entry.basis.targetQuantity !== undefined ? `, target ${entry.basis.targetQuantity}` : ''}`}
+                          </Text>
+                        )}
+                      </Stack>
+                    </Table.Td>
                     <Table.Td><Badge variant="light">{entry.source === 'auto' ? 'Derived' : 'Manual'}</Badge></Table.Td>
                     <Table.Td>
                       {entry.id === '' ? (

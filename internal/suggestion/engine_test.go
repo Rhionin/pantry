@@ -16,8 +16,8 @@ func eventsWithIntervals(itemID string, intervals []float64) []ConsumptionEvent 
 	events[0] = ConsumptionEvent{ID: "e0", ItemID: itemID, ConsumedAt: baseTime}
 	for i, d := range intervals {
 		events[i+1] = ConsumptionEvent{
-			ID:        "e" + string(rune('1'+i)),
-			ItemID:    itemID,
+			ID:         "e" + string(rune('1'+i)),
+			ItemID:     itemID,
 			ConsumedAt: events[i].ConsumedAt.Add(time.Duration(d*24) * time.Hour),
 		}
 	}

@@ -77,7 +77,9 @@ func TestShoppingBrandChoice(t *testing.T) {
 					path:           "/api/shopping-list/export",
 					expectedStatus: http.StatusOK,
 					assertions: []assertion{
-						{path: "$.exported", value: float64(1)},
+						// Nothing is sent until a provider is configured. The
+						// planned line is still the usual brand.
+						{path: "$.exported", value: float64(0)},
 						{path: "$.items[0].itemId", value: "item-gv"},
 						{path: "$.items[0].quantity", value: float64(1)},
 					},
@@ -88,7 +90,7 @@ func TestShoppingBrandChoice(t *testing.T) {
 					body:           `{"useItemIds":{"item-gv":"item-kr"}}`,
 					expectedStatus: http.StatusOK,
 					assertions: []assertion{
-						{path: "$.exported", value: float64(1)},
+						{path: "$.exported", value: float64(0)},
 						{path: "$.items[0].itemId", value: "item-kr"},
 						{path: "$.items[0].name", value: "Kroger Cut Green Beans"},
 					},

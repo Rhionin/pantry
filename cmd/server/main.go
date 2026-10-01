@@ -6,9 +6,14 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/Rhionin/pantry/internal/app"
+	"github.com/Rhionin/pantry/internal/cart"
+	"github.com/Rhionin/pantry/internal/cart/appcred"
+	"github.com/Rhionin/pantry/internal/cart/kroger"
 	"github.com/Rhionin/pantry/internal/events"
 	"github.com/Rhionin/pantry/internal/product"
 	"github.com/Rhionin/pantry/internal/scanlistener"
@@ -61,6 +66,91 @@ func productMissTTL() time.Duration {
 	return ttl
 }
 
+// loadCartRegistry reads Kroger's environment and any credentials saved from
+// the Pantry UI. A saved row overrides the environment until it is cleared.
+// Missing credentials register Kroger as not configured so the shopping list
+// can say so; they do not stop the process.
+func loadCartRegistry(db *sql.DB) (*cart.Registry, *cart.Ledger, server.ProviderEnv) {
+	registry := cart.NewRegistry()
+	ledger := cart.NewLedger(db)
+
+	disabled := strings.TrimSpace(os.Getenv("DISABLE_KROGER")) == "true"
+	clientID := strings.TrimSpace(os.Getenv("KROGER_CLIENT_ID"))
+	clientSecret := strings.TrimSpace(os.Getenv("KROGER_CLIENT_SECRET"))
+	redirectURI := strings.TrimSpace(os.Getenv("KROGER_REDIRECT_URI"))
+	if disabled {
+		log.Println("Kroger provider disabled via DISABLE_KROGER")
+	}
+
+	configured := !disabled && clientID != "" && clientSecret != "" && redirectURI != ""
+	envCreds := server.ProviderEnv{
+		ClientID:     clientID,
+		ClientSecret: clientSecret,
+		RedirectURI:  redirectURI,
+		Disabled:     disabled,
+	}
+	modality := strings.ToUpper(strings.TrimSpace(os.Getenv("KROGER_MODALITY")))
+	if modality == "" {
+		modality = "PICKUP"
+	} else if modality != "PICKUP" && modality != "DELIVERY" {
+		log.Printf("invalid KROGER_MODALITY %q, using default PICKUP", modality)
+		modality = "PICKUP"
+	}
+	envCreds.Modality = modality
+
+	var adapter *kroger.Adapter
+	if configured {
+		created, err := kroger.New(clientID, clientSecret, redirectURI, modality)
+		if err != nil {
+			log.Printf("failed to create Kroger adapter: %v", err)
+			configured = false
+			adapter = kroger.NewUnconfigured()
+		} else {
+			adapter = created
+		}
+	} else {
+		adapter = kroger.NewUnconfigured()
+	}
+
+	if !disabled {
+		saved, ok, err := appcred.NewVault(db).Load(context.Background(), "kroger")
+		if err != nil {
+			log.Printf("read saved Kroger credentials: %v", err)
+		} else if ok {
+			if err := adapter.ApplyAppCredentials(saved.ClientID, saved.ClientSecret, saved.RedirectURI, saved.Modality); err != nil {
+				log.Printf("saved Kroger credentials were not applied: %v", err)
+			} else {
+				configured = true
+			}
+		}
+	}
+
+	opts := []cart.RegisterOption{
+		cart.WithBatchSize(krogerBatchSize()),
+		cart.WithCredentialsConfigured(configured),
+	}
+	if err := registry.Register(adapter, opts...); err != nil {
+		log.Printf("failed to register Kroger: %v", err)
+	}
+	if !configured && !disabled {
+		log.Println("Kroger credentials are not configured; set them in the shopping list or with KROGER_CLIENT_ID, KROGER_CLIENT_SECRET, and KROGER_REDIRECT_URI")
+	}
+	return registry, ledger, envCreds
+}
+
+func krogerBatchSize() int {
+	raw := strings.TrimSpace(os.Getenv("KROGER_BATCH_SIZE"))
+	if raw == "" {
+		return 50
+	}
+	n, err := strconv.Atoi(raw)
+	if err != nil || n < 1 || n > 999 {
+		log.Printf("invalid KROGER_BATCH_SIZE %q, using default 50", raw)
+		return 50
+	}
+	return n
+}
+
 func main() {
 	dbPath := envOrDefault("DB_PATH", "pantry.db")
 	addr := envOrDefault("ADDR", ":8080")
@@ -103,6 +193,9 @@ func main() {
 	// subscribers.
 	broadcaster := events.NewBroadcaster()
 
+	// Load cart registry and register Kroger adapter if configured.
+	registry, ledger, providerEnv := loadCartRegistry(sqlDB)
+
 	stockInBarcode := envOrDefault("STOCK_IN_CONTROL_BARCODE", "STOCK_IN")
 	stockOutBarcode := envOrDefault("STOCK_OUT_CONTROL_BARCODE", "STOCK_OUT")
 
@@ -123,6 +216,8 @@ func main() {
 			StockInBarcode:  stockInBarcode,
 			StockOutBarcode: stockOutBarcode,
 		}),
+		server.WithCartRegistry(registry, ledger),
+		server.WithProviderEnv(providerEnv),
 		server.WithRetailerDeals(os.Getenv("PANTRY_RETAILER_API_KEY"), os.Getenv("PANTRY_RETAILER_API_URL")),
 		server.WithContributor(contributor),
 	}

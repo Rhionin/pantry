@@ -192,6 +192,14 @@ func CollapseEquivalentNeeds(items []ReplenishmentItem, manualItemIDs map[string
 	return result
 }
 
+// SameNeed reports whether two products are one replenishment need. A blank
+// unit does not match a specified unit, matching CollapseEquivalentNeeds.
+func SameNeed(nameA, unitA, nameB, unitB string) bool {
+	a, aOK := equivalenceKey(nameA, unitA)
+	b, bOK := equivalenceKey(nameB, unitB)
+	return aOK && bOK && a == b
+}
+
 func equivalenceKey(name, unit string) (string, bool) {
 	generic := GenericProductName(name)
 	if generic == "" {

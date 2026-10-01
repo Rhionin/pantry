@@ -18,6 +18,9 @@ import type {
   ScanEntry,
   ScannerConfig,
   ScanStatus,
+  ProvisionReport,
+  ProviderInfo,
+  ReplenishmentMode,
   ShoppingConsiderations,
   ShoppingListEntry,
   TargetQuantitySuggestion,
@@ -259,8 +262,8 @@ export function setTargetQuantity(
 
 // --- Shopping list ---
 
-export function getShoppingList(): Promise<ShoppingListEntry[]> {
-  return apiFetch('/api/shopping-list');
+export function getShoppingList(provider?: string): Promise<ShoppingListEntry[]> {
+  return apiFetch(`/api/shopping-list${toQueryString({ provider })}`);
 }
 
 export function addShoppingListItem(itemId: string, quantity: number): Promise<ShoppingListEntry> {
@@ -278,6 +281,73 @@ export function markShoppingListItemPurchased(id: string): Promise<ShoppingListE
   return apiFetch(`/api/shopping-list/items/${id}`, {
     method: 'PATCH',
     body: JSON.stringify({ purchased: true }),
+  });
+}
+
+export function exportShoppingList(provider?: string, useItemIds?: Record<string, string>): Promise<ProvisionReport> {
+  const body: { provider?: string; useItemIds?: Record<string, string> } = {};
+  if (provider) body.provider = provider;
+  if (useItemIds !== undefined && Object.keys(useItemIds).length > 0) body.useItemIds = useItemIds;
+  return apiFetch('/api/shopping-list/export', {
+    method: 'POST',
+    body: Object.keys(body).length > 0 ? JSON.stringify(body) : undefined,
+  });
+}
+
+export function listProviders(): Promise<ProviderInfo[]> {
+  return apiFetch('/api/providers');
+}
+
+export function saveProviderCredentials(
+  providerId: string,
+  credentials: { clientId: string; clientSecret: string; redirectUri: string; modality: string },
+): Promise<void> {
+  return apiFetch(`/api/providers/${providerId}/credentials`, {
+    method: 'PUT',
+    body: JSON.stringify(credentials),
+  });
+}
+
+export function clearProviderCredentials(providerId: string): Promise<void> {
+  return apiFetch(`/api/providers/${providerId}/credentials`, { method: 'DELETE' });
+}
+
+export function authorizeProvider(providerId: string): Promise<{ authorizationUrl: string }> {
+  return apiFetch(`/api/providers/${providerId}/authorize`);
+}
+
+export function disconnectProvider(providerId: string): Promise<void> {
+  return apiFetch(`/api/providers/${providerId}/connection`, { method: 'DELETE' });
+}
+
+export function resetProviderLedger(providerId: string): Promise<void> {
+  return apiFetch(`/api/providers/${providerId}/ledger/reset`, { method: 'POST' });
+}
+
+export function setReplenishmentMode(itemId: string, mode: ReplenishmentMode): Promise<{ mode: ReplenishmentMode }> {
+  return apiFetch(`/api/items/${itemId}/replenishment-mode`, {
+    method: 'POST',
+    body: JSON.stringify({ mode }),
+  });
+}
+
+export function setShoppingListAdjustment(entryId: string, provider: string, adjustment: number): Promise<{ adjustment: number }> {
+  return apiFetch(`/api/shopping-list/items/${entryId}/adjustment${toQueryString({ provider })}`, {
+    method: 'PUT',
+    body: JSON.stringify({ adjustment }),
+  });
+}
+
+export function clearShoppingListAdjustment(entryId: string, provider: string): Promise<void> {
+  return apiFetch(`/api/shopping-list/items/${entryId}/adjustment${toQueryString({ provider })}`, {
+    method: 'DELETE',
+  });
+}
+
+export function resolveUnknownProvision(entryId: string, provider: string, reachedProvider: boolean): Promise<{ entryId: string }> {
+  return apiFetch(`/api/shopping-list/items/${entryId}/unknown-resolution`, {
+    method: 'POST',
+    body: JSON.stringify({ provider, reachedProvider }),
   });
 }
 
@@ -305,21 +375,6 @@ export function saveItemDeal(itemId: string, priceCents: number, label: string):
 
 export function clearItemDeal(itemId: string): Promise<void> {
   return apiFetch(`/api/shopping-list/deals/${itemId}`, { method: 'DELETE' });
-}
-
-export interface ExportShoppingListResponse {
-  exported: number;
-  failedItems?: string[];
-}
-
-export function exportShoppingList(useItemIds?: Record<string, string>): Promise<ExportShoppingListResponse> {
-  const choices = useItemIds !== undefined && Object.keys(useItemIds).length > 0
-    ? { useItemIds }
-    : undefined;
-  return apiFetch('/api/shopping-list/export', {
-    method: 'POST',
-    body: choices === undefined ? undefined : JSON.stringify(choices),
-  });
 }
 
 // --- Build identity ---
