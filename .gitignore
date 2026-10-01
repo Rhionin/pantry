@@ -43,6 +43,7 @@ internal/webui/assets/*
 
 # Pi deployment secrets/overrides
 deploy/.env
+deploy/auth.caddy
 
 # Editor / OS
 .DS_Store

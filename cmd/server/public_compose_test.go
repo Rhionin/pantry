@@ -25,6 +25,7 @@ func TestPublicProxyIsOptIn(t *testing.T) {
 			Profiles    []string          `yaml:"profiles"`
 			Ports       []string          `yaml:"ports"`
 			Environment map[string]string `yaml:"environment"`
+			Volumes     []string          `yaml:"volumes"`
 		} `yaml:"services"`
 	}
 	if err := yaml.Unmarshal(data, &compose); err != nil {
@@ -60,6 +61,9 @@ func TestPublicProxyIsOptIn(t *testing.T) {
 	if caddy.Environment["PUBLIC_HOST"] == "" || caddy.Environment["ACME_EMAIL"] == "" {
 		t.Fatal("caddy must receive PUBLIC_HOST and ACME_EMAIL from the deployment .env")
 	}
+	if !hasExactPort(caddy.Volumes, "./auth.caddy:/etc/caddy/auth.caddy:ro") {
+		t.Fatalf("caddy must mount the generated password hash, got %v", caddy.Volumes)
+	}
 
 	caddyfile, err := os.ReadFile(filepath.Join("..", "..", "deploy", "Caddyfile"))
 	if err != nil {
@@ -69,6 +73,7 @@ func TestPublicProxyIsOptIn(t *testing.T) {
 	for _, want := range []string{
 		"{$PUBLIC_HOST}",
 		"{$ACME_EMAIL}",
+		"import auth.caddy",
 		"path /api/events",
 		"reverse_proxy pantry:8080",
 		"flush_interval -1",
@@ -86,13 +91,16 @@ func TestPublicProxyIsOptIn(t *testing.T) {
 	if !strings.Contains(envText, "\nPUBLIC_HOST=\n") || !strings.Contains(envText, "\nACME_EMAIL=\n") {
 		t.Fatal(".env.example must leave PUBLIC_HOST and ACME_EMAIL empty so install stays LAN-only")
 	}
+	if !strings.Contains(envText, "\nBASIC_AUTH_USER=pantry\n") || !strings.Contains(envText, "\nBASIC_AUTH_PASSWORD=\n") {
+		t.Fatal(".env.example must set the public username and leave the shared password empty")
+	}
 
 	setup, err := os.ReadFile(filepath.Join("..", "..", "deploy", "setup.sh"))
 	if err != nil {
 		t.Fatalf("read setup.sh: %v", err)
 	}
 	setupText := string(setup)
-	for _, want := range []string{"cmd_publish", "cmd_unpublish", "--profile public"} {
+	for _, want := range []string{"cmd_publish", "cmd_unpublish", "--profile public", "write_auth_caddy", "BASIC_AUTH_PASSWORD", "caddy hash-password", "basic_auth bcrypt Pantry"} {
 		if !strings.Contains(setupText, want) {
 			t.Fatalf("setup.sh missing %q", want)
 		}
@@ -105,6 +113,17 @@ func TestPublicProxyIsOptIn(t *testing.T) {
 	updaterText := string(updater)
 	if !strings.Contains(updaterText, "--profile public") || !strings.Contains(updaterText, "PUBLIC_HOST") {
 		t.Fatal("automatic updates must include the public profile only when PUBLIC_HOST is set")
+	}
+	if !strings.Contains(updaterText, "-f /opt/pantry/auth.caddy") {
+		t.Fatal("automatic updates must not start the public proxy without the password hash file")
+	}
+
+	ignore, err := os.ReadFile(filepath.Join("..", "..", ".gitignore"))
+	if err != nil {
+		t.Fatalf("read .gitignore: %v", err)
+	}
+	if !strings.Contains(string(ignore), "deploy/auth.caddy") {
+		t.Fatal(".gitignore must ignore deploy/auth.caddy so a generated hash is not committed")
 	}
 }
 

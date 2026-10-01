@@ -32,7 +32,7 @@ New to this? Follow these steps in order on your Raspberry Pi and you'll have Pa
    sudo ./setup.sh status
    ```
 
-6. **Optional: open it to the public internet.** The steps above stay on your home network. To serve the same UI at a hostname you own, such as `https://pantry.rhionin.com`, follow [Public Internet access](#public-internet-access). That setup does not add a login.
+6. **Optional: open it to the public internet.** The steps above stay on your home network. To serve the same UI at a hostname you own, such as `https://pantry.rhionin.com`, follow [Public Internet access](#public-internet-access). The public site asks for one shared password.
 
 **The scanner is optional at every step.** Pantry starts and serves the web UI whether or not a barcode scanner is attached, and you can connect or disconnect the scanner at any time — see [Headless Scanner Input](#headless-scanner-input).
 
@@ -121,9 +121,7 @@ sudo ./setup.sh status
 
 This puts the Pantry UI on a hostname you already own, with HTTPS, using the same Docker Compose stack. The recommended name is a subdomain (`pantry.rhionin.com`) so the bare domain can stay unused.
 
-**There is no login.** Anyone who can open the URL can view and change inventory, the scan queue, and the shopping list. Add access control only when you are ready to build it; this path does not.
-
-LAN access stays as it is. `http://<pi-ip>:8080` keeps working on the home network. Do not forward port 8080 on the router.
+The public site asks for one shared password before it serves anything, including the API and the live scan stream. That stops scanners and other bots that do not have the password. It is not separate accounts, and anyone who has the password can change the pantry. The home-network address `http://<pi-ip>:8080` does not ask for the password, so do not forward port 8080 on the router.
 
 The path below is Caddy in the `public` Compose profile, a Let's Encrypt certificate, and an A record at Squarespace. It needs a public IPv4 address and the ability to forward TCP ports 80 and 443. If your ISP uses CGNAT, skip to [When port forwarding cannot work](#when-port-forwarding-cannot-work).
 
@@ -201,9 +199,11 @@ On the Pi, edit `/opt/pantry/.env` (create the LAN install first with `sudo ./se
 ```bash
 PUBLIC_HOST=pantry.rhionin.com
 ACME_EMAIL=you@example.com
+BASIC_AUTH_USER=pantry
+BASIC_AUTH_PASSWORD=replace-with-a-long-passphrase
 ```
 
-`PUBLIC_HOST` is the hostname only. `ACME_EMAIL` is where Let's Encrypt sends expiry notices. It is not a Pantry account.
+`PUBLIC_HOST` is the hostname only. `ACME_EMAIL` is where Let's Encrypt sends expiry notices. Replace `BASIC_AUTH_PASSWORD` with a passphrase of 12 to 72 characters, and do not wrap it in quotes. `publish` hashes it into `/opt/pantry/auth.caddy` (mode `0600`) and restricts `.env` to its owner. The password itself stays in `.env` so you can change it later; it is not written into the image or the repository.
 
 ```bash
 sudo ./setup.sh publish
@@ -218,10 +218,12 @@ Certificates are stored in the Docker volume `caddy-data`. Do not delete that vo
 From a phone on cellular data, not the home Wi-Fi:
 
 ```bash
-curl -fsS https://pantry.rhionin.com/health
+curl -fsS -u 'pantry:replace-with-a-long-passphrase' https://pantry.rhionin.com/health
 ```
 
-Expect `{"status":"ok",...}`. Then open `https://pantry.rhionin.com` in the phone's browser and confirm the pantry UI loads. The scan queue and inventory pages keep a live connection to `/api/events`; new scans should show up without a refresh.
+Without the password, that command returns `401`. With it, expect `{"status":"ok",...}`. Then open `https://pantry.rhionin.com` in the phone's browser, enter the same username and password when asked, and confirm the pantry UI loads. The scan queue and inventory pages keep a live connection to `/api/events`; new scans should show up without a refresh.
+
+To change the password, edit `BASIC_AUTH_PASSWORD` and run `sudo ./setup.sh publish` again. Browsers that saved the old password will ask again.
 
 `sudo ./setup.sh unpublish` stops only the proxy. The LAN site keeps running. Clear `PUBLIC_HOST` as well if an automatic-update timer is enabled, or the next update will start the proxy again.
 
@@ -240,13 +242,14 @@ sudo docker compose --profile public logs --tail=80 caddy
 | Certificate error mentioning timeout, connection refused, or `404` from another site | Port 80 is not reaching this Pi. Re-check the router forward and that no other program is bound to port 80. |
 | Browser warning, certificate name mismatch | `PUBLIC_HOST` and the Squarespace host are not the same name. They must match exactly. |
 | `https://` works at home but not on cellular | The phone is still using the LAN address, or the forward is wrong. Test on cellular. |
+| Browser or curl gets `401` | The shared password is missing or does not match `.env`. A request with no password is supposed to be rejected. Re-run `sudo ./setup.sh publish` after changing `BASIC_AUTH_PASSWORD`. |
 | UI loads, but the scan queue never updates live | `/api/events` is being buffered. `deploy/Caddyfile` must keep `flush_interval -1` on that path. Re-run `sudo ./setup.sh publish` after pulling a fresh `Caddyfile`. |
 
 ### When port forwarding cannot work
 
 Two free options, neither of which is wired into this repo. Pick one; do not run them in front of Caddy at the same time.
 
-**Cloudflare Tunnel** (fits `pantry.rhionin.com` when you cannot forward ports). Create a free Cloudflare account, add `rhionin.com`, and let Cloudflare show you two nameservers. In Squarespace: **Domains → rhionin.com → DNS → Nameservers → use custom nameservers**, and paste those two. That moves DNS for the whole domain to Cloudflare; the registration stays at Squarespace. Then install `cloudflared` on the Pi and route the hostname to `http://127.0.0.1:8080`. The tunnel login writes a credential on the Pi. Leave it there; do not commit it. No ports to forward, and a changing home IP does not matter.
+**Cloudflare Tunnel** (fits `pantry.rhionin.com` when you cannot forward ports). Create a free Cloudflare account, add `rhionin.com`, and let Cloudflare show you two nameservers. In Squarespace: **Domains → rhionin.com → DNS → Nameservers → use custom nameservers**, and paste those two. That moves DNS for the whole domain to Cloudflare; the registration stays at Squarespace. Then install `cloudflared` on the Pi. Do not point the tunnel at port 8080: that port has no password. Put Cloudflare Access (free for a small number of users) in front of the hostname, or publish through Caddy on localhost and tunnel to that. The tunnel login writes a credential on the Pi. Leave it there; do not commit it. No ports to forward, and a changing home IP does not matter.
 
 **Tailscale Funnel** (fits a stable URL when you do not need `rhionin.com`). The free personal tier can expose the Pi as a `*.ts.net` name without opening ports. Putting a Squarespace name on Funnel is more work than the Caddy path; use Funnel when a Tailscale hostname is enough.
 
@@ -287,6 +290,8 @@ All configuration is handled through environment variables in `/opt/pantry/.env`
 | `HOST_PORT` | `8080` | Host port to expose Pantry service on the LAN. Container always uses port 8080 internally. Do not forward this port on the router |
 | `PUBLIC_HOST` | empty | Hostname for the public HTTPS proxy, such as `pantry.rhionin.com`. Empty keeps the install LAN-only. No `https://` |
 | `ACME_EMAIL` | empty | Email Let's Encrypt uses for certificate expiry notices. Required when `PUBLIC_HOST` is set. Not a Pantry login |
+| `BASIC_AUTH_USER` | `pantry` | Username the browser asks for on the public site |
+| `BASIC_AUTH_PASSWORD` | empty | Shared password for the public site, 12 to 72 characters. Required before `publish` will start. The hash is written to `auth.caddy`; this value stays in `.env` |
 | `PRODUCT_CACHE_TTL` | `720h` | How long to cache product lookups (720h = 30 days) |
 | `PRODUCT_MISS_TTL` | `168h` | How long to cache "not found" results (168h = 7 days) |
 | `DISABLE_EXTERNAL_PRODUCT_LOOKUP` | `false` | Set to `true` to disable external API calls for product information. This also keeps product contribution local |

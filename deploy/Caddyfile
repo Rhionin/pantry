@@ -6,6 +6,12 @@
 }
 
 {$PUBLIC_HOST} {
+	# Shared password for the public hostname. The hash lives in auth.caddy,
+	# written on the Pi by setup.sh, so it is not stored in git. This block
+	# is the HTTPS site only: Let's Encrypt's HTTP-01 check on port 80 stays
+	# outside it and can still complete.
+	import auth.caddy
+
 	# Scan and inventory pages keep a Server-Sent Events stream open on
 	# /api/events. Buffering or compressing that response holds events
 	# until the stream ends, so the UI never updates live.
