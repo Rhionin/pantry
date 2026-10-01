@@ -1,14 +1,63 @@
 // Quiet copy for the running build. The commit is the image tag suffix
-// (ghcr.io/rhionin/pantry:<commit>), so the label keeps it intact.
-export interface BuildLabel {
-  text: string;
-  accessibleName: string;
+// (ghcr.io/rhionin/pantry:<commit>). The subject and timestamp tell which
+// change is deployed without opening GitHub.
+export interface BuildIdentity {
+  commit: string;
+  committedAt?: string;
+  subject?: string;
 }
 
-// formatBuildLabel turns a commit identity into footer copy. An empty commit
-// is not a build identity, so callers render nothing.
-export function formatBuildLabel(commit: string): BuildLabel | null {
-  if (commit === '') return null;
-  const text = `build ${commit}`;
-  return { text, accessibleName: text };
+export interface BuildLabel {
+  subject: string;
+  detail: string;
+  accessibleName: string;
+  title: string;
+}
+
+const ISO_TIME = /^(\d{4}-\d{2}-\d{2})[T ](\d{2}:\d{2})(?::\d{2}(?:\.\d+)?)?(Z|[+-]\d{2}:\d{2})?$/;
+
+// formatCommitTime renders an ISO 8601 commit timestamp as a short UTC (or
+// offset) time. Empty input stays empty. A value that is not ISO 8601 is
+// returned unchanged so an unusual stamp is still visible.
+export function formatCommitTime(value: string): string {
+  const trimmed = value.trim();
+  if (trimmed === '') return '';
+  const match = ISO_TIME.exec(trimmed);
+  if (!match) return trimmed;
+  const zone = match[3];
+  const zoneLabel = zone === undefined || zone === 'Z' || zone === '+00:00' ? 'UTC' : zone;
+  return `${match[1]} ${match[2]} ${zoneLabel}`;
+}
+
+function collapseWhitespace(value: string): string {
+  return value.replace(/\s+/g, ' ').trim();
+}
+
+// formatBuildLabel turns a build identity into footer copy. An identity with
+// no commit, time, or subject renders nothing. Empty time and subject are
+// left out rather than shown as blanks.
+export function formatBuildLabel(info: BuildIdentity): BuildLabel | null {
+  const commit = info.commit ?? '';
+  const subject = collapseWhitespace(info.subject ?? '');
+  const time = formatCommitTime(info.committedAt ?? '');
+  if (commit === '' && subject === '' && time === '') return null;
+
+  const detail = commit !== '' && time === ''
+    ? `build ${commit}`
+    : commit !== ''
+      ? `${time} · ${commit}`
+      : time;
+
+  const nameParts = [];
+  if (subject !== '') nameParts.push(subject);
+  if (time !== '') nameParts.push(time);
+  if (commit !== '') nameParts.push(`build ${commit}`);
+
+  const accessibleName = nameParts.join(', ');
+  return {
+    subject,
+    detail,
+    accessibleName,
+    title: accessibleName,
+  };
 }

@@ -18,14 +18,36 @@ describe('BuildStamp', () => {
     vi.unstubAllGlobals();
   });
 
-  it('shows the commit returned by the build endpoint', async () => {
+  it('shows the commit, timestamp, and subject returned by the build endpoint', async () => {
+    const commit = '0123456789abcdef0123456789abcdef01234567';
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        jsonResponse({
+          commit,
+          committedAt: '2026-10-01T04:32:19Z',
+          subject: 'Show the running commit in a quiet footer',
+        }),
+      ),
+    );
+
+    renderStamp();
+
+    const note = await screen.findByRole('note', {
+      name: `Show the running commit in a quiet footer, 2026-10-01 04:32 UTC, build ${commit}`,
+    });
+    expect(note).toHaveTextContent('Show the running commit in a quiet footer');
+    expect(note).toHaveTextContent(`2026-10-01 04:32 UTC · ${commit}`);
+  });
+
+  it('shows only the commit when time and subject are absent', async () => {
     const commit = '0123456789abcdef0123456789abcdef01234567';
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse({ commit })));
 
     renderStamp();
 
     const note = await screen.findByRole('note', { name: `build ${commit}` });
-    expect(note).toHaveAttribute('title', commit);
+    expect(note).toHaveTextContent(`build ${commit}`);
   });
 
   it('stays quiet when the build endpoint fails', async () => {

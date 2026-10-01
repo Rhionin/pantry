@@ -9,7 +9,7 @@ import './App.css';
 function App() {
   return (
     <BrowserRouter>
-      <AppShell header={{ height: 60 }} footer={{ height: 36 }} padding="md">
+      <AppShell header={{ height: 60 }} footer={{ height: 56 }} padding="md">
         <AppShell.Header>
           <Group h="100%" px="md" justify="space-between">
             <Title order={3}>Pantry</Title>

@@ -280,18 +280,28 @@ func normalizeBody(body []byte) []byte {
 }
 
 // TestBuildEndpointReportsStampedCommit checks that GET /api/build echoes the
-// commit the binary was stamped with. Release images set that stamp from the
-// same SHA the container tag uses, so any stamp, including the "unknown"
-// default, must come back unchanged and must not be the SPA document.
+// commit, timestamp, and subject the binary was stamped with. Empty time and
+// subject are omitted so an unstamped build does not invent them. The body is
+// JSON, never the SPA document.
 func TestBuildEndpointReportsStampedCommit(t *testing.T) {
-	original := buildinfo.Commit
-	t.Cleanup(func() { buildinfo.Commit = original })
+	originalCommit := buildinfo.Commit
+	originalTime := buildinfo.CommittedAt
+	originalSubject := buildinfo.Subject
+	t.Cleanup(func() {
+		buildinfo.Commit = originalCommit
+		buildinfo.CommittedAt = originalTime
+		buildinfo.Subject = originalSubject
+	})
 
 	handler, _ := setupTestWithDB(t)
 
 	rapid.Check(t, func(t *rapid.T) {
 		commit := rapid.String().Draw(t, "commit")
+		committedAt := rapid.String().Draw(t, "committedAt")
+		subject := rapid.String().Draw(t, "subject")
 		buildinfo.Commit = commit
+		buildinfo.CommittedAt = committedAt
+		buildinfo.Subject = subject
 
 		req := httptest.NewRequest(http.MethodGet, "/api/build", nil)
 		w := httptest.NewRecorder()
@@ -310,7 +320,9 @@ func TestBuildEndpointReportsStampedCommit(t *testing.T) {
 			t.Fatalf("Content-Type = %q, want application/json; body = %q", ct, body)
 		}
 		var decoded struct {
-			Commit string `json:"commit"`
+			Commit      string  `json:"commit"`
+			CommittedAt *string `json:"committedAt"`
+			Subject     *string `json:"subject"`
 		}
 		if err := json.Unmarshal(body, &decoded); err != nil {
 			t.Fatalf("decode body %q: %v", body, err)
@@ -318,7 +330,26 @@ func TestBuildEndpointReportsStampedCommit(t *testing.T) {
 		if decoded.Commit != commit {
 			t.Fatalf("commit = %q, want %q", decoded.Commit, commit)
 		}
+		assertOptionalStamp(t, "committedAt", committedAt, decoded.CommittedAt)
+		assertOptionalStamp(t, "subject", subject, decoded.Subject)
 	})
+}
+
+func assertOptionalStamp(t *rapid.T, name, want string, got *string) {
+	t.Helper()
+	if want == "" {
+		if got != nil {
+			t.Fatalf("%s = %q, want the field omitted", name, *got)
+		}
+		return
+	}
+	if got == nil || *got != want {
+		gotValue := "<nil>"
+		if got != nil {
+			gotValue = *got
+		}
+		t.Fatalf("%s = %q, want %q", name, gotValue, want)
+	}
 }
 
 // buildComposedAndAPIHandlers builds the composed root handler and a bare
