@@ -1,0 +1,29 @@
+# Public HTTPS entrypoint for a hostname you own (PUBLIC_HOST).
+# Caddy obtains and renews a Let's Encrypt certificate over HTTP-01,
+# which requires TCP port 80 to reach this container from the internet.
+{
+	email {$ACME_EMAIL}
+}
+
+{$PUBLIC_HOST} {
+	# Shared password for the public hostname. The hash lives in auth.caddy,
+	# written on the Pi by setup.sh, so it is not stored in git. This block
+	# is the HTTPS site only: Let's Encrypt's HTTP-01 check on port 80 stays
+	# outside it and can still complete.
+	import auth.caddy
+
+	# Scan and inventory pages keep a Server-Sent Events stream open on
+	# /api/events. Buffering or compressing that response holds events
+	# until the stream ends, so the UI never updates live.
+	@events path /api/events
+	handle @events {
+		reverse_proxy pantry:8080 {
+			flush_interval -1
+		}
+	}
+
+	handle {
+		encode gzip
+		reverse_proxy pantry:8080
+	}
+}
