@@ -4,7 +4,7 @@ set -e
 # Minimum required line coverage percentage.
 # Ratcheted to the measured ./... total. The script raises this when coverage
 # grows by more than 0.5%.
-COVERAGE_THRESHOLD=78.0
+COVERAGE_THRESHOLD=78.6
 
 # Colors for output
 RED='\033[0;31m'
