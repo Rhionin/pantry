@@ -32,6 +32,7 @@ type config struct {
 	broadcaster   *events.Broadcaster
 	statusFn      func() scanlistener.Status
 	scannerConfig ScannerConfig
+	retailer      shopping.RetailerDealConfig
 }
 
 // Option is a functional option for NewHandler.
@@ -54,6 +55,14 @@ func WithBroadcaster(b *events.Broadcaster) Option {
 func WithScannerConfig(cfg ScannerConfig) Option {
 	return func(c *config) {
 		c.scannerConfig = cfg
+	}
+}
+
+// WithRetailerDeals records the store-price gate. An empty API key leaves live
+// prices disconnected. Recorded sales and brand preferences still apply.
+func WithRetailerDeals(apiKey, baseURL string) Option {
+	return func(c *config) {
+		c.retailer = shopping.RetailerDealConfig{APIKey: apiKey, BaseURL: baseURL}
 	}
 }
 
@@ -253,11 +262,40 @@ func newAPIMux(
 		Pantry:       pantry,
 		Exporter:     &shopping.NoOpExporter{},
 	}
+	var retailer shopping.RetailerDealConfig
+	if cfg != nil {
+		retailer = cfg.retailer
+	}
+	shoppingConsiderationsHandler := &ShoppingListConsiderationsHandler{
+		ShoppingList: shoppingList,
+		Pantry:       pantry,
+		Retailer:     retailer,
+	}
+	shoppingPreferencePutHandler := &ShoppingPreferencePutHandler{
+		ShoppingList: shoppingList,
+		Pantry:       pantry,
+	}
+	shoppingPreferenceDeleteHandler := &ShoppingPreferenceDeleteHandler{
+		ShoppingList: shoppingList,
+		Pantry:       pantry,
+	}
+	shoppingDealPutHandler := &ShoppingDealPutHandler{
+		ShoppingList: shoppingList,
+		Pantry:       pantry,
+	}
+	shoppingDealDeleteHandler := &ShoppingDealDeleteHandler{
+		ShoppingList: shoppingList,
+	}
 
 	apiMux.HandleFunc("GET /api/shopping-list", HandleJSON(shoppingListGetHandler.Handle))
+	apiMux.HandleFunc("GET /api/shopping-list/considerations", HandleJSON(shoppingConsiderationsHandler.Handle))
 	apiMux.HandleFunc("POST /api/shopping-list/items", HandleJSON(shoppingListItemCreateHandler.Handle))
 	apiMux.HandleFunc("DELETE /api/shopping-list/items/{id}", HandleJSON(shoppingListItemDeleteHandler.Handle))
 	apiMux.HandleFunc("PATCH /api/shopping-list/items/{id}", HandleJSON(shoppingListItemUpdateHandler.Handle))
+	apiMux.HandleFunc("PUT /api/shopping-list/preferences", HandleJSON(shoppingPreferencePutHandler.Handle))
+	apiMux.HandleFunc("DELETE /api/shopping-list/preferences/{itemId}", HandleJSON(shoppingPreferenceDeleteHandler.Handle))
+	apiMux.HandleFunc("PUT /api/shopping-list/deals", HandleJSON(shoppingDealPutHandler.Handle))
+	apiMux.HandleFunc("DELETE /api/shopping-list/deals/{itemId}", HandleJSON(shoppingDealDeleteHandler.Handle))
 	apiMux.HandleFunc("POST /api/shopping-list/export", HandleJSON(shoppingListExportHandler.Handle))
 
 	return apiMux, scanQueue, reg

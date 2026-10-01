@@ -2,7 +2,7 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import { MantineProvider } from '@mantine/core';
 import { Notifications } from '@mantine/notifications';
 import { describe, expect, it, vi } from 'vitest';
-import type { InventoryItem, ShoppingListEntry } from '../../types';
+import type { InventoryItem, ShoppingConsiderations, ShoppingListEntry } from '../../types';
 import { ShoppingListPage } from './ShoppingListPage';
 
 const inventoryItem = (id: string, name: string, targetQuantity: number | null): InventoryItem => ({
@@ -58,6 +58,13 @@ describe('ShoppingListPage', () => {
         purchased = true;
         return Promise.resolve(jsonResponse({ ...initialEntries[1], purchasedAt: '2026-03-01T00:00:00Z' }));
       }
+      if (url === '/api/shopping-list/considerations') {
+        return Promise.resolve(jsonResponse({
+          retailerDeals: 'unavailable',
+          retailerDetail: '',
+          considerations: [],
+        }));
+      }
       throw new Error(`Unexpected request: ${url}`);
     });
     vi.stubGlobal('fetch', fetchMock);
@@ -94,6 +101,13 @@ describe('ShoppingListPage', () => {
         entries = [created];
         return Promise.resolve(jsonResponse(created, 201));
       }
+      if (url === '/api/shopping-list/considerations') {
+        return Promise.resolve(jsonResponse({
+          retailerDeals: 'unavailable',
+          retailerDetail: '',
+          considerations: [],
+        }));
+      }
       throw new Error(`Unexpected request: ${url}`);
     });
     vi.stubGlobal('fetch', fetchMock);
@@ -116,6 +130,13 @@ describe('ShoppingListPage', () => {
       if (url === '/api/shopping-list/export') {
         return Promise.resolve(jsonResponse({ error: 'cart export failed for items: Green Tea' }, 500));
       }
+      if (url === '/api/shopping-list/considerations') {
+        return Promise.resolve(jsonResponse({
+          retailerDeals: 'unavailable',
+          retailerDetail: '',
+          considerations: [],
+        }));
+      }
       throw new Error(`Unexpected request: ${url}`);
     });
     vi.stubGlobal('fetch', fetchMock);
@@ -128,5 +149,137 @@ describe('ShoppingListPage', () => {
     expect(await screen.findByText('Cart export incomplete')).toBeInTheDocument();
     expect(screen.getByText(/cart export failed for items: Green Tea/)).toBeInTheDocument();
     expect(within(table).getByText('Green Tea')).toBeInTheDocument();
+  });
+
+  it('offers a sale without blocking export, and sends the sale brand only after it is taken', async () => {
+    const entry = { id: 'auto-gv', itemId: 'gv', quantity: 1, source: 'auto', purchasedAt: null } satisfies ShoppingListEntry;
+    const notes: ShoppingConsiderations = {
+      retailerDeals: 'unavailable',
+      retailerDetail: "Live store prices aren't connected. Sales you note yourself still show up here.",
+      considerations: [{
+        lineItemId: 'gv',
+        needKey: 'cut green beans',
+        genericName: 'cut green beans',
+        chosenItemId: 'gv',
+        preferredItemId: '',
+        ignorePrice: false,
+        members: [
+          { itemId: 'gv', name: 'Great Value Cut Green Beans', priceCents: null, onSale: false, saleLabel: '', dealSource: '' },
+          { itemId: 'kr', name: 'Kroger Cut Green Beans', priceCents: 79, onSale: true, saleLabel: 'Weekly ad', dealSource: 'recorded' },
+        ],
+        offer: {
+          itemId: 'kr',
+          name: 'Kroger Cut Green Beans',
+          label: 'Weekly ad',
+          priceCents: 79,
+          usualPriceCents: null,
+          source: 'recorded',
+        },
+      }],
+    };
+    const exportBodies: Array<BodyInit | null | undefined> = [];
+    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === '/api/shopping-list' && init?.method === undefined) return Promise.resolve(jsonResponse([entry]));
+      if (url === '/api/inventory') return Promise.resolve(jsonResponse([inventoryItem('gv', 'Great Value Cut Green Beans', 4)]));
+      if (url === '/api/shopping-list/considerations') return Promise.resolve(jsonResponse(notes));
+      if (url === '/api/shopping-list/export') {
+        exportBodies.push(init?.body);
+        return Promise.resolve(jsonResponse({ exported: 1 }));
+      }
+      throw new Error(`Unexpected request: ${url}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    renderPage();
+
+    expect(await screen.findByText(/Kroger Cut Green Beans is on sale at \$0\.79/)).toBeInTheDocument();
+    expect(screen.getByText(/Live store prices aren't connected/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Export to cart' }));
+    await screen.findByText('Shopping list exported');
+    expect(exportBodies[0]).toBeUndefined();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Take the deal on Kroger Cut Green Beans' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Export to cart' }));
+    await waitFor(() => expect(exportBodies).toHaveLength(2));
+    expect(exportBodies[1]).toBe(JSON.stringify({ useItemIds: { gv: 'kr' } }));
+    expect(screen.getByRole('button', { name: 'Keep Great Value Cut Green Beans' })).toBeInTheDocument();
+  });
+
+  it('saves a preferred brand and notes a sale price', async () => {
+    const entry = { id: 'auto-gv', itemId: 'gv', quantity: 1, source: 'auto', purchasedAt: null } satisfies ShoppingListEntry;
+    let notes: ShoppingConsiderations = {
+      retailerDeals: 'unavailable',
+      retailerDetail: 'Live store prices aren\'t connected. Sales you note yourself still show up here.',
+      considerations: [{
+        lineItemId: 'gv',
+        needKey: 'cut green beans',
+        genericName: 'cut green beans',
+        chosenItemId: 'gv',
+        preferredItemId: '',
+        ignorePrice: false,
+        members: [
+          { itemId: 'gv', name: 'Great Value Cut Green Beans', priceCents: null, onSale: false, saleLabel: '', dealSource: '' },
+          { itemId: 'kr', name: 'Kroger Cut Green Beans', priceCents: null, onSale: false, saleLabel: '', dealSource: '' },
+        ],
+        offer: null,
+      }],
+    };
+    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      const method = init?.method ?? 'GET';
+      if (url === '/api/shopping-list' && method === 'GET') return Promise.resolve(jsonResponse([entry]));
+      if (url === '/api/inventory') {
+        return Promise.resolve(jsonResponse([
+          inventoryItem('gv', 'Great Value Cut Green Beans', 4),
+          inventoryItem('kr', 'Kroger Cut Green Beans', 4),
+        ]));
+      }
+      if (url === '/api/shopping-list/considerations') return Promise.resolve(jsonResponse(notes));
+      if (url === '/api/shopping-list/preferences' && method === 'PUT') {
+        const body = JSON.parse(String(init?.body)) as { itemId: string; ignorePrice: boolean };
+        notes = {
+          ...notes,
+          considerations: [{ ...notes.considerations[0], preferredItemId: body.itemId, ignorePrice: body.ignorePrice }],
+        };
+        return Promise.resolve(jsonResponse({ itemId: body.itemId, ignorePrice: body.ignorePrice }));
+      }
+      if (url === '/api/shopping-list/deals' && method === 'PUT') {
+        const body = JSON.parse(String(init?.body)) as { itemId: string; priceCents: number; label: string };
+        expect(body).toEqual({ itemId: 'kr', priceCents: 89, label: 'Noted sale' });
+        const members = notes.considerations[0].members.map((member) => (
+          member.itemId === body.itemId
+            ? { ...member, priceCents: body.priceCents, onSale: true, saleLabel: body.label, dealSource: 'recorded' }
+            : member
+        ));
+        notes = { ...notes, considerations: [{ ...notes.considerations[0], members }] };
+        return Promise.resolve(jsonResponse(body));
+      }
+      throw new Error(`Unexpected request: ${url} ${method}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    renderPage();
+
+    const brand = await screen.findByLabelText('Preferred brand for cut green beans');
+    fireEvent.change(brand, { target: { value: 'kr' } });
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith(
+      '/api/shopping-list/preferences',
+      expect.objectContaining({ method: 'PUT', body: JSON.stringify({ itemId: 'kr', ignorePrice: false }) }),
+    ));
+
+    const always = await screen.findByRole('checkbox', { name: 'Always buy this brand of cut green beans' });
+    await waitFor(() => expect(always).toBeEnabled());
+    fireEvent.click(always);
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith(
+      '/api/shopping-list/preferences',
+      expect.objectContaining({ method: 'PUT', body: JSON.stringify({ itemId: 'kr', ignorePrice: true }) }),
+    ));
+
+    fireEvent.change(screen.getByLabelText('Brand on sale'), { target: { value: 'kr' } });
+    fireEvent.change(screen.getByLabelText('Sale price in cents'), { target: { value: '89' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Note sale' }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith(
+      '/api/shopping-list/deals',
+      expect.objectContaining({ method: 'PUT', body: JSON.stringify({ itemId: 'kr', priceCents: 89, label: 'Noted sale' }) }),
+    ));
   });
 });

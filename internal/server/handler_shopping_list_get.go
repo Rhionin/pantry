@@ -14,6 +14,8 @@ import (
 type ShoppingListGetHandler struct {
 	ShoppingList interface {
 		ListManualItems(ctx context.Context, userID string) ([]shopping.ShoppingListItem, error)
+		ListPreferences(ctx context.Context, userID string) ([]shopping.Preference, error)
+		ListDeals(ctx context.Context, userID string) ([]shopping.Deal, error)
 		SyncDerivedItems(ctx context.Context, userID string, derived []shopping.DerivedEntry) ([]shopping.ShoppingListItem, error)
 	}
 	Pantry interface {
@@ -25,34 +27,18 @@ type ShoppingListGetHandler struct {
 func (h *ShoppingListGetHandler) Handle(req Request[struct{}, struct{}]) ([]ShoppingListEntryResponse, error) {
 	const userID = "user-1"
 
-	items, err := h.Pantry.ListItems(req.Context, userID)
+	provision, err := loadShoppingProvision(req.Context, userID, h.Pantry, h.ShoppingList)
 	if err != nil {
 		return nil, InternalError(err)
 	}
 
-	manualItems, err := h.ShoppingList.ListManualItems(req.Context, userID)
+	autoItems, err := h.ShoppingList.SyncDerivedItems(req.Context, userID, provision.Derived)
 	if err != nil {
 		return nil, InternalError(err)
 	}
 
-	counts, err := loadInstanceCounts(req.Context, h.Pantry.ListItemInstances, items)
-	if err != nil {
-		return nil, InternalError(err)
-	}
-
-	derived := replenishmentEntries(items, counts, manualItems)
-	autoItems, err := h.ShoppingList.SyncDerivedItems(req.Context, userID, derived)
-	if err != nil {
-		return nil, InternalError(err)
-	}
-
-	// Convert manual DB rows to ManualEntry for merge.
-	manualEntries := make([]shopping.ManualEntry, len(manualItems))
-	for i, m := range manualItems {
-		manualEntries[i] = shopping.ManualEntry{ItemID: m.ItemID, Quantity: m.Quantity}
-	}
-
-	merged := shopping.MergeEntries(derived, manualEntries)
+	manualItems := provision.Manual
+	merged := provision.Merged
 
 	// Build ID lookup from manual items so merged entries can carry the DB row ID.
 	manualByItemID := make(map[string]shopping.ShoppingListItem, len(manualItems))

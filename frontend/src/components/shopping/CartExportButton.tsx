@@ -5,18 +5,19 @@ import { exportShoppingList } from '../../api/client';
 
 export interface CartExportButtonProps {
   disabled?: boolean;
+  useItemIds?: Record<string, string>;
 }
 
 const exportErrorMessage = (error: unknown) =>
   error instanceof Error ? error.message : 'The shopping list could not be exported.';
 
-export const CartExportButton = ({ disabled = false }: CartExportButtonProps) => {
+export const CartExportButton = ({ disabled = false, useItemIds }: CartExportButtonProps) => {
   const [exporting, setExporting] = useState(false);
 
   const exportToCart = async () => {
     setExporting(true);
     try {
-      const result = await exportShoppingList();
+      const result = await exportShoppingList(useItemIds);
       if (result.failedItems !== undefined && result.failedItems.length > 0) {
         notifications.show({
           color: 'red',
