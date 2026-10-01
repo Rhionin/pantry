@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import fc from 'fast-check';
-import type { ScanEntry, ScanStatus } from '../../types';
-import { formatReviewCount, getEntriesForView, isValidUnitCount, mergeScanEvent, pruneSelection, toggleSelectAll, isBatchEligible } from './queueUtils';
+import type { ProcessingNotice, ScanEntry, ScanStatus } from '../../types';
+import { addProcessingNotice, formatReviewCount, getEntriesForView, isValidUnitCount, mergeScanEvent, pruneSelection, removeProcessingNotice, settleProcessingNotice, sortScansNewestFirst, toggleSelectAll, isBatchEligible } from './queueUtils';
 
 const DISPLAYABLE_SCAN_STATUSES: ScanStatus[] = ['pending', 'flagged'];
 
@@ -19,6 +19,52 @@ const scanEntry = (overrides: Partial<ScanEntry>): ScanEntry => ({
   committedAt: null,
   createdAt: '2026-03-20T10:00:00Z',
   ...overrides,
+});
+
+describe('sortScansNewestFirst', () => {
+  it('orders entries by scannedAt descending', () => {
+    const older = scanEntry({ id: 'older', scannedAt: '2026-03-20T09:00:00Z' });
+    const newer = scanEntry({ id: 'newer', scannedAt: '2026-03-20T11:00:00Z' });
+
+    expect(sortScansNewestFirst([older, newer]).map((entry) => entry.id)).toEqual(['newer', 'older']);
+  });
+});
+
+const processingNotice = (overrides: Partial<ProcessingNotice>): ProcessingNotice => ({
+  id: 'lookup-1',
+  userId: 'user-1',
+  barcode: '111',
+  direction: 'stock_in',
+  scannedAt: '2026-03-20T12:00:00Z',
+  ...overrides,
+});
+
+describe('processing notices', () => {
+  it('prepends a notice and ignores a replay of the same id', () => {
+    const first = processingNotice({ id: 'a', barcode: '111' });
+    const second = processingNotice({ id: 'b', barcode: '222' });
+
+    const added = addProcessingNotice(addProcessingNotice([], first), second);
+    expect(added.map((notice) => notice.id)).toEqual(['b', 'a']);
+    expect(addProcessingNotice(added, second)).toBe(added);
+  });
+
+  it('settles the oldest matching lookup and leaves a commit alone', () => {
+    const older = processingNotice({ id: 'older', scannedAt: '2026-03-20T12:00:00Z' });
+    const newer = processingNotice({ id: 'newer', scannedAt: '2026-03-20T12:01:00Z' });
+    const notices = addProcessingNotice(addProcessingNotice([], older), newer);
+
+    const settled = settleProcessingNotice(notices, scanEntry({ barcode: '111', direction: 'stock_in', status: 'pending' }));
+    expect(settled.map((notice) => notice.id)).toEqual(['newer']);
+
+    const committed = settleProcessingNotice(notices, scanEntry({ barcode: '111', direction: 'stock_in', status: 'committed' }));
+    expect(committed).toEqual(notices);
+  });
+
+  it('removes a notice by id', () => {
+    const notice = processingNotice({ id: 'gone' });
+    expect(removeProcessingNotice([notice], 'gone')).toEqual([]);
+  });
 });
 
 describe('mergeScanEvent', () => {
@@ -274,7 +320,7 @@ describe('toggleSelectAll', () => {
       fc.array(fc.uuid(), { maxLength: 20 }),
       (entries, selectedIds) => {
         const eligibleIds = entries.filter(isBatchEligible).map((entry) => entry.id);
-        const nonEligibleIds = entries.filter(() => !isBatchEligible).map((entry) => entry.id);
+        const nonEligibleIds = entries.filter((entry) => !isBatchEligible(entry)).map((entry) => entry.id);
 
         const result = toggleSelectAll(entries, selectedIds);
 

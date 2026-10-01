@@ -76,6 +76,18 @@ func (b *Broadcaster) PublishScannerModeEvent(mode scan.ScanDirection) {
 	b.publish("scanner_mode", mode)
 }
 
+// PublishScanProcessingEvent delivers a just-accepted barcode before product
+// lookup finishes, so a subscriber can show that the scan was received.
+func (b *Broadcaster) PublishScanProcessingEvent(notice scan.ProcessingNotice) {
+	b.publish("scan_processing", notice)
+}
+
+// PublishScanProcessingFailedEvent withdraws a processing notice when lookup
+// does not finish.
+func (b *Broadcaster) PublishScanProcessingFailedEvent(failure scan.ProcessingFailure) {
+	b.publish("scan_processing_failed", failure)
+}
+
 func (b *Broadcaster) publish(eventType string, payload any) {
 	data, err := json.Marshal(payload)
 	if err != nil {

@@ -166,19 +166,25 @@ func main() {
 	stockInBarcode := envOrDefault("STOCK_IN_CONTROL_BARCODE", "STOCK_IN")
 	stockOutBarcode := envOrDefault("STOCK_OUT_CONTROL_BARCODE", "STOCK_OUT")
 
-	handler, scanQueue := server.NewHandler(catalog, lookupService, refresher, sqlDB,
+	listener, listenerOK := loadScanListenerConfigWithSource()
+	opts := []server.Option{
 		server.WithBroadcaster(broadcaster),
 		server.WithScannerConfig(server.ScannerConfig{
 			StockInBarcode:  stockInBarcode,
 			StockOutBarcode: stockOutBarcode,
 		}),
 		server.WithCartRegistry(registry, ledger),
-	)
+	}
+	if listenerOK {
+		opts = append(opts, server.WithScannerStatus(listener.Status))
+	}
+	handler, scanQueue := server.NewHandler(catalog, lookupService, refresher, sqlDB, opts...)
 
-	if listener, ok := loadScanListenerConfigWithSource(); ok {
+	if listenerOK {
 		listener.Queue = scanQueue
 		listener.LookupService = lookupService
 		listener.ModePublisher = broadcaster
+		listener.ProcessingPublisher = broadcaster
 		go listener.Run(context.Background())
 	}
 

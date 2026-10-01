@@ -5,6 +5,7 @@ import (
 
 	"github.com/Rhionin/pantry/internal/events"
 	"github.com/Rhionin/pantry/internal/scan"
+	"github.com/Rhionin/pantry/internal/scanlistener"
 )
 
 // scannerMode holds the last direction selected through the HTTP mode-switch
@@ -89,12 +90,16 @@ func (h *ScannerModeHandler) Handle(req Request[scannerModeRequest, struct{}]) (
 type ScannerConfigHandler struct {
 	Config ScannerConfig
 	Mode   *scannerMode
+	// Status reports the headless capture path. Nil means no listener is
+	// configured, which the response reports as disconnected.
+	Status func() scanlistener.Status
 }
 
 type scannerConfigResponse struct {
 	StockInBarcode  string             `json:"stockInBarcode"`
 	StockOutBarcode string             `json:"stockOutBarcode"`
 	CurrentMode     scan.ScanDirection `json:"currentMode"`
+	Connected       bool               `json:"connected"`
 }
 
 func (h *ScannerConfigHandler) Handle(req Request[struct{}, struct{}]) (scannerConfigResponse, error) {
@@ -102,9 +107,14 @@ func (h *ScannerConfigHandler) Handle(req Request[struct{}, struct{}]) (scannerC
 	if h.Mode != nil {
 		currentMode = h.Mode.get()
 	}
+	connected := false
+	if h.Status != nil {
+		connected = h.Status().Connected
+	}
 	return scannerConfigResponse{
 		StockInBarcode:  h.Config.StockInBarcode,
 		StockOutBarcode: h.Config.StockOutBarcode,
 		CurrentMode:     currentMode,
+		Connected:       connected,
 	}, nil
 }

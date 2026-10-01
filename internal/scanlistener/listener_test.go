@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/binary"
+	"errors"
 	"io"
 	"log"
 	"strings"
@@ -528,4 +529,136 @@ func TestReconnectLoopPrecondition(t *testing.T) {
 	// If main.go is refactored to change this order, this comment serves
 	// as a guard against accidentally serializing them.
 	t.Logf("PRECONDITION: cmd/server/main.go starts listener in goroutine before http.ListenAndServe")
+}
+
+type recordingPublisher struct {
+	notices  []scan.ProcessingNotice
+	failures []scan.ProcessingFailure
+}
+
+func (p *recordingPublisher) PublishScanProcessingEvent(notice scan.ProcessingNotice) {
+	p.notices = append(p.notices, notice)
+}
+
+func (p *recordingPublisher) PublishScanProcessingFailedEvent(failure scan.ProcessingFailure) {
+	p.failures = append(p.failures, failure)
+}
+
+type gatingLookup struct {
+	result  product.LookupResult
+	err     error
+	started chan struct{}
+	release chan struct{}
+}
+
+func (l *gatingLookup) Lookup(ctx context.Context, barcode, userID string) (product.LookupResult, error) {
+	if l.started != nil {
+		close(l.started)
+	}
+	if l.release != nil {
+		<-l.release
+	}
+	if l.err != nil {
+		return product.LookupResult{}, l.err
+	}
+	return l.result, nil
+}
+
+func TestCreateEntry_AnnouncesProcessingBeforeLookupReturns(t *testing.T) {
+	started := make(chan struct{})
+	release := make(chan struct{})
+	publisher := &recordingPublisher{}
+	listener := New()
+	listener.Source = SourceStdin
+	listener.Stdin = strings.NewReader("123456\n")
+	listener.Queue = &fakeQueue{}
+	listener.ProcessingPublisher = publisher
+	listener.LookupService = &gatingLookup{
+		result: product.LookupResult{
+			Product: &product.ProductSummary{ID: "prod-1", Name: "Milk"},
+			Source:  "global",
+		},
+		started: started,
+		release: release,
+	}
+
+	done := make(chan struct{})
+	go func() {
+		listener.Run(context.Background())
+		close(done)
+	}()
+
+	select {
+	case <-started:
+	case <-time.After(2 * time.Second):
+		t.Fatal("lookup was not called")
+	}
+	if len(publisher.notices) != 1 {
+		t.Fatalf("processing notices before lookup returns: got %d", len(publisher.notices))
+	}
+	if publisher.notices[0].Barcode != "123456" {
+		t.Fatalf("notice barcode = %q, want 123456", publisher.notices[0].Barcode)
+	}
+	close(release)
+
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("listener did not finish")
+	}
+	if len(listener.Queue.(*fakeQueue).entries) != 1 {
+		t.Fatalf("entries = %d, want 1", len(listener.Queue.(*fakeQueue).entries))
+	}
+	if len(publisher.failures) != 0 {
+		t.Fatalf("unexpected failures: %+v", publisher.failures)
+	}
+}
+
+func TestCreateEntry_AnnouncesFailureWhenLookupFails(t *testing.T) {
+	publisher := &recordingPublisher{}
+	listener := New()
+	listener.Source = SourceStdin
+	listener.Stdin = strings.NewReader("123456\n")
+	listener.Queue = &fakeQueue{}
+	listener.ProcessingPublisher = publisher
+	listener.LookupService = &fakeLookup{err: errors.New("upstream down")}
+
+	listener.Run(context.Background())
+
+	if len(publisher.notices) != 1 {
+		t.Fatalf("processing notices: got %d, want 1", len(publisher.notices))
+	}
+	if len(publisher.failures) != 1 {
+		t.Fatalf("failures: got %d, want 1", len(publisher.failures))
+	}
+	if publisher.failures[0].ID != publisher.notices[0].ID {
+		t.Fatalf("failure id = %q, want notice id %q", publisher.failures[0].ID, publisher.notices[0].ID)
+	}
+	if publisher.failures[0].Message != scan.ProcessingLookupFailed {
+		t.Fatalf("failure message = %q", publisher.failures[0].Message)
+	}
+	if len(listener.Queue.(*fakeQueue).entries) != 0 {
+		t.Fatalf("entries = %d, want 0", len(listener.Queue.(*fakeQueue).entries))
+	}
+}
+
+func TestHandleLine_ControlBarcodeDoesNotAnnounceProcessing(t *testing.T) {
+	publisher := &recordingPublisher{}
+	listener := New()
+	listener.Source = SourceStdin
+	listener.StockInBarcode = "STOCK_IN"
+	listener.StockOutBarcode = "STOCK_OUT"
+	listener.Stdin = strings.NewReader("STOCK_IN\n")
+	listener.Queue = &fakeQueue{}
+	listener.ProcessingPublisher = publisher
+	listener.LookupService = &fakeLookup{}
+
+	listener.Run(context.Background())
+
+	if len(publisher.notices) != 0 {
+		t.Fatalf("control barcode announced %d processing notices", len(publisher.notices))
+	}
+	if len(listener.Queue.(*fakeQueue).entries) != 0 {
+		t.Fatalf("control barcode created %d entries", len(listener.Queue.(*fakeQueue).entries))
+	}
 }

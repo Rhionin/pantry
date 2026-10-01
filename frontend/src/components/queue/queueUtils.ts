@@ -1,11 +1,11 @@
-import type { ItemInstanceWithStatus, ScanEntry, ScanStatus } from '../../types';
+import type { ItemInstanceWithStatus, ProcessingNotice, ScanDirection, ScanEntry, ScanStatus } from '../../types';
 
 const DISPLAYABLE_SCAN_STATUSES: ScanStatus[] = ['pending', 'flagged'];
 
-export const sortScansChronologically = (entries: ScanEntry[]): ScanEntry[] =>
+export const sortScansNewestFirst = (entries: ScanEntry[]): ScanEntry[] =>
   [...entries].sort(
     (left, right) =>
-      new Date(left.scannedAt).getTime() - new Date(right.scannedAt).getTime(),
+      new Date(right.scannedAt).getTime() - new Date(left.scannedAt).getTime(),
   );
 
 export const sortInstancesUseOldestFirst = (
@@ -56,10 +56,39 @@ export const isValidUnitCount = (value: number): boolean =>
 // can drop entries. Requirements 9.1, 9.2, 9.3, 9.4.
 export type QueueView = 'stock_in' | 'stock_out';
 
+export const entryMatchesView = (direction: ScanDirection | null, view: QueueView): boolean =>
+  view === 'stock_in' ? direction === 'stock_in' : direction === 'stock_out' || direction === null;
+
 export const getEntriesForView = (entries: ScanEntry[], view: QueueView): ScanEntry[] =>
-  view === 'stock_in'
-    ? entries.filter((entry) => entry.direction === 'stock_in')
-    : entries.filter((entry) => entry.direction === 'stock_out' || entry.direction === null);
+  entries.filter((entry) => entryMatchesView(entry.direction, view));
+
+// Newest notice first. A repeated id is ignored so a replayed event does not
+// stack a second card for the same lookup.
+export const addProcessingNotice = (
+  notices: ProcessingNotice[],
+  notice: ProcessingNotice,
+): ProcessingNotice[] =>
+  notices.some((existing) => existing.id === notice.id) ? notices : [notice, ...notices];
+
+export const removeProcessingNotice = (notices: ProcessingNotice[], id: string): ProcessingNotice[] =>
+  notices.filter((notice) => notice.id !== id);
+
+// Drops the oldest in-flight notice for a lookup that just became a visible
+// scan. Commits and cancellations leave notices alone so approving an older
+// card does not hide a lookup that is still running.
+export const settleProcessingNotice = (
+  notices: ProcessingNotice[],
+  event: Pick<ScanEntry, 'barcode' | 'direction' | 'status'>,
+): ProcessingNotice[] => {
+  if (!DISPLAYABLE_SCAN_STATUSES.includes(event.status)) return notices;
+  for (let index = notices.length - 1; index >= 0; index -= 1) {
+    const notice = notices[index];
+    if (notice.barcode === event.barcode && notice.direction === event.direction) {
+      return notices.filter((_, noticeIndex) => noticeIndex !== index);
+    }
+  }
+  return notices;
+};
 
 // Formats a review count for the queue tab badge, capping anything above 99 as
 // '99+' so the badge stays a single compact token.
