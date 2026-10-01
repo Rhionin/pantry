@@ -241,6 +241,39 @@ func TestProductOpenerContributorDoesNotCallWhenUnconfigured(t *testing.T) {
 	}
 }
 
+func TestUnconfiguredContributorRefusesToSend(t *testing.T) {
+	err := UnconfiguredContributor{}.Contribute(context.Background(), Contribution{
+		Barcode:  "012345678905",
+		Name:     "Oats",
+		Database: ExternalSourceOpenFoodFacts,
+	})
+	if err == nil {
+		t.Fatal("expected an unconfigured contributor to refuse")
+	}
+}
+
+func TestDisplayNameNamesEachDatabase(t *testing.T) {
+	got := map[ExternalSource]string{
+		ExternalSourceOpenFoodFacts:     ExternalSourceOpenFoodFacts.DisplayName(),
+		ExternalSourceOpenProductsFacts: ExternalSourceOpenProductsFacts.DisplayName(),
+		ExternalSourceOpenBeautyFacts:   ExternalSourceOpenBeautyFacts.DisplayName(),
+		ExternalSourceOpenPetFoodFacts:  ExternalSourceOpenPetFoodFacts.DisplayName(),
+		ExternalSource("other"):         ExternalSource("other").DisplayName(),
+	}
+	want := map[ExternalSource]string{
+		ExternalSourceOpenFoodFacts:     "Open Food Facts",
+		ExternalSourceOpenProductsFacts: "Open Products Facts",
+		ExternalSourceOpenBeautyFacts:   "Open Beauty Facts",
+		ExternalSourceOpenPetFoodFacts:  "Open Pet Food Facts",
+		ExternalSource("other"):         "the open database",
+	}
+	for source, name := range want {
+		if got[source] != name {
+			t.Errorf("%s display name = %q, want %q", source, got[source], name)
+		}
+	}
+}
+
 func TestSafeWriteDetail(t *testing.T) {
 	if got := safeWriteDetail("", "secret"); got != "the open database did not accept this product" {
 		t.Fatalf("empty detail = %q", got)
