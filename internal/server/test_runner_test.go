@@ -53,9 +53,11 @@ type handlerTestCase struct {
 }
 
 // assertion wraps a JSONPath assertion for cleaner test tables.
+// Set absent to assert that path is not present; value is ignored in that case.
 type assertion struct {
-	path  string
-	value interface{}
+	path   string
+	value  interface{}
+	absent bool
 }
 
 // fakeUpstream embeds *product.ExternalLookup and holds per-database fakes,
@@ -167,6 +169,10 @@ func buildExpectations(req *apitest.Request, ex httpExchange) *apitest.Response 
 	expect := req.Expect(nil).Status(ex.expectedStatus)
 
 	for _, a := range ex.assertions {
+		if a.absent {
+			expect = expect.Assert(jsonpath.NotPresent(a.path))
+			continue
+		}
 		expect = expect.Assert(jsonpath.Equal(a.path, a.value))
 	}
 
