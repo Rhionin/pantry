@@ -38,7 +38,7 @@ export function BuildStamp() {
       aria-label={label.accessibleName}
       title={label.title}
       ta="right"
-      style={{ maxWidth: '100%', lineHeight: 1.3 }}
+      style={{ width: '100%', minWidth: 0, lineHeight: 1.3, overflowWrap: 'anywhere' }}
     >
       {label.subject !== '' ? <span style={{ display: 'block' }}>{label.subject}</span> : null}
       {label.detail !== '' ? (

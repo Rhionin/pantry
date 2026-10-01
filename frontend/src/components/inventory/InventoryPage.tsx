@@ -4,6 +4,7 @@ import { Alert, Loader, SimpleGrid, Stack, Text, TextInput, Title } from '@manti
 import { getInventoryList } from '../../api/client';
 import type { InventoryItem } from '../../types';
 import { filterInventoryItems } from '../../utils/inventoryFilter';
+import { ProductEditor } from '../product/ProductEditor';
 import { SuggestionPanel } from '../suggestions/SuggestionPanel';
 import { ItemInstanceList } from './ItemInstanceList';
 import { ItemRow } from './ItemRow';
@@ -130,6 +131,10 @@ export const InventoryPage = () => {
             itemId={selectedItem.item.id}
             productName={selectedItem.item.product.name}
             onTargetQuantitySaved={() => void loadInventory()}
+          />
+          <ProductEditor
+            productId={selectedItem.item.productId}
+            onSaved={() => void loadInventory()}
           />
         </Stack>
       )}

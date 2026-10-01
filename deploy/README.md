@@ -143,9 +143,11 @@ All configuration is handled through environment variables in `/opt/pantry/.env`
 | `HOST_PORT` | `8080` | Host port to expose Pantry service. Container always uses port 8080 internally |
 | `PRODUCT_CACHE_TTL` | `720h` | How long to cache product lookups (720h = 30 days) |
 | `PRODUCT_MISS_TTL` | `168h` | How long to cache "not found" results (168h = 7 days) |
-| `DISABLE_EXTERNAL_PRODUCT_LOOKUP` | `false` | Set to `true` to disable external API calls for product information |
+| `DISABLE_EXTERNAL_PRODUCT_LOOKUP` | `false` | Set to `true` to disable external API calls for product information. This also keeps product contribution local |
 | `PANTRY_RETAILER_API_KEY` | empty | Store price API key. Leave empty until a retailer adapter and credentials exist. Noted sales in the app still apply |
 | `PANTRY_RETAILER_API_URL` | empty | Reserved base URL for that store price adapter |
+| `PRODUCT_OPENER_USER_ID` | empty | Optional. Account used only after someone opts in to share a product. Leave empty to keep contributions on this pantry |
+| `PRODUCT_OPENER_PASSWORD` | empty | Optional password for that account. Each open database has its own users |
 | `STOCK_IN_CONTROL_BARCODE` | `STOCK_IN` | Barcode to scan for switching scanner to "stock in" mode |
 | `STOCK_OUT_CONTROL_BARCODE` | `STOCK_OUT` | Barcode to scan for switching scanner to "stock out" mode |
 | `HEADLESS_USER_ID` | `user-1` | User ID for headless scan operations (when no user is logged in) |

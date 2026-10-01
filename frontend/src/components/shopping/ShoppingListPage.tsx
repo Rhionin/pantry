@@ -129,7 +129,10 @@ export const ShoppingListPage = () => {
     }
   };
 
-  const acceptedSwaps = useMemo(() => {
+  // A taken deal only applies while that offer is still the one on the line.
+  // Deriving it here drops a stale choice when the notes refresh, without
+  // writing state from an effect.
+  const acceptedDeals = useMemo(() => {
     const next: Record<string, string> = {};
     for (const [lineId, useId] of Object.entries(accepted)) {
       const note = notes.considerations.find((item) => item.lineItemId === lineId);
@@ -254,7 +257,7 @@ export const ShoppingListPage = () => {
         <ProvisionButton
           provider={targetProvider}
           entries={entries}
-          useItemIds={acceptedSwaps}
+          useItemIds={acceptedDeals}
           onFinished={() => void loadShoppingList()}
         />
       </Group>
@@ -266,7 +269,7 @@ export const ShoppingListPage = () => {
               const offer = note.offer;
               if (offer === null) return null;
               const usual = note.members.find((member) => member.itemId === note.chosenItemId)?.name ?? 'the usual brand';
-              const taken = accepted[note.lineItemId] === offer.itemId;
+              const taken = acceptedDeals[note.lineItemId] === offer.itemId;
               return (
                 <Group key={note.lineItemId} justify="space-between" align="center" wrap="wrap">
                   <Text size="sm">{offerSentence(note)}</Text>

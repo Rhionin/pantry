@@ -9,12 +9,12 @@ a quantity, switch replenishment mode, provision, and reset the ledger.
 Saved credentials override `KROGER_CLIENT_ID`, `KROGER_CLIENT_SECRET`, and
 `KROGER_REDIRECT_URI` until cleared. GET never returns the client secret.
 
-`./scripts/test-coverage.sh` passes at 74.5% after this branch was merged with
-master (brand preferences, recorded sales, camera scan, and telemetry). The
-frontend job (`tsc -b`, eslint on the shopping surface, and `vitest --run`)
-passes. An accepted sale (`useItemIds`) is the brand a configured provider
-receives. With no credentials configured, export still returns the planned
-lines and `exported: 0`.
+A clean `./scripts/test-coverage.sh` measures 69.8% after this branch was merged
+with master (brand preferences, recorded sales, camera scan, telemetry, and
+product contribution). The frontend job (`tsc -b`, eslint on the shopping
+surface, and `vitest --run`) passes. An accepted sale (`useItemIds`) is the
+brand a configured provider receives. With no credentials configured, export
+still returns the planned lines and `exported: 0`.
 
 Still open, and why the pull request stays a draft:
 

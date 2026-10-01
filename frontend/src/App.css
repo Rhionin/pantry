@@ -1,0 +1,21 @@
+/* AppShell pins the footer with position:fixed, so a transparent stamp paints
+   over whatever card is at the bottom of the viewport. Keep the stamp in
+   normal flow under a viewport-sized shell and scroll only the main region. */
+.app-shell {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.app-shell > .mantine-AppShell-main {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+}
+
+.build-footer {
+  flex: none;
+  padding-bottom: env(safe-area-inset-bottom);
+}

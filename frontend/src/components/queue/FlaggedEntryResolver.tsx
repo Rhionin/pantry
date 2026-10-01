@@ -14,7 +14,9 @@ import {
   listProducts,
   updateScanEntry,
 } from '../../api/client';
-import type { Product, ScanEntry } from '../../types';
+import type { Product, ProductWriteInput, ScanEntry } from '../../types';
+import { ContributeFields, type ContributeChoice } from '../product/ContributeFields';
+import { showShareNotice } from '../product/shareNotice';
 
 export interface FlaggedEntryResolverProps {
   entry: ScanEntry;
@@ -44,6 +46,10 @@ export const FlaggedEntryResolver = ({ entry, onResolved }: FlaggedEntryResolver
   const [query, setQuery] = useState('');
   const [selectedProductId, setSelectedProductId] = useState('');
   const [draft, setDraft] = useState<ProductDraft>({ name: '', category: '', unitOfMeasure: '' });
+  const [share, setShare] = useState<ContributeChoice>({
+    contribute: false,
+    contributeTo: 'openfoodfacts',
+  });
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
@@ -116,7 +122,14 @@ export const FlaggedEntryResolver = ({ entry, onResolved }: FlaggedEntryResolver
     setSubmitting(true);
     setError('');
     try {
-      const created = await createProduct(draft);
+      const input: ProductWriteInput = { ...draft };
+      if (share.contribute) {
+        input.contribute = true;
+        input.contributeTo = share.contributeTo;
+        input.barcode = entry.barcode;
+      }
+      const created = await createProduct(input);
+      showShareNotice(created);
       const product = created.id === '' ? findCreatedProduct(await listProducts(), draft) : created;
       if (product === undefined) throw new Error('Created product could not be loaded.');
       await resolveWithProduct(product.id);
@@ -199,6 +212,7 @@ export const FlaggedEntryResolver = ({ entry, onResolved }: FlaggedEntryResolver
             value={draft.unitOfMeasure}
             onChange={(event) => setDraft({ ...draft, unitOfMeasure: event.currentTarget.value })}
           />
+          <ContributeFields onChange={setShare} />
           <Button
             size="xs"
             disabled={draft.name.trim() === ''}

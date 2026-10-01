@@ -75,6 +75,9 @@ behavior, then uses exactly these four H2 sections in order:
 - [Resolve a flagged scan](./flagged-resolution.md) — an unknown barcode flags;
   create a product for it and turn it into an approvable pending scan. Proven end
   to end by `scripts/drive-flagged-resolution.mjs`.
+- [Contribute a typed-in product](./contribute-product.md) — opt in, then share
+  one new product. With no upstream account the product stays in the pantry.
+  Proven end to end by `scripts/drive-contribute-product.mjs`.
 - [Stock out oldest-first](./stock-out.md) — switch to stock-out mode, scan a
   stocked product, and confirm the earliest-expiring instance is consumed. Proven
   end to end by `scripts/drive-stock-out.mjs`.

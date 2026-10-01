@@ -39,6 +39,7 @@ type config struct {
 	ledger        *cart.Ledger
 	providerEnv   ProviderEnv
 	retailer      shopping.RetailerDealConfig
+	contributor   product.UpstreamContributor
 }
 
 // Option is a functional option for NewHandler.
@@ -88,6 +89,15 @@ func WithScannerConfig(cfg ScannerConfig) Option {
 func WithRetailerDeals(apiKey, baseURL string) Option {
 	return func(c *config) {
 		c.retailer = shopping.RetailerDealConfig{APIKey: apiKey, BaseURL: baseURL}
+	}
+}
+
+// WithContributor supplies the Product Opener writer used when a person
+// explicitly opts in to sharing a product. When unset, sharing is recorded
+// locally and no upstream request is made.
+func WithContributor(contributor product.UpstreamContributor) Option {
+	return func(c *config) {
+		c.contributor = contributor
 	}
 }
 
@@ -216,20 +226,35 @@ func newAPIMux(
 	apiMux.HandleFunc("POST /api/scanner/mode", HandleJSON(scannerModeHandler.Handle))
 	apiMux.HandleFunc("GET /api/scanner/config", HandleJSON(scannerConfigHandler.Handle))
 
+	contributor := product.UpstreamContributor(product.UnconfiguredContributor{})
+	if cfg != nil && cfg.contributor != nil {
+		contributor = cfg.contributor
+	}
+
 	// Product handlers
 	lookupHandler := &LookupHandler{Service: lookupService}
 	listHandler := &ListHandler{Catalog: catalog}
-	createHandler := &CreateHandler{Catalog: catalog}
-	updateHandler := &UpdateHandler{Catalog: catalog}
+	createHandler := &CreateHandler{Catalog: catalog, Contributor: contributor}
+	updateHandler := &UpdateHandler{Catalog: catalog, Contributor: contributor}
 	overrideHandler := &OverrideCreateHandler{Catalog: catalog}
 	refreshHandler := &RefreshHandler{Refresher: refresher, Catalog: catalog}
+	settingsGetHandler := &ContributionSettingsGetHandler{Catalog: catalog, Contributor: contributor}
+	settingsPutHandler := &ContributionSettingsPutHandler{Catalog: catalog, Contributor: contributor}
+	contributionsHandler := &ContributionsListHandler{Catalog: catalog}
+	productContributionsHandler := &ProductContributionsHandler{Catalog: catalog}
+	productGetHandler := &ProductGetHandler{Catalog: catalog}
 
 	apiMux.HandleFunc("GET /api/products/lookup", HandleJSON(lookupHandler.Handle))
 	apiMux.HandleFunc("GET /api/products", HandleJSON(listHandler.Handle))
+	apiMux.HandleFunc("GET /api/products/{id}", HandleJSON(productGetHandler.Handle))
 	apiMux.HandleFunc("POST /api/products", HandleJSON(createHandler.Handle))
 	apiMux.HandleFunc("PUT /api/products/{id}", HandleJSON(updateHandler.Handle))
 	apiMux.HandleFunc("POST /api/products/overrides", HandleJSON(overrideHandler.Handle))
 	apiMux.HandleFunc("POST /api/products/{id}/refresh", HandleJSON(refreshHandler.Handle))
+	apiMux.HandleFunc("GET /api/products/{id}/contributions", HandleJSON(productContributionsHandler.Handle))
+	apiMux.HandleFunc("GET /api/contributions", HandleJSON(contributionsHandler.Handle))
+	apiMux.HandleFunc("GET /api/settings/contribution", HandleJSON(settingsGetHandler.Handle))
+	apiMux.HandleFunc("PUT /api/settings/contribution", HandleJSON(settingsPutHandler.Handle))
 
 	// Scan queue handlers
 	scanQueue := scan.NewQueue(db)

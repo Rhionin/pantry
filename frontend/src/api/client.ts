@@ -10,6 +10,10 @@ import type {
   ItemInstanceWithStatus,
   LookupResult,
   Product,
+  ProductDetail,
+  ProductWriteInput,
+  ProductWriteResult,
+  ContributionSettings,
   ScanDirection,
   ScanEntry,
   ScannerConfig,
@@ -91,18 +95,27 @@ export function listProducts(): Promise<Product[]> {
   return apiFetch('/api/products');
 }
 
-interface CreateProductInput {
-  name: string;
-  category: string;
-  unitOfMeasure: string;
+export function getProduct(id: string): Promise<ProductDetail> {
+  return apiFetch(`/api/products/${id}`);
 }
 
-export function createProduct(input: CreateProductInput): Promise<Product> {
+export function createProduct(input: ProductWriteInput): Promise<ProductWriteResult> {
   return apiFetch('/api/products', { method: 'POST', body: JSON.stringify(input) });
 }
 
-export function updateProduct(id: string, input: CreateProductInput): Promise<Product> {
+export function updateProduct(id: string, input: ProductWriteInput): Promise<ProductWriteResult> {
   return apiFetch(`/api/products/${id}`, { method: 'PUT', body: JSON.stringify(input) });
+}
+
+export function getContributionSettings(): Promise<ContributionSettings> {
+  return apiFetch('/api/settings/contribution');
+}
+
+export function updateContributionSettings(enabled: boolean): Promise<ContributionSettings> {
+  return apiFetch('/api/settings/contribution', {
+    method: 'PUT',
+    body: JSON.stringify({ enabled }),
+  });
 }
 
 interface CreateProductOverrideInput {
