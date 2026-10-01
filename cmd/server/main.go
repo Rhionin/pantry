@@ -6,6 +6,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -64,36 +65,32 @@ func productMissTTL() time.Duration {
 	return ttl
 }
 
-// loadCartRegistry reads environment variables to configure grocery providers.
-// It returns a registry with configured providers, or nil if none are configured.
-// The returned Ledger is needed for the HTTP handlers.
+// loadCartRegistry reads Kroger's environment and always returns a registry
+// and ledger. Missing credentials register Kroger as not configured so the
+// shopping list can say so; they do not stop the process.
 func loadCartRegistry(db *sql.DB) (*cart.Registry, *cart.Ledger) {
-	// Check if Kroger is disabled
-	if os.Getenv("DISABLE_KROGER") == "true" {
-		log.Println("Kroger provider disabled via DISABLE_KROGER")
-		return nil, nil
-	}
+	registry := cart.NewRegistry()
+	ledger := cart.NewLedger(db)
 
-	// Check if Kroger client_id is set
-	clientID := os.Getenv("KROGER_CLIENT_ID")
-	if clientID = strings.TrimSpace(clientID); clientID == "" {
-		log.Println("KROGER_CLIENT_ID not set or empty, Kroger provider not configured")
-		return nil, nil
-	}
-
+	disabled := strings.TrimSpace(os.Getenv("DISABLE_KROGER")) == "true"
+	clientID := strings.TrimSpace(os.Getenv("KROGER_CLIENT_ID"))
 	clientSecret := strings.TrimSpace(os.Getenv("KROGER_CLIENT_SECRET"))
-	if clientSecret == "" {
-		log.Println("KROGER_CLIENT_SECRET not set or empty, Kroger provider not configured")
-		return nil, nil
-	}
-
 	redirectURI := strings.TrimSpace(os.Getenv("KROGER_REDIRECT_URI"))
+	if disabled {
+		log.Println("Kroger provider disabled via DISABLE_KROGER")
+	}
+	if clientID == "" {
+		log.Println("KROGER_CLIENT_ID not set or empty")
+	}
+	if clientSecret == "" {
+		log.Println("KROGER_CLIENT_SECRET not set or empty")
+	}
 	if redirectURI == "" {
-		log.Println("KROGER_REDIRECT_URI not set or empty, Kroger provider not configured")
-		return nil, nil
+		log.Println("KROGER_REDIRECT_URI not set or empty")
 	}
 
-	modality := strings.TrimSpace(os.Getenv("KROGER_MODALITY"))
+	configured := !disabled && clientID != "" && clientSecret != "" && redirectURI != ""
+	modality := strings.ToUpper(strings.TrimSpace(os.Getenv("KROGER_MODALITY")))
 	if modality == "" {
 		modality = "PICKUP"
 	} else if modality != "PICKUP" && modality != "DELIVERY" {
@@ -101,21 +98,41 @@ func loadCartRegistry(db *sql.DB) (*cart.Registry, *cart.Ledger) {
 		modality = "PICKUP"
 	}
 
-	adapter, err := kroger.New(clientID, clientSecret, redirectURI, modality)
-	if err != nil {
-		log.Printf("failed to create Kroger adapter: %v, skipping registration", err)
-		return nil, nil
+	var adapter *kroger.Adapter
+	if configured {
+		created, err := kroger.New(clientID, clientSecret, redirectURI, modality)
+		if err != nil {
+			log.Printf("failed to create Kroger adapter: %v", err)
+			configured = false
+			adapter = kroger.NewUnconfigured()
+		} else {
+			adapter = created
+		}
+	} else {
+		adapter = kroger.NewUnconfigured()
 	}
 
-	registry := cart.NewRegistry()
-	if err := registry.Register(adapter); err != nil {
+	opts := []cart.RegisterOption{
+		cart.WithBatchSize(krogerBatchSize()),
+		cart.WithCredentialsConfigured(configured),
+	}
+	if err := registry.Register(adapter, opts...); err != nil {
 		log.Printf("failed to register Kroger: %v", err)
-		return nil, nil
 	}
-
-	ledger := cart.NewLedger(db)
-
 	return registry, ledger
+}
+
+func krogerBatchSize() int {
+	raw := strings.TrimSpace(os.Getenv("KROGER_BATCH_SIZE"))
+	if raw == "" {
+		return 50
+	}
+	n, err := strconv.Atoi(raw)
+	if err != nil || n < 1 || n > 999 {
+		log.Printf("invalid KROGER_BATCH_SIZE %q, using default 50", raw)
+		return 50
+	}
+	return n
 }
 
 func main() {

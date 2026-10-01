@@ -107,14 +107,67 @@ export interface TargetQuantitySuggestion {
   dataInsufficient: boolean;
 }
 
+export type ReplenishmentMode = 'target' | 'replenish';
+
+export type ConnectionState = 'not_required' | 'connected' | 'reauth_required' | 'disconnected';
+
+export interface ProviderCapabilities {
+  auth: string;
+  delivery: string;
+  confirmation: string;
+  mutation: string;
+  identity: string;
+}
+
+// Matches ProviderInfo in internal/server/handler_providers.go.
+export interface ProviderInfo {
+  id: string;
+  displayName: string;
+  capabilities: ProviderCapabilities;
+  connectionState: ConnectionState;
+  credentialsConfigured: boolean;
+}
+
+export interface ShoppingListBasis {
+  mode: ReplenishmentMode;
+  targetQuantity?: number;
+  instanceCount: number;
+  consumedUnits: number;
+  requested: number;
+}
+
 // Matches ShoppingListEntryResponse in internal/server/handler_shopping_list.go.
 // Auto-derived entries have an empty string id (no backing shopping_list_items row).
+// quantity is the provision quantity: an adjustment when one is set, otherwise
+// the computed quantity.
 export interface ShoppingListEntry {
   id: string;
   itemId: string;
   quantity: number;
   source: 'auto' | 'manual';
   purchasedAt: string | null;
+  replenishmentMode?: ReplenishmentMode;
+  provider?: string;
+  computedQuantity?: number;
+  adjustment?: number;
+  basis?: ShoppingListBasis;
+}
+
+export interface ProvisionEntryResult {
+  entryId: string;
+  itemId: string;
+  name: string;
+  quantity: number;
+  outcome: 'confirmed' | 'failed' | 'unknown' | string;
+  outcomeReason?: string;
+}
+
+export interface ProvisionReport {
+  provider: string;
+  exported: number;
+  failedItems?: string[];
+  unknownItems?: string[];
+  entries?: ProvisionEntryResult[];
 }
 
 // Result of a three-tier product lookup (user override -> global DB -> external API).

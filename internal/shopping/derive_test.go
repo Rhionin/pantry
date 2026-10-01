@@ -47,8 +47,8 @@ func TestDeriveShoppingList(t *testing.T) {
 			name: "mixed: below and at target",
 			input: []DeriveInput{
 				{ItemID: "needs", TargetQuantity: 6, CurrentCount: 4},
-				{ItemID: "full",  TargetQuantity: 3, CurrentCount: 3},
-				{ItemID: "over",  TargetQuantity: 2, CurrentCount: 7},
+				{ItemID: "full", TargetQuantity: 3, CurrentCount: 3},
+				{ItemID: "over", TargetQuantity: 2, CurrentCount: 7},
 			},
 			want: []DerivedEntry{
 				{ItemID: "needs", Quantity: 2, Source: "auto"},
@@ -127,8 +127,8 @@ func TestMergeEntries(t *testing.T) {
 				{ItemID: "a", Quantity: 2, Source: "auto"},
 				{ItemID: "b", Quantity: 1, Source: "auto"},
 			},
-			manual:  nil,
-			wantLen: 2,
+			manual:   nil,
+			wantLen:  2,
 			wantByID: map[string]int{"a": 2, "b": 1},
 		},
 		{
@@ -137,7 +137,7 @@ func TestMergeEntries(t *testing.T) {
 			manual: []ManualEntry{
 				{ItemID: "a", Quantity: 5},
 			},
-			wantLen: 1,
+			wantLen:  1,
 			wantByID: map[string]int{"a": 5},
 		},
 		{

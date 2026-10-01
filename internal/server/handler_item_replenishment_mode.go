@@ -39,7 +39,7 @@ func (h *SetReplenishmentModeHandler) Handle(req Request[SetReplenishmentModeBod
 	// Validate the mode value
 	mode := inventory.ReplenishmentMode(req.Body.Mode)
 	if mode != inventory.ReplenishMode && mode != inventory.TargetMode {
-		return nil, BadRequest("mode must be 'target' or 'replenish'")
+		return nil, &HTTPError{Code: 422, Message: "mode must be \"target\" or \"replenish\""}
 	}
 
 	// Set the replenishment mode

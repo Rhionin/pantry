@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/Rhionin/pantry/internal/cart"
 	"github.com/Rhionin/pantry/internal/shopping"
@@ -18,12 +19,13 @@ type UnknownResolutionHandler struct {
 	ShoppingList interface {
 		GetItemByID(ctx context.Context, entryID string) (*shopping.ShoppingListItem, error)
 	}
-	Provisioner cart.Provisioner
+	Ledger *cart.Ledger
 }
 
 // UnknownResolutionBody holds the request body.
 type UnknownResolutionBody struct {
-	ReachedProvider bool `json:"reachedProvider"`
+	ReachedProvider bool   `json:"reachedProvider"`
+	Provider        string `json:"provider"`
 }
 
 // UnknownResolutionResponse holds the response.
@@ -47,8 +49,21 @@ func (h *UnknownResolutionHandler) Handle(req Request[UnknownResolutionBody, Unk
 		return nil, NotFound("entry not found")
 	}
 
-	// If reachedProvider is true, the ledger should be advanced
-	// This would require access to the Ledger to call Advance
-
+	if !req.Body.ReachedProvider {
+		return &UnknownResolutionResponse{EntryID: entryID}, nil
+	}
+	if req.Body.Provider == "" {
+		return nil, BadRequest("missing provider")
+	}
+	qty := entry.Quantity
+	if qty < 1 {
+		qty = 1
+	}
+	if h.Ledger == nil {
+		return nil, InternalError(fmt.Errorf("ledger is not available"))
+	}
+	if err := h.Ledger.Advance(req.Context, cart.ProviderID(req.Body.Provider), entry.ItemID, qty); err != nil {
+		return nil, InternalError(err)
+	}
 	return &UnknownResolutionResponse{EntryID: entryID}, nil
 }

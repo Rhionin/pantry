@@ -3,9 +3,9 @@ package shopping
 
 // DeriveInput holds the data needed to determine whether an item needs restocking.
 type DeriveInput struct {
-	ItemID       string
+	ItemID         string
 	TargetQuantity int
-	CurrentCount int
+	CurrentCount   int
 }
 
 // DerivedEntry represents an automatically derived shopping list entry.

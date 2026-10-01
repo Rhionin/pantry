@@ -147,16 +147,18 @@ func (r *ConsumptionLog) ListConsumedAtByItems(ctx context.Context, itemIDs []st
 
 	// Create placeholders for IN clause
 	placeholders := make([]string, len(itemIDs))
-	args := make([]interface{}, len(itemIDs)+1)
+	args := make([]interface{}, len(itemIDs))
 	for i, id := range itemIDs {
 		placeholders[i] = "?"
 		args[i] = id
 	}
-	args[len(itemIDs)] = time.Now().UTC() // boundary
 
+	// Return every event. Each item has its own ledger boundary, so the
+	// caller counts events after that boundary in Go.
 	rows, err := r.db.QueryContext(ctx,
 		`SELECT item_id, consumed_at FROM consumption_events
-		 WHERE item_id IN (`+strings.Join(placeholders, ",")+`) AND consumed_at > ?`,
+		 WHERE item_id IN (`+strings.Join(placeholders, ",")+`)
+		 ORDER BY consumed_at`,
 		args...,
 	)
 	if err != nil {

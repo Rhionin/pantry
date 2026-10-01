@@ -204,6 +204,7 @@ func newAPIMux(
 	// Scan queue handlers
 	scanQueue := scan.NewQueue(db)
 	scanQueue.Broadcaster = broadcaster
+	scanQueue.Ledger = providerLedgerReset{ledger: ledger, registry: registry}
 	scanCreateHandler := &ScanCreateHandler{
 		Queue:         scanQueue,
 		LookupService: lookupService,
@@ -251,9 +252,22 @@ func newAPIMux(
 
 	// Shopping list handlers
 	shoppingList := shopping.NewStore(db)
+	connDir := connection.NewDirectory(db)
+	tokenBroker := connection.NewTokenBroker(connDir)
+	engine := cart.NewEngine(registry, ledger, tokenBroker)
+	engine.SetShoppingList(*shoppingList)
+	engine.SetPantry(*pantry)
+	engine.SetConsumptionLog(*consumptionLog)
+	if catalog != nil {
+		engine.SetCatalog(*catalog)
+	}
+
 	shoppingListGetHandler := &ShoppingListGetHandler{
-		ShoppingList: shoppingList,
-		Pantry:       pantry,
+		ShoppingList:   shoppingList,
+		Pantry:         pantry,
+		Ledger:         ledger,
+		Registry:       registry,
+		ConsumptionLog: consumptionLog,
 	}
 	shoppingListItemCreateHandler := &ShoppingListItemCreateHandler{
 		ShoppingList: shoppingList,
@@ -268,7 +282,10 @@ func newAPIMux(
 	shoppingListExportHandler := &ShoppingListExportHandler{
 		ShoppingList: shoppingList,
 		Pantry:       pantry,
-		Provisioner:  &cart.NoOpProvisioner{},
+		Provisioner:  engine,
+		Ledger:       ledger,
+		Registry:     registry,
+		Connections:  connDir,
 	}
 
 	apiMux.HandleFunc("GET /api/shopping-list", HandleJSON(shoppingListGetHandler.Handle))
@@ -277,10 +294,8 @@ func newAPIMux(
 	apiMux.HandleFunc("PATCH /api/shopping-list/items/{id}", HandleJSON(shoppingListItemUpdateHandler.Handle))
 	apiMux.HandleFunc("POST /api/shopping-list/export", HandleJSON(shoppingListExportHandler.Handle))
 
-	// Cart integration handlers
-	// Note: registry and ledger are passed in from the caller and created in loadCartRegistry()
-	connDir := connection.NewDirectory(db)
-
+	// Cart integration handlers. connDir is created with the shopping list
+	// above so the provisioner and these routes share one directory.
 	providersHandler := &ProvidersHandler{
 		Registry:      registry,
 		ConnectionDir: connDir,
@@ -320,7 +335,7 @@ func newAPIMux(
 	// Unknown resolution handler
 	unknownResolutionHandler := &UnknownResolutionHandler{
 		ShoppingList: shoppingList,
-		Provisioner:  shoppingListExportHandler.Provisioner,
+		Ledger:       ledger,
 	}
 	apiMux.HandleFunc("POST /api/shopping-list/items/{id}/unknown-resolution", HandleJSON(unknownResolutionHandler.Handle))
 

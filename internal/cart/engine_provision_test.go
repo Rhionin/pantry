@@ -296,8 +296,7 @@ func TestProvision_PerRequest_SharedIdentityCountsEachEntry(t *testing.T) {
 
 	ledger, err := env.ledger.ListForProvider(ctx, "fake-none")
 	require.NoError(t, err)
-	// One shared line advances the ledger for the first account's item only,
-	// carrying the clamped line quantity (2 + 1).
+	// Each account advances by its own quantity, so the shared line records 2 + 1.
 	advanced := ledger[itemA].Requested + ledger[itemB].Requested
 	assert.Equal(t, 3, advanced)
 }
@@ -367,4 +366,116 @@ func TestProvision_ConcurrencyGate(t *testing.T) {
 
 	close(script.addBlock)
 	require.NoError(t, <-firstDone)
+}
+
+func TestProvision_PerLine_RejectedLineDoesNotAdvanceLedger(t *testing.T) {
+	env := newProvisionEnv(t)
+	ctx := context.Background()
+
+	caps := derivedNoneCaps(ConfirmPerLine)
+	provider := newFakeProvider("fake-none", caps, &fakeScript{
+		dispositions: []ResultDisposition{DispositionAccepted},
+		perLine: map[ProductIdentity]bool{
+			"SKU-OK": true,
+			"SKU-NO": false,
+		},
+		identityByBar: map[string]ProductIdentity{"0001": "SKU-OK", "0002": "SKU-NO"},
+	})
+	require.NoError(t, env.registry.Register(provider))
+	okItem, _ := env.seedShortfall(t, provisionUser, "prod-ok", "Milk", "0001", 2)
+	noItem, _ := env.seedShortfall(t, provisionUser, "prod-no", "Bread", "0002", 4)
+
+	report, err := env.engine.Provision(ctx, provisionUser, "fake-none")
+	require.NoError(t, err)
+	assert.Equal(t, 1, report.Confirmed)
+
+	byItem := map[string]EntryOutcome{}
+	for _, entry := range report.Entries {
+		byItem[entry.ItemID] = entry
+	}
+	assert.Equal(t, OutcomeConfirmed, byItem[okItem].Outcome)
+	assert.Equal(t, OutcomeFailed, byItem[noItem].Outcome)
+	assert.Equal(t, ReasonProviderRejected, byItem[noItem].Reason)
+
+	ledger, err := env.ledger.ListForProvider(ctx, "fake-none")
+	require.NoError(t, err)
+	assert.Equal(t, 2, ledger[okItem].Requested)
+	_, rejectedAdvanced := ledger[noItem]
+	assert.False(t, rejectedAdvanced)
+}
+
+func TestProvision_BatchSizeSplitsRequests(t *testing.T) {
+	env := newProvisionEnv(t)
+	ctx := context.Background()
+
+	caps := derivedNoneCaps(ConfirmPerRequest)
+	provider := newFakeProvider("fake-none", caps, &fakeScript{
+		dispositions:  []ResultDisposition{DispositionAccepted, DispositionRejected},
+		identityByBar: map[string]ProductIdentity{"0001": "SKU-1", "0002": "SKU-2"},
+	})
+	require.NoError(t, env.registry.Register(provider, WithBatchSize(1)))
+	env.seedShortfall(t, provisionUser, "prod-1", "Milk", "0001", 2)
+	env.seedShortfall(t, provisionUser, "prod-2", "Bread", "0002", 3)
+
+	report, err := env.engine.Provision(ctx, provisionUser, "fake-none")
+	require.NoError(t, err)
+	assert.Equal(t, 1, report.Confirmed)
+
+	var confirmed, failed int
+	for _, entry := range report.Entries {
+		switch entry.Outcome {
+		case OutcomeConfirmed:
+			confirmed++
+		case OutcomeFailed:
+			failed++
+		}
+	}
+	assert.Equal(t, 1, confirmed)
+	assert.Equal(t, 1, failed)
+}
+
+type handoffFake struct {
+	*fakeProvider
+	artifact HandoffArtifact
+}
+
+func (h *handoffFake) BuildHandoff(ProvisionRequest) (HandoffArtifact, error) {
+	return h.artifact, nil
+}
+
+func TestProvision_ClientHandoff_RecordsUnknownAndDoesNotAdvanceLedger(t *testing.T) {
+	env := newProvisionEnv(t)
+	ctx := context.Background()
+
+	caps := derivedNoneCaps(ConfirmPerRequest)
+	caps.Delivery = DeliveryClientHandoff
+	inner := newFakeProvider("fake-none", caps, &fakeScript{
+		identityByBar: map[string]ProductIdentity{"0001": "SKU-1"},
+	})
+	provider := &handoffFake{
+		fakeProvider: inner,
+		artifact:     HandoffArtifact{URL: "https://example.test/cart"},
+	}
+	require.NoError(t, env.registry.Register(provider))
+	itemID, entryID := env.seedShortfall(t, provisionUser, "prod-1", "Milk", "0001", 2)
+
+	report, err := env.engine.Provision(ctx, provisionUser, "fake-none")
+	require.NoError(t, err)
+	assert.Equal(t, 0, report.Confirmed)
+	require.NotNil(t, report.Handoff)
+	assert.Equal(t, "https://example.test/cart", report.Handoff.URL)
+	require.Len(t, report.Entries, 1)
+	assert.Equal(t, EntryOutcome{
+		EntryID:  entryID,
+		ItemID:   itemID,
+		Name:     "Milk",
+		Quantity: 2,
+		Outcome:  OutcomeUnknown,
+		Reason:   ReasonNoPerItemResult,
+	}, report.Entries[0])
+
+	ledger, err := env.ledger.ListForProvider(ctx, "fake-none")
+	require.NoError(t, err)
+	_, advanced := ledger[itemID]
+	assert.False(t, advanced)
 }

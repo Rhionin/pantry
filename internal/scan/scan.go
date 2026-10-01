@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/Rhionin/pantry/internal/cart"
 	"github.com/Rhionin/pantry/internal/inventory"
 	"github.com/Rhionin/pantry/internal/product"
 	"github.com/google/uuid"
@@ -81,7 +80,7 @@ type Queue struct {
 	// Only required when providers are configured and the ledger needs
 	// to be reset on new stock.
 	Ledger interface {
-		ResetForItemTx(ctx context.Context, tx *sql.Tx, provider cart.ProviderID, itemID string, at time.Time) error
+		ResetForItemTx(ctx context.Context, tx *sql.Tx, itemID string, at time.Time) error
 	}
 
 	// Broadcaster publishes a Scan_Event (and, for commit paths, an

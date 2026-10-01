@@ -73,6 +73,45 @@ func (l *Ledger) AdvanceTx(ctx context.Context, tx *sql.Tx, provider ProviderID,
 	return result.RowsAffected()
 }
 
+// boundaryTx returns the stored ledger boundary for one provider and item.
+// ok is false when no row exists, which the caller treats as a boundary
+// preceding every consumption event.
+func (l *Ledger) boundaryTx(ctx context.Context, tx *sql.Tx, provider ProviderID, itemID string) (time.Time, bool, error) {
+	var boundary time.Time
+	err := tx.QueryRowContext(ctx,
+		`SELECT ledger_boundary FROM fulfillment_ledger WHERE provider_id = ? AND item_id = ?`,
+		string(provider), itemID).Scan(&boundary)
+	if err == sql.ErrNoRows {
+		return time.Time{}, false, nil
+	}
+	if err != nil {
+		return time.Time{}, false, err
+	}
+	return boundary, true, nil
+}
+
+// Advance opens its own transaction and adds qty to the requested quantity.
+// An existing row keeps its boundary; a new row records boundary as now.
+func (l *Ledger) Advance(ctx context.Context, provider ProviderID, itemID string, qty int) error {
+	tx, err := l.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	boundary, ok, err := l.boundaryTx(ctx, tx, provider, itemID)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		boundary = time.Now().UTC()
+	}
+	if _, err := l.AdvanceTx(ctx, tx, provider, itemID, qty, boundary); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
 // ResetForItemTx resets the ledger entry for one item inside an existing transaction.
 // This is the only transaction-bound method, existing so that every statement
 // touching fulfillment_ledger stays in one package.

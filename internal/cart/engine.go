@@ -10,8 +10,8 @@ import (
 	"github.com/Rhionin/pantry/internal/cart/connection"
 	"github.com/Rhionin/pantry/internal/inventory"
 	"github.com/Rhionin/pantry/internal/product"
-	"github.com/Rhionin/pantry/internal/suggestion"
 	"github.com/Rhionin/pantry/internal/shopping"
+	"github.com/Rhionin/pantry/internal/suggestion"
 )
 
 // ReplenishmentMode identifies the shopping list calculation mode.
@@ -45,10 +45,10 @@ type Engine struct {
 // NewEngine creates a new provisioning engine.
 func NewEngine(registry *Registry, ledger *Ledger, tokenBroker *connection.TokenBroker) *Engine {
 	return &Engine{
-		registry:       registry,
-		ledger:         ledger,
-		tokenBroker:    tokenBroker,
-		inFlight:       make(map[ProviderID]struct{}),
+		registry:    registry,
+		ledger:      ledger,
+		tokenBroker: tokenBroker,
+		inFlight:    make(map[ProviderID]struct{}),
 	}
 }
 
@@ -79,7 +79,9 @@ func (e *Engine) Provision(ctx context.Context, userID string, providerID Provid
 	e.mu.Lock()
 	if _, exists := e.inFlight[providerID]; exists {
 		e.mu.Unlock()
-		return ProvisionReport{}, fmt.Errorf("provisioning operation already in progress for provider %q", providerID)
+		return ProvisionReport{}, &ProvisionConflict{
+			Reason: fmt.Sprintf("provisioning operation already in progress for provider %q", providerID),
+		}
 	}
 	e.inFlight[providerID] = struct{}{}
 	e.mu.Unlock()
@@ -107,7 +109,9 @@ func (e *Engine) Provision(ctx context.Context, userID string, providerID Provid
 	// For auth=none providers, the connection may not exist - that's OK
 	shouldCheckConnection := caps.Auth != AuthNone
 	if shouldCheckConnection && (conn == nil || conn.State != connection.StateConnected) {
-		return ProvisionReport{}, fmt.Errorf("provider %q is not connected", providerID)
+		return ProvisionReport{}, &ProvisionConflict{
+			Reason: fmt.Sprintf("provider %q is not connected", providerID),
+		}
 	}
 
 	// Get computed entries from shopping list (with ledger-net quantities)
@@ -155,11 +159,7 @@ func (e *Engine) Provision(ctx context.Context, userID string, providerID Provid
 		cred = NoCredential{}
 	} else if caps.Auth == AuthOAuth2 {
 		// For OAuth2, use the token broker to get an access token
-		token, err := e.tokenBroker.AccessToken(ctx, string(providerID), func(refreshToken string) (string, string, time.Duration, error) {
-			// This callback is called when refresh is needed
-			// For now, we return error since we don't have the refresh function
-			return "", "", 0, fmt.Errorf("token refresh not implemented")
-		})
+		token, err := e.tokenBroker.AccessToken(ctx, string(providerID), e.exchangeRefresh(ctx, provider))
 		if err != nil {
 			// For indeterminate outcomes, record failed/unknown and return
 			for _, item := range resolvedItems {
@@ -183,8 +183,10 @@ func (e *Engine) Provision(ctx context.Context, userID string, providerID Provid
 
 	// Submit each batch to provider
 	var confirmedCount int
+	var reportHandoff *HandoffArtifact
 	for _, req := range batches {
 		var result ProvisionResult
+		err = nil
 		if caps.Delivery == DeliveryServerPush {
 			// Get the ServerPush interface
 			if serverPush, ok := provider.(ServerPush); ok {
@@ -192,8 +194,18 @@ func (e *Engine) Provision(ctx context.Context, userID string, providerID Provid
 			} else {
 				err = fmt.Errorf("provider does not support server_push delivery")
 			}
+		} else if handoff, ok := provider.(HandoffBuilder); ok {
+			artifact, buildErr := handoff.BuildHandoff(req)
+			if buildErr != nil {
+				err = buildErr
+			} else {
+				if reportHandoff == nil {
+					reportHandoff = &artifact
+				}
+				result = ProvisionResult{Disposition: DispositionAccepted}
+			}
 		} else {
-			err = fmt.Errorf("client_handoff delivery not implemented")
+			err = fmt.Errorf("provider does not support %s delivery", caps.Delivery)
 		}
 
 		if err != nil || result.Disposition == DispositionIndeterminate {
@@ -230,27 +242,55 @@ func (e *Engine) Provision(ctx context.Context, userID string, providerID Provid
 			continue
 		}
 
-		// Accepted: record outcomes and update ledger
-		var acceptedCount int
-		switch caps.Confirmation {
-		case ConfirmPerLine:
-			// per_line: check each line's identity in PerLine map
+		// A handoff artifact carries no per-item result. Record unknown
+		// and leave the ledger alone; the owner resolves it later.
+		if caps.Delivery == DeliveryClientHandoff {
 			for _, line := range req.Lines {
-				confirmed := result.PerLine[line.Identity]
 				for _, item := range line.Accounts {
 					outcomes = append(outcomes, EntryOutcome{
 						EntryID:  item.EntryID,
 						ItemID:   item.ItemID,
 						Name:     item.Name,
 						Quantity: item.Quantity,
-						Outcome:  OutcomeConfirmed,
-						Reason:   "", // not used for confirmed
+						Outcome:  OutcomeUnknown,
+						Reason:   ReasonNoPerItemResult,
+					})
+				}
+			}
+			continue
+		}
+
+		// Accepted: record outcomes and update ledger
+		var acceptedCount int
+		switch caps.Confirmation {
+		case ConfirmPerLine:
+			// A line the provider did not confirm is failed and must not
+			// advance the ledger. Only the confirmed lines are written.
+			accepted := make([]ProvisionLine, 0, len(req.Lines))
+			for _, line := range req.Lines {
+				confirmed := result.PerLine[line.Identity]
+				outcome := OutcomeFailed
+				reason := ReasonProviderRejected
+				if confirmed {
+					outcome = OutcomeConfirmed
+					reason = ""
+					accepted = append(accepted, line)
+				}
+				for _, item := range line.Accounts {
+					outcomes = append(outcomes, EntryOutcome{
+						EntryID:  item.EntryID,
+						ItemID:   item.ItemID,
+						Name:     item.Name,
+						Quantity: item.Quantity,
+						Outcome:  outcome,
+						Reason:   reason,
 					})
 					if confirmed {
 						acceptedCount++
 					}
 				}
 			}
+			req.Lines = accepted
 		case ConfirmPerRequest:
 			// per_request: every accounted entry is confirmed
 			for _, line := range req.Lines {
@@ -300,138 +340,92 @@ func (e *Engine) Provision(ctx context.Context, userID string, providerID Provid
 		Provider:  providerID,
 		Confirmed: confirmedCount,
 		Entries:   outcomes,
+		Handoff:   reportHandoff,
 	}, nil
 }
 
 // getComputedEntries gets shopping list entries with ledger-net quantities.
+// Manual rows keep the quantity the owner recorded, net of the ledger.
+// Derived rows use the replenishment mode. An adjustment, when one is stored
+// for this provider, replaces that quantity for this operation only.
 func (e *Engine) getComputedEntries(ctx context.Context, providerID ProviderID, userID string) ([]ResolvedItem, error) {
-	// Get shopping list manual items
+	pantryItems, err := e.pantry.ListItems(ctx, userID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list pantry items: %w", err)
+	}
 	manualItems, err := e.shoppingList.ListManualItems(ctx, userID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list manual items: %w", err)
 	}
-
-	// Get ledger entries for this provider
 	ledger, err := e.ledger.ListForProvider(ctx, providerID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list ledger: %w", err)
 	}
-
-	// Get pantry instances
 	pantryInstances, err := e.pantry.List(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list pantry: %w", err)
 	}
-
-	// Build map of instances per item
 	instancesByItem := make(map[string]int)
 	for _, inst := range pantryInstances {
 		instancesByItem[inst.ItemID]++
 	}
 
-	// Get consumption log - all items
-	consumed, err := e.consumptionLog.ListConsumedAtByItems(ctx, nil)
+	itemIDs := make([]string, 0, len(pantryItems)+len(manualItems))
+	seen := make(map[string]struct{}, len(pantryItems))
+	for _, item := range pantryItems {
+		seen[item.ID] = struct{}{}
+		itemIDs = append(itemIDs, item.ID)
+	}
+	for _, item := range manualItems {
+		if _, ok := seen[item.ItemID]; ok {
+			continue
+		}
+		itemIDs = append(itemIDs, item.ItemID)
+	}
+	consumedAt, err := e.consumptionLog.ListConsumedAtByItems(ctx, itemIDs)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get consumption: %w", err)
 	}
 
-	// Get all item IDs from manual items and consumption
-	allItemIDs := make(map[string]bool)
-	for _, item := range manualItems {
-		allItemIDs[item.ItemID] = true
-	}
-	for itemID := range consumed {
-		allItemIDs[itemID] = true
-	}
-
-	// Get modes, targets, product IDs, and names from items.
-	// A shopping-list entry keys on the pantry item (items.id); its product
-	// (items.product_id) is what barcodes and catalog names key on, so resolve
-	// and carry the product ID here.
-	itemModes := make(map[string]ReplenishmentMode)
-	itemTargets := make(map[string]*int)
-	itemNames := make(map[string]string)
-	itemProductIDs := make(map[string]string)
-	for itemID := range allItemIDs {
-		mode, err := e.pantry.GetReplenishmentMode(ctx, itemID)
-		if err != nil {
-			return nil, fmt.Errorf("failed to get mode for %s: %w", itemID, err)
-		}
-		// Convert inventory.ReplenishmentMode to cart.ReplenishmentMode
-		itemModes[itemID] = ReplenishmentMode(mode)
-
-		target, err := e.pantry.GetTargetQuantity(ctx, itemID)
-		if err != nil {
-			return nil, fmt.Errorf("failed to get target for %s: %w", itemID, err)
-		}
-		itemTargets[itemID] = target
-
-		item, err := e.pantry.GetItem(ctx, itemID)
-		if err != nil {
-			return nil, fmt.Errorf("failed to get item %s: %w", itemID, err)
-		}
-		if item != nil {
-			itemProductIDs[itemID] = item.ProductID
-			if item.Product != nil {
-				itemNames[itemID] = item.Product.Name
-			} else {
-				itemNames[itemID] = "Unknown"
-			}
-		} else {
-			itemNames[itemID] = "Unknown"
-		}
-	}
-
-	// Compute entries using ComputeEntries from shopping package
-	var result []ResolvedItem
-	// Use shopping package's ComputeEntries function
-	// First, prepare the inputs in the format shopping expects
+	itemNames := make(map[string]string, len(pantryItems))
+	itemProductIDs := make(map[string]string, len(pantryItems))
 	derivedEntries := make([]shopping.DerivedEntry, 0)
-	manualEntries := make([]shopping.ManualEntry, 0, len(manualItems))
-
-	// Build derived entries from all items
-	for itemID := range allItemIDs {
-		target, err := e.pantry.GetTargetQuantity(ctx, itemID)
-		if err != nil {
-			return nil, fmt.Errorf("failed to get target for %s: %w", itemID, err)
+	manualIDs := make(map[string]struct{}, len(manualItems))
+	for _, item := range manualItems {
+		manualIDs[item.ItemID] = struct{}{}
+	}
+	for _, item := range pantryItems {
+		itemProductIDs[item.ID] = item.ProductID
+		name := "Unknown"
+		if item.Product != nil && item.Product.Name != "" {
+			name = item.Product.Name
 		}
+		itemNames[item.ID] = name
 
-		currentQty := instancesByItem[itemID]
-		requestedQty := ledger[itemID].Requested
-
-		// Use shopping package's ComputeQuantity
+		_, hasLedger := ledger[item.ID]
+		consumed := consumedSince(consumedAt[item.ID], ledger[item.ID].Boundary, hasLedger)
 		qty := shopping.ComputeQuantity(
-			len(consumed[itemID]),
-			requestedQty,
-			target,
-			currentQty,
-			shopping.ReplenishmentMode(itemModes[itemID]),
+			consumed,
+			ledger[item.ID].Requested,
+			item.TargetQuantity,
+			instancesByItem[item.ID],
+			shopping.ReplenishmentMode(item.ReplenishmentMode),
 		)
-
 		if qty > 0 {
 			derivedEntries = append(derivedEntries, shopping.DerivedEntry{
-				ItemID:   itemID,
+				ItemID:   item.ID,
 				Quantity: qty,
 				Source:   "auto",
 			})
 		}
 	}
 
-	// Manual entries - use entry IDs from manualItems
+	manualEntries := make([]shopping.ManualEntry, 0, len(manualItems))
 	for _, item := range manualItems {
-		if item.PurchasedAt != nil {
-			continue
+		qty := item.Quantity - ledger[item.ItemID].Requested
+		if qty < 0 {
+			qty = 0
 		}
-
-		// Get the computed quantity
-		qty := shopping.ComputeQuantity(
-			len(consumed[item.ItemID]),
-			ledger[item.ItemID].Requested,
-			itemTargets[item.ItemID],
-			instancesByItem[item.ItemID],
-			shopping.ReplenishmentMode(itemModes[item.ItemID]),
-		)
-
 		if qty > 0 {
 			manualEntries = append(manualEntries, shopping.ManualEntry{
 				ItemID:   item.ItemID,
@@ -440,32 +434,93 @@ func (e *Engine) getComputedEntries(ctx context.Context, providerID ProviderID, 
 		}
 	}
 
-	// Merge entries using shopping package function
 	merged := shopping.MergeEntries(derivedEntries, manualEntries)
 
-	// Build result - need to map merged items back to entry IDs
-	entryIDByItemID := make(map[string]string)
-	for _, item := range manualItems {
-		entryIDByItemID[item.ItemID] = item.ID
+	autoDerived := make([]shopping.DerivedEntry, 0)
+	for _, entry := range derivedEntries {
+		if _, isManual := manualIDs[entry.ItemID]; isManual {
+			continue
+		}
+		autoDerived = append(autoDerived, entry)
+	}
+	if _, err := e.shoppingList.SyncDerivedItems(ctx, userID, autoDerived); err != nil {
+		return nil, fmt.Errorf("failed to save derived shopping list items: %w", err)
+	}
+	active, err := e.shoppingList.ListUnpurchased(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+	entryIDByItemID := make(map[string]string, len(active))
+	for _, item := range active {
+		if item.Source == "manual" {
+			entryIDByItemID[item.ItemID] = item.ID
+			continue
+		}
+		if _, ok := entryIDByItemID[item.ItemID]; !ok {
+			entryIDByItemID[item.ItemID] = item.ID
+		}
 	}
 
+	var result []ResolvedItem
 	for _, entry := range merged {
 		entryID, hasEntry := entryIDByItemID[entry.ItemID]
 		if !hasEntry {
-			continue // derived entry, no entry ID
+			continue
 		}
-
+		qty := entry.Quantity
+		adjustment, err := e.shoppingList.GetAdjustment(ctx, entryID, string(providerID))
+		if err != nil {
+			return nil, fmt.Errorf("failed to read adjustment: %w", err)
+		}
+		if adjustment != nil {
+			qty = adjustment.Quantity
+		}
+		if qty < 1 {
+			continue
+		}
+		name := itemNames[entry.ItemID]
+		if name == "" {
+			name = "Unknown"
+		}
 		result = append(result, ResolvedItem{
 			EntryID:   entryID,
 			ItemID:    entry.ItemID,
 			ProductID: itemProductIDs[entry.ItemID],
-			Name:      itemNames[entry.ItemID],
-			Identity:  "",
-			Quantity:  entry.Quantity,
+			Name:      name,
+			Quantity:  qty,
 		})
 	}
-
 	return result, nil
+}
+
+// exchangeRefresh asks the provider's OAuth flow for a new access token.
+func (e *Engine) exchangeRefresh(ctx context.Context, provider Provider) func(refreshToken string) (string, string, time.Duration, error) {
+	return func(refreshToken string) (string, string, time.Duration, error) {
+		flow, ok := provider.(OAuthFlow)
+		if !ok {
+			return "", "", 0, fmt.Errorf("this provider cannot refresh an access token")
+		}
+		tokenSet, err := flow.RefreshAccessToken(ctx, refreshToken)
+		if err != nil {
+			return "", "", 0, err
+		}
+		return tokenSet.AccessToken, tokenSet.RefreshToken, tokenSet.ExpiresIn, nil
+	}
+}
+
+// consumedSince counts events after boundary. A missing ledger row counts
+// every event, because that boundary precedes the whole history.
+func consumedSince(times []time.Time, boundary time.Time, hasBoundary bool) int {
+	if !hasBoundary {
+		return len(times)
+	}
+	count := 0
+	for _, at := range times {
+		if at.After(boundary) {
+			count++
+		}
+	}
+	return count
 }
 
 // resolveIdentities resolves identities for each entry.
@@ -517,9 +572,7 @@ func (e *Engine) resolveIdentities(ctx context.Context, provider Provider, caps 
 			if caps.Auth == AuthNone {
 				cred = NoCredential{}
 			} else if caps.Auth == AuthOAuth2 {
-				token, err := e.tokenBroker.AccessToken(ctx, string(providerID), func(refreshToken string) (string, string, time.Duration, error) {
-					return "", "", 0, fmt.Errorf("token refresh not implemented")
-				})
+				token, err := e.tokenBroker.AccessToken(ctx, string(providerID), e.exchangeRefresh(ctx, provider))
 				if err != nil {
 					unresolved = append(unresolved, entry)
 					continue
@@ -577,12 +630,17 @@ func (e *Engine) batchRequests(providerID ProviderID, items []ResolvedItem, caps
 		})
 	}
 
-	// Slice into batches
+	// Slice into batches of at most the provider's registered batch size.
 	var batches []ProvisionRequest
-	const BatchSize = 50 // Default batch size
+	batchLimit := 50
+	if e.registry != nil {
+		if n := e.registry.BatchSize(providerID); n > 0 {
+			batchLimit = n
+		}
+	}
 
 	for len(lines) > 0 {
-		batchSize := BatchSize
+		batchSize := batchLimit
 		if len(lines) < batchSize {
 			batchSize = len(lines)
 		}
@@ -610,21 +668,23 @@ func (e *Engine) updateLedgerAndAdjustments(ctx context.Context, providerID Prov
 	}
 	defer tx.Rollback()
 
-	currentTime := time.Now().UTC()
+	now := time.Now().UTC()
 
 	for _, line := range req.Lines {
-		// Advance the ledger inside the same transaction as the adjustment
-		// clears, so both commit together and neither contends for a second
-		// connection against a single-connection SQLite pool.
-		_, err := e.ledger.AdvanceTx(ctx, tx, providerID, line.Accounts[0].ItemID, line.Quantity, currentTime)
-		if err != nil {
-			return fmt.Errorf("failed to advance ledger: %w", err)
-		}
-
-		// Clear adjustments for all accounts of this line
+		// Advance each accounted item by its own quantity. The boundary the
+		// operation computed against stays put; a missing row starts at now.
 		for _, item := range line.Accounts {
-			err := e.shoppingList.ClearAdjustmentTx(ctx, tx, item.EntryID, string(providerID))
+			boundary, ok, err := e.ledger.boundaryTx(ctx, tx, providerID, item.ItemID)
 			if err != nil {
+				return fmt.Errorf("failed to read ledger boundary: %w", err)
+			}
+			if !ok {
+				boundary = now
+			}
+			if _, err := e.ledger.AdvanceTx(ctx, tx, providerID, item.ItemID, item.Quantity, boundary); err != nil {
+				return fmt.Errorf("failed to advance ledger: %w", err)
+			}
+			if err := e.shoppingList.ClearAdjustmentTx(ctx, tx, item.EntryID, string(providerID)); err != nil {
 				return fmt.Errorf("failed to clear adjustment for %s: %w", item.EntryID, err)
 			}
 		}

@@ -26,8 +26,8 @@ func TestEngine_RegistryValidation(t *testing.T) {
 
 	// Create a provider with valid capabilities
 	provider := &MockProvider{
-		id:         ProviderID("test"),
-		caps:       Capabilities{Auth: AuthNone, Delivery: DeliveryServerPush, Confirmation: ConfirmPerRequest, Mutation: MutateAddOnly, Identity: IdentityDerived},
+		id:   ProviderID("test"),
+		caps: Capabilities{Auth: AuthNone, Delivery: DeliveryServerPush, Confirmation: ConfirmPerRequest, Mutation: MutateAddOnly, Identity: IdentityDerived},
 	}
 
 	err = registry.Register(provider)
@@ -79,8 +79,8 @@ func TestProperty7_Isolation_CapabilityCombinations(t *testing.T) {
 
 		// Create a mock provider with these capabilities
 		provider := &MockProvider{
-			id:         ProviderID("test-provider"),
-			caps:       caps,
+			id:   ProviderID("test-provider"),
+			caps: caps,
 		}
 
 		// Register the provider
@@ -127,8 +127,8 @@ func TestProperty8_Isolation_StateKinds(t *testing.T) {
 		}
 
 		provider := &MockProvider{
-			id:         ProviderID("test-mutation"),
-			caps:       caps,
+			id:   ProviderID("test-mutation"),
+			caps: caps,
 		}
 
 		// Register provider
@@ -156,9 +156,9 @@ func TestProperty8_Isolation_StateKinds(t *testing.T) {
 }
 
 type MockProvider struct {
-	id         ProviderID
+	id          ProviderID
 	displayName string
-	caps       Capabilities
+	caps        Capabilities
 }
 
 func (p *MockProvider) ID() ProviderID             { return p.id }

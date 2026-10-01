@@ -115,11 +115,11 @@ func (f *fakeProvider) Capabilities() Capabilities { return f.caps }
 // per-line confirmation map for per_line providers, and the identity each
 // barcode resolves to.
 type fakeScript struct {
-	dispositions    []ResultDisposition
-	perLine         map[ProductIdentity]bool
-	identityByBar   map[string]ProductIdentity
-	addBlock        chan struct{} // when non-nil, Add blocks until it is closed
-	addStarted      chan struct{} // closed by Add once it is running
+	dispositions  []ResultDisposition
+	perLine       map[ProductIdentity]bool
+	identityByBar map[string]ProductIdentity
+	addBlock      chan struct{} // when non-nil, Add blocks until it is closed
+	addStarted    chan struct{} // closed by Add once it is running
 }
 
 type serverPushBehavior struct{ script *fakeScript }

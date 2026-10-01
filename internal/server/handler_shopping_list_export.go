@@ -2,9 +2,11 @@ package server
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/Rhionin/pantry/internal/cart"
+	"github.com/Rhionin/pantry/internal/cart/connection"
 	"github.com/Rhionin/pantry/internal/inventory"
 	"github.com/Rhionin/pantry/internal/shopping"
 )
@@ -22,8 +24,9 @@ type ShoppingListExportHandler struct {
 		ListItemInstances(ctx context.Context, itemID string) ([]inventory.ItemInstance, error)
 	}
 	Provisioner cart.Provisioner
-	Ledger    *cart.Ledger
-	Registry  *cart.Registry
+	Ledger      *cart.Ledger
+	Registry    *cart.Registry
+	Connections *connection.Directory
 }
 
 type shoppingListExportRequest struct {
@@ -40,12 +43,12 @@ type ProvisionEntry struct {
 }
 
 type shoppingListExportResponse struct {
-	Provider        string           `json:"provider"`
-	Exported        int              `json:"exported"`
-	FailedItems     []string         `json:"failedItems,omitempty"`
-	UnknownItems    []string         `json:"unknownItems,omitempty"`
-	Entries         []ProvisionEntry `json:"entries,omitempty"`
-	Handoff         *HandoffResponse `json:"handoff,omitempty"`
+	Provider     string           `json:"provider"`
+	Exported     int              `json:"exported"`
+	FailedItems  []string         `json:"failedItems,omitempty"`
+	UnknownItems []string         `json:"unknownItems,omitempty"`
+	Entries      []ProvisionEntry `json:"entries,omitempty"`
+	Handoff      *HandoffResponse `json:"handoff,omitempty"`
 }
 
 type HandoffResponse struct {
@@ -56,42 +59,63 @@ type HandoffResponse struct {
 func (h *ShoppingListExportHandler) Handle(req Request[shoppingListExportRequest, struct{}]) (*shoppingListExportResponse, error) {
 	userID := "user-1"
 
-	// Get the provider from registry if available
-	var providerID cart.ProviderID
-	if req.Body.Provider != "" {
-		providerID = cart.ProviderID(req.Body.Provider)
-	} else if h.Registry != nil {
-		// If no provider specified and registry exists, use first registered provider
-		// For now, use a placeholder - in production this would get the configured provider
-		providerID = "kroger"
+	providerID := cart.ProviderID(req.Body.Provider)
+	if providerID == "" && h.Registry != nil {
+		if id, ok := h.Registry.SoleConfigured(); ok {
+			providerID = id
+		}
 	}
 
-	// If registry is nil, return no-op response
-	if h.Registry == nil {
-		return &shoppingListExportResponse{
-			Provider:  string(providerID),
-			Exported:  0,
-			Entries:   nil,
-			FailedItems: nil,
-			UnknownItems: nil,
-		}, nil
+	// No configured provider: the historical no-op report. Naming an unknown
+	// or unconfigured provider is still an error, so a client can tell those
+	// apart from "nothing was sent".
+	if h.Registry == nil || !h.Registry.AnyCredentialsConfigured() {
+		if req.Body.Provider != "" {
+			if h.Registry == nil {
+				return nil, BadRequest(fmt.Sprintf("provider %q is not registered", req.Body.Provider))
+			}
+			provider, ok := h.Registry.Get(providerID)
+			if !ok {
+				return nil, BadRequest(fmt.Sprintf("provider %q is not registered", providerID))
+			}
+			if !h.Registry.CredentialsConfigured(providerID) {
+				return nil, Conflict(fmt.Sprintf("%s is not configured", provider.DisplayName()))
+			}
+		}
+		return &shoppingListExportResponse{Provider: string(providerID), Exported: 0}, nil
 	}
 
 	provider, ok := h.Registry.Get(providerID)
-	if !ok {
-		return nil, BadRequest(fmt.Sprintf("provider %q not registered", providerID))
+	if !ok || providerID == "" {
+		named := string(providerID)
+		if named == "" {
+			named = req.Body.Provider
+		}
+		return nil, BadRequest(fmt.Sprintf("provider %q is not registered", named))
 	}
-
+	if !h.Registry.CredentialsConfigured(providerID) {
+		return nil, Conflict(fmt.Sprintf("%s is not configured", provider.DisplayName()))
+	}
 	caps := provider.Capabilities()
-
-	// Check if provider requires authentication
 	if caps.Auth != cart.AuthNone {
-		// TODO: Implement connection state check
+		if h.Connections == nil {
+			return nil, Conflict(fmt.Sprintf("%s is not connected", provider.DisplayName()))
+		}
+		conn, err := h.Connections.Read(req.Context, string(providerID))
+		if err != nil {
+			return nil, InternalError(err)
+		}
+		if conn == nil || conn.State != connection.StateConnected {
+			return nil, Conflict(fmt.Sprintf("%s is not connected", provider.DisplayName()))
+		}
 	}
 
-	// Provision the shopping list
 	report, err := h.Provisioner.Provision(req.Context, userID, providerID)
 	if err != nil {
+		var conflict *cart.ProvisionConflict
+		if errors.As(err, &conflict) {
+			return nil, Conflict(conflict.Reason)
+		}
 		return nil, InternalError(err)
 	}
 
@@ -131,11 +155,11 @@ func (h *ShoppingListExportHandler) Handle(req Request[shoppingListExportRequest
 	}
 
 	return &shoppingListExportResponse{
-		Provider:      string(providerID),
-		Exported:      report.Confirmed,
-		FailedItems:   failedItems,
-		UnknownItems:  unknownItems,
-		Entries:       entries,
-		Handoff:       handoff,
+		Provider:     string(providerID),
+		Exported:     report.Confirmed,
+		FailedItems:  failedItems,
+		UnknownItems: unknownItems,
+		Entries:      entries,
+		Handoff:      handoff,
 	}, nil
 }

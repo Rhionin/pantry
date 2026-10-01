@@ -89,7 +89,7 @@ func TestConfirmedMissLifecycle(t *testing.T) {
 					method:         "GET",
 					path:           "/api/products",
 					expectedStatus: http.StatusOK,
-					assertions: []assertion{
+					assertions:     []assertion{
 						// Products list should be empty (no products created)
 					},
 				},

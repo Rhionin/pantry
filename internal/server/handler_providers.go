@@ -1,7 +1,12 @@
 package server
 
 import (
+	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"fmt"
+	"log"
+	"net/url"
 
 	"github.com/Rhionin/pantry/internal/cart"
 	"github.com/Rhionin/pantry/internal/cart/connection"
@@ -39,9 +44,53 @@ type ListProvidersHandler struct {
 
 // Handle returns a list of all registered providers.
 func (h *ListProvidersHandler) Handle(req Request[struct{}, struct{}]) ([]ProviderInfo, error) {
-	// Get all registered providers from the registry
-	// For now, return empty list - this will be fixed when we add the List method to Registry
-	return []ProviderInfo{}, nil
+	if h.Registry == nil {
+		return []ProviderInfo{}, nil
+	}
+	ids := h.Registry.List()
+	infos := make([]ProviderInfo, 0, len(ids))
+	for _, id := range ids {
+		provider, ok := h.Registry.Get(id)
+		if !ok {
+			continue
+		}
+		caps := provider.Capabilities()
+		state, err := providerConnectionState(req.Context, h.ConnectionDir, string(id), caps.Auth)
+		if err != nil {
+			return nil, InternalError(err)
+		}
+		infos = append(infos, ProviderInfo{
+			ID:          string(id),
+			DisplayName: provider.DisplayName(),
+			Capabilities: ProviderCapabilities{
+				Auth:         string(caps.Auth),
+				Delivery:     string(caps.Delivery),
+				Confirmation: string(caps.Confirmation),
+				Mutation:     string(caps.Mutation),
+				Identity:     string(caps.Identity),
+			},
+			ConnectionState:       state,
+			CredentialsConfigured: h.Registry.CredentialsConfigured(id),
+		})
+	}
+	return infos, nil
+}
+
+func providerConnectionState(ctx context.Context, dir *connection.Directory, providerID string, auth cart.AuthCapability) (string, error) {
+	if auth == cart.AuthNone {
+		return string(connection.StateNotRequired), nil
+	}
+	if dir == nil {
+		return string(connection.StateDisconnected), nil
+	}
+	conn, err := dir.Read(ctx, providerID)
+	if err != nil {
+		return "", err
+	}
+	if conn == nil || conn.State == "" {
+		return string(connection.StateDisconnected), nil
+	}
+	return string(conn.State), nil
 }
 
 // ProviderAuthorizeHandler handles GET /api/providers/{providerId}/authorize.
@@ -51,7 +100,7 @@ type ProviderAuthorizeHandler struct {
 }
 
 type ProviderAuthorizeRequest struct {
-	ProviderID string `path:"providerId"`
+	ProviderID string `json:"providerId"`
 }
 
 type ProviderAuthorizeResponse struct {
@@ -69,24 +118,37 @@ func (h *ProviderAuthorizeHandler) Handle(req Request[struct{}, ProviderAuthoriz
 	}
 
 	caps := provider.Capabilities()
-
-	// Check if provider supports OAuth2
 	if caps.Auth != cart.AuthOAuth2 {
-		return nil, BadRequest(fmt.Sprintf("provider %q does not support OAuth2", providerID))
+		return nil, BadRequest(fmt.Sprintf("%s does not use an authorization-code connection", provider.DisplayName()))
 	}
-
-	// Check if provider implements OAuthFlow
-	_, ok = provider.(cart.OAuthFlow)
+	if !h.Registry.CredentialsConfigured(providerID) {
+		return nil, Conflict(fmt.Sprintf("%s is not configured", provider.DisplayName()))
+	}
+	flow, ok := provider.(cart.OAuthFlow)
 	if !ok {
-		return nil, InternalError(fmt.Errorf("provider %q does not implement OAuthFlow", providerID))
+		return nil, InternalError(fmt.Errorf("%s cannot start a connection", provider.DisplayName()))
 	}
 
-	// Generate authorization state
-	// This should be done by the connection directory
-	// For now, return a placeholder URL
-	return &ProviderAuthorizeResponse{
-		AuthorizationURL: "https://example.com/auth",
-	}, nil
+	state, err := newAuthState()
+	if err != nil {
+		return nil, InternalError(err)
+	}
+	if err := h.ConnectionDir.GenerateAuthState(req.Context, string(providerID), state); err != nil {
+		return nil, InternalError(err)
+	}
+	authorizationURL, err := flow.AuthorizationURL(state)
+	if err != nil {
+		return nil, InternalError(err)
+	}
+	return &ProviderAuthorizeResponse{AuthorizationURL: authorizationURL}, nil
+}
+
+func newAuthState() (string, error) {
+	buf := make([]byte, 32)
+	if _, err := rand.Read(buf); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(buf), nil
 }
 
 // ProviderCallbackHandler handles GET /api/providers/{providerId}/callback.
@@ -96,66 +158,62 @@ type ProviderCallbackHandler struct {
 }
 
 type ProviderCallbackRequest struct {
-	ProviderID string `path:"providerId"`
+	ProviderID string `json:"providerId"`
 	Code       string `query:"code"`
 	State      string `query:"state"`
 }
 
-// Handle processes the OAuth2 callback.
-func (h *ProviderCallbackHandler) Handle(req Request[struct{}, ProviderCallbackRequest]) (Created, error) {
+// Handle processes the OAuth2 callback and sends the browser back to the
+// shopping list. The redirect carries no token.
+func (h *ProviderCallbackHandler) Handle(req Request[struct{}, ProviderCallbackRequest]) (SeeOther, error) {
 	providerID := cart.ProviderID(req.PathParams.ProviderID)
 
-	// Get the provider from registry
 	provider, ok := h.Registry.Get(providerID)
 	if !ok {
-		return Created{}, NotFound(fmt.Sprintf("provider %q not registered", providerID))
+		return SeeOther{}, NotFound(fmt.Sprintf("provider %q is not registered", providerID))
 	}
-
-	caps := provider.Capabilities()
-
-	// Check if provider supports OAuth2
-	if caps.Auth != cart.AuthOAuth2 {
-		return Created{}, BadRequest(fmt.Sprintf("provider %q does not support OAuth2", providerID))
+	if provider.Capabilities().Auth != cart.AuthOAuth2 {
+		return SeeOther{}, BadRequest(fmt.Sprintf("%s does not use an authorization-code connection", provider.DisplayName()))
 	}
-
-	// Check if provider implements OAuthFlow
-	_, ok = provider.(cart.OAuthFlow)
+	flow, ok := provider.(cart.OAuthFlow)
 	if !ok {
-		return Created{}, InternalError(fmt.Errorf("provider %q does not implement OAuthFlow", providerID))
+		return SeeOther{}, InternalError(fmt.Errorf("%s cannot finish a connection", provider.DisplayName()))
 	}
 
-	// Consume and validate authorization state
 	query := req.RawRequest.URL.Query()
+	if query.Get("error") != "" {
+		_, _ = h.ConnectionDir.ConsumeAuthState(req.Context, string(providerID), query.Get("state"))
+		return SeeOther{}, BadRequest("the provider declined the connection")
+	}
+
 	valid, err := h.ConnectionDir.ConsumeAuthState(req.Context, string(providerID), query.Get("state"))
 	if err != nil {
-		return Created{}, InternalError(fmt.Errorf("failed to consume auth state: %v", err))
+		return SeeOther{}, InternalError(err)
 	}
 	if !valid {
-		return Created{}, BadRequest("invalid or expired authorization state")
+		return SeeOther{}, BadRequest("invalid or expired authorization state")
 	}
 
-	// Exchange code for tokens
-	tokenSet, err := provider.(cart.OAuthFlow).ExchangeCode(req.Context, query.Get("code"))
+	tokenSet, err := flow.ExchangeCode(req.Context, query.Get("code"))
 	if err != nil {
-		return Created{}, InternalError(fmt.Errorf("failed to exchange code: %v", err))
+		// Do not include err: a provider body is where tokens live.
+		log.Printf("provider %s authorization code exchange failed", providerID)
+		return SeeOther{}, BadGateway(fmt.Sprintf("%s rejected the authorization code", provider.DisplayName()))
 	}
 
-	// Store tokens in connection record
+	expiresAt := tokenSet.ReceiptAt.Add(tokenSet.ExpiresIn)
 	conn := &connection.Connection{
 		Provider:     string(providerID),
 		State:        connection.StateConnected,
 		AccessToken:  tokenSet.AccessToken,
 		RefreshToken: tokenSet.RefreshToken,
+		ExpiresAt:    &expiresAt,
 	}
-	// Set expiry time
-	expiresAt := tokenSet.ReceiptAt.Add(tokenSet.ExpiresIn)
-	conn.ExpiresAt = &expiresAt
-
 	if err := h.ConnectionDir.Write(req.Context, conn); err != nil {
-		return Created{}, InternalError(fmt.Errorf("failed to store tokens: %v", err))
+		return SeeOther{}, InternalError(err)
 	}
 
-	return Created{Value: struct{}{}}, nil
+	return SeeOther{Location: "/shopping?connected=" + url.QueryEscape(string(providerID))}, nil
 }
 
 // ProviderDisconnectHandler handles DELETE /api/providers/{providerId}/connection.
@@ -165,7 +223,7 @@ type ProviderDisconnectHandler struct {
 }
 
 type ProviderDisconnectRequest struct {
-	ProviderID string `path:"providerId"`
+	ProviderID string `json:"providerId"`
 }
 
 // Handle disconnects the provider.
@@ -205,7 +263,7 @@ type ProviderLedgerGetHandler struct {
 }
 
 type ProviderLedgerGetRequest struct {
-	ProviderID string `path:"providerId"`
+	ProviderID string `json:"providerId"`
 }
 
 type LedgerEntry struct {
@@ -275,7 +333,7 @@ type ProviderLedgerResetHandler struct {
 }
 
 type ProviderLedgerResetRequest struct {
-	ProviderID string `path:"providerId"`
+	ProviderID string `json:"providerId"`
 }
 
 // Handle resets the ledger for a provider.

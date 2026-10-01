@@ -2,21 +2,24 @@ package cart
 
 import (
 	"fmt"
+	"sort"
 	"sync"
 )
 
 // Registry holds registered providers and validates their capabilities against their interfaces.
 type Registry struct {
-	mu         sync.Mutex
-	providers  map[ProviderID]Provider
-	batchSizes map[ProviderID]int
+	mu                    sync.Mutex
+	providers             map[ProviderID]Provider
+	batchSizes            map[ProviderID]int
+	credentialsConfigured map[ProviderID]bool
 }
 
 // NewRegistry creates a new empty Registry.
 func NewRegistry() *Registry {
 	return &Registry{
-		providers:  make(map[ProviderID]Provider),
-		batchSizes: make(map[ProviderID]int),
+		providers:             make(map[ProviderID]Provider),
+		batchSizes:            make(map[ProviderID]int),
+		credentialsConfigured: make(map[ProviderID]bool),
 	}
 }
 
@@ -92,6 +95,75 @@ func (b *batchSizeOption) apply(r *Registry, id ProviderID) {
 		// Default to 50
 		r.batchSizes[id] = 50
 	}
+}
+
+// WithCredentialsConfigured records whether the provider's required credentials
+// were present at startup. Absent means not configured.
+func WithCredentialsConfigured(configured bool) RegisterOption {
+	return credentialsOption{configured: configured}
+}
+
+type credentialsOption struct {
+	configured bool
+}
+
+func (c credentialsOption) apply(r *Registry, id ProviderID) {
+	r.credentialsConfigured[id] = c.configured
+}
+
+// List returns registered provider identifiers in ascending order.
+func (r *Registry) List() []ProviderID {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	ids := make([]ProviderID, 0, len(r.providers))
+	for id := range r.providers {
+		ids = append(ids, id)
+	}
+	sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
+	return ids
+}
+
+// CredentialsConfigured reports whether every credential the provider requires
+// was present when it was registered.
+func (r *Registry) CredentialsConfigured(id ProviderID) bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.credentialsConfigured[id]
+}
+
+// AnyCredentialsConfigured reports whether provisioning can run against at
+// least one provider.
+func (r *Registry) AnyCredentialsConfigured() bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for _, configured := range r.credentialsConfigured {
+		if configured {
+			return true
+		}
+	}
+	return false
+}
+
+// SoleConfigured returns the only credentials-configured provider.
+// A read that names no provider uses that provider.
+func (r *Registry) SoleConfigured() (ProviderID, bool) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	var found ProviderID
+	count := 0
+	for id, configured := range r.credentialsConfigured {
+		if !configured {
+			continue
+		}
+		found = id
+		count++
+	}
+	if count == 1 {
+		return found, true
+	}
+	return "", false
 }
 
 // Get returns the provider with the given ID, or nil if not found.

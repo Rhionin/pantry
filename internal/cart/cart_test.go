@@ -8,8 +8,8 @@ import (
 
 func TestProviderID_Valid(t *testing.T) {
 	tests := []struct {
-		id      ProviderID
-		want    bool
+		id   ProviderID
+		want bool
 	}{
 		{"kroger", true},
 		{"test-provider", true},
@@ -35,8 +35,8 @@ func TestProviderID_Dimension(t *testing.T) {
 
 func TestAuthCapability_Valid(t *testing.T) {
 	tests := []struct {
-		cap     AuthCapability
-		want    bool
+		cap  AuthCapability
+		want bool
 	}{
 		{AuthNone, true},
 		{AuthOAuth2, true},
@@ -56,8 +56,8 @@ func TestAuthCapability_Valid(t *testing.T) {
 
 func TestDeliveryCapability_Valid(t *testing.T) {
 	tests := []struct {
-		cap     DeliveryCapability
-		want    bool
+		cap  DeliveryCapability
+		want bool
 	}{
 		{DeliveryServerPush, true},
 		{DeliveryClientHandoff, true},
@@ -75,8 +75,8 @@ func TestDeliveryCapability_Valid(t *testing.T) {
 
 func TestConfirmationCapability_Valid(t *testing.T) {
 	tests := []struct {
-		cap     ConfirmationCapability
-		want    bool
+		cap  ConfirmationCapability
+		want bool
 	}{
 		{ConfirmPerLine, true},
 		{ConfirmPerRequest, true},
@@ -95,8 +95,8 @@ func TestConfirmationCapability_Valid(t *testing.T) {
 
 func TestMutationCapability_Valid(t *testing.T) {
 	tests := []struct {
-		cap     MutationCapability
-		want    bool
+		cap  MutationCapability
+		want bool
 	}{
 		{MutateAddOnly, true},
 		{MutateAddAndUpdate, true},
@@ -115,8 +115,8 @@ func TestMutationCapability_Valid(t *testing.T) {
 
 func TestIdentityCapability_Valid(t *testing.T) {
 	tests := []struct {
-		cap     IdentityCapability
-		want    bool
+		cap  IdentityCapability
+		want bool
 	}{
 		{IdentityDerived, true},
 		{IdentityLookedUp, true},
@@ -199,8 +199,8 @@ type mockProvider struct {
 	id string
 }
 
-func (m *mockProvider) ID() ProviderID         { return ProviderID(m.id) }
-func (m *mockProvider) DisplayName() string    { return "Mock" }
+func (m *mockProvider) ID() ProviderID      { return ProviderID(m.id) }
+func (m *mockProvider) DisplayName() string { return "Mock" }
 func (m *mockProvider) Capabilities() Capabilities {
 	return Capabilities{
 		Auth:         AuthNone,
@@ -210,7 +210,6 @@ func (m *mockProvider) Capabilities() Capabilities {
 		Identity:     IdentityDerived,
 	}
 }
-
 
 // Each capability type reports the dimension name used in error messages.
 func TestCapability_Dimension(t *testing.T) {

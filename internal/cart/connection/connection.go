@@ -135,9 +135,16 @@ func (d *Directory) Disconnect(ctx context.Context, provider string) error {
 // Generate at least 32 characters from an injected io.Reader (crypto/rand in production).
 func (d *Directory) GenerateAuthState(ctx context.Context, provider, state string) error {
 	now := time.Now().UTC()
+	// Insert a disconnected row when this is the first authorization attempt,
+	// and on conflict touch only the single-use state so a refresh token
+	// already stored for this provider is left in place.
 	_, err := d.db.ExecContext(ctx,
-		`UPDATE provider_connections SET auth_state = ?, auth_state_at = ? WHERE provider_id = ?`,
-		state, now, provider)
+		`INSERT INTO provider_connections (id, user_id, provider_id, state, auth_state, auth_state_at)
+		 VALUES (?, ?, ?, ?, ?, ?)
+		 ON CONFLICT(user_id, provider_id) DO UPDATE SET
+		     auth_state = excluded.auth_state,
+		     auth_state_at = excluded.auth_state_at`,
+		connectionUserID+":"+provider, connectionUserID, provider, StateDisconnected, state, now)
 	return err
 }
 

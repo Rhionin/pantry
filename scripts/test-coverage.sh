@@ -2,12 +2,9 @@
 set -e
 
 # Minimum required line coverage percentage.
-# Set to 70.0: replacing the exponential-backoff reconnect with fixed-interval
-# polling plus throttled logging removed the nextBackoff function (and its
-# test) and reshaped runDevice, which lowered the aggregate -coverpkg total.
-# The reconnect behavior is still covered by the poll/throttle/recovery tests.
-# 70.0 is a stable floor CI reproducibly clears.
-COVERAGE_THRESHOLD=70.0
+# Ratcheted from 70.0 to 71.6 when cart provisioning tests landed. A cached
+# `go test` run can under-report this total; a clean run is the one that counts.
+COVERAGE_THRESHOLD=71.6
 
 # Colors for output
 RED='\033[0;31m'

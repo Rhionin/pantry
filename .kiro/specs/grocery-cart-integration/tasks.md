@@ -1,5 +1,43 @@
 # Implementation Plan
 
+## Status
+
+The provider-agnostic core, Kroger adapter, ledger, and shopping-list HTTP
+surface are implemented and wired through `cmd/server`. The shopping list page
+can connect a provider, adjust a quantity, switch replenishment mode, provision,
+and reset the ledger.
+
+`./scripts/test-coverage.sh` passes at 71.6% (the script ratcheted the floor
+from 70.0). The frontend job (`tsc -b`, eslint on the shopping surface, and
+`vitest --run`) passes: 178 tests.
+
+Still open, and why the pull request stays a draft:
+
+- Kroger client credentials are not in this environment, so nothing here has
+  called the live Cart API. `go test -tags=live` does not exist yet.
+- Kroger publishes no worked example for a 13-digit EAN-13. That branch follows
+  the documented "drop the check digit and pad" rule and still needs one real
+  imported EAN-13 once credentials exist.
+- `Registry.validateInterfaces` does not yet reject an adapter whose method set
+  disagrees with its declared capabilities (task 1.4).
+- The contract suite runs against the fake provider, not against the Kroger
+  adapter (task 6.6). Several rapid property tests named in this plan are not
+  written (tasks 2.3, 5.8, 7.8).
+- Credentials are refused by `POST /api/shopping-list/export` before the engine
+  runs. The engine itself gates the in-flight slot and connection state. Engine
+  unit tests register fakes without `WithCredentialsConfigured`, so the engine
+  does not repeat the credentials check.
+- The engine uses the registered batch size (default 50), records a per-line
+  decline as failed without advancing that line's ledger, and a client handoff
+  as unknown with the artifact and no ledger write. Kroger is `server_push` /
+  `per_request`, so those other shapes are covered by the fake provider.
+- `GET /api/shopping-list` still computes quantity in the handler. It is not
+  the engine's `getComputedEntries` (task 5.7). A product in `replenish` mode
+  that is not already on the shopping list is included when provisioning, and
+  is not added to the list read until it also has a target shortfall or a
+  manual row. Calling `SyncDerivedItems` with only replenish rows would delete
+  target-mode auto rows, so the list read does not do that.
+
 ## Overview
 
 Replace the no-op `shopping.CartExporter` with a provider-agnostic provisioning core plus one
@@ -42,7 +80,7 @@ Language: Go for the backend, TypeScript/React for the frontend.
 
 - [ ] 1. Subtraction and the core types
 
-  - [ ] 1.1 Migration `006_replace_cart_integrations_with_provider_ledger.sql`
+  - [x] 1.1 Migration `006_replace_cart_integrations_with_provider_ledger.sql`
     - `DROP TABLE cart_integrations` — no Go file references it, and its `UNIQUE(user_id)` permits
       one row per user, so it can hold at most one provider's connection state while
       `service_type` shows multi-provider was the intent. SQLite cannot drop the constraint in
@@ -68,7 +106,7 @@ Language: Go for the backend, TypeScript/React for the frontend.
       about `app.RunMigrations` changes
     - _Requirements: 2.2, 6.2, 8.2, 10.12_
 
-  - [ ] 1.2 Migration test obligations in `internal/app/migrate_test.go`
+  - [x] 1.2 Migration test obligations in `internal/app/migrate_test.go`
     - Add `applyMigrationsThrough005`, in the same shape as the existing
       `applyMigrationsThrough003` and `applyMigrationsThrough004`
     - `TestMigrationApplies`' `want` list loses `cart_integrations` and gains
@@ -85,7 +123,7 @@ Language: Go for the backend, TypeScript/React for the frontend.
       "last resort" case AGENTS.md permits
     - _Requirements: 6.2_
 
-  - [ ] 1.3 Core types in `internal/cart`
+  - [x] 1.3 Core types in `internal/cart`
     - Five capability dimensions as **distinct defined string types** — `AuthCapability`,
       `DeliveryCapability`, `ConfirmationCapability`, `MutationCapability`, `IdentityCapability` —
       each with `Valid() bool` and `Dimension() string`. Distinct types make a dimension swap a
@@ -134,7 +172,7 @@ Language: Go for the backend, TypeScript/React for the frontend.
     - _Requirements: 1.1, 1.3, 1.4, 1.5, 1.6, 1.8_
     - _Properties: 6_
 
-  - [ ] 1.5 Delete the `CartExporter` trio and introduce the `Provisioner` seam
+  - [x] 1.5 Delete the `CartExporter` trio and introduce the `Provisioner` seam
     - Delete `internal/shopping/export.go`'s `CartExporter`, `ExportItem`, and `ExportError`
       (with its `Error()` and `Unwrap()`). `ExportError` exists only to squeeze partial failure
       through an `error` return, which is why today's handler answers 500 for a nine-of-ten success
@@ -157,14 +195,14 @@ Language: Go for the backend, TypeScript/React for the frontend.
     - Ends green: build, existing API tests, and the one amended assertion
     - _Requirements: 11.7, 12.4_
 
-  - [ ] 1.6 Run `./scripts/test-coverage.sh` and commit the ratcheted threshold
+  - [x] 1.6 Run `./scripts/test-coverage.sh` and commit the ratcheted threshold
 
 - [ ] 2. Scaffold: the contract suite and the fake provider
 
   Built before the engine. This is the task list that makes the capability abstraction verifiable
   rather than asserted, and it is what a second provider inherits for free.
 
-  - [ ] 2.1 The fake provider in `internal/cart/carttest`
+  - [x] 2.1 The fake provider in `internal/cart/carttest`
     - `carttest` is a **non-test package**, following the `net/http/httptest` pattern. It must be
       importable by both `internal/cart`'s tests and `internal/cart/kroger`'s tests, and a
       `_test.go` file cannot be imported across packages. Only test files import it, so it ships in
@@ -185,7 +223,7 @@ Language: Go for the backend, TypeScript/React for the frontend.
     - Record every adapter call so a test can assert which operations were invoked
     - _Requirements: 16.5, 16.6_
 
-  - [ ] 2.2 `RunContractSuite` and the coverage table
+  - [x] 2.2 `RunContractSuite` and the coverage table
     - `RunContractSuite(t *testing.T, p cart.Provider)` reads `p.Capabilities()` and selects cases
       from a `coverage` map keyed `"dimension=value"`
     - A declared capability value with **no entry in the table** fails the suite, naming the
@@ -224,11 +262,11 @@ Language: Go for the backend, TypeScript/React for the frontend.
       CI command passes, so no pull request result can depend on whether it ran
     - _Requirements: 16.7, 16.8, 16.9_
 
-  - [ ] 2.5 Run `./scripts/test-coverage.sh` and commit the ratcheted threshold
+  - [x] 2.5 Run `./scripts/test-coverage.sh` and commit the ratcheted threshold
 
 - [ ] 3. Data access and the credential lifecycle
 
-  - [ ] 3.1 `cart.Ledger`
+  - [x] 3.1 `cart.Ledger`
     - `internal/cart/ledger.go`. Named for the domain concept per AGENTS.md — not a `Repo`, not a
       bare `Store`. This is `internal/cart`'s one data-access type
     - `ListForProvider(ctx, p) (map[string]LedgerEntry, error)` — one query, then O(1) per entry, not
@@ -248,7 +286,7 @@ Language: Go for the backend, TypeScript/React for the frontend.
     - _Requirements: 10.1, 10.3, 10.7, 10.11, 10.12_
     - _Properties: 12_
 
-  - [ ] 3.2 `connection.Directory`
+  - [x] 3.2 `connection.Directory`
     - `internal/cart/connection/`. A second package rather than a second type in `internal/cart`,
       precisely because of the one-data-access-type-per-package rule: the ledger and the connection
       records are two persisted concepts
@@ -258,7 +296,7 @@ Language: Go for the backend, TypeScript/React for the frontend.
     - No method returns a token to a caller outside the package except the broker in 3.4
     - _Requirements: 2.2, 2.10, 4.1, 4.2, 4.3_
 
-  - [ ] 3.3 Authorization state generation and consumption
+  - [x] 3.3 Authorization state generation and consumption
     - Generate at least 32 characters from an injected `io.Reader` (`crypto/rand` in production, so
       a test can control entropy without weakening production), persist exactly one state per
       provider with its generation time, and leave every other provider's record unchanged
@@ -267,7 +305,7 @@ Language: Go for the backend, TypeScript/React for the frontend.
     - _Requirements: 2.3, 2.4, 2.5, 2.6, 2.7, 2.8_
     - _Properties: 15_
 
-  - [ ] 3.4 `connection.TokenBroker` — result-sharing single flight
+  - [x] 3.4 `connection.TokenBroker` — result-sharing single flight
     - Refresh if and only if the remaining access-token lifetime is 60 seconds or less, or no access
       token is persisted
     - The existing `product.Refresher` precedent uses an in-flight map that **drops** duplicate
@@ -288,7 +326,7 @@ Language: Go for the backend, TypeScript/React for the frontend.
     - _Requirements: 3.3, 3.4, 3.5, 3.7, 3.8, 3.9, 3.10_
     - _Properties: 16_
 
-  - [ ] 3.5 Stock-in resets the ledger inside the existing transaction
+  - [x] 3.5 Stock-in resets the ledger inside the existing transaction
     - `scan.Queue` gains a `Ledger` collaborator field, following the pattern by which it already
       gained `Pantry` and `Broadcaster`
     - `CommitStockIn` calls `Ledger.ResetForItemTx` **inside its existing `tx`**, setting
@@ -297,11 +335,11 @@ Language: Go for the backend, TypeScript/React for the frontend.
       claiming units are outstanding
     - _Requirements: 10.6_
 
-  - [ ] 3.6 Run `./scripts/test-coverage.sh` and commit the ratcheted threshold
+  - [x] 3.6 Run `./scripts/test-coverage.sh` and commit the ratcheted threshold
 
 - [ ] 4. Quantity computation
 
-  - [ ] 4.1 `internal/shopping/compute.go`
+  - [x] 4.1 `internal/shopping/compute.go`
     - Pure functions, no database access. `ComputeQuantity` is the whole rule in four lines:
       `max(0, consumed − requested)` under `replenish`, `max(0, target − instances − requested)`
       under `target`, and `0` under `target` when no target quantity is recorded. Both modes net of
@@ -324,7 +362,7 @@ Language: Go for the backend, TypeScript/React for the frontend.
     - _Requirements: 7.1, 7.2, 7.5, 7.6, 7.7, 7.8, 7.10, 10.10, 15.7_
     - _Properties: 1, 2_
 
-  - [ ] 4.2 Consumed-unit counts on `suggestion.ConsumptionLog`
+  - [x] 4.2 Consumed-unit counts on `suggestion.ConsumptionLog`
     - `ListConsumedAtByItems(ctx, itemIDs) (map[string][]time.Time, error)` — one query returning
       `(item_id, consumed_at)`, with the counting done in Go against each item's own boundary
     - Not a per-item `COUNT(*) WHERE consumed_at > ?`: each item has its own boundary, so the SQL
@@ -333,7 +371,7 @@ Language: Go for the backend, TypeScript/React for the frontend.
     - This is the query the new index in 1.1 exists for
     - _Requirements: 7.3, 7.4_
 
-  - [ ] 4.3 Replenishment mode on `inventory.Pantry`
+  - [x] 4.3 Replenishment mode on `inventory.Pantry`
     - `UpdateReplenishmentMode` and the read, mirroring the existing `UpdateTargetQuantity` field
       for field. No new package: the mode is a column on `items`
     - Enforce the two-value set in Go, and treat an unrecorded mode as `target`
@@ -341,7 +379,7 @@ Language: Go for the backend, TypeScript/React for the frontend.
       computation — the mode is product state, not list state
     - _Requirements: 6.1, 6.2, 6.3, 6.4, 6.5, 6.7_
 
-  - [ ] 4.4 Adjustments on `shopping.Store`
+  - [x] 4.4 Adjustments on `shopping.Store`
     - Set, read, and remove an adjustment keyed by `(entry_id, provider_id)`; reject a value outside
       0–999. No new package: an adjustment is shopping-list state
     - `ClearAdjustmentTx(ctx, tx, entryID, providerID)` for the engine's per-request transaction
@@ -351,14 +389,14 @@ Language: Go for the backend, TypeScript/React for the frontend.
       inferred behavior
     - _Requirements: 8.2, 8.3, 8.7, 8.12_
 
-  - [ ] 4.5 Run `./scripts/test-coverage.sh` and commit the ratcheted threshold
+  - [x] 4.5 Run `./scripts/test-coverage.sh` and commit the ratcheted threshold
 
 - [ ] 5. The Provisioning Engine
 
   `internal/cart/engine.go`. Collaborators are inline interfaces matching the repo's handler style;
   the field holding the shopping store is named `ShoppingList`, not `Store`.
 
-  - [ ] 5.1 Claim the in-flight slot and gate before touching any provider
+  - [x] 5.1 Claim the in-flight slot and gate before touching any provider
     - `map[ProviderID]struct{}` under `Engine.mu`, claimed before any provider contact and released
       in a `defer`. A second operation against the same provider is a conflict; an operation against
       a *different* provider proceeds
@@ -372,7 +410,7 @@ Language: Go for the backend, TypeScript/React for the frontend.
       transaction held across it would hold the single connection and stall every other request
     - _Requirements: 9.8, 9.10, 12.9_
 
-  - [ ] 5.2 Resolve identities
+  - [x] 5.2 Resolve identities
     - For each computed entry with a provision quantity ≥ 1, in list order, fetch the product's
       barcodes **sorted ascending lexicographically** and present them in that order, taking the
       first identity returned. The sort is what makes two resolutions over the same barcode set
@@ -388,7 +426,7 @@ Language: Go for the backend, TypeScript/React for the frontend.
     - _Requirements: 5.1, 5.3, 5.4, 5.5, 5.6, 5.7, 5.8, 5.9, 5.10, 5.11_
     - _Properties: 9_
 
-  - [ ] 5.3 Batch into well-formed requests
+  - [x] 5.3 Batch into well-formed requests
     - Group resolved items by identity, summing quantities clamped to 999, then slice into requests
       of at most `BatchSize` lines
     - Validate every line before handing it to the adapter: non-empty identity, quantity 1–999, and
@@ -399,7 +437,7 @@ Language: Go for the backend, TypeScript/React for the frontend.
     - _Requirements: 9.1, 9.4, 9.5, 15.1, 15.2_
     - _Properties: 10_
 
-  - [ ] 5.4 Submit
+  - [x] 5.4 Submit
     - `server_push` calls `ServerPush.Add` per request, sequentially. `client_handoff` calls
       `HandoffBuilder.BuildHandoff` once and sends nothing
     - A rejected request does **not** stop the operation
@@ -409,7 +447,7 @@ Language: Go for the backend, TypeScript/React for the frontend.
       submit a line twice
     - _Requirements: 9.2, 9.3, 9.6, 9.7, 9.11, 13.7_
 
-  - [ ] 5.5 Record outcomes by the declared confirmation capability
+  - [x] 5.5 Record outcomes by the declared confirmation capability
     - A `switch` on the declared value: per-line results under `per_line`; one identical outcome for
       every entry of a request under `per_request`; `unknown` for every entry under `none`, for every
       entry of an abandoned or indeterminate request, and for every entry a handoff artifact carries
@@ -418,7 +456,7 @@ Language: Go for the backend, TypeScript/React for the frontend.
     - _Requirements: 11.1, 11.2, 11.3, 11.4, 11.5, 11.6, 11.7, 13.8_
     - _Properties: 11_
 
-  - [ ] 5.6 The per-accepted-request transaction
+  - [x] 5.6 The per-accepted-request transaction
     - One transaction per **accepted request**, not per operation: advance the ledger for each
       accounted item and clear that entry's adjustment, then commit
     - Per-request because a rejected request does not stop the operation. If the whole operation were
@@ -450,13 +488,13 @@ Language: Go for the backend, TypeScript/React for the frontend.
     - _Requirements: 1.8, 3.7, 4.9, 6.6, 7.9, 8.6, 9.12, 10.4, 11.8, 13.9_
     - _Properties: 7, 8_
 
-  - [ ] 5.9 Run `./scripts/test-coverage.sh` and commit the ratcheted threshold
+  - [x] 5.9 Run `./scripts/test-coverage.sh` and commit the ratcheted threshold
 
 - [ ] 6. The Kroger adapter
 
   `internal/cart/kroger/`. Imports `internal/cart`; nothing in `internal/cart` imports it.
 
-  - [ ] 6.1 `barcode.go` — normalization against the corrected rule
+  - [x] 6.1 `barcode.go` — normalization against the corrected rule
     - **Read the design's normalization section before writing a line of this.** The first draft of
       this spec had this rule wrong in the most dangerous possible way, and the correction is the
       reason this task exists as its own unit
@@ -480,7 +518,7 @@ Language: Go for the backend, TypeScript/React for the frontend.
     - _Requirements: 5.12, 17.3, 17.4, 17.5, 17.7, 17.8, 17.15, 17.16, 17.17_
     - _Properties: 17, 18_
 
-  - [ ] 6.2 UPC-E expansion per GS1 Table 5-7
+  - [x] 6.2 UPC-E expansion per GS1 Table 5-7
     - Implement the six-row placement table keyed on the sixth encoded digit, transcribed from GS1
       General Specifications Release 26.0 section 5.2.2.4.2, Table 5-7. The number-system digit is
       **always `0`** — GS1 requires it — and the 8-character structure is the number-system digit,
@@ -505,7 +543,7 @@ Language: Go for the backend, TypeScript/React for the frontend.
     - _Requirements: 17.6, 17.7, 17.18_
     - _Properties: 19_
 
-  - [ ] 6.3 Cart-add payload serialization and validation
+  - [x] 6.3 Cart-add payload serialization and validation
     - One `items` array; each entry carries the identifier in a field named `upc`, an integer
       `quantity` between 1 and 999, and a `modality` of `PICKUP` or `DELIVERY`
     - Reject before sending — with an error naming the rejected field and no request issued — an
@@ -517,7 +555,7 @@ Language: Go for the backend, TypeScript/React for the frontend.
     - _Requirements: 17.11, 17.12, 17.14_
     - _Properties: 20_
 
-  - [ ] 6.4 `OAuthFlow` implementation
+  - [x] 6.4 `OAuthFlow` implementation
     - `AuthorizationScope()` returns `cart.basic:write`, the scope string the Cart API declares
     - Authorization URL carries the configured client identifier, the configured redirect URI, the
       declared scope, and `response_type=code`, against
@@ -526,7 +564,7 @@ Language: Go for the backend, TypeScript/React for the frontend.
       as the response receipt time plus the duration the response carried
     - _Requirements: 2.9, 3.1, 3.2, 3.6, 17.2_
 
-  - [ ] 6.5 `ServerPush.Add`, retry policy, and the injected transport
+  - [x] 6.5 `ServerPush.Add`, retry policy, and the injected transport
     - `PUT /v1/cart/add`; a `204` with no body is acceptance. There is no per-item result to read,
       which is why the declared confirmation capability is `per_request` — now confirmed from the
       Cart API document rather than assumed as the conservative reading
@@ -559,7 +597,7 @@ Language: Go for the backend, TypeScript/React for the frontend.
       point at which it can be checked at all
     - _Requirements: 16.1, 16.9, 17.1_
 
-  - [ ] 6.7 `loadCartRegistry()` in `cmd/server/main.go`
+  - [x] 6.7 `loadCartRegistry()` in `cmd/server/main.go`
     - Shaped like the existing `loadScanListenerConfig()`: read every namespaced environment
       variable, trim whitespace, treat whitespace-only as absent, log each absent name
     - Apply defaults rather than failing: an out-of-range batch size applies 50, an invalid modality
@@ -568,13 +606,13 @@ Language: Go for the backend, TypeScript/React for the frontend.
       logs and continues; a registration failure skips that provider
     - _Requirements: 12.1, 12.2, 12.3, 12.5, 12.6, 12.7, 12.10, 17.10_
 
-  - [ ] 6.8 Run `./scripts/test-coverage.sh` and commit the ratcheted threshold
+  - [x] 6.8 Run `./scripts/test-coverage.sh` and commit the ratcheted threshold
 
 - [ ] 7. The HTTP surface
 
   `internal/server` is the composition root and the only place `cart` and `cart/kroger` meet.
 
-  - [ ] 7.1 `NewHandler` gains a `*cart.Registry` parameter
+  - [x] 7.1 `NewHandler` gains a `*cart.Registry` parameter
     - `nil` means no provider is configured and wires `cart.NoOpProvisioner`, which is exactly the
       specified behavior — so the four existing call sites (`cmd/server/main.go`,
       `setup_test.go`, `test_runner_test.go`, `handler_scan_headless_test.go`) pass `nil` and keep
@@ -583,13 +621,13 @@ Language: Go for the backend, TypeScript/React for the frontend.
       `ShoppingList`
     - _Requirements: 12.4, 12.8_
 
-  - [ ] 7.2 `GET /api/providers`
+  - [x] 7.2 `GET /api/providers`
     - One row per provider: identifier, display name, the five capability values, connection state,
       and the configured indication — **and no other field**. The response type has no token,
       expiry, or auth-state field to omit
     - _Requirements: 1.5, 4.1, 4.2, 12.8, 14.2_
 
-  - [ ] 7.3 Authorization, callback, and disconnect routes
+  - [x] 7.3 Authorization, callback, and disconnect routes
     - `GET /api/providers/{providerId}/authorize`, `GET /api/providers/{providerId}/callback`,
       `DELETE /api/providers/{providerId}/connection`
     - 400 for authorize on a non-OAuth provider, 409 on an unconfigured one; the callback rejects a
@@ -599,7 +637,7 @@ Language: Go for the backend, TypeScript/React for the frontend.
     - No redirect `Location`, log line, or error body may carry a credential value
     - _Requirements: 2.5, 2.6, 2.7, 2.8, 2.9, 2.11, 2.12, 4.3, 14.4, 14.5, 14.6_
 
-  - [ ] 7.4 The export handler becomes the provisioning endpoint
+  - [x] 7.4 The export handler becomes the provisioning endpoint
     - `POST /api/shopping-list/export` keeps its path and accepts `{"provider": "kroger"}`. The
       operation is "provision the shopping list", not an action on a provider resource, and the
       existing frontend already calls this path
@@ -614,7 +652,7 @@ Language: Go for the backend, TypeScript/React for the frontend.
       provider (409), missing connection (409), concurrent operation (409)
     - _Requirements: 9.9, 11.7, 11.13, 11.14_
 
-  - [ ] 7.5 Shopping list, adjustment, and mode routes
+  - [x] 7.5 Shopping list, adjustment, and mode routes
     - `GET /api/shopping-list?provider=kroger` returns the computed quantity, the mode that produced
       it, its basis, the target provider, and any adjustment
     - `PUT` / `DELETE /api/shopping-list/items/{id}/adjustment`, 422 naming the rejected value
@@ -626,7 +664,7 @@ Language: Go for the backend, TypeScript/React for the frontend.
     - _Requirements: 6.3, 6.8, 6.9, 6.10, 7.11, 8.1, 8.7, 8.8, 8.11, 8.12_
     - _Properties: 13_
 
-  - [ ] 7.6 Ledger routes
+  - [x] 7.6 Ledger routes
     - `GET /api/providers/{providerId}/ledger` and
       `POST /api/providers/{providerId}/ledger/reset`
     - The ledger read is what API tests use to verify a provisioning operation's effect
@@ -634,7 +672,7 @@ Language: Go for the backend, TypeScript/React for the frontend.
       queries, because no endpoint exposes that precision
     - _Requirements: 10.7, 10.8, 10.11_
 
-  - [ ] 7.7 Unknown-outcome resolution
+  - [x] 7.7 Unknown-outcome resolution
     - `POST /api/shopping-list/items/{id}/unknown-resolution` — the owner's "it did reach the
       provider" advances the ledger exactly as a confirmation does; "it did not" leaves the entry's
       requested quantity and boundary unchanged
@@ -648,7 +686,7 @@ Language: Go for the backend, TypeScript/React for the frontend.
     - _Requirements: 14.1, 14.2, 14.3, 14.4, 14.5, 14.6, 14.7_
     - _Properties: 14_
 
-  - [ ] 7.9 Run `./scripts/test-coverage.sh` and commit the ratcheted threshold
+  - [x] 7.9 Run `./scripts/test-coverage.sh` and commit the ratcheted threshold
 
 - [ ] 8. Frontend
 
@@ -656,36 +694,36 @@ Language: Go for the backend, TypeScript/React for the frontend.
   run by CI today** — the `frontend` job runs `tsc -b`, lint, and `vitest --run` — so no requirement
   here may depend on an end-to-end spec.
 
-  - [ ] 8.1 Provider panel
+  - [x] 8.1 Provider panel
     - One row per provider from `GET /api/providers`: display name, connection state, and the control
       that state permits. `disconnected` + configured → "Connect"; `reauth_required` → an expiry
       message + "Reconnect"; `connected` → "Disconnect"; not configured → a disabled provisioning
       control plus "unconfigured"; `not_required` → no connection control at all
     - _Requirements: 2.1, 4.4, 4.5, 4.8, 12.8_
 
-  - [ ] 8.2 Per-entry quantity and mode controls
+  - [x] 8.2 Per-entry quantity and mode controls
     - Show the computed quantity, the mode that produced it, its basis, and the target provider; a
       mode toggle; and a quantity input recording an adjustment 0–999 that shows the adjusted value
       as the provision quantity alongside the computed value it replaces
     - _Requirements: 6.10, 8.1, 8.11_
 
-  - [ ] 8.3 `CartExportButton.tsx` becomes `ProvisionButton.tsx`
+  - [x] 8.3 `CartExportButton.tsx` becomes `ProvisionButton.tsx`
     - Enabled only when the state is `connected` or `not_required`, the provider is configured, no
       operation is in flight, and at least one entry has a provision quantity ≥ 1
     - Disabled with a progress indicator while in flight
     - _Requirements: 4.6, 4.7, 11.15, 13.10_
 
-  - [ ] 8.4 Outcome display
+  - [x] 8.4 Outcome display
     - Confirmed count when nothing failed; failed names capped at 50 with an overflow count and
       "these items remain on your shopping list"; unknown names with the two resolution controls; an
       error message with **no confirmed count** when the operation returned an error
     - A `fast-check` property for the 50-name cap
     - _Requirements: 11.9, 11.10, 11.13, 11.14_
 
-  - [ ] 8.5 Ledger reset control
+  - [x] 8.5 Ledger reset control
     - One per provider, labelled as starting a new cart or having checked out, so the remedy for a
       stale belief is discoverable
     - _Requirements: 10.8_
 
-  - [ ] 8.6 Run `./scripts/test-coverage.sh` and the frontend job's `tsc -b`, lint, and
+  - [x] 8.6 Run `./scripts/test-coverage.sh` and the frontend job's `tsc -b`, lint, and
     `vitest --run`

@@ -43,6 +43,7 @@ describe('ShoppingListPage', () => {
     let purchased = false;
     const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
+      if (url === '/api/providers') return Promise.resolve(jsonResponse([]));
       if (url === '/api/shopping-list' && init?.method === undefined) {
         return Promise.resolve(jsonResponse(purchased ? initialEntries.slice(0, 1) : initialEntries));
       }
@@ -85,6 +86,7 @@ describe('ShoppingListPage', () => {
     let entries: ShoppingListEntry[] = [];
     const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
+      if (url === '/api/providers') return Promise.resolve(jsonResponse([]));
       if (url === '/api/shopping-list' && init?.method === undefined) return Promise.resolve(jsonResponse(entries));
       if (url === '/api/inventory') return Promise.resolve(jsonResponse([inventoryItem('pasta', 'Pasta', null)]));
       if (url === '/api/shopping-list/items') {
@@ -111,10 +113,19 @@ describe('ShoppingListPage', () => {
     const entry = { id: 'manual-1', itemId: 'tea', quantity: 2, source: 'manual', purchasedAt: null } satisfies ShoppingListEntry;
     const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
-      if (url === '/api/shopping-list' && init?.method === undefined) return Promise.resolve(jsonResponse([entry]));
+      if (url === '/api/providers') {
+        return Promise.resolve(jsonResponse([{
+          id: 'kroger',
+          displayName: 'Kroger',
+          capabilities: { auth: 'oauth2_authorization_code', delivery: 'server_push', confirmation: 'per_request', mutation: 'add_only', identity: 'derived' },
+          connectionState: 'connected',
+          credentialsConfigured: true,
+        }]));
+      }
+      if (url.startsWith('/api/shopping-list') && init?.method === undefined) return Promise.resolve(jsonResponse([entry]));
       if (url === '/api/inventory') return Promise.resolve(jsonResponse([inventoryItem('tea', 'Green Tea', null)]));
       if (url === '/api/shopping-list/export') {
-        return Promise.resolve(jsonResponse({ error: 'cart export failed for items: Green Tea' }, 500));
+        return Promise.resolve(jsonResponse({ error: 'Kroger is not connected' }, 409));
       }
       throw new Error(`Unexpected request: ${url}`);
     });
@@ -123,10 +134,10 @@ describe('ShoppingListPage', () => {
 
     const table = await screen.findByRole('table', { name: 'Shopping list entries' });
     expect(within(table).getByText('Green Tea')).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'Export to cart' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Add to Kroger cart' }));
 
-    expect(await screen.findByText('Cart export incomplete')).toBeInTheDocument();
-    expect(screen.getByText(/cart export failed for items: Green Tea/)).toBeInTheDocument();
+    expect(await screen.findByText('Kroger is not connected')).toBeInTheDocument();
+    expect(screen.queryByText(/sent to your cart/)).not.toBeInTheDocument();
     expect(within(table).getByText('Green Tea')).toBeInTheDocument();
   });
 });

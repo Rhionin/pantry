@@ -119,6 +119,36 @@ func (s *Store) ListManualItems(ctx context.Context, userID string) ([]ShoppingL
 	return items, nil
 }
 
+// ListUnpurchased returns every unpurchased shopping list row for the user,
+// manual and derived. Callers that need one row per pantry item prefer a
+// manual row when both exist.
+func (s *Store) ListUnpurchased(ctx context.Context, userID string) ([]ShoppingListItem, error) {
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT id, user_id, item_id, quantity, source, purchased_at, created_at
+		 FROM shopping_list_items
+		 WHERE user_id = ? AND purchased_at IS NULL
+		 ORDER BY created_at ASC`,
+		userID,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list shopping list items: %w", err)
+	}
+	defer rows.Close()
+
+	var items []ShoppingListItem
+	for rows.Next() {
+		item, err := scanShoppingListItem(rows)
+		if err != nil {
+			return nil, fmt.Errorf("failed to read shopping list item: %w", err)
+		}
+		items = append(items, *item)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("failed to iterate shopping list items: %w", err)
+	}
+	return items, nil
+}
+
 // GetItemByID retrieves a single shopping list item by its ID.
 // Returns nil if no such item exists.
 func (s *Store) GetItemByID(ctx context.Context, id string) (*ShoppingListItem, error) {

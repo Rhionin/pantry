@@ -25,9 +25,9 @@ func (p ProviderID) Dimension() string {
 type AuthCapability string
 
 const (
-	AuthNone       AuthCapability = "none"
-	AuthOAuth2     AuthCapability = "oauth2_authorization_code"
-	AuthAPIKey     AuthCapability = "api_key"
+	AuthNone   AuthCapability = "none"
+	AuthOAuth2 AuthCapability = "oauth2_authorization_code"
+	AuthAPIKey AuthCapability = "api_key"
 )
 
 func (a AuthCapability) Valid() bool {
@@ -224,7 +224,7 @@ type Credential interface {
 type NoCredential struct{}
 
 func (n NoCredential) Apply(_ *http.Request) {}
-func (n NoCredential) String() string          { return "none" }
+func (n NoCredential) String() string        { return "none" }
 
 // BearerCredential applies a bearer token.
 type BearerCredential struct{ token string }
@@ -291,8 +291,8 @@ type ProvisionRequest struct {
 type ResultDisposition string
 
 const (
-	DispositionAccepted  ResultDisposition = "accepted"
-	DispositionRejected  ResultDisposition = "rejected"
+	DispositionAccepted      ResultDisposition = "accepted"
+	DispositionRejected      ResultDisposition = "rejected"
 	DispositionIndeterminate ResultDisposition = "indeterminate"
 )
 
@@ -358,10 +358,10 @@ type LedgerEntry struct {
 type ConnectionState string
 
 const (
-	StateNotRequired   ConnectionState = "not_required"
-	StateConnected     ConnectionState = "connected"
+	StateNotRequired    ConnectionState = "not_required"
+	StateConnected      ConnectionState = "connected"
 	StateReauthRequired ConnectionState = "reauth_required"
-	StateDisconnected  ConnectionState = "disconnected"
+	StateDisconnected   ConnectionState = "disconnected"
 )
 
 // Connection is server-side only. No JSON tags: this type is never marshalled.

@@ -23,14 +23,14 @@ const (
 
 // Adapter implements Kroger's Cart API.
 type Adapter struct {
-	baseURL   string
-	transport http.RoundTripper
-	clientID  string
+	baseURL      string
+	transport    http.RoundTripper
+	clientID     string
 	clientSecret string
-	redirectURI string
-	modality  string
-	timeout   time.Duration
-	rand      io.Reader
+	redirectURI  string
+	modality     string
+	timeout      time.Duration
+	rand         io.Reader
 }
 
 // New creates a new Kroger adapter.
@@ -86,6 +86,18 @@ func (a *Adapter) WithRand(rand io.Reader) *Adapter {
 	return a
 }
 
+// NewUnconfigured returns a Kroger provider that declares the same capabilities
+// but has no client credentials. The HTTP layer refuses authorization and
+// provisioning while credentials are not configured.
+func NewUnconfigured() *Adapter {
+	return &Adapter{
+		baseURL:  BaseURL,
+		modality: "PICKUP",
+		timeout:  10 * time.Second,
+		rand:     rand.Reader,
+	}
+}
+
 // ID returns the provider ID for Kroger.
 func (a *Adapter) ID() cart.ProviderID {
 	return cart.ProviderID("kroger")
@@ -119,6 +131,36 @@ type oauthFlow struct {
 
 func (a *Adapter) OAuthFlow() cart.OAuthFlow {
 	return &oauthFlow{adapter: a}
+}
+
+// AuthorizationScope implements cart.OAuthFlow on the adapter itself so the
+// engine can dispatch through the interface without a side lookup.
+func (a *Adapter) AuthorizationScope() string { return a.OAuthFlow().AuthorizationScope() }
+
+// AuthorizationURL implements cart.OAuthFlow.
+func (a *Adapter) AuthorizationURL(state string) (string, error) {
+	return a.OAuthFlow().AuthorizationURL(state)
+}
+
+// ExchangeCode implements cart.OAuthFlow.
+func (a *Adapter) ExchangeCode(ctx context.Context, code string) (cart.TokenSet, error) {
+	return a.OAuthFlow().ExchangeCode(ctx, code)
+}
+
+// RefreshAccessToken implements cart.OAuthFlow.
+func (a *Adapter) RefreshAccessToken(ctx context.Context, refreshToken string) (cart.TokenSet, error) {
+	return a.OAuthFlow().RefreshAccessToken(ctx, refreshToken)
+}
+
+// Add implements cart.ServerPush.
+func (a *Adapter) Add(ctx context.Context, cred cart.Credential, req cart.ProvisionRequest) (cart.ProvisionResult, error) {
+	return a.ServerPush().Add(ctx, cred, req)
+}
+
+// DeriveIdentity implements cart.DerivedIdentity. The converted identifier is
+// for this call only and is never written back to the barcode table.
+func (a *Adapter) DeriveIdentity(barcode string) (cart.ProductIdentity, bool) {
+	return Normalize(barcode)
 }
 
 // AuthorizationScope returns the scope string for Kroger Cart API.
@@ -167,8 +209,10 @@ func (o *oauthFlow) ExchangeCode(ctx context.Context, code string) (cart.TokenSe
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return cart.TokenSet{}, fmt.Errorf("token exchange returned status %d: %s", resp.StatusCode, string(body))
+		_, _ = io.Copy(io.Discard, resp.Body)
+		// The body is where tokens and provider error details live, so the
+		// error names only the status.
+		return cart.TokenSet{}, fmt.Errorf("token exchange returned status %d", resp.StatusCode)
 	}
 
 	var tokenResp struct {
@@ -216,8 +260,8 @@ func (o *oauthFlow) RefreshAccessToken(ctx context.Context, refreshToken string)
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return cart.TokenSet{}, fmt.Errorf("token refresh returned status %d: %s", resp.StatusCode, string(body))
+		_, _ = io.Copy(io.Discard, resp.Body)
+		return cart.TokenSet{}, fmt.Errorf("token refresh returned status %d", resp.StatusCode)
 	}
 
 	var tokenResp struct {
@@ -363,3 +407,10 @@ func (s *serverPush) Add(ctx context.Context, cred cart.Credential, req cart.Pro
 func urlQueryEscape(s string) string {
 	return strings.ReplaceAll(s, " ", "%20")
 }
+
+var (
+	_ cart.Provider        = (*Adapter)(nil)
+	_ cart.OAuthFlow       = (*Adapter)(nil)
+	_ cart.ServerPush      = (*Adapter)(nil)
+	_ cart.DerivedIdentity = (*Adapter)(nil)
+)

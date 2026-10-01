@@ -20,3 +20,11 @@ func (n *NoOpProvisioner) Provision(_ context.Context, _ string, _ ProviderID) (
 		Entries:   nil,
 	}, nil
 }
+
+// ProvisionConflict is a refusal that sends nothing and changes nothing.
+// The HTTP layer maps it to 409. Reason is the message returned to the client.
+type ProvisionConflict struct {
+	Reason string
+}
+
+func (e *ProvisionConflict) Error() string { return e.Reason }

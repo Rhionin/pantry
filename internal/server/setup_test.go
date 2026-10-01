@@ -84,7 +84,8 @@ func setupTestWithDB(t *testing.T) (http.Handler, testEnv) {
 		MissTTL:   5 * time.Minute,
 	}
 
-	handler, _ := NewHandler(productRepo, lookupService, refresher, db, WithCartRegistry(cart.NewRegistry(), cart.NewLedger(db)))
+	registry := cart.NewRegistry()
+	handler, _ := NewHandler(productRepo, lookupService, refresher, db, WithCartRegistry(registry, cart.NewLedger(db)))
 
 	// Get the Open Food Facts fake for backward compatibility
 	offFake := databases[product.ExternalSourceOpenFoodFacts]
@@ -100,6 +101,7 @@ func setupTestWithDB(t *testing.T) (http.Handler, testEnv) {
 		Refresher:     refresher,
 		Clock:         clock,
 		MissTTL:       missTTL,
+		Registry:      registry,
 	}
 
 	return handler, env

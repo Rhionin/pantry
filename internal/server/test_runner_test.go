@@ -86,6 +86,7 @@ type testEnv struct {
 	Clock         *fakeClock
 	MissTTL       time.Duration  // injected into LookupService, used by exchanges()
 	Res           *http.Response // populated only inside afterRequest callbacks
+	Registry      *cart.Registry // the registry wired into the handler under test
 }
 
 // runHandlerTests executes a table of handler test cases.
@@ -220,13 +221,17 @@ func exchanges(exs ...httpExchange) func(env testEnv) {
 		if env.Clock != nil {
 			now = env.Clock.Now
 		}
+		registry := env.Registry
+		if registry == nil {
+			registry = cart.NewRegistry()
+		}
 		handler, _ := NewHandler(env.ProductStore, &product.LookupService{
 			Catalog:   env.ProductStore,
 			Upstream:  env.Upstream,
 			Refresher: env.Refresher,
 			Now:       now,
 			MissTTL:   env.MissTTL,
-		}, env.Refresher, env.DB, WithCartRegistry(cart.NewRegistry(), cart.NewLedger(env.DB)))
+		}, env.Refresher, env.DB, WithCartRegistry(registry, cart.NewLedger(env.DB)))
 
 		for i, ex := range exs {
 			env.T.Run("", func(t *testing.T) {

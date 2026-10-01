@@ -2,6 +2,8 @@ package server
 
 import (
 	"context"
+	"fmt"
+	"net/http"
 )
 
 // ShoppingListAdjustmentPathParams holds path parameters for the adjustment endpoint.
@@ -20,7 +22,8 @@ type ShoppingListAdjustmentHandler struct {
 
 // ShoppingListAdjustmentBody holds the request body.
 type ShoppingListAdjustmentBody struct {
-	Adjustment *int `json:"adjustment,omitempty"`
+	Adjustment *int   `json:"adjustment,omitempty"`
+	Provider   string `json:"provider,omitempty"`
 }
 
 // ShoppingListAdjustmentResponse holds the response.
@@ -36,8 +39,14 @@ func (h *ShoppingListAdjustmentHandler) Handle(req Request[ShoppingListAdjustmen
 	}
 
 	providerID := req.PathParams.ProviderID
+	if providerID == "" && req.RawRequest != nil {
+		providerID = req.RawRequest.URL.Query().Get("provider")
+	}
 	if providerID == "" {
-		return nil, BadRequest("missing providerId path parameter")
+		providerID = req.Body.Provider
+	}
+	if providerID == "" {
+		return nil, BadRequest("missing provider")
 	}
 
 	// If adjustment is nil, clear it; otherwise set it
@@ -53,7 +62,7 @@ func (h *ShoppingListAdjustmentHandler) Handle(req Request[ShoppingListAdjustmen
 
 	// Validate the adjustment value (0-999)
 	if adjustment < 0 || adjustment > 999 {
-		return nil, BadRequest("adjustment must be between 0 and 999")
+		return nil, &HTTPError{Code: http.StatusUnprocessableEntity, Message: fmt.Sprintf("adjustment must be between 0 and 999, got %d", adjustment)}
 	}
 
 	// Set the adjustment
