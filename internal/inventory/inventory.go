@@ -249,6 +249,36 @@ func (r *Pantry) RemoveInstance(ctx context.Context, instanceID string, reason s
 	return nil
 }
 
+// Wipe removes one user's stock and the records that exist only because of it:
+// item instances, inventory items, consumption history, and shopping-list rows
+// for those items. The product lookup cache (products, barcodes, and barcode
+// misses) and the scan queue are left in place so a later scan still resolves.
+func (r *Pantry) Wipe(ctx context.Context, userID string) error {
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("could not wipe inventory: %w", err)
+	}
+	defer tx.Rollback()
+
+	// Child rows reference items. Remove them first so the wipe still succeeds
+	// when foreign keys are enforced.
+	for _, query := range []string{
+		`DELETE FROM shopping_list_items WHERE item_id IN (SELECT id FROM items WHERE user_id = ?)`,
+		`DELETE FROM consumption_events WHERE item_id IN (SELECT id FROM items WHERE user_id = ?)`,
+		`DELETE FROM item_instances WHERE item_id IN (SELECT id FROM items WHERE user_id = ?)`,
+		`DELETE FROM items WHERE user_id = ?`,
+	} {
+		if _, err := tx.ExecContext(ctx, query, userID); err != nil {
+			return fmt.Errorf("could not wipe inventory: %w", err)
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("could not wipe inventory: %w", err)
+	}
+	return nil
+}
+
 // UpdateTargetQuantity sets the target_quantity for the given item.
 // Returns ErrInstanceNotFound if no item with that ID exists.
 func (r *Pantry) UpdateTargetQuantity(ctx context.Context, itemID string, qty int) error {

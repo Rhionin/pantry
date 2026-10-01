@@ -200,6 +200,17 @@ export function removeItemInstance(instanceId: string): Promise<void> {
   return apiFetch(`/api/inventory/instances/${instanceId}`, { method: 'DELETE' });
 }
 
+// Exact phrase POST /api/inventory/wipe requires. Kept in sync with
+// inventoryWipeConfirmation in internal/server/handler_inventory_wipe.go.
+export const WIPE_INVENTORY_CONFIRMATION = 'WIPE INVENTORY';
+
+export function wipeInventory(confirmation: string): Promise<void> {
+  return apiFetch('/api/inventory/wipe', {
+    method: 'POST',
+    body: JSON.stringify({ confirmation }),
+  });
+}
+
 // --- Suggestions and target quantity ---
 
 export function getSuggestion(itemId: string): Promise<TargetQuantitySuggestion> {
