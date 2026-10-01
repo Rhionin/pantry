@@ -41,6 +41,10 @@ try {
 
   let capturePath;
   if (await unavailable.isVisible()) {
+    await captureProof(page, 'camera-fallback', {
+      feature: 'camera-scan',
+      step: 'camera-unavailable',
+    });
     const typed = page.getByRole('textbox', { name: 'Type a barcode' });
     await typed.fill(BARCODE);
     await page.getByRole('button', { name: 'Add scan' }).click();
@@ -56,6 +60,12 @@ try {
   await card.waitFor({ state: 'visible', timeout: 15_000 });
   await card.getByText(`Barcode: ${BARCODE}`).waitFor({ state: 'visible' });
   await card.getByRole('heading', { name: PRODUCT }).waitFor({ state: 'visible' });
+  await captureProof(page, 'camera-queued', {
+    feature: 'camera-scan',
+    step: 'queued',
+    barcode: BARCODE,
+    capturePath,
+  });
 
   await card.getByRole('button', { name: 'Approve', exact: true }).click();
   await card.waitFor({ state: 'detached', timeout: 15_000 });
