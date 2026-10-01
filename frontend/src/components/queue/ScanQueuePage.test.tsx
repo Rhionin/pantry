@@ -61,7 +61,7 @@ describe('ScanQueuePage', () => {
     vi.stubGlobal('EventSource', FakeEventSource);
   });
 
-  it('shows pending and flagged scans oldest first with a flagged indicator', async () => {
+  it('shows pending and flagged scans newest first with a flagged indicator', async () => {
     const fetchMock = vi.fn((input: RequestInfo | URL) => {
       const url = String(input);
       if (url.includes('status=pending')) {
@@ -91,9 +91,9 @@ describe('ScanQueuePage', () => {
     render(<MantineProvider><ScanQueuePage /></MantineProvider>);
 
     const cards = await screen.findAllByRole('article');
-    expect(within(cards[0]).getByText('Barcode: 111')).toBeInTheDocument();
-    expect(within(cards[0]).getByText('Flagged')).toBeInTheDocument();
-    expect(within(cards[1]).getByText('Barcode: 222')).toBeInTheDocument();
+    expect(within(cards[0]).getByText('Barcode: 222')).toBeInTheDocument();
+    expect(within(cards[1]).getByText('Barcode: 111')).toBeInTheDocument();
+    expect(within(cards[1]).getByText('Flagged')).toBeInTheDocument();
     expect(fetchMock).toHaveBeenCalledWith(
       '/api/scans?userId=user-1&status=pending',
       expect.any(Object),
@@ -366,6 +366,108 @@ describe('ScanQueuePage', () => {
 
     expect(await screen.findByText('Barcode: 999')).toBeInTheDocument();
     expect(fetchMock).toHaveBeenCalledTimes(callCountBeforeEvent);
+  });
+
+  it('shows a lookup in progress at the top until the scan event arrives', async () => {
+    vi.stubGlobal('fetch', (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes('status=pending')) {
+        return Promise.resolve(jsonResponse([
+          scanEntry({ id: 'older', barcode: '111', direction: 'stock_out', scannedAt: '2026-03-20T09:00:00Z' }),
+        ]));
+      }
+      if (url.includes('status=flagged')) return Promise.resolve(jsonResponse([]));
+      if (url === '/api/inventory' || url === '/api/products') return Promise.resolve(jsonResponse([]));
+      if (url.endsWith('/api/scanner/config')) {
+        return Promise.resolve(jsonResponse({ stockInBarcode: 'STOCK_IN', stockOutBarcode: 'STOCK_OUT', currentMode: 'stock_out', connected: false }));
+      }
+      throw new Error(`Unexpected request: ${url}`);
+    });
+
+    render(<MantineProvider><ScanQueuePage /></MantineProvider>);
+    await screen.findByText('Barcode: 111');
+
+    const eventSource = FakeEventSource.instances[0];
+    eventSource.dispatch('scan_processing', {
+      id: 'lookup-1',
+      userId: 'user-1',
+      barcode: '999',
+      direction: 'stock_out',
+      scannedAt: '2026-03-20T12:00:00Z',
+    });
+
+    expect(await screen.findByText('Looking up product')).toBeInTheDocument();
+    expect(screen.getByText('Checking the open food database…')).toBeInTheDocument();
+    const cards = screen.getAllByRole('article');
+    expect(within(cards[0]).getByText('Barcode: 999')).toBeInTheDocument();
+    expect(within(cards[1]).getByText('Barcode: 111')).toBeInTheDocument();
+
+    eventSource.dispatch('scan', scanEntry({
+      id: 'done',
+      barcode: '999',
+      direction: 'stock_out',
+      scannedAt: '2026-03-20T12:00:00Z',
+      product: { id: 'product-9', name: 'Oats', category: 'Grocery', unitOfMeasure: 'box' },
+      productId: 'product-9',
+    }));
+
+    await vi.waitFor(() => expect(screen.queryByText('Looking up product')).not.toBeInTheDocument());
+    const settled = screen.getAllByRole('article');
+    expect(within(settled[0]).getByText('Oats')).toBeInTheDocument();
+    expect(within(settled[1]).getByText('Barcode: 111')).toBeInTheDocument();
+  });
+
+  it('clears a failed lookup and shows the failure message', async () => {
+    vi.stubGlobal('fetch', (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes('status=pending') || url.includes('status=flagged')) {
+        return Promise.resolve(jsonResponse([]));
+      }
+      if (url === '/api/inventory' || url === '/api/products') return Promise.resolve(jsonResponse([]));
+      if (url.endsWith('/api/scanner/config')) {
+        return Promise.resolve(jsonResponse({ stockInBarcode: 'STOCK_IN', stockOutBarcode: 'STOCK_OUT', currentMode: 'stock_out', connected: false }));
+      }
+      throw new Error(`Unexpected request: ${url}`);
+    });
+
+    render(<MantineProvider><ScanQueuePage /></MantineProvider>);
+    await screen.findByText('No pending scans.');
+
+    const eventSource = FakeEventSource.instances[0];
+    eventSource.dispatch('scan_processing', {
+      id: 'lookup-1',
+      userId: 'user-1',
+      barcode: '999',
+      direction: 'stock_out',
+      scannedAt: '2026-03-20T12:00:00Z',
+    });
+    expect(await screen.findByText('Looking up product')).toBeInTheDocument();
+
+    eventSource.dispatch('scan_processing_failed', {
+      id: 'lookup-1',
+      barcode: '999',
+      message: "Couldn't look up that barcode.",
+    });
+
+    await vi.waitFor(() => expect(screen.queryByText('Looking up product')).not.toBeInTheDocument());
+    expect(screen.getByText("Couldn't look up that barcode.")).toBeInTheDocument();
+  });
+
+  it('shows whether the scanner device is connected', async () => {
+    vi.stubGlobal('fetch', (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes('status=pending') || url.includes('status=flagged')) {
+        return Promise.resolve(jsonResponse([]));
+      }
+      if (url === '/api/inventory' || url === '/api/products') return Promise.resolve(jsonResponse([]));
+      if (url.endsWith('/api/scanner/config')) {
+        return Promise.resolve(jsonResponse({ stockInBarcode: 'STOCK_IN', stockOutBarcode: 'STOCK_OUT', currentMode: 'stock_in', connected: true }));
+      }
+      throw new Error(`Unexpected request: ${url}`);
+    });
+
+    render(<MantineProvider><ScanQueuePage /></MantineProvider>);
+    expect(await screen.findByText('Scanner connected')).toBeInTheDocument();
   });
 
   it('ignores a manufactured error event and leaves displayed scans unchanged', async () => {

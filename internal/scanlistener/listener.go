@@ -51,6 +51,13 @@ type ScanListener struct {
 		PublishScannerModeEvent(mode scan.ScanDirection)
 	}
 
+	// ProcessingPublisher announces a product barcode before lookup returns.
+	// Optional. Control barcodes are not announced.
+	ProcessingPublisher interface {
+		PublishScanProcessingEvent(notice scan.ProcessingNotice)
+		PublishScanProcessingFailedEvent(failure scan.ProcessingFailure)
+	}
+
 	// status receives and stores the current capture state.
 	status *status
 
@@ -250,13 +257,17 @@ func (l *ScanListener) createEntry(ctx context.Context, barcode string, directio
 		userID = defaultHeadlessUserID
 	}
 
+	scannedAt := l.now()
+	notice := scan.AnnounceProcessing(l.ProcessingPublisher, userID, barcode, &direction, scannedAt)
+
 	lookup, err := l.LookupService.Lookup(ctx, barcode, userID)
 	if err != nil {
 		log.Printf("scan listener: product lookup for %q failed: %v", barcode, err)
+		scan.AnnounceProcessingFailed(l.ProcessingPublisher, notice)
 		return
 	}
 
-	entry := scan.NewEntryFromLookup(userID, barcode, lookup, &direction, l.now())
+	entry := scan.NewEntryFromLookup(userID, barcode, lookup, &direction, scannedAt)
 	created, err := l.Queue.CreateScanEntry(ctx, entry)
 	if err != nil {
 		log.Printf("scan listener: create scan entry for %q failed: %v", barcode, err)

@@ -32,6 +32,25 @@ export interface ScannerConfig {
   stockInBarcode: string;
   stockOutBarcode: string;
   currentMode: ScanDirection;
+  // True while the headless capture device is open. False when it is missing
+  // or no listener is configured.
+  connected: boolean;
+}
+
+// A barcode the server has accepted and is still looking up. Not a stored
+// scan entry. The following scan event replaces it.
+export interface ProcessingNotice {
+  id: string;
+  userId: string;
+  barcode: string;
+  direction: ScanDirection | null;
+  scannedAt: string;
+}
+
+export interface ProcessingFailure {
+  id: string;
+  barcode: string;
+  message: string;
 }
 
 export interface ScanEntry {

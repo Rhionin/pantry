@@ -25,6 +25,12 @@ type ScanCreateHandler struct {
 	LookupService interface {
 		Lookup(ctx context.Context, barcode, userID string) (product.LookupResult, error)
 	}
+	// Events announces the barcode before lookup returns. Nil skips the
+	// announcement; the created scan entry is still published by the queue.
+	Events interface {
+		PublishScanProcessingEvent(notice scan.ProcessingNotice)
+		PublishScanProcessingFailedEvent(failure scan.ProcessingFailure)
+	}
 }
 
 type createScanRequest struct {
@@ -45,13 +51,16 @@ func (h *ScanCreateHandler) Handle(req Request[createScanRequest, struct{}]) (Cr
 
 	log.Printf("scan received: barcode=%q direction=%s user=%s", req.Body.Barcode, directionLabel(req.Body.Direction), req.Body.UserID)
 
-	// Look up the product for this barcode
+	scannedAt := time.Now()
+	notice := scan.AnnounceProcessing(h.Events, req.Body.UserID, req.Body.Barcode, req.Body.Direction, scannedAt)
+
 	lookupResult, err := h.LookupService.Lookup(req.Context, req.Body.Barcode, req.Body.UserID)
 	if err != nil {
+		scan.AnnounceProcessingFailed(h.Events, notice)
 		return Created{}, InternalError(err)
 	}
 
-	entry := scan.NewEntryFromLookup(req.Body.UserID, req.Body.Barcode, lookupResult, req.Body.Direction, time.Now())
+	entry := scan.NewEntryFromLookup(req.Body.UserID, req.Body.Barcode, lookupResult, req.Body.Direction, scannedAt)
 	if req.Body.ExpiresAt != nil {
 		entry.ExpiresAt = req.Body.ExpiresAt
 	}

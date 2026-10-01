@@ -1,0 +1,8 @@
+{
+  "name": "Pantry",
+  "build": {
+    "dockerfile": "Dockerfile"
+  },
+  "user": "ubuntu",
+  "install": "go mod download && cd frontend && npm ci"
+}

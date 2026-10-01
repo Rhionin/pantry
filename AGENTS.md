@@ -71,3 +71,7 @@ Data-access types are named for *what* they store, not *how* they store it — n
 ## Code Style
 
 Error messages should be user-friendly without function names. Avoid redundant comments that restate code—keep godoc and WHY comments, remove WHAT comments and numbered steps.
+
+## Cursor Cloud specific instructions
+
+Go coverage is `./scripts/test-coverage.sh` (needs `bc` and the Go version in `go.mod`). Frontend checks from `frontend/` are `npm test` (`vitest --run`), `npm run lint`, and `npx tsc -b`. `npm ci` installs frontend dependencies. The Cloud Agent image is `.cursor/Dockerfile`, referenced by `.cursor/environment.json`.
