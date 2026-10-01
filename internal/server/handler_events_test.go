@@ -122,21 +122,42 @@ func TestEventsStream_ScanEventOnCreate(t *testing.T) {
 		t.Fatal("created scan entry has empty id")
 	}
 
+	processing := waitSSEFrame(t, frames)
+	if processing.event != "scan_processing" {
+		t.Fatalf("first SSE event type: want %q, got %q", "scan_processing", processing.event)
+	}
+	var notice struct {
+		Barcode string `json:"barcode"`
+	}
+	if err := json.Unmarshal([]byte(processing.data), &notice); err != nil {
+		t.Fatalf("decode processing event: %v (data: %s)", err, processing.data)
+	}
+	if notice.Barcode != barcode {
+		t.Fatalf("processing barcode: want %q, got %q", barcode, notice.Barcode)
+	}
+
+	frame := waitSSEFrame(t, frames)
+	if frame.event != "scan" {
+		t.Fatalf("SSE event type: want %q, got %q", "scan", frame.event)
+	}
+	var payload struct {
+		ID string `json:"id"`
+	}
+	if err := json.Unmarshal([]byte(frame.data), &payload); err != nil {
+		t.Fatalf("decode SSE data: %v (data: %s)", err, frame.data)
+	}
+	if payload.ID != created.ID {
+		t.Fatalf("SSE event id: want %q, got %q", created.ID, payload.ID)
+	}
+}
+
+func waitSSEFrame(t *testing.T, frames <-chan sseFrame) sseFrame {
+	t.Helper()
 	select {
 	case frame := <-frames:
-		if frame.event != "scan" {
-			t.Fatalf("SSE event type: want %q, got %q", "scan", frame.event)
-		}
-		var payload struct {
-			ID string `json:"id"`
-		}
-		if err := json.Unmarshal([]byte(frame.data), &payload); err != nil {
-			t.Fatalf("decode SSE data: %v (data: %s)", err, frame.data)
-		}
-		if payload.ID != created.ID {
-			t.Fatalf("SSE event id: want %q, got %q", created.ID, payload.ID)
-		}
+		return frame
 	case <-time.After(5 * time.Second):
-		t.Fatal("timed out waiting for a scan event on the /api/events stream")
+		t.Fatal("timed out waiting for an SSE frame")
 	}
+	return sseFrame{}
 }

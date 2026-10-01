@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/Rhionin/pantry/internal/scanlistener"
 )
 
 // TestScannerModeHandler_ValidModes verifies POST /api/scanner/mode accepts
@@ -87,6 +89,7 @@ func TestScannerConfigHandler_Defaults(t *testing.T) {
 					// Defaults to stock_in before any switch, matching the
 					// headless listener's newModeState.
 					{path: "$.currentMode", value: "stock_in"},
+					{path: "$.connected", value: false},
 				},
 			},
 		},
@@ -196,6 +199,29 @@ func TestScannerConfigHandler_ConfiguredStrings(t *testing.T) {
 	}
 	if body.StockOutBarcode != "OUT-42" {
 		t.Errorf("stockOutBarcode = %q, want %q", body.StockOutBarcode, "OUT-42")
+	}
+}
+
+func TestScannerConfigHandler_ReportsDeviceConnection(t *testing.T) {
+	handler, _ := NewHandler(nil, nil, nil, nil, WithScannerStatus(func() scanlistener.Status {
+		return scanlistener.Status{Connected: true, Source: scanlistener.SourceDevice}
+	}))
+
+	req := httptest.NewRequest(http.MethodGet, "/api/scanner/config", nil)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("GET /api/scanner/config status = %d, want %d", w.Code, http.StatusOK)
+	}
+
+	var body struct {
+		Connected bool `json:"connected"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode config response: %v", err)
+	}
+	if !body.Connected {
+		t.Fatal("connected = false, want true")
 	}
 }
 

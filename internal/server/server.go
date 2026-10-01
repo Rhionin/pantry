@@ -150,6 +150,9 @@ func newAPIMux(
 	mode := newScannerMode()
 	scannerModeHandler := &ScannerModeHandler{Mode: mode, Broadcaster: broadcaster}
 	scannerConfigHandler := &ScannerConfigHandler{Config: scannerConfig, Mode: mode}
+	if cfg != nil {
+		scannerConfigHandler.Status = cfg.statusFn
+	}
 	apiMux.HandleFunc("POST /api/scanner/mode", HandleJSON(scannerModeHandler.Handle))
 	apiMux.HandleFunc("GET /api/scanner/config", HandleJSON(scannerConfigHandler.Handle))
 
@@ -174,6 +177,7 @@ func newAPIMux(
 	scanCreateHandler := &ScanCreateHandler{
 		Queue:         scanQueue,
 		LookupService: lookupService,
+		Events:        broadcaster,
 	}
 	scanListHandler := &ScanListHandler{Queue: scanQueue}
 	scanHistoryHandler := &ScanHistoryHandler{Queue: scanQueue}

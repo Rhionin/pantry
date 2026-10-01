@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Alert, Badge, Checkbox, Loader, Tabs, SimpleGrid, Stack, Text, Title } from '@mantine/core';
 import { createScanEntry, getInventoryList, getScannerConfig, listScanEntries, setScannerMode } from '../../api/client';
-import type { InventoryItem, ScanEntry, ScannerConfig } from '../../types';
+import type { InventoryItem, ProcessingFailure, ProcessingNotice, ScanEntry, ScannerConfig } from '../../types';
 import { BarcodeInputField } from '../scanner/BarcodeInputField';
 import { BatchReviewPanel } from './BatchReviewPanel';
+import { ProcessingScanCard } from './ProcessingScanCard';
 import { ScanEntryCard } from './ScanEntryCard';
-import { formatReviewCount, getEntriesForView, isBatchEligible, mergeScanEvent, pruneSelection, sortScansChronologically, toggleSelectAll } from './queueUtils';
+import { addProcessingNotice, entryMatchesView, formatReviewCount, getEntriesForView, isBatchEligible, mergeScanEvent, pruneSelection, removeProcessingNotice, settleProcessingNotice, sortScansNewestFirst, toggleSelectAll } from './queueUtils';
 
 const DEFAULT_USER_ID = 'user-1';
 
@@ -26,6 +27,8 @@ export const ScanQueuePage = ({ userId = DEFAULT_USER_ID }: ScanQueuePageProps) 
   const [activeView, setActiveView] = useState<QueueView>('stock_in');
   const [scannerMode, setScannerModeState] = useState<QueueView>('stock_in');
   const [scannerConfig, setScannerConfig] = useState<ScannerConfig | null>(null);
+  const [scannerConnected, setScannerConnected] = useState<boolean | null>(null);
+  const [processing, setProcessing] = useState<ProcessingNotice[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [scanError, setScanError] = useState('');
@@ -47,6 +50,10 @@ export const ScanQueuePage = ({ userId = DEFAULT_USER_ID }: ScanQueuePageProps) 
   const stockOutCount = useMemo(() => getEntriesForView(entries, 'stock_out').length, [entries]);
 
   const viewEntries = useMemo(() => getEntriesForView(entries, activeView), [entries, activeView]);
+  const processingForView = useMemo(
+    () => processing.filter((notice) => notice.userId === userId && entryMatchesView(notice.direction, activeView)),
+    [processing, userId, activeView],
+  );
   const viewEntryIds = useMemo(() => new Set(viewEntries.map((entry) => entry.id)), [viewEntries]);
   const eligibleEntries = useMemo(() => viewEntries.filter(isBatchEligible), [viewEntries]);
   const allEligibleSelected = useMemo(
@@ -62,7 +69,7 @@ export const ScanQueuePage = ({ userId = DEFAULT_USER_ID }: ScanQueuePageProps) 
         listScanEntries(userId, 'pending'),
         listScanEntries(userId, 'flagged'),
       ]);
-      setEntries(sortScansChronologically([...pending, ...flagged]));
+      setEntries(sortScansNewestFirst([...pending, ...flagged]));
       setSelectedIds((current) => current.filter((id) => pending.some((entry) => entry.id === id)));
       void getInventoryList().then(setInventory).catch(() => setInventory([]));
     } catch (requestError) {
@@ -82,23 +89,61 @@ export const ScanQueuePage = ({ userId = DEFAULT_USER_ID }: ScanQueuePageProps) 
   // a switch starts on the right mode. If the config cannot be loaded,
   // classification falls back to off (no crash) and scans post as usual.
   useEffect(() => {
-    void getScannerConfig()
+    let cancelled = false;
+    getScannerConfig()
       .then((config) => {
+        if (cancelled) return;
         setScannerConfig(config);
+        if (typeof config.connected === 'boolean') {
+          setScannerConnected(config.connected);
+        }
         applyScannerMode(config.currentMode);
       })
-      .catch(() => setScannerConfig(null));
+      .catch(() => {
+        if (!cancelled) setScannerConfig(null);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [applyScannerMode]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const refreshConnection = () => {
+      getScannerConfig()
+        .then((config) => {
+          if (!cancelled && typeof config.connected === 'boolean') {
+            setScannerConnected(config.connected);
+          }
+        })
+        .catch(() => undefined);
+    };
+    const timer = window.setInterval(refreshConnection, 2000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, []);
 
   useEffect(() => {
     const eventSource = new EventSource('/api/events');
     eventSource.addEventListener('scan', (message) => {
       const scanEntry = JSON.parse((message as MessageEvent).data) as ScanEntry;
       setEntries((current) => {
-        const next = sortScansChronologically(mergeScanEvent(current, scanEntry));
+        const next = sortScansNewestFirst(mergeScanEvent(current, scanEntry));
         setSelectedIds((selected) => pruneSelection(selected, next));
         return next;
       });
+      setProcessing((current) => settleProcessingNotice(current, scanEntry));
+    });
+    eventSource.addEventListener('scan_processing', (message) => {
+      const notice = JSON.parse((message as MessageEvent).data) as ProcessingNotice;
+      setProcessing((current) => addProcessingNotice(current, notice));
+    });
+    eventSource.addEventListener('scan_processing_failed', (message) => {
+      const failure = JSON.parse((message as MessageEvent).data) as ProcessingFailure;
+      setProcessing((current) => removeProcessingNotice(current, failure.id));
+      setScanError(failure.message);
     });
     eventSource.addEventListener('scanner_mode', (message) => {
       const event = JSON.parse((message as MessageEvent).data) as ScannerModeEvent;
@@ -166,6 +211,13 @@ export const ScanQueuePage = ({ userId = DEFAULT_USER_ID }: ScanQueuePageProps) 
           {scanError}
         </Alert>
       )}
+      {scannerConnected !== null && (
+        <Alert color={scannerConnected ? 'green' : 'red'} py="xs" title={scannerConnected ? 'Scanner connected' : 'Scanner disconnected'}>
+          {scannerConnected
+            ? 'The barcode scanner is connected.'
+            : 'The barcode scanner is not connected.'}
+        </Alert>
+      )}
       <Alert color={scannerMode === 'stock_in' ? 'blue' : 'orange'} py="xs" title={`Mode: ${scannerMode}`}>
         Current scanner mode: <strong>{scannerMode === 'stock_in' ? 'STOCK IN' : 'STOCK OUT'}</strong>
       </Alert>
@@ -209,10 +261,13 @@ export const ScanQueuePage = ({ userId = DEFAULT_USER_ID }: ScanQueuePageProps) 
           {error}
         </Alert>
       )}
-      {!loading && error === '' && entries.length === 0 && (
+      {!loading && error === '' && entries.length === 0 && processing.length === 0 && (
         <Text c="dimmed">No pending scans.</Text>
       )}
       <SimpleGrid cols={{ base: 1, sm: 2, lg: 3 }} spacing="xs">
+        {processingForView.map((notice) => (
+          <ProcessingScanCard key={notice.id} notice={notice} />
+        ))}
         {viewEntries.map((entry) => (
           <ScanEntryCard
             key={entry.id}
