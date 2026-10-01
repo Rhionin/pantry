@@ -2,6 +2,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { MantineProvider } from '@mantine/core';
 import { CameraScanner, type CameraScannerProps } from './CameraScanner';
+import { RESCAN_COOLDOWN_MS } from './cameraAccess';
+import type { FrameDecoder } from './frameDecoder';
 
 function renderScanner(props: CameraScannerProps) {
   return render(
@@ -11,101 +13,225 @@ function renderScanner(props: CameraScannerProps) {
   );
 }
 
+function installSecureCamera(getUserMedia: ReturnType<typeof vi.fn>) {
+  Object.defineProperty(window, 'isSecureContext', { configurable: true, value: true });
+  vi.stubGlobal('navigator', {
+    ...navigator,
+    mediaDevices: { getUserMedia },
+  });
+}
+
 describe('CameraScanner', () => {
   const originalBarcodeDetector = window.BarcodeDetector;
+  const originalSecure = window.isSecureContext;
+  const originalPlay = HTMLMediaElement.prototype.play;
 
   afterEach(() => {
-    window.BarcodeDetector = originalBarcodeDetector;
+    if (originalBarcodeDetector === undefined) {
+      delete window.BarcodeDetector;
+    } else {
+      window.BarcodeDetector = originalBarcodeDetector;
+    }
+    HTMLMediaElement.prototype.play = originalPlay;
+    Object.defineProperty(window, 'isSecureContext', { configurable: true, value: originalSecure });
+    vi.unstubAllGlobals();
     vi.restoreAllMocks();
   });
 
-  describe('when BarcodeDetector is unavailable', () => {
-    beforeEach(() => {
-      // jsdom does not implement BarcodeDetector; explicitly clear it to
-      // exercise the fallback path regardless of test environment.
-      delete (window as { BarcodeDetector?: unknown }).BarcodeDetector;
-    });
+  it('stays closed until the user opts in, and does not request a camera', () => {
+    const getUserMedia = vi.fn();
+    installSecureCamera(getUserMedia);
 
-    it('renders a fallback message and manual entry option instead of the camera feed', () => {
-      renderScanner({ onScan: vi.fn() });
+    renderScanner({ onScan: vi.fn() });
 
-      expect(screen.getByText(/camera scanning unavailable/i)).toBeInTheDocument();
-      expect(screen.getByLabelText(/barcode/i)).toBeInTheDocument();
-      expect(screen.queryByRole('video' as never)).not.toBeInTheDocument();
-    });
-
-    it('calls onScan with the entered value when the manual entry form is submitted', () => {
-      const onScan = vi.fn();
-      renderScanner({ onScan });
-
-      fireEvent.change(screen.getByLabelText(/barcode/i), { target: { value: '0123456789012' } });
-      fireEvent.click(screen.getByRole('button', { name: /submit/i }));
-
-      expect(onScan).toHaveBeenCalledWith('0123456789012');
-    });
-
-    it('does not call onScan when the manual entry is submitted blank', () => {
-      const onScan = vi.fn();
-      renderScanner({ onScan });
-
-      fireEvent.click(screen.getByRole('button', { name: /submit/i }));
-
-      expect(onScan).not.toHaveBeenCalled();
-    });
+    expect(screen.getByRole('button', { name: 'Scan with camera' })).toBeInTheDocument();
+    expect(screen.queryByLabelText('Camera preview')).not.toBeInTheDocument();
+    expect(getUserMedia).not.toHaveBeenCalled();
   });
 
-  describe('when camera permission is denied', () => {
+  it('explains the HTTPS requirement and offers manual entry without opening a camera', () => {
+    Object.defineProperty(window, 'isSecureContext', { configurable: true, value: false });
+    const getUserMedia = vi.fn();
+    vi.stubGlobal('navigator', { ...navigator, mediaDevices: { getUserMedia } });
+    const onScan = vi.fn();
+    renderScanner({ onScan });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Scan with camera' }));
+
+    expect(screen.getByText(/secure connection \(https\)/i)).toBeInTheDocument();
+    expect(getUserMedia).not.toHaveBeenCalled();
+
+    fireEvent.change(screen.getByLabelText('Type a barcode'), { target: { value: '0123456789012' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Add scan' }));
+
+    expect(onScan).toHaveBeenCalledWith('0123456789012');
+  });
+
+  it('does not call onScan when the typed barcode is blank', () => {
+    Object.defineProperty(window, 'isSecureContext', { configurable: true, value: false });
+    const onScan = vi.fn();
+    renderScanner({ onScan });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Scan with camera' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Add scan' }));
+
+    expect(onScan).not.toHaveBeenCalled();
+  });
+
+  it('shows manual entry when no decoder is available and does not request a camera', async () => {
+    const getUserMedia = vi.fn();
+    installSecureCamera(getUserMedia);
+    const createDecoder = vi.fn().mockResolvedValue(null);
+    renderScanner({ onScan: vi.fn(), createDecoder });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Scan with camera' }));
+
+    expect(await screen.findByText(/not supported in this browser/i)).toBeInTheDocument();
+    expect(screen.getByLabelText('Type a barcode')).toBeInTheDocument();
+    expect(getUserMedia).not.toHaveBeenCalled();
+  });
+
+  describe('when the camera cannot start', () => {
     beforeEach(() => {
-      window.BarcodeDetector = vi.fn(function BarcodeDetector() {
-        return { detect: vi.fn().mockResolvedValue([]) };
-      }) as unknown as typeof window.BarcodeDetector;
-      vi.stubGlobal('navigator', {
-        ...navigator,
-        mediaDevices: {
-          getUserMedia: vi.fn().mockRejectedValue(new Error('permission denied')),
-        },
-      });
+      Object.defineProperty(window, 'isSecureContext', { configurable: true, value: true });
     });
 
-    it('falls back to manual entry rather than crashing', async () => {
-      renderScanner({ onScan: vi.fn() });
+    it('falls back to manual entry when permission is denied, and try again asks once more', async () => {
+      const getUserMedia = vi.fn().mockRejectedValue(new DOMException('no', 'NotAllowedError'));
+      vi.stubGlobal('navigator', { ...navigator, mediaDevices: { getUserMedia } });
+      const decoder: FrameDecoder = { detect: vi.fn() };
+      renderScanner({ onScan: vi.fn(), createDecoder: async () => decoder });
+
+      fireEvent.click(screen.getByRole('button', { name: 'Scan with camera' }));
 
       expect(await screen.findByText(/camera access was denied/i)).toBeInTheDocument();
-      expect(screen.getByLabelText(/barcode/i)).toBeInTheDocument();
+      expect(screen.getByLabelText('Type a barcode')).toBeInTheDocument();
+
+      fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+
+      await vi.waitFor(() => expect(getUserMedia).toHaveBeenCalledTimes(2));
+    });
+
+    it('closes the fallback and returns to the opt-in button', async () => {
+      const getUserMedia = vi.fn().mockRejectedValue(new DOMException('missing', 'NotFoundError'));
+      vi.stubGlobal('navigator', { ...navigator, mediaDevices: { getUserMedia } });
+      renderScanner({ onScan: vi.fn(), createDecoder: async () => ({ detect: vi.fn() }) });
+
+      fireEvent.click(screen.getByRole('button', { name: 'Scan with camera' }));
+      expect(await screen.findByText(/no camera was found/i)).toBeInTheDocument();
+
+      fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+
+      expect(screen.getByRole('button', { name: 'Scan with camera' })).toBeInTheDocument();
+      expect(screen.queryByLabelText('Type a barcode')).not.toBeInTheDocument();
     });
   });
 
-  describe('when BarcodeDetector is available and camera access succeeds', () => {
-    let detectMock: ReturnType<typeof vi.fn>;
+  describe('when the camera starts', () => {
+    let getUserMedia: ReturnType<typeof vi.fn>;
+    let stop: ReturnType<typeof vi.fn>;
 
     beforeEach(() => {
-      detectMock = vi.fn().mockResolvedValue([]);
-      window.BarcodeDetector = vi.fn(function BarcodeDetector() {
-        return { detect: detectMock };
-      }) as unknown as typeof window.BarcodeDetector;
-
-      const fakeStream = { getTracks: () => [{ stop: vi.fn() }] } as unknown as MediaStream;
+      Object.defineProperty(window, 'isSecureContext', { configurable: true, value: true });
+      stop = vi.fn();
+      const stream = { getTracks: () => [{ stop }] } as unknown as MediaStream;
+      getUserMedia = vi.fn().mockResolvedValue(stream);
       vi.stubGlobal('navigator', {
         ...navigator,
         mediaDevices: {
-          getUserMedia: vi.fn().mockResolvedValue(fakeStream),
+          getUserMedia,
+          enumerateDevices: vi.fn().mockResolvedValue([
+            { kind: 'videoinput', deviceId: 'rear' },
+            { kind: 'videoinput', deviceId: 'front' },
+          ]),
         },
       });
       HTMLMediaElement.prototype.play = vi.fn().mockResolvedValue(undefined);
     });
 
-    it('renders the live video feed with a scan overlay instead of the fallback UI', () => {
-      const { container } = renderScanner({ onScan: vi.fn() });
+    function decoderReturning(values: string[]): FrameDecoder {
+      const queue = [...values];
+      return {
+        detect: vi.fn().mockImplementation(async () => {
+          const next = queue.shift();
+          return next === undefined ? [] : [next];
+        }),
+      };
+    }
 
-      expect(container.querySelector('video')).not.toBeNull();
-      expect(screen.queryByText(/camera scanning unavailable/i)).not.toBeInTheDocument();
+    it('shows the preview and reports each distinct barcode', async () => {
+      const onScan = vi.fn();
+      renderScanner({ onScan, createDecoder: async () => decoderReturning(['111', '222']) });
+
+      fireEvent.click(screen.getByRole('button', { name: 'Scan with camera' }));
+
+      expect(await screen.findByLabelText('Camera preview')).toBeInTheDocument();
+      await vi.waitFor(() => expect(onScan).toHaveBeenCalledTimes(2));
+      expect(onScan).toHaveBeenNthCalledWith(1, '111');
+      expect(onScan).toHaveBeenNthCalledWith(2, '222');
+      expect(screen.getByText('Scanned 222')).toBeInTheDocument();
+      expect(getUserMedia).toHaveBeenCalledWith({
+        video: { facingMode: { ideal: 'environment' } },
+        audio: false,
+      });
     });
 
-    it('requests camera access with the environment-facing camera', () => {
-      renderScanner({ onScan: vi.fn() });
+    it('ignores a repeat of the same barcode until the cooldown passes', async () => {
+      let now = 10_000;
+      vi.spyOn(Date, 'now').mockImplementation(() => now);
+      let reads = 0;
+      const detect = vi.fn().mockImplementation(async () => {
+        reads += 1;
+        if (reads >= 3) now = 10_000 + RESCAN_COOLDOWN_MS + 1;
+        return ['0123456789012'];
+      });
+      const onScan = vi.fn();
+      renderScanner({ onScan, createDecoder: async () => ({ detect }) });
 
-      expect(navigator.mediaDevices.getUserMedia).toHaveBeenCalledWith({
-        video: { facingMode: 'environment' },
+      fireEvent.click(screen.getByRole('button', { name: 'Scan with camera' }));
+
+      await vi.waitFor(() => expect(onScan).toHaveBeenCalledTimes(2));
+      expect(onScan).toHaveBeenNthCalledWith(1, '0123456789012');
+      expect(onScan).toHaveBeenNthCalledWith(2, '0123456789012');
+    });
+
+    it('stops the camera tracks when the user closes the preview', async () => {
+      renderScanner({ onScan: vi.fn(), createDecoder: async () => decoderReturning([]) });
+
+      fireEvent.click(screen.getByRole('button', { name: 'Scan with camera' }));
+      expect(await screen.findByLabelText('Camera preview')).toBeInTheDocument();
+
+      fireEvent.click(screen.getByRole('button', { name: 'Stop camera' }));
+
+      expect(stop).toHaveBeenCalled();
+      expect(screen.getByRole('button', { name: 'Scan with camera' })).toBeInTheDocument();
+      expect(screen.queryByLabelText('Camera preview')).not.toBeInTheDocument();
+    });
+
+    it('releases the camera when the scanner unmounts', async () => {
+      const { unmount } = renderScanner({
+        onScan: vi.fn(),
+        createDecoder: async () => decoderReturning([]),
+      });
+
+      fireEvent.click(screen.getByRole('button', { name: 'Scan with camera' }));
+      expect(await screen.findByLabelText('Camera preview')).toBeInTheDocument();
+
+      unmount();
+
+      expect(stop).toHaveBeenCalled();
+    });
+
+    it('switches to the other facing camera', async () => {
+      renderScanner({ onScan: vi.fn(), createDecoder: async () => decoderReturning([]) });
+
+      fireEvent.click(screen.getByRole('button', { name: 'Scan with camera' }));
+      fireEvent.click(await screen.findByRole('button', { name: 'Switch camera' }));
+
+      await vi.waitFor(() => expect(getUserMedia).toHaveBeenCalledTimes(2));
+      expect(getUserMedia).toHaveBeenLastCalledWith({
+        video: { facingMode: { ideal: 'user' } },
+        audio: false,
       });
     });
   });
