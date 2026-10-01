@@ -68,6 +68,10 @@ behavior, then uses exactly these four H2 sections in order:
 - [Stock in a scan](./stock-in.md) — scan a known barcode in stock-in mode,
   approve it, and confirm the unit lands in inventory. Proven end to end by
   `scripts/drive-stock-in.mjs`.
+- [Scan with the device camera](./camera-scan.md) — opt in to the camera (or type
+  a barcode when the camera cannot start) and approve the queued scan. Proven
+  end to end by `scripts/drive-camera-scan.mjs`. A headless run cannot decode a
+  printed code from a lens.
 - [Resolve a flagged scan](./flagged-resolution.md) — an unknown barcode flags;
   create a product for it and turn it into an approvable pending scan. Proven end
   to end by `scripts/drive-flagged-resolution.mjs`.
