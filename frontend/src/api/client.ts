@@ -14,6 +14,7 @@ import type {
   ScanEntry,
   ScannerConfig,
   ScanStatus,
+  ShoppingConsiderations,
   ShoppingListEntry,
   TargetQuantitySuggestion,
 } from '../types';
@@ -267,13 +268,45 @@ export function markShoppingListItemPurchased(id: string): Promise<ShoppingListE
   });
 }
 
+export function getShoppingConsiderations(): Promise<ShoppingConsiderations> {
+  return apiFetch('/api/shopping-list/considerations');
+}
+
+export function saveBrandPreference(itemId: string, ignorePrice: boolean): Promise<void> {
+  return apiFetch('/api/shopping-list/preferences', {
+    method: 'PUT',
+    body: JSON.stringify({ itemId, ignorePrice }),
+  });
+}
+
+export function clearBrandPreference(itemId: string): Promise<void> {
+  return apiFetch(`/api/shopping-list/preferences/${itemId}`, { method: 'DELETE' });
+}
+
+export function saveItemDeal(itemId: string, priceCents: number, label: string): Promise<void> {
+  return apiFetch('/api/shopping-list/deals', {
+    method: 'PUT',
+    body: JSON.stringify({ itemId, priceCents, label }),
+  });
+}
+
+export function clearItemDeal(itemId: string): Promise<void> {
+  return apiFetch(`/api/shopping-list/deals/${itemId}`, { method: 'DELETE' });
+}
+
 export interface ExportShoppingListResponse {
   exported: number;
   failedItems?: string[];
 }
 
-export function exportShoppingList(): Promise<ExportShoppingListResponse> {
-  return apiFetch('/api/shopping-list/export', { method: 'POST' });
+export function exportShoppingList(useItemIds?: Record<string, string>): Promise<ExportShoppingListResponse> {
+  const choices = useItemIds !== undefined && Object.keys(useItemIds).length > 0
+    ? { useItemIds }
+    : undefined;
+  return apiFetch('/api/shopping-list/export', {
+    method: 'POST',
+    body: choices === undefined ? undefined : JSON.stringify(choices),
+  });
 }
 
 // --- Build identity ---

@@ -9,10 +9,14 @@ import (
 )
 
 // ShoppingListExportHandler handles POST /api/shopping-list/export.
-// It submits the replenishment list, including store-brand pooling, to the cart exporter.
+// It submits the replenishment list, including store-brand pooling and any
+// saved brand preference. useItemIds swaps a line for another brand of the
+// same product when the shopper accepts a sale. The swap is this export only.
 type ShoppingListExportHandler struct {
 	ShoppingList interface {
 		ListManualItems(ctx context.Context, userID string) ([]shopping.ShoppingListItem, error)
+		ListPreferences(ctx context.Context, userID string) ([]shopping.Preference, error)
+		ListDeals(ctx context.Context, userID string) ([]shopping.Deal, error)
 	}
 	Pantry interface {
 		ListItems(ctx context.Context, userID string) ([]inventory.Item, error)
@@ -21,41 +25,42 @@ type ShoppingListExportHandler struct {
 	Exporter shopping.CartExporter
 }
 
-type shoppingListExportResponse struct {
-	Exported int `json:"exported"`
+type shoppingListExportRequest struct {
+	UseItemIDs map[string]string `json:"useItemIds"`
 }
 
-func (h *ShoppingListExportHandler) Handle(req Request[struct{}, struct{}]) (*shoppingListExportResponse, error) {
+type exportedItemResponse struct {
+	ItemID   string `json:"itemId"`
+	Name     string `json:"name"`
+	Quantity int    `json:"quantity"`
+}
+
+type shoppingListExportResponse struct {
+	Exported int                    `json:"exported"`
+	Items    []exportedItemResponse `json:"items"`
+}
+
+func (h *ShoppingListExportHandler) Handle(req Request[shoppingListExportRequest, struct{}]) (*shoppingListExportResponse, error) {
 	const userID = "user-1"
 
-	items, err := h.Pantry.ListItems(req.Context, userID)
+	provision, err := loadShoppingProvision(req.Context, userID, h.Pantry, h.ShoppingList)
 	if err != nil {
 		return nil, InternalError(err)
 	}
 
-	manualItems, err := h.ShoppingList.ListManualItems(req.Context, userID)
-	if err != nil {
-		return nil, InternalError(err)
-	}
-
-	counts, err := loadInstanceCounts(req.Context, h.Pantry.ListItemInstances, items)
-	if err != nil {
-		return nil, InternalError(err)
-	}
-
-	derived := replenishmentEntries(items, counts, manualItems)
-
-	manualEntries := make([]shopping.ManualEntry, len(manualItems))
-	for i, m := range manualItems {
-		manualEntries[i] = shopping.ManualEntry{ItemID: m.ItemID, Quantity: m.Quantity}
-	}
-	merged := shopping.MergeEntries(derived, manualEntries)
-
-	exportItems := make([]shopping.ExportItem, len(merged))
-	for i, e := range merged {
+	exportItems := make([]shopping.ExportItem, len(provision.Merged))
+	for i, entry := range provision.Merged {
+		itemID, subErr := shopping.SubstituteBrand(entry.ItemID, req.Body.UseItemIDs[entry.ItemID], provision.Needs)
+		if subErr != nil {
+			if errors.Is(subErr, shopping.ErrDifferentProduct) {
+				return nil, &HTTPError{Code: 422, Message: "Choose a brand of the same product"}
+			}
+			return nil, InternalError(subErr)
+		}
 		exportItems[i] = shopping.ExportItem{
-			ItemID:   e.ItemID,
-			Quantity: e.Quantity,
+			ItemID:   itemID,
+			Name:     itemName(provision.Needs, itemID),
+			Quantity: entry.Quantity,
 		}
 	}
 
@@ -67,5 +72,9 @@ func (h *ShoppingListExportHandler) Handle(req Request[struct{}, struct{}]) (*sh
 		return nil, InternalError(err)
 	}
 
-	return &shoppingListExportResponse{Exported: len(exportItems)}, nil
+	items := make([]exportedItemResponse, len(exportItems))
+	for i, item := range exportItems {
+		items[i] = exportedItemResponse{ItemID: item.ItemID, Name: item.Name, Quantity: item.Quantity}
+	}
+	return &shoppingListExportResponse{Exported: len(exportItems), Items: items}, nil
 }

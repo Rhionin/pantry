@@ -3,6 +3,7 @@ import {
   Alert,
   Badge,
   Button,
+  Checkbox,
   Group,
   Loader,
   NativeSelect,
@@ -14,53 +15,132 @@ import {
 } from '@mantine/core';
 import {
   addShoppingListItem,
+  clearBrandPreference,
+  clearItemDeal,
   getInventoryList,
+  getShoppingConsiderations,
   getShoppingList,
   markShoppingListItemPurchased,
   removeShoppingListItem,
+  saveBrandPreference,
+  saveItemDeal,
 } from '../../api/client';
-import type { InventoryItem, ShoppingListEntry } from '../../types';
+import type { InventoryItem, ShoppingConsideration, ShoppingConsiderations, ShoppingListEntry } from '../../types';
 import { CartExportButton } from './CartExportButton';
 
 const requestErrorMessage = (error: unknown, fallback: string) =>
   error instanceof Error ? error.message : fallback;
 
+const emptyNotes: ShoppingConsiderations = {
+  retailerDeals: 'unavailable',
+  retailerDetail: '',
+  considerations: [],
+};
+
+const formatCents = (cents: number) => `$${(cents / 100).toFixed(2)}`;
+
+const offerSentence = (note: ShoppingConsideration) => {
+  const offer = note.offer;
+  if (offer === null) return '';
+  const usual = note.members.find((member) => member.itemId === note.chosenItemId)?.name ?? 'the usual brand';
+  const noteLabel = offer.label !== '' && offer.label !== 'On sale' ? ` (${offer.label})` : '';
+  if (offer.priceCents !== null && offer.usualPriceCents !== null) {
+    return `${offer.name} is ${formatCents(offer.priceCents)}${noteLabel}, compared with ${formatCents(offer.usualPriceCents)} for ${usual}.`;
+  }
+  if (offer.priceCents !== null) {
+    return `${offer.name} is on sale at ${formatCents(offer.priceCents)}${noteLabel}. This list buys ${usual}.`;
+  }
+  return `${offer.name} is on sale${noteLabel}. This list buys ${usual}.`;
+};
+
 export const ShoppingListPage = () => {
   const [entries, setEntries] = useState<ShoppingListEntry[]>([]);
   const [inventory, setInventory] = useState<InventoryItem[]>([]);
+  const [notes, setNotes] = useState<ShoppingConsiderations>(emptyNotes);
+  const [accepted, setAccepted] = useState<Record<string, string>>({});
   const [selectedItemId, setSelectedItemId] = useState('');
   const [quantity, setQuantity] = useState<number | string>(1);
+  const [saleItemId, setSaleItemId] = useState('');
+  const [salePrice, setSalePrice] = useState<number | string>('');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+
+  const refresh = useCallback(async () => {
+    const [shoppingEntries, inventoryItems] = await Promise.all([
+      getShoppingList(),
+      getInventoryList(),
+    ]);
+    setEntries(shoppingEntries);
+    setInventory(inventoryItems);
+    try {
+      setNotes(await getShoppingConsiderations());
+    } catch {
+      setNotes(emptyNotes);
+    }
+  }, []);
 
   const loadShoppingList = useCallback(async () => {
     setLoading(true);
     setError('');
     try {
-      const [shoppingEntries, inventoryItems] = await Promise.all([
-        getShoppingList(),
-        getInventoryList(),
-      ]);
-      setEntries(shoppingEntries);
-      setInventory(inventoryItems);
+      await refresh();
     } catch (requestError) {
       setError(requestErrorMessage(requestError, 'Unable to load the shopping list.'));
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [refresh]);
 
   useEffect(() => {
     void Promise.resolve().then(loadShoppingList);
   }, [loadShoppingList]);
 
+  useEffect(() => {
+    setAccepted((current) => {
+      let changed = false;
+      const next: Record<string, string> = {};
+      for (const [lineId, useId] of Object.entries(current)) {
+        const note = notes.considerations.find((item) => item.lineItemId === lineId);
+        if (note?.offer?.itemId === useId) {
+          next[lineId] = useId;
+        } else {
+          changed = true;
+        }
+      }
+      return changed ? next : current;
+    });
+  }, [notes]);
+
   const inventoryByItemId = useMemo(
     () => new Map(inventory.map((inventoryItem) => [inventoryItem.item.id, inventoryItem])),
     [inventory],
   );
+  const notesByLine = useMemo(
+    () => new Map(notes.considerations.map((note) => [note.lineItemId, note])),
+    [notes],
+  );
+  const saleBrands = useMemo(() => {
+    const byId = new Map<string, string>();
+    for (const note of notes.considerations) {
+      for (const member of note.members) {
+        byId.set(member.itemId, member.name);
+      }
+    }
+    return [...byId.entries()].map(([value, label]) => ({ value, label }));
+  }, [notes]);
+  const selectedSale = useMemo(() => {
+    for (const note of notes.considerations) {
+      const member = note.members.find((item) => item.itemId === saleItemId);
+      if (member) return member;
+    }
+    return undefined;
+  }, [notes, saleItemId]);
+  const offers = notes.considerations.filter((note) => note.offer !== null);
   const manualQuantity = typeof quantity === 'number' ? quantity : Number(quantity);
   const manualQuantityIsValid = quantity !== '' && Number.isInteger(manualQuantity) && manualQuantity >= 1;
+  const salePriceNumber = typeof salePrice === 'number' ? salePrice : Number(salePrice);
+  const salePriceIsValid = salePrice !== '' && Number.isInteger(salePriceNumber) && salePriceNumber >= 0;
 
   const addManualItem = async () => {
     if (selectedItemId === '' || !manualQuantityIsValid) return;
@@ -70,7 +150,7 @@ export const ShoppingListPage = () => {
       await addShoppingListItem(selectedItemId, manualQuantity);
       setSelectedItemId('');
       setQuantity(1);
-      await loadShoppingList();
+      await refresh();
     } catch (requestError) {
       setError(requestErrorMessage(requestError, 'Unable to add the shopping list item.'));
     } finally {
@@ -84,18 +164,121 @@ export const ShoppingListPage = () => {
     try {
       if (action === 'purchase') await markShoppingListItemPurchased(entry.id);
       else await removeShoppingListItem(entry.id);
-      await loadShoppingList();
+      await refresh();
     } catch (requestError) {
       setError(requestErrorMessage(requestError, `Unable to ${action} the shopping list item.`));
     }
+  };
+
+  const saveBrand = async (note: ShoppingConsideration, itemId: string, ignorePrice: boolean) => {
+    setError('');
+    try {
+      if (itemId === '') {
+        await clearBrandPreference(note.members[0]?.itemId ?? note.lineItemId);
+      } else {
+        await saveBrandPreference(itemId, ignorePrice);
+      }
+      await refresh();
+    } catch (requestError) {
+      setError(requestErrorMessage(requestError, 'Unable to save the brand preference.'));
+    }
+  };
+
+  const noteSale = async () => {
+    if (saleItemId === '' || !salePriceIsValid) return;
+    setError('');
+    try {
+      await saveItemDeal(saleItemId, salePriceNumber, 'Noted sale');
+      setSalePrice('');
+      await refresh();
+    } catch (requestError) {
+      setError(requestErrorMessage(requestError, 'Unable to note the sale.'));
+    }
+  };
+
+  const clearSale = async () => {
+    if (saleItemId === '') return;
+    setError('');
+    try {
+      await clearItemDeal(saleItemId);
+      await refresh();
+    } catch (requestError) {
+      setError(requestErrorMessage(requestError, 'Unable to clear the sale.'));
+    }
+  };
+
+  const toggleDeal = (note: ShoppingConsideration) => {
+    const offer = note.offer;
+    if (offer === null) return;
+    setAccepted((current) => {
+      const next = { ...current };
+      if (next[note.lineItemId] === offer.itemId) {
+        delete next[note.lineItemId];
+      } else {
+        next[note.lineItemId] = offer.itemId;
+      }
+      return next;
+    });
   };
 
   return (
     <Stack gap="sm">
       <Group justify="space-between">
         <Title order={1} size="h3">Shopping list</Title>
-        <CartExportButton disabled={entries.length === 0} />
+        <CartExportButton disabled={entries.length === 0} useItemIds={accepted} />
       </Group>
+      {!loading && notes.considerations.length > 0 && (
+        <Alert variant="light" color="teal" title={offers.length > 0 ? 'A sale to consider' : 'Brand notes'}>
+          <Stack gap="xs">
+            {offers.map((note) => {
+              const offer = note.offer;
+              if (offer === null) return null;
+              const usual = note.members.find((member) => member.itemId === note.chosenItemId)?.name ?? 'the usual brand';
+              const taken = accepted[note.lineItemId] === offer.itemId;
+              return (
+                <Group key={note.lineItemId} justify="space-between" align="center" wrap="wrap">
+                  <Text size="sm">{offerSentence(note)}</Text>
+                  <Button size="xs" variant={taken ? 'filled' : 'light'} onClick={() => toggleDeal(note)}>
+                    {taken ? `Keep ${usual}` : `Take the deal on ${offer.name}`}
+                  </Button>
+                </Group>
+              );
+            })}
+            <Text size="xs" c="dimmed">Export to cart sends the usual brand until you take a deal.</Text>
+            {notes.retailerDetail !== '' && <Text size="xs" c="dimmed">{notes.retailerDetail}</Text>}
+            <Group align="end" gap="xs" wrap="wrap">
+              <NativeSelect
+                size="xs"
+                label="Brand on sale"
+                value={saleItemId}
+                onChange={(event) => setSaleItemId(event.currentTarget.value)}
+                data={[{ value: '', label: 'Choose a brand' }, ...saleBrands]}
+              />
+              <NumberInput
+                size="xs"
+                label="Sale price in cents"
+                min={0}
+                step={1}
+                allowDecimal={false}
+                value={salePrice}
+                onChange={setSalePrice}
+                w={160}
+              />
+              <Button size="xs" variant="light" disabled={saleItemId === '' || !salePriceIsValid} onClick={() => void noteSale()}>
+                Note sale
+              </Button>
+              <Button
+                size="xs"
+                variant="subtle"
+                disabled={saleItemId === '' || selectedSale?.onSale !== true}
+                onClick={() => void clearSale()}
+              >
+                Clear sale
+              </Button>
+            </Group>
+          </Stack>
+        </Alert>
+      )}
       <Stack component="form" gap="xs" onSubmit={(event) => {
         event.preventDefault();
         void addManualItem();
@@ -161,12 +344,41 @@ export const ShoppingListPage = () => {
                 const productName = inventoryItem?.item.product.name ?? `Item ${entry.itemId}`;
                 const unit = inventoryItem?.item.product.unitOfMeasure ?? 'units';
                 const needsTarget = entry.source === 'manual' && inventoryItem?.item.targetQuantity === null;
+                const note = notesByLine.get(entry.itemId);
                 return (
                   <Table.Tr key={entry.id === '' ? `auto-${entry.itemId}` : entry.id}>
                     <Table.Td>
                       <Stack gap={2}>
                         <Text fw={600}>{productName}</Text>
                         {needsTarget && <Text size="sm" c="dimmed">Set a target quantity for automatic restocking.</Text>}
+                        {note && (
+                          <Group gap="xs" align="end" wrap="wrap">
+                            <NativeSelect
+                              size="xs"
+                              label={`Preferred brand for ${note.genericName}`}
+                              value={note.preferredItemId}
+                              onChange={(event) => {
+                                const itemId = event.currentTarget.value;
+                                void saveBrand(note, itemId, itemId === '' ? false : note.ignorePrice);
+                              }}
+                              data={[
+                                { value: '', label: 'No preference' },
+                                ...note.members.map((member) => ({ value: member.itemId, label: member.name })),
+                              ]}
+                            />
+                            <Checkbox
+                              size="xs"
+                              mt="lg"
+                              label={`Always buy this brand of ${note.genericName}`}
+                              checked={note.ignorePrice}
+                              disabled={note.preferredItemId === ''}
+                              onChange={(event) => {
+                                if (note.preferredItemId === '') return;
+                                void saveBrand(note, note.preferredItemId, event.currentTarget.checked);
+                              }}
+                            />
+                          </Group>
+                        )}
                       </Stack>
                     </Table.Td>
                     <Table.Td>{entry.quantity} {unit}</Table.Td>
