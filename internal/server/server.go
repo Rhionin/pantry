@@ -14,6 +14,7 @@ import (
 	"github.com/Rhionin/pantry/internal/scanlistener"
 	"github.com/Rhionin/pantry/internal/shopping"
 	"github.com/Rhionin/pantry/internal/suggestion"
+	"github.com/Rhionin/pantry/internal/telemetry"
 	"github.com/Rhionin/pantry/internal/webui"
 )
 
@@ -84,7 +85,7 @@ func NewHandler(
 	}
 
 	// Build the API mux containing all existing routes
-	apiMux, scanQueue := newAPIMux(catalog, lookupService, refresher, db, cfg)
+	apiMux, scanQueue, reg := newAPIMux(catalog, lookupService, refresher, db, cfg)
 
 	// Create root mux that composes API routes with web UI
 	root := http.NewServeMux()
@@ -94,7 +95,7 @@ func NewHandler(
 	root.Handle("/health/", apiMux)
 	root.Handle("/", webui.NewHandler())
 
-	return root, scanQueue
+	return observeHTTP(reg, root), scanQueue
 }
 
 // newAPIMux creates the API-only mux with all existing route registrations.
@@ -106,13 +107,18 @@ func newAPIMux(
 	refresher *product.Refresher,
 	db *sql.DB,
 	cfg *config,
-) (*http.ServeMux, *scan.Queue) {
+) (*http.ServeMux, *scan.Queue, *telemetry.Registry) {
 	apiMux := http.NewServeMux()
 
+	reg := telemetry.NewRegistry()
 	broadcaster := events.NewBroadcaster()
 	if cfg != nil && cfg.broadcaster != nil {
 		broadcaster = cfg.broadcaster
 	}
+	// The headless listener publishes on this same broadcaster, so the observer
+	// has to be attached to the shared instance rather than a private one.
+	broadcaster.SetObserver(publishObserver{reg: reg})
+	reg.SetSubscriberCount(broadcaster.SubscriberCount)
 
 	apiMux.HandleFunc("GET /health", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -126,9 +132,13 @@ func newAPIMux(
 		fmt.Fprintln(w, response)
 	})
 
-	eventsHandler := &EventsHandler{Broadcaster: broadcaster}
+	eventsHandler := &EventsHandler{Broadcaster: broadcaster, Telemetry: reg}
 	apiMux.HandleFunc("GET /api/events", eventsHandler.Handle)
 	apiMux.HandleFunc("GET /api/build", HandleJSON(handleBuildInfo))
+
+	telemetryHandler := &TelemetryHandler{Registry: reg}
+	apiMux.HandleFunc("GET /api/telemetry", telemetryHandler.Get)
+	apiMux.HandleFunc("POST /api/telemetry/client", telemetryHandler.PostClient)
 
 	// Scanner mode + config handlers. The mode handler publishes through the
 	// same broadcaster GET /api/events uses, so a browser-initiated mode switch
@@ -250,5 +260,5 @@ func newAPIMux(
 	apiMux.HandleFunc("PATCH /api/shopping-list/items/{id}", HandleJSON(shoppingListItemUpdateHandler.Handle))
 	apiMux.HandleFunc("POST /api/shopping-list/export", HandleJSON(shoppingListExportHandler.Handle))
 
-	return apiMux, scanQueue
+	return apiMux, scanQueue, reg
 }

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { trackEventSource } from '../../telemetry/client';
 import { Alert, Loader, SimpleGrid, Stack, Text, TextInput, Title } from '@mantine/core';
 import { getInventoryList } from '../../api/client';
 import type { InventoryItem } from '../../types';
@@ -58,6 +59,7 @@ export const InventoryPage = () => {
 
   useEffect(() => {
     const eventSource = new EventSource('/api/events');
+    trackEventSource(eventSource);
     eventSource.addEventListener('inventory', (message) => {
       const inventoryItem = JSON.parse((message as MessageEvent).data) as InventoryItem;
       setInventoryItems((current) => mergeInventoryEvent(current, inventoryItem));

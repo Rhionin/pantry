@@ -1,14 +1,25 @@
-import { BrowserRouter, Link, Route, Routes } from 'react-router-dom';
+import { useEffect } from 'react';
+import { BrowserRouter, Link, Route, Routes, useLocation } from 'react-router-dom';
 import { AppShell, Group, Title } from '@mantine/core';
 import { ScanQueuePage } from './components/queue/ScanQueuePage';
 import { InventoryPage } from './components/inventory/InventoryPage';
 import { ShoppingListPage } from './components/shopping/ShoppingListPage';
 import { BuildStamp } from './components/build/BuildStamp';
+import { reportRoute } from './telemetry/client';
 import './App.css';
+
+function RouteTelemetry() {
+  const { pathname } = useLocation();
+  useEffect(() => {
+    reportRoute(pathname);
+  }, [pathname]);
+  return null;
+}
 
 function App() {
   return (
     <BrowserRouter>
+      <RouteTelemetry />
       <AppShell header={{ height: 60 }} footer={{ height: 56 }} padding="md">
         <AppShell.Header>
           <Group h="100%" px="md" justify="space-between">
