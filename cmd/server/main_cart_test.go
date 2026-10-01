@@ -1,10 +1,13 @@
 package main
 
 import (
+	"context"
 	"database/sql"
 	"testing"
 
 	"github.com/Rhionin/pantry/internal/app"
+	"github.com/Rhionin/pantry/internal/cart/appcred"
+	"github.com/Rhionin/pantry/internal/cart/kroger"
 	_ "modernc.org/sqlite"
 )
 
@@ -29,7 +32,7 @@ func TestLoadCartRegistryUnconfiguredStillListsKroger(t *testing.T) {
 	t.Setenv("KROGER_MODALITY", "")
 	t.Setenv("KROGER_BATCH_SIZE", "")
 
-	registry, ledger := loadCartRegistry(newCartDB(t))
+	registry, ledger, _ := loadCartRegistry(newCartDB(t))
 	if ledger == nil {
 		t.Fatal("ledger is nil")
 	}
@@ -53,7 +56,7 @@ func TestLoadCartRegistryConfigured(t *testing.T) {
 	t.Setenv("KROGER_MODALITY", "delivery")
 	t.Setenv("KROGER_BATCH_SIZE", "10")
 
-	registry, _ := loadCartRegistry(newCartDB(t))
+	registry, _, _ := loadCartRegistry(newCartDB(t))
 	if !registry.CredentialsConfigured("kroger") {
 		t.Fatal("kroger should be credentials-configured")
 	}
@@ -74,12 +77,51 @@ func TestLoadCartRegistryInvalidModalityStaysConfigured(t *testing.T) {
 	t.Setenv("KROGER_MODALITY", "ship")
 	t.Setenv("KROGER_BATCH_SIZE", "nope")
 
-	registry, _ := loadCartRegistry(newCartDB(t))
+	registry, _, _ := loadCartRegistry(newCartDB(t))
 	if !registry.CredentialsConfigured("kroger") {
 		t.Fatal("invalid modality should still leave Kroger configured")
 	}
 	if got := registry.BatchSize("kroger"); got != 50 {
 		t.Fatalf("batch size %d, want default 50", got)
+	}
+}
+
+func TestLoadCartRegistrySavedCredentialsOverrideEnv(t *testing.T) {
+	t.Setenv("DISABLE_KROGER", "")
+	t.Setenv("KROGER_CLIENT_ID", "env-client")
+	t.Setenv("KROGER_CLIENT_SECRET", "env-secret")
+	t.Setenv("KROGER_REDIRECT_URI", "https://env.example/cb")
+	t.Setenv("KROGER_MODALITY", "PICKUP")
+
+	db := newCartDB(t)
+	if err := appcred.NewVault(db).Save(context.Background(), appcred.Saved{
+		ProviderID:   "kroger",
+		ClientID:     "saved-client",
+		ClientSecret: "saved-secret",
+		RedirectURI:  "https://saved.example/cb",
+		Modality:     "DELIVERY",
+	}); err != nil {
+		t.Fatalf("save: %v", err)
+	}
+
+	registry, _, envCreds := loadCartRegistry(db)
+	if !registry.CredentialsConfigured("kroger") {
+		t.Fatal("saved credentials should configure Kroger")
+	}
+	provider, ok := registry.Get("kroger")
+	if !ok {
+		t.Fatal("kroger missing")
+	}
+	adapter, ok := provider.(*kroger.Adapter)
+	if !ok {
+		t.Fatalf("provider type %T", provider)
+	}
+	public := adapter.PublicAppCredentials()
+	if public.ClientID != "saved-client" || public.RedirectURI != "https://saved.example/cb" || public.Modality != "DELIVERY" || !public.SecretSet {
+		t.Fatalf("public credentials = %+v", public)
+	}
+	if envCreds.ClientID != "env-client" || envCreds.ClientSecret != "env-secret" {
+		t.Fatalf("env fallback = %+v", envCreds)
 	}
 }
 
@@ -91,7 +133,7 @@ func TestLoadCartRegistryDisabledIsNotConfigured(t *testing.T) {
 	t.Setenv("KROGER_MODALITY", "PICKUP")
 	t.Setenv("KROGER_BATCH_SIZE", "50")
 
-	registry, _ := loadCartRegistry(newCartDB(t))
+	registry, _, _ := loadCartRegistry(newCartDB(t))
 	if _, ok := registry.Get("kroger"); !ok {
 		t.Fatal("disabled kroger should still be listed")
 	}

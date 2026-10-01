@@ -36,6 +36,10 @@ type httpExchange struct {
 	// "the response is the HTML document containing X", which JSONPath
 	// assertions cannot express.
 	bodyContains []string
+
+	// bodyExcludes asserts that the response body does not contain each
+	// substring. Use it to prove a secret was not echoed.
+	bodyExcludes []string
 }
 
 // handlerTestCase defines a single HTTP handler test case for table-driven testing.
@@ -54,9 +58,11 @@ type handlerTestCase struct {
 }
 
 // assertion wraps a JSONPath assertion for cleaner test tables.
+// Set absent to assert that path is not present; value is ignored in that case.
 type assertion struct {
-	path  string
-	value interface{}
+	path   string
+	value  interface{}
+	absent bool
 }
 
 // fakeUpstream embeds *product.ExternalLookup and holds per-database fakes,
@@ -169,6 +175,10 @@ func buildExpectations(req *apitest.Request, ex httpExchange) *apitest.Response 
 	expect := req.Expect(nil).Status(ex.expectedStatus)
 
 	for _, a := range ex.assertions {
+		if a.absent {
+			expect = expect.Assert(jsonpath.NotPresent(a.path))
+			continue
+		}
 		expect = expect.Assert(jsonpath.Equal(a.path, a.value))
 	}
 
@@ -195,6 +205,24 @@ func buildExpectations(req *apitest.Request, ex httpExchange) *apitest.Response 
 			for _, want := range substrings {
 				if !strings.Contains(body, want) {
 					return fmt.Errorf("expected body to contain %q, got %q", want, body)
+				}
+			}
+			return nil
+		})
+	}
+
+	if len(ex.bodyExcludes) > 0 {
+		forbidden := ex.bodyExcludes
+		expect = expect.Assert(func(res *http.Response, _ *http.Request) error {
+			b, err := io.ReadAll(res.Body)
+			if err != nil {
+				return fmt.Errorf("read response body: %w", err)
+			}
+			res.Body = io.NopCloser(bytes.NewReader(b))
+			body := string(b)
+			for _, secret := range forbidden {
+				if strings.Contains(body, secret) {
+					return fmt.Errorf("response body contains forbidden substring %q", secret)
 				}
 			}
 			return nil

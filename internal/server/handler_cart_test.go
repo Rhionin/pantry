@@ -257,6 +257,113 @@ func TestCartHTTP(t *testing.T) {
 				},
 			}),
 		},
+		{
+			name: "configured provider exports one line per pooled store-brand need",
+			setup: func(env testEnv) {
+				createItemViaStockIn(env.T, env.DB, env.ProductStore, "user-1", "prod-pool-gv", "Great Value Cut Green Beans", "item-pool-gv")
+				createItemViaStockIn(env.T, env.DB, env.ProductStore, "user-1", "prod-pool-kr", "Kroger Cut Green Beans", "item-pool-kr")
+				createItemViaStockIn(env.T, env.DB, env.ProductStore, "user-1", "prod-pool-corn", "Kroger Whole Kernel Corn", "item-pool-corn")
+				setTargetQuantity(env.T, env.DB, "item-pool-gv", 4)
+				setTargetQuantity(env.T, env.DB, "item-pool-kr", 4)
+				setTargetQuantity(env.T, env.DB, "item-pool-corn", 2)
+				ctx := context.Background()
+				if err := env.ProductStore.UpsertBarcodeMapping(ctx, "000111111117", "prod-pool-gv", "global", ""); err != nil {
+					env.T.Fatalf("barcode beans: %v", err)
+				}
+				if err := env.ProductStore.UpsertBarcodeMapping(ctx, "000222222224", "prod-pool-corn", "global", ""); err != nil {
+					env.T.Fatalf("barcode corn: %v", err)
+				}
+				script := carttest.NewScript().
+					WithDispositions(cart.DispositionAccepted).
+					WithIdentityLookup("000111111117", cart.ProductIdentity("beans")).
+					WithIdentityLookup("000222222224", cart.ProductIdentity("corn"))
+				provider := carttest.NewFake(cart.Capabilities{
+					Auth:         cart.AuthNone,
+					Delivery:     cart.DeliveryServerPush,
+					Confirmation: cart.ConfirmPerRequest,
+					Mutation:     cart.MutateAddOnly,
+					Identity:     cart.IdentityDerived,
+				}, script)
+				if err := env.Registry.Register(provider, cart.WithCredentialsConfigured(true)); err != nil {
+					env.T.Fatalf("register: %v", err)
+				}
+			},
+			httpExchange: httpExchange{
+				method:         "POST",
+				path:           "/api/shopping-list/export",
+				body:           `{"provider":"test-none-server_push"}`,
+				expectedStatus: http.StatusOK,
+				assertions: []assertion{
+					{path: "$.exported", value: float64(2)},
+				},
+			},
+		},
+		{
+			name: "saving credentials does not echo the client secret",
+			setup: func(env testEnv) {
+				if err := env.Registry.Register(kroger.NewUnconfigured()); err != nil {
+					env.T.Fatalf("register: %v", err)
+				}
+			},
+			httpExchange: httpExchange{
+				method:         "PUT",
+				path:           "/api/providers/kroger/credentials",
+				body:           `{"clientId":"ui-client","clientSecret":"super-secret-value","redirectUri":"https://pantry.example/api/providers/kroger/callback","modality":"PICKUP"}`,
+				expectedStatus: http.StatusOK,
+				assertions: []assertion{
+					{path: "$.clientId", value: "ui-client"},
+					{path: "$.secretSet", value: true},
+					{path: "$.source", value: "saved"},
+					{path: "$.clientSecret", absent: true},
+				},
+				bodyExcludes: []string{"super-secret-value"},
+			},
+			afterRequest: exchanges(
+				httpExchange{
+					method:         "GET",
+					path:           "/api/providers",
+					expectedStatus: http.StatusOK,
+					assertions: []assertion{
+						{path: "$[0].credentialsConfigured", value: true},
+						{path: "$[0].credentials.clientId", value: "ui-client"},
+						{path: "$[0].credentials.secretSet", value: true},
+						{path: "$[0].credentials.clientSecret", absent: true},
+					},
+					bodyExcludes: []string{"super-secret-value"},
+				},
+				httpExchange{
+					method:         "PUT",
+					path:           "/api/providers/kroger/credentials",
+					body:           `{"clientId":"ui-client","clientSecret":"","redirectUri":"https://pantry.example/cb2","modality":"DELIVERY"}`,
+					expectedStatus: http.StatusOK,
+					assertions: []assertion{
+						{path: "$.redirectUri", value: "https://pantry.example/cb2"},
+						{path: "$.modality", value: "DELIVERY"},
+						{path: "$.secretSet", value: true},
+						{path: "$.clientSecret", absent: true},
+					},
+					bodyExcludes: []string{"super-secret-value"},
+				},
+				httpExchange{
+					method:         "GET",
+					path:           "/api/providers/kroger/authorize",
+					expectedStatus: http.StatusOK,
+					bodyContains:   []string{"client_id=ui-client"},
+					bodyExcludes:   []string{"super-secret-value"},
+				},
+				httpExchange{
+					method:         "DELETE",
+					path:           "/api/providers/kroger/credentials",
+					expectedStatus: http.StatusOK,
+					assertions: []assertion{
+						{path: "$.source", value: "none"},
+						{path: "$.secretSet", value: false},
+						{path: "$.clientSecret", absent: true},
+					},
+					bodyExcludes: []string{"super-secret-value"},
+				},
+			),
+		},
 	}
 
 	runHandlerTests(t, tests)

@@ -12,6 +12,7 @@ import (
 
 	"github.com/Rhionin/pantry/internal/app"
 	"github.com/Rhionin/pantry/internal/cart"
+	"github.com/Rhionin/pantry/internal/cart/appcred"
 	"github.com/Rhionin/pantry/internal/cart/kroger"
 	"github.com/Rhionin/pantry/internal/events"
 	"github.com/Rhionin/pantry/internal/product"
@@ -65,10 +66,11 @@ func productMissTTL() time.Duration {
 	return ttl
 }
 
-// loadCartRegistry reads Kroger's environment and always returns a registry
-// and ledger. Missing credentials register Kroger as not configured so the
-// shopping list can say so; they do not stop the process.
-func loadCartRegistry(db *sql.DB) (*cart.Registry, *cart.Ledger) {
+// loadCartRegistry reads Kroger's environment and any credentials saved from
+// the Pantry UI. A saved row overrides the environment until it is cleared.
+// Missing credentials register Kroger as not configured so the shopping list
+// can say so; they do not stop the process.
+func loadCartRegistry(db *sql.DB) (*cart.Registry, *cart.Ledger, server.ProviderEnv) {
 	registry := cart.NewRegistry()
 	ledger := cart.NewLedger(db)
 
@@ -79,17 +81,14 @@ func loadCartRegistry(db *sql.DB) (*cart.Registry, *cart.Ledger) {
 	if disabled {
 		log.Println("Kroger provider disabled via DISABLE_KROGER")
 	}
-	if clientID == "" {
-		log.Println("KROGER_CLIENT_ID not set or empty")
-	}
-	if clientSecret == "" {
-		log.Println("KROGER_CLIENT_SECRET not set or empty")
-	}
-	if redirectURI == "" {
-		log.Println("KROGER_REDIRECT_URI not set or empty")
-	}
 
 	configured := !disabled && clientID != "" && clientSecret != "" && redirectURI != ""
+	envCreds := server.ProviderEnv{
+		ClientID:     clientID,
+		ClientSecret: clientSecret,
+		RedirectURI:  redirectURI,
+		Disabled:     disabled,
+	}
 	modality := strings.ToUpper(strings.TrimSpace(os.Getenv("KROGER_MODALITY")))
 	if modality == "" {
 		modality = "PICKUP"
@@ -97,6 +96,7 @@ func loadCartRegistry(db *sql.DB) (*cart.Registry, *cart.Ledger) {
 		log.Printf("invalid KROGER_MODALITY %q, using default PICKUP", modality)
 		modality = "PICKUP"
 	}
+	envCreds.Modality = modality
 
 	var adapter *kroger.Adapter
 	if configured {
@@ -112,6 +112,19 @@ func loadCartRegistry(db *sql.DB) (*cart.Registry, *cart.Ledger) {
 		adapter = kroger.NewUnconfigured()
 	}
 
+	if !disabled {
+		saved, ok, err := appcred.NewVault(db).Load(context.Background(), "kroger")
+		if err != nil {
+			log.Printf("read saved Kroger credentials: %v", err)
+		} else if ok {
+			if err := adapter.ApplyAppCredentials(saved.ClientID, saved.ClientSecret, saved.RedirectURI, saved.Modality); err != nil {
+				log.Printf("saved Kroger credentials were not applied: %v", err)
+			} else {
+				configured = true
+			}
+		}
+	}
+
 	opts := []cart.RegisterOption{
 		cart.WithBatchSize(krogerBatchSize()),
 		cart.WithCredentialsConfigured(configured),
@@ -119,7 +132,10 @@ func loadCartRegistry(db *sql.DB) (*cart.Registry, *cart.Ledger) {
 	if err := registry.Register(adapter, opts...); err != nil {
 		log.Printf("failed to register Kroger: %v", err)
 	}
-	return registry, ledger
+	if !configured && !disabled {
+		log.Println("Kroger credentials are not configured; set them in the shopping list or with KROGER_CLIENT_ID, KROGER_CLIENT_SECRET, and KROGER_REDIRECT_URI")
+	}
+	return registry, ledger, envCreds
 }
 
 func krogerBatchSize() int {
@@ -178,7 +194,7 @@ func main() {
 	broadcaster := events.NewBroadcaster()
 
 	// Load cart registry and register Kroger adapter if configured.
-	registry, ledger := loadCartRegistry(sqlDB)
+	registry, ledger, providerEnv := loadCartRegistry(sqlDB)
 
 	stockInBarcode := envOrDefault("STOCK_IN_CONTROL_BARCODE", "STOCK_IN")
 	stockOutBarcode := envOrDefault("STOCK_OUT_CONTROL_BARCODE", "STOCK_OUT")
@@ -191,6 +207,7 @@ func main() {
 			StockOutBarcode: stockOutBarcode,
 		}),
 		server.WithCartRegistry(registry, ledger),
+		server.WithProviderEnv(providerEnv),
 	}
 	if listenerOK {
 		opts = append(opts, server.WithScannerStatus(listener.Status))

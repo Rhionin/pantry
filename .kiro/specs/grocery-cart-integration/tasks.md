@@ -4,8 +4,10 @@
 
 The provider-agnostic core, Kroger adapter, ledger, and shopping-list HTTP
 surface are implemented and wired through `cmd/server`. The shopping list page
-can connect a provider, adjust a quantity, switch replenishment mode, provision,
-and reset the ledger.
+can enter or clear Kroger application credentials, connect a provider, adjust
+a quantity, switch replenishment mode, provision, and reset the ledger.
+Saved credentials override `KROGER_CLIENT_ID`, `KROGER_CLIENT_SECRET`, and
+`KROGER_REDIRECT_URI` until cleared. GET never returns the client secret.
 
 `./scripts/test-coverage.sh` passes at 71.6% (the script ratcheted the floor
 from 70.0). The frontend job (`tsc -b`, eslint on the shopping surface, and

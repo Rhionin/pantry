@@ -2,9 +2,11 @@
 set -e
 
 # Minimum required line coverage percentage.
-# Ratcheted from 70.0 to 71.6 when cart provisioning tests landed. A cached
-# `go test` run can under-report this total; a clean run is the one that counts.
-COVERAGE_THRESHOLD=71.6
+# 72.8 is the measured ./... total after cart provisioning joined the
+# store-brand replenishment work. The cart packages are larger than the
+# lines those tests cover, so the floor is below the 76.8 store-brand-only
+# number. A cached go test run can under-report this total.
+COVERAGE_THRESHOLD=72.8
 
 # Colors for output
 RED='\033[0;31m'

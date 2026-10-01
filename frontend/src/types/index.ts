@@ -126,6 +126,17 @@ export interface ProviderInfo {
   capabilities: ProviderCapabilities;
   connectionState: ConnectionState;
   credentialsConfigured: boolean;
+  credentials?: ProviderCredentials;
+}
+
+// Non-secret view of a provider's application credentials. The client secret
+// is never included.
+export interface ProviderCredentials {
+  clientId: string;
+  redirectUri: string;
+  modality: string;
+  secretSet: boolean;
+  source: 'saved' | 'environment' | 'none';
 }
 
 export interface ShoppingListBasis {
@@ -175,6 +186,15 @@ export interface ProvisionReport {
 export interface LookupResult {
   product: ProductSummary | null;
   source: string;
+}
+
+// Matches buildInfoResponse in internal/server/handler_build.go.
+// commit is the full git SHA the image is tagged with, or "unknown".
+// committedAt and subject are omitted when the build was not stamped.
+export interface BuildInfo {
+  commit: string;
+  committedAt?: string;
+  subject?: string;
 }
 
 // Matches batchCommitResponse in internal/server/handler_scan_batch_commit.go.

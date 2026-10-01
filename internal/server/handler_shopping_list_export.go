@@ -12,7 +12,7 @@ import (
 )
 
 // ShoppingListExportHandler handles POST /api/shopping-list/export.
-// It fetches the current shopping list and submits it to the cart exporter.
+// It submits the replenishment list, including store-brand pooling, to the cart exporter.
 type ShoppingListExportHandler struct {
 	ShoppingList interface {
 		ListManualItems(ctx context.Context, userID string) ([]shopping.ShoppingListItem, error)

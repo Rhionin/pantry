@@ -8,6 +8,7 @@ import (
 	"net/http"
 
 	"github.com/Rhionin/pantry/internal/cart"
+	"github.com/Rhionin/pantry/internal/cart/appcred"
 	"github.com/Rhionin/pantry/internal/cart/connection"
 	"github.com/Rhionin/pantry/internal/events"
 	"github.com/Rhionin/pantry/internal/inventory"
@@ -35,6 +36,7 @@ type config struct {
 	scannerConfig ScannerConfig
 	registry      *cart.Registry
 	ledger        *cart.Ledger
+	providerEnv   ProviderEnv
 }
 
 // Option is a functional option for NewHandler.
@@ -48,6 +50,14 @@ func WithCartRegistry(registry *cart.Registry, ledger *cart.Ledger) Option {
 	return func(c *config) {
 		c.registry = registry
 		c.ledger = ledger
+	}
+}
+
+// WithProviderEnv supplies deploy-time cart credentials. Saved credentials
+// override them until cleared. The secret is never copied into a response.
+func WithProviderEnv(env ProviderEnv) Option {
+	return func(c *config) {
+		c.providerEnv = env
 	}
 }
 
@@ -158,6 +168,7 @@ func newAPIMux(
 
 	eventsHandler := &EventsHandler{Broadcaster: broadcaster}
 	apiMux.HandleFunc("GET /api/events", eventsHandler.Handle)
+	apiMux.HandleFunc("GET /api/build", HandleJSON(handleBuildInfo))
 
 	// Scanner mode + config handlers. The mode handler publishes through the
 	// same broadcaster GET /api/events uses, so a browser-initiated mode switch
@@ -231,11 +242,13 @@ func newAPIMux(
 	inventoryInstancesListHandler := &InventoryInstancesListHandler{Pantry: pantry}
 	inventoryInstanceCreateHandler := &InventoryInstanceCreateHandler{Pantry: pantry}
 	inventoryInstanceDeleteHandler := &InventoryInstanceDeleteHandler{Pantry: pantry}
+	inventoryWipeHandler := &InventoryWipeHandler{Pantry: pantry}
 
 	apiMux.HandleFunc("GET /api/inventory", HandleJSON(inventoryListHandler.Handle))
 	apiMux.HandleFunc("GET /api/inventory/{itemId}/instances", HandleJSON(inventoryInstancesListHandler.Handle))
 	apiMux.HandleFunc("POST /api/inventory/{itemId}/instances", HandleJSON(inventoryInstanceCreateHandler.Handle))
 	apiMux.HandleFunc("DELETE /api/inventory/instances/{instanceId}", HandleJSON(inventoryInstanceDeleteHandler.Handle))
+	apiMux.HandleFunc("POST /api/inventory/wipe", HandleJSON(inventoryWipeHandler.Handle))
 
 	// Suggestion and target-quantity handlers
 	consumptionLog := suggestion.NewConsumptionLog(db)
@@ -253,6 +266,7 @@ func newAPIMux(
 	// Shopping list handlers
 	shoppingList := shopping.NewStore(db)
 	connDir := connection.NewDirectory(db)
+	credentialVault := appcred.NewVault(db)
 	tokenBroker := connection.NewTokenBroker(connDir)
 	engine := cart.NewEngine(registry, ledger, tokenBroker)
 	engine.SetShoppingList(*shoppingList)
@@ -296,9 +310,15 @@ func newAPIMux(
 
 	// Cart integration handlers. connDir is created with the shopping list
 	// above so the provisioner and these routes share one directory.
+	var envFallback ProviderEnv
+	if cfg != nil {
+		envFallback = cfg.providerEnv
+	}
 	providersHandler := &ProvidersHandler{
 		Registry:      registry,
 		ConnectionDir: connDir,
+		Credentials:   credentialVault,
+		EnvFallback:   envFallback,
 	}
 
 	listProvidersHandler := &ListProvidersHandler{ProvidersHandler: *providersHandler}
@@ -316,6 +336,8 @@ func newAPIMux(
 	apiMux.HandleFunc("GET /api/providers/{providerId}/authorize", HandleJSON(providerAuthorizeHandler.Handle))
 	apiMux.HandleFunc("GET /api/providers/{providerId}/callback", HandleJSON(providerCallbackHandler.Handle))
 	apiMux.HandleFunc("DELETE /api/providers/{providerId}/connection", HandleJSON(providerDisconnectHandler.Handle))
+	apiMux.HandleFunc("PUT /api/providers/{providerId}/credentials", HandleJSON((&ProviderCredentialPutHandler{ProvidersHandler: *providersHandler}).Handle))
+	apiMux.HandleFunc("DELETE /api/providers/{providerId}/credentials", HandleJSON((&ProviderCredentialDeleteHandler{ProvidersHandler: *providersHandler}).Handle))
 	apiMux.HandleFunc("GET /api/providers/{providerId}/ledger", HandleJSON(providerLedgerGetHandler.Handle))
 	apiMux.HandleFunc("POST /api/providers/{providerId}/ledger/reset", HandleJSON(providerLedgerResetHandler.Handle))
 

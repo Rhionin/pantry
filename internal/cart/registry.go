@@ -124,8 +124,19 @@ func (r *Registry) List() []ProviderID {
 	return ids
 }
 
+// SetCredentialsConfigured updates the flag the HTTP layer checks. Saving or
+// clearing credentials in the UI changes it without restarting the process.
+func (r *Registry) SetCredentialsConfigured(id ProviderID, configured bool) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.credentialsConfigured == nil {
+		r.credentialsConfigured = make(map[ProviderID]bool)
+	}
+	r.credentialsConfigured[id] = configured
+}
+
 // CredentialsConfigured reports whether every credential the provider requires
-// was present when it was registered.
+// was present when it was registered or saved later.
 func (r *Registry) CredentialsConfigured(id ProviderID) bool {
 	r.mu.Lock()
 	defer r.mu.Unlock()

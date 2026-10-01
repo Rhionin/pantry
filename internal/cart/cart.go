@@ -214,6 +214,24 @@ type LineRemover interface {
 	RemoveLine(ctx context.Context, cred Credential, identity ProductIdentity) (ProvisionResult, error)
 }
 
+// AppCredentials is the non-secret view of one provider's application credentials.
+// ClientSecret is never part of this value.
+type AppCredentials struct {
+	ClientID    string
+	RedirectURI string
+	Modality    string
+	SecretSet   bool
+}
+
+// AppCredentialSink is implemented by a provider whose client id, client secret,
+// and redirect URI can be saved from the Pantry UI. The secret is accepted on
+// apply and never returned.
+type AppCredentialSink interface {
+	ApplyAppCredentials(clientID, clientSecret, redirectURI, modality string) error
+	ClearAppCredentials()
+	PublicAppCredentials() AppCredentials
+}
+
 // Credential applies one provider's authentication to an outbound request.
 type Credential interface {
 	Apply(req *http.Request)

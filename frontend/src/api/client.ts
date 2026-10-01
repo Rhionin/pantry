@@ -3,6 +3,7 @@
 // internal/server/server.go and the individual handler files.
 import type {
   BatchCommitResponse,
+  BuildInfo,
   InventoryItem,
   ItemInstance,
   ItemInstanceWithStatus,
@@ -202,6 +203,17 @@ export function removeItemInstance(instanceId: string): Promise<void> {
   return apiFetch(`/api/inventory/instances/${instanceId}`, { method: 'DELETE' });
 }
 
+// Exact phrase POST /api/inventory/wipe requires. Kept in sync with
+// inventoryWipeConfirmation in internal/server/handler_inventory_wipe.go.
+export const WIPE_INVENTORY_CONFIRMATION = 'WIPE INVENTORY';
+
+export function wipeInventory(confirmation: string): Promise<void> {
+  return apiFetch('/api/inventory/wipe', {
+    method: 'POST',
+    body: JSON.stringify({ confirmation }),
+  });
+}
+
 // --- Suggestions and target quantity ---
 
 export function getSuggestion(itemId: string): Promise<TargetQuantitySuggestion> {
@@ -258,6 +270,20 @@ export function listProviders(): Promise<ProviderInfo[]> {
   return apiFetch('/api/providers');
 }
 
+export function saveProviderCredentials(
+  providerId: string,
+  credentials: { clientId: string; clientSecret: string; redirectUri: string; modality: string },
+): Promise<void> {
+  return apiFetch(`/api/providers/${providerId}/credentials`, {
+    method: 'PUT',
+    body: JSON.stringify(credentials),
+  });
+}
+
+export function clearProviderCredentials(providerId: string): Promise<void> {
+  return apiFetch(`/api/providers/${providerId}/credentials`, { method: 'DELETE' });
+}
+
 export function authorizeProvider(providerId: string): Promise<{ authorizationUrl: string }> {
   return apiFetch(`/api/providers/${providerId}/authorize`);
 }
@@ -295,4 +321,10 @@ export function resolveUnknownProvision(entryId: string, provider: string, reach
     method: 'POST',
     body: JSON.stringify({ provider, reachedProvider }),
   });
+}
+
+// --- Build identity ---
+
+export function getBuildInfo(): Promise<BuildInfo> {
+  return apiFetch('/api/build');
 }

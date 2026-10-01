@@ -57,6 +57,55 @@ describe('ProviderPanel', () => {
     expect(screen.getByRole('button', { name: 'Start a new cart' })).toBeInTheDocument();
   });
 
+  it('saves credentials without showing a stored secret', async () => {
+    const onChanged = vi.fn();
+    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === '/api/providers/kroger/credentials' && init?.method === 'PUT') {
+        expect(init.body).toBe(JSON.stringify({
+          clientId: 'ui-client',
+          clientSecret: 'typed-once',
+          redirectUri: 'https://pantry.example/cb',
+          modality: 'PICKUP',
+        }));
+        return Promise.resolve(new Response(JSON.stringify({
+          clientId: 'ui-client',
+          redirectUri: 'https://pantry.example/cb',
+          modality: 'PICKUP',
+          secretSet: true,
+          source: 'saved',
+        }), { status: 200, headers: { 'Content-Type': 'application/json' } }));
+      }
+      return Promise.reject(new Error(`Unexpected request: ${url}`));
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    render(
+      <MantineProvider>
+        <ProviderPanel
+          providers={[provider({
+            credentialsConfigured: false,
+            credentials: {
+              clientId: '',
+              redirectUri: '',
+              modality: 'PICKUP',
+              secretSet: true,
+              source: 'none',
+            },
+          })]}
+          onChanged={onChanged}
+        />
+      </MantineProvider>,
+    );
+    expect(screen.getByLabelText('Client secret')).toHaveValue('');
+    expect(screen.getByText('A client secret is saved and is not shown.')).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText('Client ID'), { target: { value: 'ui-client' } });
+    fireEvent.change(screen.getByLabelText('Client secret'), { target: { value: 'typed-once' } });
+    fireEvent.change(screen.getByLabelText('Redirect URI'), { target: { value: 'https://pantry.example/cb' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save credentials' }));
+    await screen.findByRole('button', { name: 'Save credentials' });
+    expect(onChanged).toHaveBeenCalled();
+  });
+
   it('starts the authorization redirect', async () => {
     const assign = vi.fn();
     vi.stubGlobal('location', { assign });

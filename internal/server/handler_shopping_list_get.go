@@ -11,8 +11,8 @@ import (
 )
 
 // ShoppingListGetHandler handles GET /api/shopping-list.
-// It derives entries from inventory items with target quantities, merges with
-// manual entries, and returns the combined list.
+// It derives entries from inventory targets, pooling recognized store-brand
+// equivalents into one need, merges with manual entries, and returns the combined list.
 type ShoppingListGetHandler struct {
 	ShoppingList interface {
 		ListManualItems(ctx context.Context, userID string) ([]shopping.ShoppingListItem, error)
@@ -38,34 +38,23 @@ func (h *ShoppingListGetHandler) Handle(req Request[struct{}, struct{}]) ([]Shop
 
 	providerID := targetProviderID(req, h.Registry)
 	itemByID := make(map[string]inventory.Item, len(items))
-	instanceCount := make(map[string]int, len(items))
-
-	// Build DeriveInput for items that have a target quantity.
-	deriveInputs := make([]shopping.DeriveInput, 0, len(items))
 	for _, item := range items {
 		itemByID[item.ID] = item
-		instances, err := h.Pantry.ListItemInstances(req.Context, item.ID)
-		if err != nil {
-			return nil, InternalError(err)
-		}
-		instanceCount[item.ID] = len(instances)
-		if item.TargetQuantity == nil {
-			continue
-		}
-		deriveInputs = append(deriveInputs, shopping.DeriveInput{
-			ItemID:         item.ID,
-			TargetQuantity: *item.TargetQuantity,
-			CurrentCount:   len(instances),
-		})
 	}
 
-	derived := shopping.DeriveShoppingList(deriveInputs)
-	autoItems, err := h.ShoppingList.SyncDerivedItems(req.Context, userID, derived)
+	manualItems, err := h.ShoppingList.ListManualItems(req.Context, userID)
 	if err != nil {
 		return nil, InternalError(err)
 	}
 
-	manualItems, err := h.ShoppingList.ListManualItems(req.Context, userID)
+	counts, err := loadInstanceCounts(req.Context, h.Pantry.ListItemInstances, items)
+	instanceCount := counts
+	if err != nil {
+		return nil, InternalError(err)
+	}
+
+	derived := replenishmentEntries(items, counts, manualItems)
+	autoItems, err := h.ShoppingList.SyncDerivedItems(req.Context, userID, derived)
 	if err != nil {
 		return nil, InternalError(err)
 	}

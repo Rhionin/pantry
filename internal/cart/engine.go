@@ -388,37 +388,93 @@ func (e *Engine) getComputedEntries(ctx context.Context, providerID ProviderID, 
 	}
 
 	itemNames := make(map[string]string, len(pantryItems))
+	itemUnits := make(map[string]string, len(pantryItems))
 	itemProductIDs := make(map[string]string, len(pantryItems))
-	derivedEntries := make([]shopping.DerivedEntry, 0)
 	manualIDs := make(map[string]struct{}, len(manualItems))
 	for _, item := range manualItems {
 		manualIDs[item.ItemID] = struct{}{}
 	}
+	needs := make([]shopping.ReplenishmentItem, 0, len(pantryItems))
+	replenishQty := make(map[string]int)
 	for _, item := range pantryItems {
 		itemProductIDs[item.ID] = item.ProductID
 		name := "Unknown"
-		if item.Product != nil && item.Product.Name != "" {
-			name = item.Product.Name
+		unit := ""
+		if item.Product != nil {
+			if item.Product.Name != "" {
+				name = item.Product.Name
+			}
+			unit = item.Product.UnitOfMeasure
 		}
 		itemNames[item.ID] = name
+		itemUnits[item.ID] = unit
 
+		mode := shopping.ReplenishmentMode(item.ReplenishmentMode)
+		if mode == "" {
+			mode = shopping.TargetMode
+		}
 		_, hasLedger := ledger[item.ID]
 		consumed := consumedSince(consumedAt[item.ID], ledger[item.ID].Boundary, hasLedger)
-		qty := shopping.ComputeQuantity(
-			consumed,
-			ledger[item.ID].Requested,
-			item.TargetQuantity,
-			instancesByItem[item.ID],
-			shopping.ReplenishmentMode(item.ReplenishmentMode),
-		)
-		if qty > 0 {
-			derivedEntries = append(derivedEntries, shopping.DerivedEntry{
-				ItemID:   item.ID,
-				Quantity: qty,
-				Source:   "auto",
-			})
+		need := shopping.ReplenishmentItem{
+			ItemID:        item.ID,
+			Name:          name,
+			UnitOfMeasure: unit,
+			CurrentCount:  instancesByItem[item.ID],
+		}
+		if mode == shopping.ReplenishMode {
+			replenishQty[item.ID] = shopping.ComputeQuantity(
+				consumed,
+				ledger[item.ID].Requested,
+				item.TargetQuantity,
+				instancesByItem[item.ID],
+				mode,
+			)
+		} else if item.TargetQuantity != nil {
+			need.HasTarget = true
+			need.TargetQuantity = *item.TargetQuantity
+		}
+		needs = append(needs, need)
+	}
+	derivedEntries := shopping.DeriveShoppingList(shopping.CollapseEquivalentNeeds(needs, manualIDs))
+	for i := range derivedEntries {
+		qty := derivedEntries[i].Quantity - ledger[derivedEntries[i].ItemID].Requested
+		if qty < 0 {
+			qty = 0
+		}
+		derivedEntries[i].Quantity = qty
+	}
+	pooled := make(map[string]struct{}, len(derivedEntries))
+	for _, entry := range derivedEntries {
+		if entry.Quantity < 1 {
+			continue
+		}
+		pooled[entry.ItemID] = struct{}{}
+		for id := range itemNames {
+			if shopping.SameNeed(itemNames[entry.ItemID], itemUnits[entry.ItemID], itemNames[id], itemUnits[id]) {
+				pooled[id] = struct{}{}
+			}
 		}
 	}
+	for id, qty := range replenishQty {
+		if qty < 1 {
+			continue
+		}
+		if _, ok := pooled[id]; ok {
+			continue
+		}
+		derivedEntries = append(derivedEntries, shopping.DerivedEntry{
+			ItemID:   id,
+			Quantity: qty,
+			Source:   "auto",
+		})
+	}
+	positive := derivedEntries[:0]
+	for _, entry := range derivedEntries {
+		if entry.Quantity > 0 {
+			positive = append(positive, entry)
+		}
+	}
+	derivedEntries = positive
 
 	manualEntries := make([]shopping.ManualEntry, 0, len(manualItems))
 	for _, item := range manualItems {

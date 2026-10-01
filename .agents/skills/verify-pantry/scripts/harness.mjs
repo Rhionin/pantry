@@ -12,20 +12,13 @@
 // through scripts/pantry-verify.sh so the servers exist and are torn down.
 // @playwright/test ships as CommonJS; import the default and destructure.
 import { createRequire } from 'node:module';
-import { existsSync } from 'node:fs';
 import { mkdir, writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 const require = createRequire(import.meta.url);
-const playwrightCandidates = [
-  '/projects/sandbox/pantry/frontend/node_modules/@playwright/test',
-  new URL('../../../../frontend/node_modules/@playwright/test', import.meta.url).pathname,
-];
-const playwrightPath = playwrightCandidates.find((candidate) => existsSync(candidate));
-if (!playwrightPath) {
-  throw new Error(`@playwright/test not found. Tried: ${playwrightCandidates.join(', ')}`);
-}
-const { chromium } = require(playwrightPath);
+const scriptDir = dirname(fileURLToPath(import.meta.url));
+const { chromium } = require(join(scriptDir, '../../../../frontend/node_modules/@playwright/test'));
 
 export const WEB_URL = process.env.PANTRY_WEB_URL ?? 'http://127.0.0.1:5173';
 export const API_URL = process.env.PANTRY_API_URL ?? 'http://127.0.0.1:18080';

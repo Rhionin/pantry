@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/Rhionin/pantry/internal/cart"
@@ -23,6 +24,7 @@ const (
 
 // Adapter implements Kroger's Cart API.
 type Adapter struct {
+	mu           sync.RWMutex
 	baseURL      string
 	transport    http.RoundTripper
 	clientID     string
@@ -31,6 +33,60 @@ type Adapter struct {
 	modality     string
 	timeout      time.Duration
 	rand         io.Reader
+}
+
+// ApplyAppCredentials replaces the application credentials used for OAuth and
+// cart calls. The secret stays on the adapter and is not returned by
+// PublicAppCredentials.
+func (a *Adapter) ApplyAppCredentials(clientID, clientSecret, redirectURI, modality string) error {
+	if clientID == "" {
+		return fmt.Errorf("client_id cannot be empty")
+	}
+	if clientSecret == "" {
+		return fmt.Errorf("client_secret cannot be empty")
+	}
+	if redirectURI == "" {
+		return fmt.Errorf("redirect_uri cannot be empty")
+	}
+	if modality != "PICKUP" && modality != "DELIVERY" {
+		return fmt.Errorf("invalid modality %q: must be PICKUP or DELIVERY", modality)
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.clientID = clientID
+	a.clientSecret = clientSecret
+	a.redirectURI = redirectURI
+	a.modality = modality
+	return nil
+}
+
+// ClearAppCredentials drops the application credentials. Modality returns to
+// the default pickup value.
+func (a *Adapter) ClearAppCredentials() {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.clientID = ""
+	a.clientSecret = ""
+	a.redirectURI = ""
+	a.modality = "PICKUP"
+}
+
+// PublicAppCredentials returns the non-secret credential fields.
+func (a *Adapter) PublicAppCredentials() cart.AppCredentials {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+	return cart.AppCredentials{
+		ClientID:    a.clientID,
+		RedirectURI: a.redirectURI,
+		Modality:    a.modality,
+		SecretSet:   a.clientSecret != "",
+	}
+}
+
+func (a *Adapter) credentials() (clientID, clientSecret, redirectURI, modality string) {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+	return a.clientID, a.clientSecret, a.redirectURI, a.modality
 }
 
 // New creates a new Kroger adapter.
@@ -170,12 +226,13 @@ func (o *oauthFlow) AuthorizationScope() string {
 
 // AuthorizationURL generates the authorization URL for OAuth2 flow.
 func (o *oauthFlow) AuthorizationURL(state string) (string, error) {
+	clientID, _, redirectURI, _ := o.adapter.credentials()
 	// Build the authorization URL
 	url := fmt.Sprintf("%s/v1/connect/oauth2/authorize", o.adapter.baseURL)
 	params := fmt.Sprintf(
 		"client_id=%s&redirect_uri=%s&scope=%s&response_type=code&state=%s",
-		o.adapter.clientID,
-		urlQueryEscape(o.adapter.redirectURI),
+		clientID,
+		urlQueryEscape(redirectURI),
 		urlQueryEscape(o.AuthorizationScope()),
 		urlQueryEscape(state),
 	)
@@ -187,15 +244,16 @@ func (o *oauthFlow) ExchangeCode(ctx context.Context, code string) (cart.TokenSe
 	ctx, cancel := context.WithTimeout(ctx, o.adapter.timeout)
 	defer cancel()
 
+	clientID, clientSecret, redirectURI, _ := o.adapter.credentials()
 	req, err := http.NewRequestWithContext(ctx, "POST",
 		fmt.Sprintf("%s/v1/connect/oauth2/token", o.adapter.baseURL),
 		strings.NewReader(fmt.Sprintf("code=%s&grant_type=authorization_code&client_id=%s&redirect_uri=%s",
-			urlQueryEscape(code), o.adapter.clientID, urlQueryEscape(o.adapter.redirectURI))))
+			urlQueryEscape(code), clientID, urlQueryEscape(redirectURI))))
 	if err != nil {
 		return cart.TokenSet{}, fmt.Errorf("failed to create exchange request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	req.SetBasicAuth(o.adapter.clientID, o.adapter.clientSecret)
+	req.SetBasicAuth(clientID, clientSecret)
 
 	transport := o.adapter.transport
 	if transport == nil {
@@ -238,15 +296,16 @@ func (o *oauthFlow) RefreshAccessToken(ctx context.Context, refreshToken string)
 	ctx, cancel := context.WithTimeout(ctx, o.adapter.timeout)
 	defer cancel()
 
+	clientID, clientSecret, _, _ := o.adapter.credentials()
 	req, err := http.NewRequestWithContext(ctx, "POST",
 		fmt.Sprintf("%s/v1/connect/oauth2/token", o.adapter.baseURL),
 		strings.NewReader(fmt.Sprintf("grant_type=refresh_token&refresh_token=%s&client_id=%s",
-			urlQueryEscape(refreshToken), o.adapter.clientID)))
+			urlQueryEscape(refreshToken), clientID)))
 	if err != nil {
 		return cart.TokenSet{}, fmt.Errorf("failed to create refresh request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	req.SetBasicAuth(o.adapter.clientID, o.adapter.clientSecret)
+	req.SetBasicAuth(clientID, clientSecret)
 
 	transport := o.adapter.transport
 	if transport == nil {
@@ -297,6 +356,7 @@ func (s *serverPush) Add(ctx context.Context, cred cart.Credential, req cart.Pro
 	defer cancel()
 
 	// Build the request payload
+	_, _, _, modality := s.adapter.credentials()
 	payload := struct {
 		Items []struct {
 			UPC      string `json:"upc"`
@@ -305,7 +365,7 @@ func (s *serverPush) Add(ctx context.Context, cred cart.Credential, req cart.Pro
 		} `json:"items"`
 		Modality string `json:"modality,omitempty"`
 	}{
-		Modality: s.adapter.modality,
+		Modality: modality,
 	}
 
 	for _, line := range req.Lines {
@@ -330,7 +390,7 @@ func (s *serverPush) Add(ctx context.Context, cred cart.Credential, req cart.Pro
 		}{
 			UPC:      string(line.Identity),
 			Quantity: line.Quantity,
-			Modality: s.adapter.modality,
+			Modality: modality,
 		})
 	}
 
@@ -409,8 +469,9 @@ func urlQueryEscape(s string) string {
 }
 
 var (
-	_ cart.Provider        = (*Adapter)(nil)
-	_ cart.OAuthFlow       = (*Adapter)(nil)
-	_ cart.ServerPush      = (*Adapter)(nil)
-	_ cart.DerivedIdentity = (*Adapter)(nil)
+	_ cart.Provider          = (*Adapter)(nil)
+	_ cart.OAuthFlow         = (*Adapter)(nil)
+	_ cart.ServerPush        = (*Adapter)(nil)
+	_ cart.DerivedIdentity   = (*Adapter)(nil)
+	_ cart.AppCredentialSink = (*Adapter)(nil)
 )

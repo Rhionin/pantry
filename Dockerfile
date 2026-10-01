@@ -1,6 +1,8 @@
 # syntax=docker/dockerfile:1
 
 ARG COMMIT_HASH=unknown
+ARG COMMIT_TIME=
+ARG COMMIT_SUBJECT_B64=
 
 # Frontend build stage
 FROM --platform=$BUILDPLATFORM node:24-alpine AS frontend
@@ -19,8 +21,20 @@ RUN go mod download
 COPY . .
 COPY --from=frontend /src/frontend/dist/ ./internal/webui/assets/
 RUN mkdir -p /data
-RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} \
-    go build -trimpath -ldflags="-s -w" -o /out/pantry-server ./cmd/server
+# Redeclared so this stage inherits the global build-args. Docker exports
+# those args into this shell, which expands ${COMMIT_*}. $$COMMIT_HASH must
+# not be used: $$ is the shell's PID, so the binary is stamped with
+# 1COMMIT_HASH. The subject arrives base64-encoded so quotes and spaces
+# never enter this line.
+ARG COMMIT_HASH
+ARG COMMIT_TIME
+ARG COMMIT_SUBJECT_B64
+RUN case "${COMMIT_HASH}" in *COMMIT_HASH*) echo "COMMIT_HASH was not substituted" >&2; exit 1 ;; esac; \
+    case "${COMMIT_TIME}" in *COMMIT_TIME*) echo "COMMIT_TIME was not substituted" >&2; exit 1 ;; esac; \
+    CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} \
+    go build -trimpath \
+    -ldflags="-s -w -X github.com/Rhionin/pantry/internal/buildinfo.Commit=${COMMIT_HASH} -X github.com/Rhionin/pantry/internal/buildinfo.CommittedAt=${COMMIT_TIME} -X github.com/Rhionin/pantry/internal/buildinfo.subjectStamp=${COMMIT_SUBJECT_B64}" \
+    -o /out/pantry-server ./cmd/server
 
 # Runtime stage
 FROM gcr.io/distroless/static-debian12:nonroot

@@ -9,6 +9,7 @@ import (
 	"net/url"
 
 	"github.com/Rhionin/pantry/internal/cart"
+	"github.com/Rhionin/pantry/internal/cart/appcred"
 	"github.com/Rhionin/pantry/internal/cart/connection"
 )
 
@@ -16,6 +17,23 @@ import (
 type ProvidersHandler struct {
 	Registry      *cart.Registry
 	ConnectionDir *connection.Directory
+	Credentials   *appcred.Vault
+	EnvFallback   ProviderEnv
+}
+
+// ProviderEnv is the deploy-time credential fallback. It is never written to a
+// response. A saved row overrides it until that row is cleared.
+type ProviderEnv struct {
+	ClientID     string
+	ClientSecret string
+	RedirectURI  string
+	Modality     string
+	Disabled     bool
+}
+
+// Complete reports whether the environment can configure a provider by itself.
+func (e ProviderEnv) Complete() bool {
+	return !e.Disabled && e.ClientID != "" && e.ClientSecret != "" && e.RedirectURI != ""
 }
 
 // ProviderInfo represents information about a registered provider.
@@ -25,6 +43,16 @@ type ProviderInfo struct {
 	Capabilities          ProviderCapabilities `json:"capabilities"`
 	ConnectionState       string               `json:"connectionState"`
 	CredentialsConfigured bool                 `json:"credentialsConfigured"`
+	Credentials           *CredentialView      `json:"credentials,omitempty"`
+}
+
+// CredentialView is safe to return from GET. It never includes a client secret.
+type CredentialView struct {
+	ClientID    string `json:"clientId"`
+	RedirectURI string `json:"redirectUri"`
+	Modality    string `json:"modality"`
+	SecretSet   bool   `json:"secretSet"`
+	Source      string `json:"source"`
 }
 
 // ProviderCapabilities represents the five capability dimensions of a provider.
@@ -59,7 +87,7 @@ func (h *ListProvidersHandler) Handle(req Request[struct{}, struct{}]) ([]Provid
 		if err != nil {
 			return nil, InternalError(err)
 		}
-		infos = append(infos, ProviderInfo{
+		info := ProviderInfo{
 			ID:          string(id),
 			DisplayName: provider.DisplayName(),
 			Capabilities: ProviderCapabilities{
@@ -71,7 +99,15 @@ func (h *ListProvidersHandler) Handle(req Request[struct{}, struct{}]) ([]Provid
 			},
 			ConnectionState:       state,
 			CredentialsConfigured: h.Registry.CredentialsConfigured(id),
-		})
+		}
+		if _, ok := provider.(cart.AppCredentialSink); ok {
+			view, viewErr := h.credentialView(req.Context, provider)
+			if viewErr != nil {
+				return nil, InternalError(viewErr)
+			}
+			info.Credentials = &view
+		}
+		infos = append(infos, info)
 	}
 	return infos, nil
 }

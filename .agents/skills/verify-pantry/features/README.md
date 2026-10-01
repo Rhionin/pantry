@@ -77,3 +77,6 @@ behavior, then uses exactly these four H2 sections in order:
 - [Shopping list](./shopping-list.md) — derive a restock gap from a target
   quantity, or add an item manually, then mark it purchased. Proven end to end by
   `scripts/drive-shopping-list.mjs`.
+- [Wipe inventory](./wipe-inventory.md) — type `WIPE INVENTORY` to clear stock
+  without deleting the product lookup cache. Proven end to end by
+  `scripts/drive-wipe-inventory.mjs`.
