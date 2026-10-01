@@ -1,6 +1,7 @@
 // Typed fetch wrappers for the Pantry Management backend API.
 // Endpoint list and request/response shapes verified against
 // internal/server/server.go and the individual handler files.
+import { reportApiResult } from '../telemetry/client';
 import type {
   BatchCommitResponse,
   BuildInfo,
@@ -37,7 +38,15 @@ async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
     headers.set('Content-Type', 'application/json');
   }
 
-  const res = await fetch(`${BASE_URL}${path}`, { ...options, headers });
+  const started = performance.now();
+  const route = path.split('?')[0] ?? path;
+  let res: Response;
+  try {
+    res = await fetch(`${BASE_URL}${path}`, { ...options, headers });
+  } catch (err) {
+    reportApiResult(route, 0, performance.now() - started);
+    throw err;
+  }
 
   if (!res.ok) {
     let message = res.statusText;
@@ -49,12 +58,14 @@ async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
     } catch {
       // Response body was not JSON; fall back to statusText.
     }
+    reportApiResult(route, res.status, performance.now() - started);
     throw new ApiError(res.status, message);
   }
 
   // DELETE endpoints return `{}` with a 200 status (see handler_wrapper.go),
   // not an empty 204 body, but callers of those endpoints don't need the value.
   const text = await res.text();
+  reportApiResult(route, res.status, performance.now() - started);
   return text ? (JSON.parse(text) as T) : (undefined as T);
 }
 

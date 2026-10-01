@@ -12,7 +12,7 @@ class FakeEventSource {
 
   readonly url: string;
   closed = false;
-  private readonly listeners = new Map<string, (event: MessageEvent) => void>();
+  private readonly listeners = new Map<string, Array<(event: MessageEvent) => void>>();
 
   constructor(url: string) {
     this.url = url;
@@ -20,7 +20,9 @@ class FakeEventSource {
   }
 
   addEventListener(type: string, listener: (event: MessageEvent) => void) {
-    this.listeners.set(type, listener);
+    const current = this.listeners.get(type) ?? [];
+    current.push(listener);
+    this.listeners.set(type, current);
   }
 
   close() {
@@ -28,11 +30,13 @@ class FakeEventSource {
   }
 
   hasListener(type: string) {
-    return this.listeners.has(type);
+    return (this.listeners.get(type)?.length ?? 0) > 0;
   }
 
   dispatch(type: string, payload: unknown) {
-    this.listeners.get(type)?.({ data: JSON.stringify(payload) } as MessageEvent);
+    for (const listener of this.listeners.get(type) ?? []) {
+      listener({ data: JSON.stringify(payload) } as MessageEvent);
+    }
   }
 }
 
@@ -136,7 +140,7 @@ describe('InventoryPage', () => {
 
     const eventSource = FakeEventSource.instances[0];
     expect(eventSource.url).toBe('/api/events');
-    expect(eventSource.hasListener('error')).toBe(false);
+    expect(eventSource.hasListener('error')).toBe(true);
 
     eventSource.dispatch('inventory', inventoryItem('bread', 'Sourdough', 'Bakery', true));
 
