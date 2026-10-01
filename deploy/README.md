@@ -144,6 +144,8 @@ All configuration is handled through environment variables in `/opt/pantry/.env`
 | `PRODUCT_CACHE_TTL` | `720h` | How long to cache product lookups (720h = 30 days) |
 | `PRODUCT_MISS_TTL` | `168h` | How long to cache "not found" results (168h = 7 days) |
 | `DISABLE_EXTERNAL_PRODUCT_LOOKUP` | `false` | Set to `true` to disable external API calls for product information |
+| `PANTRY_RETAILER_API_KEY` | empty | Store price API key. Leave empty until a retailer adapter and credentials exist. Noted sales in the app still apply |
+| `PANTRY_RETAILER_API_URL` | empty | Reserved base URL for that store price adapter |
 | `STOCK_IN_CONTROL_BARCODE` | `STOCK_IN` | Barcode to scan for switching scanner to "stock in" mode |
 | `STOCK_OUT_CONTROL_BARCODE` | `STOCK_OUT` | Barcode to scan for switching scanner to "stock out" mode |
 | `HEADLESS_USER_ID` | `user-1` | User ID for headless scan operations (when no user is logged in) |

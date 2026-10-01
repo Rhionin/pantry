@@ -17,7 +17,7 @@ import (
 )
 
 // TestMigrationApplies verifies that RunMigrations applies the initial schema
-// to an in-memory SQLite database and that all 9 expected tables are created.
+// to an in-memory SQLite database and that every expected table is created.
 func TestMigrationApplies(t *testing.T) {
 	conn, err := sql.Open("sqlite", ":memory:")
 	if err != nil {
@@ -57,8 +57,10 @@ func TestMigrationApplies(t *testing.T) {
 	want := []string{
 		"barcode_misses",
 		"barcodes",
+		"brand_preferences",
 		"consumption_events",
 		"fulfillment_ledger",
+		"item_deals",
 		"item_instances",
 		"items",
 		"products",
@@ -98,17 +100,15 @@ func TestMigrationIsIdempotent(t *testing.T) {
 
 	// One schema_migrations row per applied .sql file; the second RunMigrations
 	// must not re-apply any file, so the count equals the number of migration
-	// files (currently 001_initial_schema.sql, 002_backfill_orphaned_products.sql,
-	// 003_add_product_image_url.sql, 004_add_product_freshness.sql,
-	// 005_add_external_source_and_barcode_misses.sql,
+	// files (001 through 005, 006_brand_preferences_and_deals.sql,
 	// 006_replace_cart_integrations_with_provider_ledger.sql, and
 	// 007_provider_app_credentials.sql).
 	var count int
 	if err := conn.QueryRow(`SELECT COUNT(*) FROM schema_migrations`).Scan(&count); err != nil {
 		t.Fatalf("count schema_migrations: %v", err)
 	}
-	if count != 7 {
-		t.Errorf("schema_migrations should have 7 rows after two runs, got %d", count)
+	if count != 8 {
+		t.Errorf("schema_migrations should have 8 rows after two runs, got %d", count)
 	}
 }
 

@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, within } from '@testing-library/react';
 import { MantineProvider } from '@mantine/core';
 import { ScanQueuePage } from './ScanQueuePage';
@@ -12,7 +12,7 @@ class FakeEventSource {
 
   readonly url: string;
   closed = false;
-  private readonly listeners = new Map<string, (event: MessageEvent) => void>();
+  private readonly listeners = new Map<string, Array<(event: MessageEvent) => void>>();
 
   constructor(url: string) {
     this.url = url;
@@ -20,7 +20,9 @@ class FakeEventSource {
   }
 
   addEventListener(type: string, listener: (event: MessageEvent) => void) {
-    this.listeners.set(type, listener);
+    const current = this.listeners.get(type) ?? [];
+    current.push(listener);
+    this.listeners.set(type, current);
   }
 
   close() {
@@ -28,11 +30,13 @@ class FakeEventSource {
   }
 
   hasListener(type: string) {
-    return this.listeners.has(type);
+    return (this.listeners.get(type)?.length ?? 0) > 0;
   }
 
   dispatch(type: string, payload: unknown) {
-    this.listeners.get(type)?.({ data: JSON.stringify(payload) } as MessageEvent);
+    for (const listener of this.listeners.get(type) ?? []) {
+      listener({ data: JSON.stringify(payload) } as MessageEvent);
+    }
   }
 }
 
@@ -359,7 +363,7 @@ describe('ScanQueuePage', () => {
 
     const eventSource = FakeEventSource.instances[0];
     expect(eventSource.url).toBe('/api/events');
-    expect(eventSource.hasListener('error')).toBe(false);
+    expect(eventSource.hasListener('error')).toBe(true);
 
     const callCountBeforeEvent = fetchMock.mock.calls.length;
     eventSource.dispatch('scan', scanEntry({ id: 'pushed', barcode: '999' }));
@@ -1573,6 +1577,140 @@ describe('ScanQueuePage', () => {
 
       await vi.waitFor(() => expect(within(stockInTab).queryByText(/\d/)).not.toBeInTheDocument());
       expect(stockInTab).toBeInTheDocument();
+    });
+  });
+
+  describe('camera scanning', () => {
+    const originalBarcodeDetector = window.BarcodeDetector;
+    const originalPlay = HTMLMediaElement.prototype.play;
+    const originalSecure = window.isSecureContext;
+
+    afterEach(() => {
+      if (originalBarcodeDetector === undefined) {
+        delete window.BarcodeDetector;
+      } else {
+        window.BarcodeDetector = originalBarcodeDetector;
+      }
+      HTMLMediaElement.prototype.play = originalPlay;
+      Object.defineProperty(window, 'isSecureContext', { configurable: true, value: originalSecure });
+      vi.unstubAllGlobals();
+      vi.restoreAllMocks();
+    });
+
+    function queueFetch(options: {
+      mode?: 'stock_in' | 'stock_out';
+      connected?: boolean;
+      onScan?: (body: { barcode: string; direction?: string }) => ScanEntry;
+      onMode?: (mode: string) => void;
+    }) {
+      const created: ScanEntry[] = [];
+      return vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (url.endsWith('/api/scanner/mode') && init?.method === 'POST') {
+          const body = init.body ? (JSON.parse(String(init.body)) as { mode: string }) : { mode: '' };
+          options.onMode?.(body.mode);
+          return Promise.resolve(jsonResponse({ mode: body.mode }));
+        }
+        if (url.endsWith('/api/scanner/config')) {
+          return Promise.resolve(jsonResponse({
+            stockInBarcode: 'STOCK_IN',
+            stockOutBarcode: 'STOCK_OUT',
+            currentMode: options.mode ?? 'stock_in',
+            connected: options.connected ?? false,
+          }));
+        }
+        if (url.endsWith('/api/scans') && init?.method === 'POST') {
+          const body = init.body
+            ? (JSON.parse(String(init.body)) as { barcode: string; direction?: string })
+            : { barcode: '' };
+          const entry = options.onScan?.(body) ?? scanEntry({
+            id: 'created',
+            barcode: body.barcode,
+            direction: (body.direction ?? 'stock_in') as ScanEntry['direction'],
+          });
+          created.push(entry);
+          return Promise.resolve(jsonResponse(entry));
+        }
+        if (url.includes('status=pending')) return Promise.resolve(jsonResponse(created));
+        if (url.includes('status=flagged')) return Promise.resolve(jsonResponse([]));
+        if (url === '/api/inventory' || url === '/api/products') return Promise.resolve(jsonResponse([]));
+        throw new Error(`Unexpected request: ${url}`);
+      });
+    }
+
+    function installDetector(rawValue: string) {
+      Object.defineProperty(window, 'isSecureContext', { configurable: true, value: true });
+      const stop = vi.fn();
+      const getUserMedia = vi.fn().mockResolvedValue({ getTracks: () => [{ stop }] });
+      vi.stubGlobal('navigator', {
+        ...navigator,
+        mediaDevices: {
+          getUserMedia,
+          enumerateDevices: vi.fn().mockResolvedValue([]),
+        },
+      });
+      HTMLMediaElement.prototype.play = vi.fn().mockResolvedValue(undefined);
+      window.BarcodeDetector = vi.fn(function BarcodeDetector() {
+        return { detect: vi.fn().mockResolvedValue([{ rawValue }]) };
+      }) as unknown as typeof window.BarcodeDetector;
+      return getUserMedia;
+    }
+
+    it('points a disconnected hardware scanner at the camera and does not open it yet', async () => {
+      const getUserMedia = vi.fn();
+      vi.stubGlobal('navigator', { ...navigator, mediaDevices: { getUserMedia } });
+      vi.stubGlobal('fetch', queueFetch({ connected: false }));
+
+      render(<MantineProvider><ScanQueuePage /></MantineProvider>);
+
+      expect(await screen.findByText('Scanner disconnected')).toBeInTheDocument();
+      expect(screen.getByText(/scan with this device's camera instead/i)).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Scan with camera' })).toBeInTheDocument();
+      expect(getUserMedia).not.toHaveBeenCalled();
+    });
+
+    it('enqueues a camera barcode in the current scanner mode', async () => {
+      installDetector('0123456789012');
+      const posts: Array<{ barcode: string; direction?: string }> = [];
+      vi.stubGlobal('fetch', queueFetch({
+        mode: 'stock_out',
+        connected: false,
+        onScan: (body) => {
+          posts.push(body);
+          return scanEntry({ id: 'created', barcode: body.barcode, direction: 'stock_out' });
+        },
+      }));
+
+      render(<MantineProvider><ScanQueuePage /></MantineProvider>);
+      expect(await screen.findByText('STOCK OUT')).toBeInTheDocument();
+
+      fireEvent.click(screen.getByRole('button', { name: 'Scan with camera' }));
+
+      expect(await screen.findByText('Barcode: 0123456789012')).toBeInTheDocument();
+      expect(posts).toEqual([{ barcode: '0123456789012', direction: 'stock_out', userId: 'user-1' }]);
+    });
+
+    it('treats a camera read of a control barcode as a mode switch', async () => {
+      installDetector('STOCK_IN');
+      const posts: string[] = [];
+      const modes: string[] = [];
+      vi.stubGlobal('fetch', queueFetch({
+        mode: 'stock_out',
+        onScan: (body) => {
+          posts.push(body.barcode);
+          return scanEntry({ barcode: body.barcode });
+        },
+        onMode: (mode) => modes.push(mode),
+      }));
+
+      render(<MantineProvider><ScanQueuePage /></MantineProvider>);
+      expect(await screen.findByText('STOCK OUT')).toBeInTheDocument();
+
+      fireEvent.click(screen.getByRole('button', { name: 'Scan with camera' }));
+
+      expect(await screen.findByText('STOCK IN')).toBeInTheDocument();
+      expect(modes).toContain('stock_in');
+      expect(posts).not.toContain('STOCK_IN');
     });
   });
 });

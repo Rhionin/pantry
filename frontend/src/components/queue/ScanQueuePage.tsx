@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { trackEventSource } from '../../telemetry/client';
 import { Alert, Badge, Checkbox, Loader, Tabs, SimpleGrid, Stack, Text, Title } from '@mantine/core';
 import { createScanEntry, getInventoryList, getScannerConfig, listScanEntries, setScannerMode } from '../../api/client';
 import type { InventoryItem, ProcessingFailure, ProcessingNotice, ScanEntry, ScannerConfig } from '../../types';
 import { BarcodeInputField } from '../scanner/BarcodeInputField';
+import { CameraScanner } from '../scanner/CameraScanner';
 import { BatchReviewPanel } from './BatchReviewPanel';
 import { ProcessingScanCard } from './ProcessingScanCard';
 import { ScanEntryCard } from './ScanEntryCard';
@@ -127,6 +129,7 @@ export const ScanQueuePage = ({ userId = DEFAULT_USER_ID }: ScanQueuePageProps) 
 
   useEffect(() => {
     const eventSource = new EventSource('/api/events');
+    trackEventSource(eventSource);
     eventSource.addEventListener('scan', (message) => {
       const scanEntry = JSON.parse((message as MessageEvent).data) as ScanEntry;
       setEntries((current) => {
@@ -215,9 +218,10 @@ export const ScanQueuePage = ({ userId = DEFAULT_USER_ID }: ScanQueuePageProps) 
         <Alert color={scannerConnected ? 'green' : 'red'} py="xs" title={scannerConnected ? 'Scanner connected' : 'Scanner disconnected'}>
           {scannerConnected
             ? 'The barcode scanner is connected.'
-            : 'The barcode scanner is not connected.'}
+            : 'The barcode scanner is not connected. You can scan with this device\'s camera instead.'}
         </Alert>
       )}
+      <CameraScanner onScan={(barcode) => void captureBarcode(barcode)} />
       <Alert color={scannerMode === 'stock_in' ? 'blue' : 'orange'} py="xs" title={`Mode: ${scannerMode}`}>
         Current scanner mode: <strong>{scannerMode === 'stock_in' ? 'STOCK IN' : 'STOCK OUT'}</strong>
       </Alert>

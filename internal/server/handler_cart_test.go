@@ -364,6 +364,52 @@ func TestCartHTTP(t *testing.T) {
 				},
 			),
 		},
+		{
+			name: "accepted sale is the brand a configured provider receives",
+			setup: func(env testEnv) {
+				createItemViaStockIn(env.T, env.DB, env.ProductStore, "user-1", "prod-swap-gv", "Great Value Cut Green Beans", "item-swap-gv")
+				createItemViaStockIn(env.T, env.DB, env.ProductStore, "user-1", "prod-swap-kr", "Kroger Cut Green Beans", "item-swap-kr")
+				setTargetQuantity(env.T, env.DB, "item-swap-gv", 4)
+				setTargetQuantity(env.T, env.DB, "item-swap-kr", 4)
+				if err := env.ProductStore.UpsertBarcodeMapping(context.Background(), "000333333331", "prod-swap-kr", "global", ""); err != nil {
+					env.T.Fatalf("barcode: %v", err)
+				}
+				script := carttest.NewScript().
+					WithDispositions(cart.DispositionAccepted).
+					WithIdentityLookup("000333333331", cart.ProductIdentity("sale-beans"))
+				provider := carttest.NewFake(cart.Capabilities{
+					Auth:         cart.AuthNone,
+					Delivery:     cart.DeliveryServerPush,
+					Confirmation: cart.ConfirmPerRequest,
+					Mutation:     cart.MutateAddOnly,
+					Identity:     cart.IdentityDerived,
+				}, script)
+				if err := env.Registry.Register(provider, cart.WithCredentialsConfigured(true)); err != nil {
+					env.T.Fatalf("register: %v", err)
+				}
+			},
+			httpExchange: httpExchange{
+				method:         "POST",
+				path:           "/api/shopping-list/export",
+				body:           `{"provider":"test-none-server_push","useItemIds":{"item-swap-gv":"item-swap-kr"}}`,
+				expectedStatus: http.StatusOK,
+				assertions: []assertion{
+					{path: "$.exported", value: float64(1)},
+					{path: "$.entries[0].itemId", value: "item-swap-kr"},
+					{path: "$.entries[0].outcome", value: "confirmed"},
+					{path: "$.items[0].itemId", value: "item-swap-kr"},
+				},
+			},
+			afterRequest: exchanges(httpExchange{
+				method:         "GET",
+				path:           "/api/providers/test-none-server_push/ledger",
+				expectedStatus: http.StatusOK,
+				assertions: []assertion{
+					{path: "$.entries[0].itemId", value: "item-swap-kr"},
+					{path: "$.entries[0].requested", value: float64(2)},
+				},
+			}),
+		},
 	}
 
 	runHandlerTests(t, tests)

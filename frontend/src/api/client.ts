@@ -1,6 +1,7 @@
 // Typed fetch wrappers for the Pantry Management backend API.
 // Endpoint list and request/response shapes verified against
 // internal/server/server.go and the individual handler files.
+import { reportApiResult } from '../telemetry/client';
 import type {
   BatchCommitResponse,
   BuildInfo,
@@ -16,6 +17,7 @@ import type {
   ProvisionReport,
   ProviderInfo,
   ReplenishmentMode,
+  ShoppingConsiderations,
   ShoppingListEntry,
   TargetQuantitySuggestion,
 } from '../types';
@@ -40,7 +42,15 @@ async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
     headers.set('Content-Type', 'application/json');
   }
 
-  const res = await fetch(`${BASE_URL}${path}`, { ...options, headers });
+  const started = performance.now();
+  const route = path.split('?')[0] ?? path;
+  let res: Response;
+  try {
+    res = await fetch(`${BASE_URL}${path}`, { ...options, headers });
+  } catch (err) {
+    reportApiResult(route, 0, performance.now() - started);
+    throw err;
+  }
 
   if (!res.ok) {
     let message = res.statusText;
@@ -52,12 +62,14 @@ async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
     } catch {
       // Response body was not JSON; fall back to statusText.
     }
+    reportApiResult(route, res.status, performance.now() - started);
     throw new ApiError(res.status, message);
   }
 
   // DELETE endpoints return `{}` with a 200 status (see handler_wrapper.go),
   // not an empty 204 body, but callers of those endpoints don't need the value.
   const text = await res.text();
+  reportApiResult(route, res.status, performance.now() - started);
   return text ? (JSON.parse(text) as T) : (undefined as T);
 }
 
@@ -259,10 +271,13 @@ export function markShoppingListItemPurchased(id: string): Promise<ShoppingListE
   });
 }
 
-export function exportShoppingList(provider?: string): Promise<ProvisionReport> {
+export function exportShoppingList(provider?: string, useItemIds?: Record<string, string>): Promise<ProvisionReport> {
+  const body: { provider?: string; useItemIds?: Record<string, string> } = {};
+  if (provider) body.provider = provider;
+  if (useItemIds !== undefined && Object.keys(useItemIds).length > 0) body.useItemIds = useItemIds;
   return apiFetch('/api/shopping-list/export', {
     method: 'POST',
-    body: JSON.stringify(provider ? { provider } : {}),
+    body: Object.keys(body).length > 0 ? JSON.stringify(body) : undefined,
   });
 }
 
@@ -321,6 +336,32 @@ export function resolveUnknownProvision(entryId: string, provider: string, reach
     method: 'POST',
     body: JSON.stringify({ provider, reachedProvider }),
   });
+}
+
+export function getShoppingConsiderations(): Promise<ShoppingConsiderations> {
+  return apiFetch('/api/shopping-list/considerations');
+}
+
+export function saveBrandPreference(itemId: string, ignorePrice: boolean): Promise<void> {
+  return apiFetch('/api/shopping-list/preferences', {
+    method: 'PUT',
+    body: JSON.stringify({ itemId, ignorePrice }),
+  });
+}
+
+export function clearBrandPreference(itemId: string): Promise<void> {
+  return apiFetch(`/api/shopping-list/preferences/${itemId}`, { method: 'DELETE' });
+}
+
+export function saveItemDeal(itemId: string, priceCents: number, label: string): Promise<void> {
+  return apiFetch('/api/shopping-list/deals', {
+    method: 'PUT',
+    body: JSON.stringify({ itemId, priceCents, label }),
+  });
+}
+
+export function clearItemDeal(itemId: string): Promise<void> {
+  return apiFetch(`/api/shopping-list/deals/${itemId}`, { method: 'DELETE' });
 }
 
 // --- Build identity ---

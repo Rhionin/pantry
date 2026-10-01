@@ -7,30 +7,42 @@ import { provisionQuantity, summarizeNames } from './outcome';
 export interface ProvisionButtonProps {
   provider: ProviderInfo | null;
   entries: ShoppingListEntry[];
+  useItemIds?: Record<string, string>;
   onFinished: () => void;
 }
 
+const storeIsReady = (provider: ProviderInfo | null) => (
+  provider !== null
+  && provider.credentialsConfigured
+  && (provider.connectionState === 'connected' || provider.connectionState === 'not_required')
+);
+
 const canProvision = (provider: ProviderInfo | null, entries: ShoppingListEntry[], inFlight: boolean) => {
-  if (provider === null || inFlight || !provider.credentialsConfigured) return false;
-  if (provider.connectionState !== 'connected' && provider.connectionState !== 'not_required') return false;
-  return entries.some((entry) => provisionQuantity(entry) >= 1);
+  if (inFlight) return false;
+  if (!entries.some((entry) => provisionQuantity(entry) >= 1)) return false;
+  // An unconfigured store still accepts the export. The server confirms
+  // nothing and returns the planned lines, including a sale the shopper took.
+  if (provider === null || !provider.credentialsConfigured) return true;
+  return storeIsReady(provider);
 };
 
-export const ProvisionButton = ({ provider, entries, onFinished }: ProvisionButtonProps) => {
+export const ProvisionButton = ({ provider, entries, useItemIds, onFinished }: ProvisionButtonProps) => {
   const [inFlight, setInFlight] = useState(false);
   const [report, setReport] = useState<ProvisionReport | null>(null);
   const [error, setError] = useState('');
 
   const enabled = canProvision(provider, entries, inFlight);
-  const label = provider ? `Add to ${provider.displayName} cart` : 'Add to cart';
+  const label = provider !== null && provider.credentialsConfigured
+    ? `Add to ${provider.displayName} cart`
+    : 'Export to cart';
 
   const provision = async () => {
-    if (provider === null) return;
     setInFlight(true);
     setError('');
     setReport(null);
     try {
-      const result = await exportShoppingList(provider.id);
+      const providerId = provider !== null && provider.credentialsConfigured ? provider.id : undefined;
+      const result = await exportShoppingList(providerId, useItemIds);
       setReport(result);
       onFinished();
     } catch (requestError) {
@@ -65,7 +77,10 @@ export const ProvisionButton = ({ provider, entries, onFinished }: ProvisionButt
         <Text size="sm" c="dimmed">{provider.displayName} is unconfigured.</Text>
       )}
       {error !== '' && <Text c="red" size="sm">{error}</Text>}
-      {report !== null && error === '' && nothingFailed && (
+      {report !== null && error === '' && nothingFailed && report.exported === 0 && (provider === null || !provider.credentialsConfigured) && (
+        <Text size="sm">Nothing was sent. Connect a store to add these items to a cart.</Text>
+      )}
+      {report !== null && error === '' && nothingFailed && (report.exported > 0 || (provider !== null && provider.credentialsConfigured)) && (
         <Text size="sm">{report.exported} item{report.exported === 1 ? '' : 's'} sent to your cart.</Text>
       )}
       {report !== null && failed.shown.length > 0 && (

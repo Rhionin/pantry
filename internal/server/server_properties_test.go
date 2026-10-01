@@ -104,7 +104,7 @@ func isRegisteredGetPath(path string) bool {
 	switch path {
 	case "/api/products", "/api/products/lookup", "/api/scans", "/api/scans/history",
 		"/api/inventory", "/api/shopping-list", "/api/events", "/api/build",
-		"/api/scanner/config":
+		"/api/scanner/config", "/api/telemetry":
 		return true
 	}
 	// Wildcard GET routes: /api/suggestions/{itemId},
@@ -414,7 +414,7 @@ func buildComposedAndAPIHandlers(t *testing.T, seed func(env testEnv)) (http.Han
 	if seed != nil {
 		seed(envB)
 	}
-	apiMux, _ := newAPIMux(catalogB, lookupB, refresherB, envB.DB, nil)
+	apiMux, _, _ := newAPIMux(catalogB, lookupB, refresherB, envB.DB, nil)
 
 	return composed, apiMux
 }

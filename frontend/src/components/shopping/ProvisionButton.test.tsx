@@ -45,7 +45,7 @@ describe('ProvisionButton', () => {
     expect(screen.getByRole('button', { name: 'Add to Kroger cart' })).toBeEnabled();
   });
 
-  it('stays disabled when the provider is disconnected or unconfigured or the list is empty of quantity', () => {
+  it('stays disabled when the provider is disconnected or the list is empty of quantity', () => {
     const { rerender } = renderButton({ provider: provider({ connectionState: 'disconnected' }) });
     expect(screen.getByRole('button', { name: 'Add to Kroger cart' })).toBeDisabled();
 
@@ -54,7 +54,7 @@ describe('ProvisionButton', () => {
         <ProvisionButton provider={provider({ credentialsConfigured: false })} entries={[entry()]} onFinished={() => undefined} />
       </MantineProvider>,
     );
-    expect(screen.getByRole('button', { name: 'Add to Kroger cart' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Export to cart' })).toBeEnabled();
     expect(screen.getByText('Kroger is unconfigured.')).toBeInTheDocument();
 
     rerender(

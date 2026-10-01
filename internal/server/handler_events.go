@@ -3,18 +3,22 @@ package server
 import (
 	"fmt"
 	"net/http"
+	"time"
 
 	"github.com/Rhionin/pantry/internal/events"
+	"github.com/Rhionin/pantry/internal/telemetry"
 )
 
 type EventsHandler struct {
 	Broadcaster *events.Broadcaster
+	Telemetry   *telemetry.Registry
 }
 
 // Handle implements GET /api/events (Requirement 1.1). It blocks for the
-// lifetime of the connection, writing one "event: <type>\ndata: <json>\n\n"
-// frame per published message until the client disconnects (Requirement 1.3)
-// or a write to it fails (Requirement 1.4).
+// lifetime of the connection, writing one
+// "id: <seq>\nevent: <type>\ndata: <json>\n\n" frame per published message
+// until the client disconnects (Requirement 1.3) or a write to it fails
+// (Requirement 1.4).
 func (h *EventsHandler) Handle(w http.ResponseWriter, r *http.Request) {
 	flusher, ok := w.(http.Flusher)
 	if !ok {
@@ -42,12 +46,35 @@ func (h *EventsHandler) Handle(w http.ResponseWriter, r *http.Request) {
 			if !ok {
 				return // buffer overflow: Broadcaster already dropped us
 			}
-			if _, err := fmt.Fprintf(w, "event: %s\ndata: %s\n\n", msg.EventType, msg.Data); err != nil {
+			// The id lets the browser notice a gap. Payloads are unchanged;
+			// EventSource exposes the id separately as lastEventId.
+			if _, err := fmt.Fprintf(w, "id: %d\nevent: %s\ndata: %s\n\n", msg.Seq, msg.EventType, msg.Data); err != nil {
+				if h.Telemetry != nil {
+					h.Telemetry.ObserveWriteError(msg.EventType)
+				}
 				return // write failed: stop, defer unsubscribes us
+			}
+			// Count the write before Flush so a client that reads the frame
+			// cannot observe the snapshot before the delivery is recorded.
+			if h.Telemetry != nil {
+				h.recordDelivery(msg)
 			}
 			flusher.Flush()
 		case <-r.Context().Done():
 			return // client disconnected (Requirement 1.3)
 		}
 	}
+}
+
+func (h *EventsHandler) recordDelivery(msg events.Message) {
+	fanout := time.Since(msg.PublishedAt)
+	if msg.PublishedAt.IsZero() {
+		fanout = 0
+	}
+	hasIngest := !msg.IngestAt.IsZero()
+	var ingest time.Duration
+	if hasIngest {
+		ingest = time.Since(msg.IngestAt)
+	}
+	h.Telemetry.ObserveDelivery(msg.EventType, fanout, ingest, hasIngest)
 }

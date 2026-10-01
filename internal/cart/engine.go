@@ -435,7 +435,11 @@ func (e *Engine) getComputedEntries(ctx context.Context, providerID ProviderID, 
 		}
 		needs = append(needs, need)
 	}
-	derivedEntries := shopping.DeriveShoppingList(shopping.CollapseEquivalentNeeds(needs, manualIDs))
+	prefs, err := e.shoppingList.ListPreferences(ctx, userID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list brand preferences: %w", err)
+	}
+	derivedEntries := shopping.DeriveShoppingList(shopping.ApplyPreferences(shopping.CollapseEquivalentNeeds(needs, manualIDs), needs, prefs))
 	for i := range derivedEntries {
 		qty := derivedEntries[i].Quantity - ledger[derivedEntries[i].ItemID].Requested
 		if qty < 0 {
@@ -517,6 +521,7 @@ func (e *Engine) getComputedEntries(ctx context.Context, providerID ProviderID, 
 		}
 	}
 
+	swaps := exportSubstitutions(ctx)
 	var result []ResolvedItem
 	for _, entry := range merged {
 		entryID, hasEntry := entryIDByItemID[entry.ItemID]
@@ -534,19 +539,48 @@ func (e *Engine) getComputedEntries(ctx context.Context, providerID ProviderID, 
 		if qty < 1 {
 			continue
 		}
-		name := itemNames[entry.ItemID]
+		itemID := entry.ItemID
+		if useID := swaps[itemID]; useID != "" && useID != itemID {
+			swapped, subErr := shopping.SubstituteBrand(itemID, useID, needs)
+			if subErr != nil {
+				return nil, subErr
+			}
+			itemID = swapped
+		}
+		name := itemNames[itemID]
 		if name == "" {
 			name = "Unknown"
 		}
 		result = append(result, ResolvedItem{
 			EntryID:   entryID,
-			ItemID:    entry.ItemID,
-			ProductID: itemProductIDs[entry.ItemID],
+			ItemID:    itemID,
+			ProductID: itemProductIDs[itemID],
 			Name:      name,
 			Quantity:  qty,
 		})
 	}
 	return result, nil
+}
+
+type exportSwapContextKey struct{}
+
+// WithExportSubstitutions carries one-export brand swaps, keyed by the
+// shopping line's item id. A saved preference is applied first; these swaps
+// replace that brand for this call only.
+func WithExportSubstitutions(ctx context.Context, swaps map[string]string) context.Context {
+	if len(swaps) == 0 {
+		return ctx
+	}
+	copied := make(map[string]string, len(swaps))
+	for lineID, useID := range swaps {
+		copied[lineID] = useID
+	}
+	return context.WithValue(ctx, exportSwapContextKey{}, copied)
+}
+
+func exportSubstitutions(ctx context.Context) map[string]string {
+	swaps, _ := ctx.Value(exportSwapContextKey{}).(map[string]string)
+	return swaps
 }
 
 // exchangeRefresh asks the provider's OAuth flow for a new access token.

@@ -208,6 +208,7 @@ func main() {
 		}),
 		server.WithCartRegistry(registry, ledger),
 		server.WithProviderEnv(providerEnv),
+		server.WithRetailerDeals(os.Getenv("PANTRY_RETAILER_API_KEY"), os.Getenv("PANTRY_RETAILER_API_URL")),
 	}
 	if listenerOK {
 		opts = append(opts, server.WithScannerStatus(listener.Status))

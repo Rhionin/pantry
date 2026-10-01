@@ -181,6 +181,45 @@ export interface ProvisionReport {
   entries?: ProvisionEntryResult[];
 }
 
+// One brand that can fill a shared replenishment need.
+export interface BrandMember {
+  itemId: string;
+  name: string;
+  priceCents: number | null;
+  onSale: boolean;
+  saleLabel: string;
+  dealSource: string;
+}
+
+// A sale on a brand other than the one the list currently buys.
+export interface DealOffer {
+  itemId: string;
+  name: string;
+  label: string;
+  priceCents: number | null;
+  usualPriceCents: number | null;
+  source: string;
+}
+
+// Matches considerationResponse in internal/server/handler_shopping_brand.go.
+export interface ShoppingConsideration {
+  lineItemId: string;
+  needKey: string;
+  genericName: string;
+  chosenItemId: string;
+  preferredItemId: string;
+  ignorePrice: boolean;
+  members: BrandMember[];
+  offer: DealOffer | null;
+}
+
+// Matches considerationsResponse. retailerDeals is "unavailable" or "stubbed".
+export interface ShoppingConsiderations {
+  retailerDeals: string;
+  retailerDetail: string;
+  considerations: ShoppingConsideration[];
+}
+
 // Result of a three-tier product lookup (user override -> global DB -> external API).
 // Matches LookupResult in internal/product/lookup.go.
 export interface LookupResult {

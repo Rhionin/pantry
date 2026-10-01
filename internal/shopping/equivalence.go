@@ -137,8 +137,9 @@ type ReplenishmentItem struct {
 //
 // A manual shopping-list row for any member suppresses the auto line for the
 // whole need, the same way a manual row already overrides that item's own gap.
-// Choosing which brand to buy, including a sale or a saved preference, is left
-// to the caller: this function only decides how much of the shared need is missing.
+// This function only decides how much of the shared need is missing. Which
+// brand the line buys is ApplyPreferences; a sale on another member is an
+// Offer from ConsiderationsForLines that the shopper can accept at export.
 func CollapseEquivalentNeeds(items []ReplenishmentItem, manualItemIDs map[string]struct{}) []DeriveInput {
 	type needGroup struct {
 		items []ReplenishmentItem
