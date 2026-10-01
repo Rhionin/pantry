@@ -130,7 +130,7 @@ describe('FlaggedEntryResolver', () => {
   });
 
   it('clears the selected product when the search text changes', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse([milk])));
+    vi.stubGlobal('fetch', vi.fn(() => Promise.resolve(jsonResponse([milk]))));
     renderResolver();
 
     const search = screen.getByRole('combobox', { name: 'Search products' });
@@ -169,5 +169,59 @@ describe('FlaggedEntryResolver', () => {
 
     await waitFor(() => expect(onResolved).toHaveBeenCalled());
     expect(productListCalls).toBe(2);
+  });
+
+  it('sends a contribution only when sharing is on and this product is checked', async () => {
+    const created = { ...milk, id: 'created-1' };
+    const fetchMock = vi.fn((input: RequestInfo | URL, request?: RequestInit) => {
+      const url = String(input);
+      if (url === '/api/settings/contribution' && request?.method === 'PUT') {
+        return Promise.resolve(jsonResponse({ enabled: true, configured: false }));
+      }
+      if (url === '/api/settings/contribution') {
+        return Promise.resolve(jsonResponse({ enabled: false, configured: false }));
+      }
+      if (url === '/api/products' && request?.method === undefined) {
+        return Promise.resolve(jsonResponse([]));
+      }
+      if (url === '/api/products' && request?.method === 'POST') {
+        return Promise.resolve(jsonResponse({
+          ...created,
+          contribution: {
+            status: 'not_configured',
+            detail: 'Saved in your pantry. Nothing was sent because this Pantry is not signed in to the open databases.',
+          },
+        }, 201));
+      }
+      if (url === '/api/products/overrides') return Promise.resolve(jsonResponse({}));
+      if (url === '/api/scans/scan-1') return Promise.resolve(jsonResponse({ ...flaggedEntry, status: 'pending' }));
+      throw new Error(`Unexpected request: ${url}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const onResolved = renderResolver();
+
+    fireEvent.click(await screen.findByRole('switch', { name: 'Let me contribute products I type in' }));
+    fireEvent.click(await screen.findByRole('checkbox', { name: 'Contribute this product' }));
+    fireEvent.change(screen.getByLabelText('Open database'), { target: { value: 'openproductsfacts' } });
+    fireEvent.change(screen.getByRole('textbox', { name: /^Product name/ }), { target: { value: milk.name } });
+    fireEvent.change(screen.getByLabelText('Category'), { target: { value: milk.category } });
+    fireEvent.change(screen.getByLabelText('Unit of measure'), { target: { value: milk.unitOfMeasure } });
+    fireEvent.click(screen.getByRole('button', { name: 'Create and use product' }));
+
+    await waitFor(() => expect(onResolved).toHaveBeenCalled());
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/products',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({
+          name: milk.name,
+          category: milk.category,
+          unitOfMeasure: milk.unitOfMeasure,
+          contribute: true,
+          contributeTo: 'openproductsfacts',
+          barcode: flaggedEntry.barcode,
+        }),
+      }),
+    );
   });
 });

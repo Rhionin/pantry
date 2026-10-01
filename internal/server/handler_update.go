@@ -1,34 +1,27 @@
 package server
 
 import (
-	"context"
-
 	"github.com/Rhionin/pantry/internal/product"
 )
 
 type UpdateHandler struct {
-	Catalog interface {
-		UpdateProduct(ctx context.Context, product product.Product) error
-	}
-}
-
-type updateProductRequest struct {
-	Name          string `json:"name"`
-	Category      string `json:"category"`
-	UnitOfMeasure string `json:"unitOfMeasure"`
+	Catalog     *product.Catalog
+	Contributor product.UpstreamContributor
 }
 
 type updateProductPathParams struct {
 	ID string `json:"id"`
 }
 
-func (h *UpdateHandler) Handle(req Request[updateProductRequest, updateProductPathParams]) (product.Product, error) {
+func (h *UpdateHandler) Handle(req Request[productWriteBody, updateProductPathParams]) (productWriteResponse, error) {
 	if req.PathParams.ID == "" {
-		return product.Product{}, BadRequest("product id is required")
+		return productWriteResponse{}, BadRequest("product id is required")
 	}
-
 	if req.Body.Name == "" {
-		return product.Product{}, BadRequest("name is required")
+		return productWriteResponse{}, BadRequest("name is required")
+	}
+	if err := validateWriteContribution(req.Body); err != nil {
+		return productWriteResponse{}, err
 	}
 
 	prod := product.Product{
@@ -37,10 +30,30 @@ func (h *UpdateHandler) Handle(req Request[updateProductRequest, updateProductPa
 		Category:      req.Body.Category,
 		UnitOfMeasure: req.Body.UnitOfMeasure,
 	}
-
 	if err := h.Catalog.UpdateProduct(req.Context, prod); err != nil {
-		return product.Product{}, err
+		return productWriteResponse{}, err
 	}
 
-	return prod, nil
+	stored, err := h.Catalog.GetProductByID(req.Context, prod.ID)
+	if err != nil {
+		return productWriteResponse{}, err
+	}
+	if stored == nil {
+		return productWriteResponse{}, NotFound("product not found")
+	}
+
+	// The response keeps the fields the request set. Provenance comes from the
+	// stored row so a product already loaded from upstream is not sent again.
+	outcome, err := recordWriteContribution(req.Context, h.Catalog, h.Contributor, req.Body, product.Product{
+		ID:             stored.ID,
+		Name:           prod.Name,
+		Category:       prod.Category,
+		UnitOfMeasure:  prod.UnitOfMeasure,
+		Source:         stored.Source,
+		ExternalSource: stored.ExternalSource,
+	})
+	if err != nil {
+		return productWriteResponse{}, err
+	}
+	return productWriteResponse{Product: prod, Contribution: outcome}, nil
 }

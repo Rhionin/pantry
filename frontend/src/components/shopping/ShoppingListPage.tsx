@@ -96,21 +96,19 @@ export const ShoppingListPage = () => {
     void Promise.resolve().then(loadShoppingList);
   }, [loadShoppingList]);
 
-  useEffect(() => {
-    setAccepted((current) => {
-      let changed = false;
-      const next: Record<string, string> = {};
-      for (const [lineId, useId] of Object.entries(current)) {
-        const note = notes.considerations.find((item) => item.lineItemId === lineId);
-        if (note?.offer?.itemId === useId) {
-          next[lineId] = useId;
-        } else {
-          changed = true;
-        }
+  // A taken deal only applies while that offer is still the one on the line.
+  // Deriving it here drops a stale choice when the notes refresh, without
+  // writing state from an effect.
+  const acceptedDeals = useMemo(() => {
+    const next: Record<string, string> = {};
+    for (const [lineId, useId] of Object.entries(accepted)) {
+      const note = notes.considerations.find((item) => item.lineItemId === lineId);
+      if (note?.offer?.itemId === useId) {
+        next[lineId] = useId;
       }
-      return changed ? next : current;
-    });
-  }, [notes]);
+    }
+    return next;
+  }, [accepted, notes]);
 
   const inventoryByItemId = useMemo(
     () => new Map(inventory.map((inventoryItem) => [inventoryItem.item.id, inventoryItem])),
@@ -225,7 +223,7 @@ export const ShoppingListPage = () => {
     <Stack gap="sm">
       <Group justify="space-between">
         <Title order={1} size="h3">Shopping list</Title>
-        <CartExportButton disabled={entries.length === 0} useItemIds={accepted} />
+        <CartExportButton disabled={entries.length === 0} useItemIds={acceptedDeals} />
       </Group>
       {!loading && notes.considerations.length > 0 && (
         <Alert variant="light" color="teal" title={offers.length > 0 ? 'A sale to consider' : 'Brand notes'}>
@@ -234,7 +232,7 @@ export const ShoppingListPage = () => {
               const offer = note.offer;
               if (offer === null) return null;
               const usual = note.members.find((member) => member.itemId === note.chosenItemId)?.name ?? 'the usual brand';
-              const taken = accepted[note.lineItemId] === offer.itemId;
+              const taken = acceptedDeals[note.lineItemId] === offer.itemId;
               return (
                 <Group key={note.lineItemId} justify="space-between" align="center" wrap="wrap">
                   <Text size="sm">{offerSentence(note)}</Text>

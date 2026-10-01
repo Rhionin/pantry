@@ -40,6 +40,11 @@ func setupTestDB(t *testing.T) *sql.DB {
 // awaiting goroutines the second handler started.
 func setupTestWithDB(t *testing.T) (http.Handler, testEnv) {
 	t.Helper()
+	return setupTestWithContributor(t, nil)
+}
+
+func setupTestWithContributor(t *testing.T, contributor product.UpstreamContributor) (http.Handler, testEnv) {
+	t.Helper()
 	db := setupTestDB(t)
 
 	productRepo := product.NewCatalog(db)
@@ -83,7 +88,11 @@ func setupTestWithDB(t *testing.T) (http.Handler, testEnv) {
 		MissTTL:   5 * time.Minute,
 	}
 
-	handler, _ := NewHandler(productRepo, lookupService, refresher, db)
+	var opts []Option
+	if contributor != nil {
+		opts = append(opts, WithContributor(contributor))
+	}
+	handler, _ := NewHandler(productRepo, lookupService, refresher, db, opts...)
 
 	// Get the Open Food Facts fake for backward compatibility
 	offFake := databases[product.ExternalSourceOpenFoodFacts]
@@ -99,6 +108,7 @@ func setupTestWithDB(t *testing.T) (http.Handler, testEnv) {
 		Refresher:     refresher,
 		Clock:         clock,
 		MissTTL:       missTTL,
+		Contributor:   contributor,
 	}
 
 	return handler, env

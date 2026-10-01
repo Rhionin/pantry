@@ -103,15 +103,23 @@ func isRegisteredGetPath(path string) bool {
 	switch path {
 	case "/api/products", "/api/products/lookup", "/api/scans", "/api/scans/history",
 		"/api/inventory", "/api/shopping-list", "/api/events", "/api/build",
-		"/api/scanner/config", "/api/telemetry":
+		"/api/scanner/config", "/api/telemetry",
+		"/api/contributions", "/api/settings/contribution":
 		return true
 	}
 	// Wildcard GET routes: /api/suggestions/{itemId},
-	// /api/inventory/{itemId}/instances.
+	// /api/inventory/{itemId}/instances, /api/products/{id},
+	// /api/products/{id}/contributions.
 	if regexp.MustCompile(`^/api/suggestions/[^/]+$`).MatchString(path) {
 		return true
 	}
 	if regexp.MustCompile(`^/api/inventory/[^/]+/instances$`).MatchString(path) {
+		return true
+	}
+	if regexp.MustCompile(`^/api/products/[^/]+$`).MatchString(path) {
+		return true
+	}
+	if regexp.MustCompile(`^/api/products/[^/]+/contributions$`).MatchString(path) {
 		return true
 	}
 	return false
@@ -228,6 +236,18 @@ func generateRegisteredRequest(t *rapid.T) registeredRequest {
 		},
 		func(t *rapid.T) registeredRequest {
 			return registeredRequest{http.MethodGet, "/api/products/lookup", ""}
+		},
+		func(t *rapid.T) registeredRequest {
+			return registeredRequest{http.MethodGet, "/api/settings/contribution", ""}
+		},
+		func(t *rapid.T) registeredRequest {
+			return registeredRequest{http.MethodGet, "/api/contributions", ""}
+		},
+		func(t *rapid.T) registeredRequest {
+			return registeredRequest{http.MethodGet, "/api/products/" + id.Draw(t, "productDetailId"), ""}
+		},
+		func(t *rapid.T) registeredRequest {
+			return registeredRequest{http.MethodGet, "/api/products/" + id.Draw(t, "productContributionsId") + "/contributions", ""}
 		},
 		func(t *rapid.T) registeredRequest {
 			return registeredRequest{http.MethodGet, "/api/scans", ""}
