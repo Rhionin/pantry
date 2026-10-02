@@ -123,10 +123,30 @@ func TestPublicProxyIsOptIn(t *testing.T) {
 		t.Fatalf("read setup.sh: %v", err)
 	}
 	setupText := string(setup)
-	for _, want := range []string{"cmd_publish", "cmd_unpublish", "cmd_firewall", "--profile public", "write_auth_caddy", "BASIC_AUTH_PASSWORD", "caddy hash-password", "basic_auth bcrypt Pantry"} {
+	for _, want := range []string{
+		"cmd_apply",
+		"cmd_publish",
+		"cmd_unpublish",
+		"cmd_firewall",
+		"--profile public",
+		"write_auth_caddy",
+		"BASIC_AUTH_PASSWORD",
+		"caddy hash-password",
+		"basic_auth bcrypt Pantry",
+		"Keeping existing",
+		"PANTRY_LAN_FIREWALL",
+		"${1:-apply}",
+	} {
 		if !strings.Contains(setupText, want) {
 			t.Fatalf("setup.sh missing %q", want)
 		}
+	}
+	if strings.Contains(setupText, "read -p") || strings.Contains(setupText, "read -s") {
+		t.Fatal("setup.sh must not prompt for BASIC_AUTH_PASSWORD; an existing auth.caddy is kept")
+	}
+
+	if !strings.Contains(envText, "\nPANTRY_LAN_FIREWALL=on\n") {
+		t.Fatal(".env.example must default the LAN firewall on so setup can opt out explicitly")
 	}
 
 	updater, err := os.ReadFile(filepath.Join("..", "..", "deploy", "systemd", "pantry-update.sh"))

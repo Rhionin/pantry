@@ -19,7 +19,7 @@ if [[ -f .env ]]; then
   if [[ -n "$public_host" && -f /opt/pantry/auth.caddy ]]; then
     compose+=(--profile public)
   elif [[ -n "$public_host" ]]; then
-    echo "PUBLIC_HOST is set but /opt/pantry/auth.caddy is missing; leaving the public proxy stopped. Run: sudo ./setup.sh publish" >&2
+    echo "PUBLIC_HOST is set but /opt/pantry/auth.caddy is missing; leaving the public proxy stopped. Run: sudo ./setup.sh" >&2
   fi
 fi
 

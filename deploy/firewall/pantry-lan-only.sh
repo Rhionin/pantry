@@ -7,14 +7,16 @@
 # cover the forwarded path, and a DOCKER-USER rule does not cover the proxy.
 # This installs both. It does not touch ports 80 or 443.
 #
-# Optional. LAN clients in the ranges below keep working. Run:
-#   sudo ./setup.sh firewall
-# Remove:
+# Applied by `sudo ./setup.sh` when compose publishes the Pantry port or the
+# public proxy is on. LAN clients in the ranges below keep working.
+# Opt out by setting PANTRY_LAN_FIREWALL=off in /opt/pantry/.env and re-running
+# setup. Remove until the next setup with:
 #   sudo ./setup.sh firewall-off
 
 set -euo pipefail
 
-ENV_FILE=/opt/pantry/.env
+PANTRY_DIR="${PANTRY_DIR:-/opt/pantry}"
+ENV_FILE="$PANTRY_DIR/.env"
 HOST_PORT=8080
 CONTAINER_PORT=8080
 
