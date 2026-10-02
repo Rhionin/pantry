@@ -2,6 +2,12 @@
 # Caddy obtains and renews a Let's Encrypt certificate over HTTP-01,
 # which requires TCP port 80 to reach this container from the internet.
 # The admin API stays off so it is not another listener on the Pi.
+#
+# Home Wi-Fi clients that look up PUBLIC_HOST get the router's WAN address.
+# If that router does not NAT-hairpin, the connection hangs and never
+# reaches this process. Do not publish port 8080 to paper over that: the
+# Pantry listener has no password. Those clients use http://<lan-ip>:8080
+# or http://pantry.local:8080. See deploy/README.md.
 {
 	email {$ACME_EMAIL}
 	admin off

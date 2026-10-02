@@ -148,6 +148,9 @@ func TestPublicProxyIsOptIn(t *testing.T) {
 		"Keeping existing",
 		"PANTRY_LAN_FIREWALL",
 		"${1:-apply}",
+		"pantry.local",
+		"Home Wi-Fi cannot open https://",
+		"does not hairpin NAT",
 	} {
 		if !strings.Contains(setupText, want) {
 			t.Fatalf("setup.sh missing %q", want)
@@ -159,6 +162,12 @@ func TestPublicProxyIsOptIn(t *testing.T) {
 
 	if !strings.Contains(envText, "\nPANTRY_LAN_FIREWALL=on\n") {
 		t.Fatal(".env.example must default the LAN firewall on so setup can opt out explicitly")
+	}
+	if !strings.Contains(envText, "\nPANTRY_LAN_IPV4=\n") {
+		t.Fatal(".env.example must leave PANTRY_LAN_IPV4 empty so detection stays the default")
+	}
+	if !strings.Contains(envText, "\nPANTRY_SPLIT_DNS=off\n") {
+		t.Fatal(".env.example must leave split-horizon DNS off so setup does not start a resolver")
 	}
 
 	updater, err := os.ReadFile(filepath.Join("..", "..", "deploy", "systemd", "pantry-update.sh"))
@@ -179,6 +188,28 @@ func TestPublicProxyIsOptIn(t *testing.T) {
 	}
 	if !strings.Contains(string(ignore), "deploy/auth.caddy") {
 		t.Fatal(".gitignore must ignore deploy/auth.caddy so a generated hash is not committed")
+	}
+
+	readme, err := os.ReadFile(filepath.Join("..", "..", "deploy", "README.md"))
+	if err != nil {
+		t.Fatalf("read deploy README: %v", err)
+	}
+	readmeText := string(readme)
+	for _, want := range []string{
+		"Home Wi-Fi hangs on the public name",
+		"http://pantry.local:8080",
+		"Gryphon Connect",
+		"NAT loopback",
+		"PANTRY_SPLIT_DNS=on",
+		"Do not forward port 53",
+		"Do not forward port 8080",
+	} {
+		if !strings.Contains(readmeText, want) {
+			t.Fatalf("deploy README missing %q", want)
+		}
+	}
+	if !strings.Contains(text, "Do not publish port 8080") {
+		t.Fatal("Caddyfile must keep the warning that port 8080 is not the hairpin workaround")
 	}
 }
 

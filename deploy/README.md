@@ -24,7 +24,7 @@ New to this? Follow these steps in order on your Raspberry Pi and you'll have Pa
    curl http://localhost:8080/health
    ```
 
-   You can also open `http://<pi-ip-address>:8080` in a web browser on any device on the same network.
+   You can also open `http://<pi-ip-address>:8080` in a web browser on any device on the same network. After setup, `sudo ./setup.sh status` prints that address. When Avahi is installed it also publishes `http://pantry.local:8080`. If `https://pantry.rhionin.com` hangs on home Wi-Fi and loads on cellular, the router is not hairpinning; use the LAN address. See [Home Wi-Fi hangs on the public name](#home-wi-fi-hangs-on-the-public-name).
 
 5. **See the full picture.** Run the diagnostic any time to see the whole chain from udev rule to scan ingestion:
 
@@ -42,7 +42,7 @@ After `git pull` on the Pi, from `deploy/`:
 sudo ./setup.sh
 ```
 
-That one command is the whole update. It copies `deploy/` to `/opt/pantry`, starts the containers from the compose file you just pulled (including the public HTTPS proxy when `PUBLIC_HOST` is set and `/opt/pantry/auth.caddy` is already there), restarts Caddy so the current `Caddyfile` is what is serving, and applies the LAN firewall for the published Pantry port. That Caddyfile leaves `GET /api/telemetry` and `POST /api/telemetry/client` public. Run it again any time. Existing `.env` values stay, an existing `auth.caddy` is not regenerated, and a site that is already on the public internet stays there. LAN `http://<pi-ip>:8080` stays up.
+That one command is the whole update. It copies `deploy/` to `/opt/pantry`, starts the containers from the compose file you just pulled (including the public HTTPS proxy when `PUBLIC_HOST` is set and `/opt/pantry/auth.caddy` is already there), restarts Caddy so the current `Caddyfile` is what is serving, applies the LAN firewall for the published Pantry port, and republishes `pantry.local` when Avahi is installed. That Caddyfile leaves `GET /api/telemetry` and `POST /api/telemetry/client` public. Run it again any time. Existing `.env` values stay, an existing `auth.caddy` is not regenerated, and a site that is already on the public internet stays there. LAN `http://<pi-ip>:8080` stays up. The public name still hangs on home Wi-Fi until the router hairpins or you use the LAN address; see [Home Wi-Fi hangs on the public name](#home-wi-fi-hangs-on-the-public-name).
 
 `sudo ./setup.sh firewall-off` removes the port rule until the next setup. To leave it off, set `PANTRY_LAN_FIREWALL=off` in `/opt/pantry/.env` and run `sudo ./setup.sh` again.
 
@@ -247,6 +247,66 @@ To change the password, edit `BASIC_AUTH_PASSWORD`, remove `/opt/pantry/auth.cad
 
 `sudo ./setup.sh unpublish` stops only the proxy. The LAN site keeps running. Clear `PUBLIC_HOST` as well if an automatic-update timer is enabled, or the next `sudo ./setup.sh` will start the proxy again.
 
+### Home Wi-Fi hangs on the public name
+
+`https://pantry.rhionin.com` loads on cellular and sits there on home Wi-Fi until the browser gives up. Caddy and Pantry are up the whole time. The phone on Wi-Fi looks up the public DNS A record, gets the router's WAN address (`38.148.49.79` in this house), and sends the connection to the Gryphon. Cellular never does that: it is already outside the house, so the same port forward delivers it to the Pi.
+
+That inside-the-house path is NAT hairpin (also called NAT loopback or NAT reflection). The router has to send a connection aimed at its own WAN address back to `192.168.1.203`. Many home routers drop or ignore that connection instead of refusing it, so the browser hangs rather than showing an error. Nothing on the Pi can answer a packet that never arrives. This repository does not change the Gryphon.
+
+**Use this on home Wi-Fi.** It does not go through the router, and it does not ask for the shared password:
+
+| From a phone on this Wi-Fi | What it is |
+|-----------------------------|------------|
+| `http://192.168.1.203:8080` | Pantry on the Pi's LAN address. `sudo ./setup.sh status` prints the address it detected. |
+| `http://pantry.local:8080` | The same port, published with mDNS when Avahi is installed. |
+
+`192.168.1.203` is this Pi's reserved LAN address. If `status` prints a different address, use that one. If it prints a Docker bridge (often `172.17.0.1`), set `PANTRY_LAN_IPV4` to the Pi's real LAN address in `/opt/pantry/.env` and run `sudo ./setup.sh` again. Do not forward port 8080. That listener has no password.
+
+Raspberry Pi OS usually already runs Avahi (`raspberrypi.local`). `sudo ./setup.sh` adds `pantry.local` and an HTTP service advertisement when `avahi-publish-address` is on the Pi. If status never mentions a published name:
+
+```bash
+sudo apt-get install -y avahi-daemon
+sudo ./setup.sh
+```
+
+Phones and computers that resolve `.local` (current iOS, Android, macOS, and Windows) can then open `http://pantry.local:8080` without knowing the IP. A DHCP reservation for the Pi still matters: mDNS follows the address setup detected, and a later address change is picked up the next time `pantry-mdns.service` starts (`sudo ./setup.sh` restarts it).
+
+**Gryphon, if you want the public name itself to work on Wi-Fi.** Gryphon Connect is the only admin. Gryphon does not ship a browser admin page. This deploy does not turn anything on in that app.
+
+1. In the Gryphon Connect app, confirm the Pi's DHCP reservation is still `192.168.1.203` (or whatever `PANTRY_LAN_IPV4` is).
+2. Confirm the existing forwards, which are what make cellular work: external TCP 80 to the Pi's TCP 80, and external TCP 443 to the Pi's TCP 443. Leave UDP 443 optional. Do not add 8080.
+3. Look through the app's network and advanced screens for NAT loopback, NAT reflection, or hairpin NAT. Gryphon's public help does not document that switch. If it is there, enable it for those two forwards and try `https://pantry.rhionin.com` on Wi-Fi again.
+4. If the switch is not there, ask Gryphon support from the in-app chat to enable NAT loopback for the existing 80 and 443 forwards. Until they do, home Wi-Fi keeps using the LAN address above. The public name, the Let's Encrypt certificate, and the shared password stay as they are for everyone off the LAN.
+
+**Same hostname on the LAN, without hairpin.** Caddy is already listening on the Pi's port 443. If a client resolves `pantry.rhionin.com` to the Pi's LAN address, it gets the real certificate and the same shared password. Internet DNS is left pointing at the WAN address, so cellular and other outside clients are unchanged.
+
+That resolution is split-horizon DNS. It only helps devices that query the Pi. Gryphon often answers DNS itself for filtering, and the Connect app does not document a house-wide DNS server field. If a device cannot be pointed at the Pi, skip this and use the LAN URL.
+
+To turn the answerer on:
+
+```bash
+sudo apt-get install -y dnsmasq
+```
+
+In `/opt/pantry/.env`:
+
+```bash
+PANTRY_LAN_IPV4=192.168.1.203
+PANTRY_SPLIT_DNS=on
+```
+
+Then `sudo ./setup.sh`. It writes a dnsmasq config that answers only this hostname with the LAN address, forwards every other name to 1.1.1.1 and 9.9.9.9, and listens on the LAN address rather than on every interface. It does not offer DHCP. Do not forward port 53 on the Gryphon. Devices that use the Pi for DNS skip Gryphon's filter for those other lookups. Leave `PANTRY_SPLIT_DNS` off when that filter should keep covering the house, and use the LAN address instead.
+
+Check from a computer that is using the Pi as its DNS server:
+
+```bash
+dig +short pantry.rhionin.com A @192.168.1.203
+```
+
+The answer has to be `192.168.1.203`. If a phone on Wi-Fi still resolves the name to the WAN address, the phone is not using the Pi, and `https://pantry.rhionin.com` will keep hanging. Set `PANTRY_SPLIT_DNS=off` and run `sudo ./setup.sh` to remove the config.
+
+A computer can also pin the name without dnsmasq, by adding a line to its hosts file (`192.168.1.203 pantry.rhionin.com`). Phones generally cannot edit a hosts file. Use the LAN URL on those.
+
 ### When something fails
 
 Logs from the proxy:
@@ -262,6 +322,7 @@ sudo docker compose --profile public logs --tail=80 caddy
 | Certificate error mentioning timeout, connection refused, or `404` from another site | Port 80 is not reaching this Pi. Re-check the router forward and that no other program is bound to port 80. |
 | Browser warning, certificate name mismatch | `PUBLIC_HOST` and the Squarespace host are not the same name. They must match exactly. |
 | `https://` works at home but not on cellular | The phone is still using the LAN address, or the forward is wrong. Test on cellular. |
+| `https://` hangs on home Wi-Fi and loads on cellular | The router is not hairpinning. Pantry is reachable at `http://<pi-ip>:8080` and, when Avahi is installed, `http://pantry.local:8080`. See [Home Wi-Fi hangs on the public name](#home-wi-fi-hangs-on-the-public-name). |
 | Browser or curl gets `401` | The shared password is missing or does not match `.env`. A request with no password is supposed to be rejected, except `GET /api/telemetry` and `POST /api/telemetry/client`, which are public. Edit `BASIC_AUTH_PASSWORD`, remove `/opt/pantry/auth.caddy`, and run `sudo ./setup.sh`. |
 | UI loads, but the scan queue never updates live | `/api/events` is being buffered. `deploy/Caddyfile` must keep `flush_interval -1` on that path. Run `sudo ./setup.sh` after pulling a fresh `Caddyfile`. |
 
@@ -325,6 +386,8 @@ All configuration is handled through environment variables in `/opt/pantry/.env`
 | `BASIC_AUTH_USER` | `pantry` | Username the browser asks for on the public site |
 | `BASIC_AUTH_PASSWORD` | empty | Shared password for the public site, 12 to 72 characters. Required the first time the public proxy starts, unless `auth.caddy` already exists. The hash is written to `auth.caddy`; this value stays in `.env`. Setup does not replace an existing `auth.caddy` |
 | `PANTRY_LAN_FIREWALL` | `on` | `off` leaves `HOST_PORT` reachable from any source. Any other value, including empty, installs the LAN-only rule when compose publishes that port or the public proxy is on |
+| `PANTRY_LAN_IPV4` | empty | Private LAN address of the Pi, such as `192.168.1.203`. Empty detects it. Set this when detection prints a Docker bridge instead of the address phones should open |
+| `PANTRY_SPLIT_DNS` | `off` | `on` answers `PUBLIC_HOST` with `PANTRY_LAN_IPV4` from dnsmasq on the Pi. Public DNS and the shared password stay as they are. Leave off unless clients use the Pi for DNS. Do not forward port 53 |
 | `PRODUCT_CACHE_TTL` | `720h` | How long to cache product lookups (720h = 30 days) |
 | `PRODUCT_MISS_TTL` | `168h` | How long to cache "not found" results (168h = 7 days) |
 | `DISABLE_EXTERNAL_PRODUCT_LOOKUP` | `false` | Set to `true` to disable external API calls for product information. This also keeps product contribution local |
@@ -689,7 +752,7 @@ The credentials are stored in root's Docker config, which is the identity the up
 
 ### Public website doesn't load
 
-See [Public Internet access](#public-internet-access). The usual causes are the Squarespace A record not pointing at this Pi yet, or router ports 80 and 443 not forwarded. From `/opt/pantry`:
+See [Public Internet access](#public-internet-access). The usual causes are the Squarespace A record not pointing at this Pi yet, or router ports 80 and 443 not forwarded. A hang that happens only on home Wi-Fi, while cellular loads the site, is [NAT hairpin](#home-wi-fi-hangs-on-the-public-name), not a down server. From `/opt/pantry`:
 
 ```bash
 sudo docker compose --profile public logs --tail=80 caddy
