@@ -14,6 +14,8 @@ set -euo pipefail
 #   sudo ./setup.sh install --with-updates  # ...and enable auto-update timer
 #   sudo ./setup.sh publish          # HTTPS on PUBLIC_HOST (Let's Encrypt via Caddy)
 #   sudo ./setup.sh unpublish        # Stop the public proxy; LAN pantry keeps running
+#   sudo ./setup.sh firewall         # Drop non-LAN clients that reach the Pantry port
+#   sudo ./setup.sh firewall-off     # Remove that restriction
 #   sudo ./setup.sh rule             # Regenerate udev rule for a new scanner
 #   sudo ./setup.sh status           # Diagnose the full chain from udev to health
 #   sudo ./setup.sh logs             # Follow container logs
@@ -131,7 +133,7 @@ copy_deploy_files() {
   log_info "Copying deployment files to /opt/pantry..."
   mkdir -p /opt/pantry
   local item src dest
-  for item in docker-compose.yml .env.example Caddyfile udev systemd; do
+  for item in docker-compose.yml .env.example Caddyfile udev systemd firewall; do
     src="$SCRIPT_DIR/$item"
     dest="/opt/pantry/$item"
     if [[ ! -e "$src" ]]; then
@@ -148,6 +150,9 @@ copy_deploy_files() {
   chmod +x /opt/pantry/setup.sh
   if [[ -f /opt/pantry/systemd/pantry-update.sh ]]; then
     chmod +x /opt/pantry/systemd/pantry-update.sh
+  fi
+  if [[ -f /opt/pantry/firewall/pantry-lan-only.sh ]]; then
+    chmod +x /opt/pantry/firewall/pantry-lan-only.sh
   fi
   log_success "Deployment files copied"
 }
@@ -647,6 +652,7 @@ cmd_publish() {
   log_info "Browsers will ask for user $auth_user and the shared password in /opt/pantry/.env."
   log_info "LAN access does not ask for that password: http://<pi-address>:$host_port"
   log_warn "Do not forward port $host_port on the router. It has no password."
+  log_info "Optional: sudo ./setup.sh firewall   # reject non-LAN clients that still reach port $host_port"
   log_info "After DNS and router port forwards are in place, check from outside the house:"
   log_info "  curl -fsS -u '$auth_user:<password>' https://$public_host/health"
 }
@@ -664,6 +670,43 @@ cmd_unpublish() {
   docker compose --project-directory /opt/pantry -f /opt/pantry/docker-compose.yml --profile public rm -f caddy || true
   log_success "Public proxy stopped. The certificate volume was kept so a later publish can reuse it."
   log_info "Clear PUBLIC_HOST in /opt/pantry/.env if automatic updates should not start the proxy again."
+}
+
+# ============================================================================
+# firewall: reject non-LAN clients on the published Pantry port
+# ============================================================================
+cmd_firewall() {
+  require_root
+  if [[ ! -f /opt/pantry/docker-compose.yml ]]; then
+    fatal "Nothing installed at /opt/pantry. Run 'sudo ./setup.sh install' first"
+  fi
+  copy_deploy_files
+  if [[ ! -f /opt/pantry/firewall/pantry-lan-only.sh ]]; then
+    fatal "firewall/pantry-lan-only.sh is missing from /opt/pantry"
+  fi
+  chmod +x /opt/pantry/firewall/pantry-lan-only.sh
+  if [[ -f /opt/pantry/systemd/pantry-lan-only.service ]]; then
+    cp /opt/pantry/systemd/pantry-lan-only.service /etc/systemd/system/pantry-lan-only.service
+    systemctl daemon-reload
+    systemctl enable --now pantry-lan-only.service
+  else
+    /opt/pantry/firewall/pantry-lan-only.sh
+  fi
+  log_success "Published Pantry port accepts LAN, loopback, and Tailscale sources"
+  log_info "Ports 80 and 443 are unchanged. Remove this with: sudo ./setup.sh firewall-off"
+}
+
+cmd_firewall_off() {
+  require_root
+  if [[ -f /opt/pantry/firewall/pantry-lan-only.sh ]]; then
+    /opt/pantry/firewall/pantry-lan-only.sh --remove || true
+  fi
+  if [[ -f /etc/systemd/system/pantry-lan-only.service ]]; then
+    systemctl disable --now pantry-lan-only.service || true
+    rm -f /etc/systemd/system/pantry-lan-only.service
+    systemctl daemon-reload
+  fi
+  log_success "Removed the LAN-only rule. The published port is reachable from any source again."
 }
 
 # ============================================================================
@@ -730,6 +773,10 @@ COMMANDS:
                    in /opt/pantry/.env. The public site asks for that shared
                    password. See deploy/README.md.
   unpublish        Stop the HTTPS proxy. Pantry keeps running on the LAN.
+  firewall         Drop non-LAN clients that reach the published Pantry port.
+                   LAN, loopback, and Tailscale (100.64.0.0/10) still work.
+                   Does not change ports 80 or 443. See deploy/README.md.
+  firewall-off     Remove that restriction.
   rule             Regenerate and install udev rule for current scanner
   status           Diagnose the deployment chain and report issues
   logs             Follow container logs (Ctrl+C to stop)
@@ -772,6 +819,8 @@ main() {
     install)  cmd_install "$@" ;;
     publish)  cmd_publish ;;
     unpublish) cmd_unpublish ;;
+    firewall) cmd_firewall ;;
+    firewall-off) cmd_firewall_off ;;
     rule)     cmd_rule ;;
     status)   cmd_status ;;
     logs)     cmd_logs ;;

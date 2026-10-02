@@ -147,3 +147,21 @@ func extractDefault(t *testing.T, envValue string) string {
 
 	return parts[1]
 }
+
+func TestUnauthenticatedListenWarning(t *testing.T) {
+	if got := unauthenticatedListenWarning(":8080"); got == "" {
+		t.Fatal("empty host should warn")
+	}
+	if got := unauthenticatedListenWarning("0.0.0.0:8080"); got == "" {
+		t.Fatal("wildcard should warn")
+	}
+	if got := unauthenticatedListenWarning("192.168.1.203:8080"); got == "" {
+		t.Fatal("LAN address should warn")
+	}
+	if got := unauthenticatedListenWarning("127.0.0.1:8080"); got != "" {
+		t.Fatalf("loopback warned: %q", got)
+	}
+	if got := unauthenticatedListenWarning("localhost:8080"); got != "" {
+		t.Fatalf("localhost warned: %q", got)
+	}
+}

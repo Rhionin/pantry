@@ -483,6 +483,19 @@ func TestMountingWebUIPerturbsNoRoute(t *testing.T) {
 		// dynamic values.
 		composedHeader.Del("Content-Length")
 		apiHeader.Del("Content-Length")
+		// The composed handler adds browser headers the bare API mux does not.
+		// They are the same on every route, so they are not a routing difference.
+		for _, name := range []string{
+			"Cache-Control",
+			"Content-Security-Policy",
+			"Permissions-Policy",
+			"Referrer-Policy",
+			"X-Content-Type-Options",
+			"X-Frame-Options",
+		} {
+			composedHeader.Del(name)
+			apiHeader.Del(name)
+		}
 		if !headersEqual(composedHeader, apiHeader) {
 			t.Fatalf("%s %s: headers differ: composed=%v apiMux=%v",
 				rr.method, rr.path, composedHeader, apiHeader)

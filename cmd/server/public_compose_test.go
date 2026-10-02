@@ -26,6 +26,9 @@ func TestPublicProxyIsOptIn(t *testing.T) {
 			Ports       []string          `yaml:"ports"`
 			Environment map[string]string `yaml:"environment"`
 			Volumes     []string          `yaml:"volumes"`
+			SecurityOpt []string          `yaml:"security_opt"`
+			CapDrop     []string          `yaml:"cap_drop"`
+			ReadOnly    bool              `yaml:"read_only"`
 		} `yaml:"services"`
 	}
 	if err := yaml.Unmarshal(data, &compose); err != nil {
@@ -41,6 +44,18 @@ func TestPublicProxyIsOptIn(t *testing.T) {
 	}
 	if !hasContainerPort(pantry.Ports, "8080") {
 		t.Fatalf("pantry must still publish the container port 8080, got %v", pantry.Ports)
+	}
+	if len(pantry.Ports) != 1 || !strings.HasPrefix(pantry.Ports[0], "0.0.0.0:") {
+		t.Fatalf("pantry must publish IPv4 only so a global IPv6 address is not an open API, got %v", pantry.Ports)
+	}
+	if !hasExactPort(pantry.SecurityOpt, "no-new-privileges:true") {
+		t.Fatalf("pantry security_opt = %v", pantry.SecurityOpt)
+	}
+	if !hasExactPort(pantry.CapDrop, "ALL") {
+		t.Fatalf("pantry cap_drop = %v", pantry.CapDrop)
+	}
+	if !pantry.ReadOnly {
+		t.Fatal("pantry root filesystem must be read-only; the database volume stays writable")
 	}
 
 	caddy, ok := compose.Services["caddy"]
@@ -64,6 +79,9 @@ func TestPublicProxyIsOptIn(t *testing.T) {
 	if !hasExactPort(caddy.Volumes, "./auth.caddy:/etc/caddy/auth.caddy:ro") {
 		t.Fatalf("caddy must mount the generated password hash, got %v", caddy.Volumes)
 	}
+	if !hasExactPort(caddy.SecurityOpt, "no-new-privileges:true") {
+		t.Fatalf("caddy security_opt = %v", caddy.SecurityOpt)
+	}
 
 	caddyfile, err := os.ReadFile(filepath.Join("..", "..", "deploy", "Caddyfile"))
 	if err != nil {
@@ -77,6 +95,11 @@ func TestPublicProxyIsOptIn(t *testing.T) {
 		"path /api/events",
 		"reverse_proxy pantry:8080",
 		"flush_interval -1",
+		"route {",
+		"Strict-Transport-Security",
+		"X-Content-Type-Options",
+		"camera=(self)",
+		"admin off",
 	} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("Caddyfile missing %q", want)
@@ -100,7 +123,7 @@ func TestPublicProxyIsOptIn(t *testing.T) {
 		t.Fatalf("read setup.sh: %v", err)
 	}
 	setupText := string(setup)
-	for _, want := range []string{"cmd_publish", "cmd_unpublish", "--profile public", "write_auth_caddy", "BASIC_AUTH_PASSWORD", "caddy hash-password", "basic_auth bcrypt Pantry"} {
+	for _, want := range []string{"cmd_publish", "cmd_unpublish", "cmd_firewall", "--profile public", "write_auth_caddy", "BASIC_AUTH_PASSWORD", "caddy hash-password", "basic_auth bcrypt Pantry"} {
 		if !strings.Contains(setupText, want) {
 			t.Fatalf("setup.sh missing %q", want)
 		}

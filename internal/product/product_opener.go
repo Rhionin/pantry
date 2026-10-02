@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
+	"strings"
 	"time"
 
 	"github.com/go-json-experiment/json"
@@ -82,8 +84,26 @@ func NewProductOpenerClient(source ExternalSource, baseURL string) *ProductOpene
 		httpClient: &http.Client{
 			Timeout:   10 * time.Second,
 			Transport: transport,
+			// A 3xx from the product database must not turn a barcode lookup
+			// into a request to some other host.
+			CheckRedirect: refuseCrossHostRedirect,
 		},
 	}
+}
+
+// refuseCrossHostRedirect stops a product-database redirect from leaving the
+// host the client was built to call.
+func refuseCrossHostRedirect(req *http.Request, via []*http.Request) error {
+	if len(via) == 0 {
+		return nil
+	}
+	if !strings.EqualFold(req.URL.Host, via[0].URL.Host) {
+		return fmt.Errorf("refusing redirect to a different host")
+	}
+	if len(via) >= 3 {
+		return fmt.Errorf("stopped after several redirects")
+	}
+	return nil
 }
 
 // NewProductOpenerClientWithHTTPClient builds a client with a caller-supplied
@@ -143,8 +163,14 @@ func (c *ProductOpenerClient) LookupBarcode(ctx context.Context, barcode string)
 	if barcode == "" {
 		return nil, fmt.Errorf("barcode cannot be empty")
 	}
+	if !safeBarcodePath(barcode) {
+		return nil, fmt.Errorf("barcode is invalid")
+	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, fmt.Sprintf("%s/%s.json", c.baseURL, barcode), nil)
+	// PathEscape keeps the barcode in one path segment. A slash, question
+	// mark, or ".." would otherwise change which URL the server requests.
+	endpoint := strings.TrimRight(c.baseURL, "/") + "/" + url.PathEscape(barcode) + ".json"
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -160,11 +186,10 @@ func (c *ProductOpenerClient) LookupBarcode(ctx context.Context, barcode string)
 	}
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		body, err := io.ReadAll(resp.Body)
-		if err != nil {
-			return nil, fmt.Errorf("Product Opener database returned status %d (failed to read body: %w)", resp.StatusCode, err)
-		}
-		return nil, fmt.Errorf("Product Opener database returned status %d: %s", resp.StatusCode, string(body))
+		// The body is not part of the error. It can be large, and it is not
+		// something to log or return to a caller.
+		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 1<<20))
+		return nil, fmt.Errorf("Product Opener database returned status %d", resp.StatusCode)
 	}
 
 	var data productOpenerResponse
@@ -181,9 +206,25 @@ func (c *ProductOpenerClient) LookupBarcode(ctx context.Context, barcode string)
 		Name:          data.Product.Name,
 		Category:      data.Product.Category,
 		UnitOfMeasure: "",
-		ImageURL:      data.Product.ImageThumbURL,
+		ImageURL:      SafeImageURL(data.Product.ImageThumbURL),
 	}
 	return ps, nil
+}
+
+// maxBarcodeLen is longer than a GTIN and shorter than a URL. Control barcodes
+// such as STOCK_IN fit; a value this long is not a barcode a scanner emits.
+const maxBarcodeLen = 128
+
+// safeBarcodePath reports whether barcode can be placed in one URL path
+// segment without changing the request target.
+func safeBarcodePath(barcode string) bool {
+	if barcode == "" || len(barcode) > maxBarcodeLen {
+		return false
+	}
+	if strings.ContainsAny(barcode, "/?#\\\r\n\t") {
+		return false
+	}
+	return strings.TrimSpace(barcode) == barcode
 }
 
 // shouldRetryIncluding429 wraps the default retry logic and adds 429 (rate-limit) handling.
