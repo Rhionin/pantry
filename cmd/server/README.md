@@ -58,6 +58,8 @@ For Raspberry Pi deployment with a USB barcode scanner:
 
 Public HTTPS, for a hostname you own, is an optional step on top of that LAN install. See `deploy/README.md` (Public Internet access). The public site asks for one shared password. The timing snapshot is the exception: `https://<your-host>/api/telemetry` is readable without that password.
 
+On the same LAN as the Pi, that public hostname hangs when the router does not hairpin traffic aimed at its own WAN address. Cellular data is outside that path, so the same URL loads there. From home Wi-Fi, open `http://<pi-ip>:8080` (or `http://pantry.local:8080` after setup publishes it). That LAN listener has no password. Details and the Gryphon steps are in `deploy/README.md`.
+
 ### Health Endpoint
 
 The `/health` endpoint includes scanner status when the listener is configured:

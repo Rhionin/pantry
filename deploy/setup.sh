@@ -43,6 +43,8 @@ fi
 
 # Determine script directory
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck disable=SC1091
+source "$SCRIPT_DIR/mdns/lan-ipv4.sh"
 
 # Deploy root. Tests point this at a temp directory; the Pi uses /opt/pantry.
 PANTRY_DIR="${PANTRY_DIR:-/opt/pantry}"
@@ -143,7 +145,7 @@ copy_deploy_files() {
   log_info "Copying deployment files to ${PANTRY_DIR}..."
   mkdir -p "${PANTRY_DIR}"
   local item src dest
-  for item in docker-compose.yml .env.example Caddyfile udev systemd firewall; do
+  for item in docker-compose.yml .env.example Caddyfile udev systemd firewall mdns dns; do
     src="$SCRIPT_DIR/$item"
     dest="${PANTRY_DIR}/$item"
     if [[ ! -e "$src" ]]; then
@@ -163,6 +165,12 @@ copy_deploy_files() {
   fi
   if [[ -f "${PANTRY_DIR}/firewall/pantry-lan-only.sh" ]]; then
     chmod +x "${PANTRY_DIR}/firewall/pantry-lan-only.sh"
+  fi
+  if [[ -f "${PANTRY_DIR}/mdns/pantry-mdns.sh" ]]; then
+    chmod +x "${PANTRY_DIR}/mdns/pantry-mdns.sh"
+  fi
+  if [[ -f "${PANTRY_DIR}/dns/pantry-split-dns.sh" ]]; then
+    chmod +x "${PANTRY_DIR}/dns/pantry-split-dns.sh"
   fi
   log_success "Deployment files copied"
 }
@@ -312,6 +320,115 @@ apply_lan_firewall() {
   log_success "Published Pantry port accepts LAN, loopback, and Tailscale sources"
   log_info "Ports 80 and 443 are unchanged. Opt out with PANTRY_LAN_FIREWALL=off in $PANTRY_DIR/.env, then re-run sudo ./setup.sh"
   return 0
+}
+
+# report_lan_access prints the address that works on home Wi-Fi.
+# The public hostname hangs there when the router does not NAT-hairpin
+# its own WAN address back to this Pi. Cellular traffic never takes that path.
+report_lan_access() {
+  local host_port="${1:-}" ip public_host
+  if [[ ! "$host_port" =~ ^[0-9]+$ ]]; then
+    host_port=8080
+  fi
+  if ip=$(lan_ipv4); then
+    log_info "LAN: http://${ip}:${host_port}"
+    # Advertise pantry.local only when this machine can publish it. A name
+    # that does not resolve is worse than the IP, which always works on the LAN.
+    if [[ "${PANTRY_SKIP_MDNS:-}" != 1 ]]; then
+      if [[ -f "$(systemd_unit_dir)/pantry-mdns.service" ]] || command -v avahi-publish-address >/dev/null 2>&1; then
+        log_info "LAN name: http://pantry.local:${host_port}"
+      fi
+    fi
+  else
+    log_info "LAN: http://<pi-address>:${host_port}"
+    local configured=""
+    if [[ -f "${PANTRY_DIR}/.env" ]]; then
+      configured=$({ grep '^PANTRY_LAN_IPV4=' "${PANTRY_DIR}/.env" || true; } | head -1 | cut -d= -f2- | tr -d '[:space:]')
+    fi
+    if [[ -n "${PANTRY_LAN_IPV4:-$configured}" ]]; then
+      log_warn "PANTRY_LAN_IPV4 must be a private IPv4 address such as 192.168.1.203"
+    else
+      log_info "Set PANTRY_LAN_IPV4 in ${PANTRY_DIR}/.env when this Pi's LAN address is not detected"
+    fi
+  fi
+  public_host=$(env_value PUBLIC_HOST)
+  if [[ -n "$public_host" ]]; then
+    log_warn "Home Wi-Fi cannot open https://${public_host} when the router does not hairpin NAT back to itself. That connection hangs. Use the LAN address on this network. Cellular data still uses the public name and the shared password."
+  fi
+}
+
+# publish_lan_name registers pantry.local via Avahi when it is installed.
+# PANTRY_SKIP_MDNS=1 is the test harness; a Pi never sets it.
+publish_lan_name() {
+  local host_port="$1" unit_dir services_dir
+  if [[ "${PANTRY_SKIP_MDNS:-}" == 1 ]]; then
+    return 0
+  fi
+  if [[ ! "$host_port" =~ ^[0-9]+$ ]]; then
+    host_port=8080
+  fi
+  if [[ ! -x "$PANTRY_DIR/mdns/pantry-mdns.sh" ]]; then
+    log_warn "mdns/pantry-mdns.sh is missing; pantry.local was not published"
+    return 0
+  fi
+  if ! lan_ipv4 >/dev/null; then
+    log_warn "No private LAN address found, so pantry.local was not published. Set PANTRY_LAN_IPV4 in ${PANTRY_DIR}/.env"
+    return 0
+  fi
+  if ! command -v avahi-publish-address >/dev/null 2>&1; then
+    log_info "avahi-publish-address is not installed, so pantry.local was not published. On the Pi: sudo apt-get install -y avahi-daemon && sudo ./setup.sh"
+    return 0
+  fi
+
+  services_dir="${PANTRY_AVAHI_SERVICES_DIR:-}"
+  if [[ -z "$services_dir" && -d /etc/avahi/services ]]; then
+    services_dir=/etc/avahi/services
+  fi
+  # A failure to advertise the service must not abort setup. The IP URL
+  # still works, and the public proxy is already running by this point.
+  if [[ -n "$services_dir" ]] && mkdir -p "$services_dir" && [[ -w "$services_dir" ]]; then
+    cat > "${services_dir}/pantry-http.service" << EOF
+<?xml version="1.0" standalone='no'?>
+<!DOCTYPE service-group SYSTEM "avahi-service.dtd">
+<service-group>
+  <name replace-wildcards="yes">Pantry</name>
+  <service>
+    <type>_http._tcp</type>
+    <port>${host_port}</port>
+  </service>
+</service-group>
+EOF
+  elif [[ -n "$services_dir" ]]; then
+    log_warn "Could not write ${services_dir}/pantry-http.service. The LAN IP address still works."
+  fi
+
+  if [[ ! -f "$PANTRY_DIR/systemd/pantry-mdns.service" ]]; then
+    log_warn "systemd/pantry-mdns.service is missing; pantry.local was not published"
+    return 0
+  fi
+  unit_dir=$(systemd_unit_dir)
+  mkdir -p "$unit_dir"
+  cp "$PANTRY_DIR/systemd/pantry-mdns.service" "$unit_dir/pantry-mdns.service"
+  if ! systemctl daemon-reload \
+    || ! systemctl enable pantry-mdns.service \
+    || ! systemctl restart pantry-mdns.service; then
+    log_warn "Could not start pantry.local publishing. The LAN IP address still works."
+    return 0
+  fi
+  log_success "Published http://pantry.local:${host_port} on the LAN"
+}
+
+# apply_split_dns installs the optional single-name DNS answer.
+# Failure here must not stop the public proxy or the LAN port.
+apply_split_dns() {
+  if [[ ! -f "$PANTRY_DIR/dns/pantry-split-dns.sh" ]]; then
+    log_warn "dns/pantry-split-dns.sh is missing; split-horizon DNS was not configured"
+    return 0
+  fi
+  chmod +x "$PANTRY_DIR/dns/pantry-split-dns.sh"
+  if ! "$PANTRY_DIR/dns/pantry-split-dns.sh"; then
+    log_warn "Split-horizon DNS was not applied. Public HTTPS and the LAN port are unchanged."
+  fi
 }
 
 # refresh_update_unit copies the update unit when it is already installed so
@@ -494,10 +611,13 @@ cmd_apply() {
     log_info "Automatic updates were not changed (pass --with-updates to enable the timer)"
   fi
 
+  publish_lan_name "$host_port"
+  apply_split_dns
+
   log_success "Pantry setup complete"
-  log_info "LAN: http://<pi-address>:$host_port"
+  report_lan_access "$host_port"
   if [[ "$use_public" == true ]]; then
-    log_info "Public: https://$(env_value PUBLIC_HOST) (shared password; LAN does not ask for it)"
+    log_info "Public: https://$(env_value PUBLIC_HOST) (shared password; the LAN address does not ask for it)"
   fi
   if [[ "$firewall_applied" == true ]]; then
     log_info "Non-LAN clients are blocked on port $host_port"
@@ -783,6 +903,8 @@ cmd_status() {
     log_info "Public internet access is not configured (PUBLIC_HOST is empty)"
   fi
 
+  report_lan_access "${host_port:-}"
+
   echo ""
   if [[ $failed -eq 0 ]]; then
     log_success "All checks passed"
@@ -920,6 +1042,9 @@ NOTES:
     never overwritten if already set.
   - LAN http://<pi-address>:8080 keeps working. The firewall allows LAN,
     loopback, and Tailscale, and does not change ports 80 or 443.
+  - On home Wi-Fi, https://PUBLIC_HOST hangs when the router does not
+    hairpin NAT. Use the LAN address or http://pantry.local:8080.
+    Cellular data still uses the public name and the shared password.
 EOF
 }
 

@@ -61,10 +61,10 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y shellcheck
       
       - name: Lint deploy shell scripts
-        run: shellcheck deploy/setup.sh deploy/systemd/pantry-update.sh deploy/firewall/pantry-lan-only.sh deploy/setup_apply_test.sh
+        run: shellcheck deploy/setup.sh deploy/systemd/pantry-update.sh deploy/firewall/pantry-lan-only.sh deploy/setup_apply_test.sh deploy/mdns/pantry-mdns.sh deploy/dns/pantry-split-dns.sh deploy/mdns/lan-ipv4.sh
 
       - name: Setup script syntax and behavior
-        run: bash -n deploy/setup.sh deploy/firewall/pantry-lan-only.sh deploy/systemd/pantry-update.sh && bash deploy/setup_apply_test.sh
+        run: bash -n deploy/setup.sh deploy/firewall/pantry-lan-only.sh deploy/systemd/pantry-update.sh deploy/mdns/pantry-mdns.sh deploy/mdns/lan-ipv4.sh deploy/dns/pantry-split-dns.sh && bash deploy/setup_apply_test.sh
 
   frontend:
     name: Frontend tests and linting
