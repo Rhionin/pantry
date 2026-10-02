@@ -139,7 +139,7 @@ func NewHandler(
 	root.Handle("/health/", apiMux)
 	root.Handle("/", webui.NewHandler())
 
-	return observeHTTP(reg, root), scanQueue
+	return observeHTTP(reg, hardenHTTP(root)), scanQueue
 }
 
 // newAPIMux creates the API-only mux with all existing route registrations.

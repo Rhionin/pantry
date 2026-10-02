@@ -1,0 +1,12 @@
+[Unit]
+Description=Limit the Pantry LAN port to private networks
+After=docker.service
+PartOf=docker.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/opt/pantry/lan-guard.sh
+
+[Install]
+WantedBy=docker.service

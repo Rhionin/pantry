@@ -299,6 +299,22 @@ func TestCartHTTP(t *testing.T) {
 			},
 		},
 		{
+			name: "rejects an http redirect URI that is not localhost",
+			setup: func(env testEnv) {
+				if err := env.Registry.Register(kroger.NewUnconfigured()); err != nil {
+					env.T.Fatalf("register: %v", err)
+				}
+			},
+			httpExchange: httpExchange{
+				method:         "PUT",
+				path:           "/api/providers/kroger/credentials",
+				body:           `{"clientId":"ui-client","clientSecret":"super-secret-value","redirectUri":"http://evil.example/cb","modality":"PICKUP"}`,
+				expectedStatus: http.StatusUnprocessableEntity,
+				bodyContains:   []string{"Redirect URI"},
+				bodyExcludes:   []string{"super-secret-value"},
+			},
+		},
+		{
 			name: "saving credentials does not echo the client secret",
 			setup: func(env testEnv) {
 				if err := env.Registry.Register(kroger.NewUnconfigured()); err != nil {

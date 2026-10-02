@@ -2,12 +2,9 @@
 set -e
 
 # Minimum required line coverage percentage.
-# 69.8 is the clean ./... total after cart provisioning, brand preferences,
-# and product contribution share one tree. Cart packages are larger than the
-# lines those tests cover, so the floor sits below either feature alone.
-# A cached go test run can report a different total (one cached run here
-# printed 74.8). Do not ratchet from a cached result.
-COVERAGE_THRESHOLD=69.8
+# 77.3 is an uncached `go test -count=1 -coverpkg=./...` total. A cached run
+# can print a different number. Do not ratchet from a cached result.
+COVERAGE_THRESHOLD=77.3
 
 # Colors for output
 RED='\033[0;31m'

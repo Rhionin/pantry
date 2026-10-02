@@ -131,7 +131,7 @@ copy_deploy_files() {
   log_info "Copying deployment files to /opt/pantry..."
   mkdir -p /opt/pantry
   local item src dest
-  for item in docker-compose.yml .env.example Caddyfile udev systemd; do
+  for item in docker-compose.yml .env.example Caddyfile lan-guard.sh udev systemd; do
     src="$SCRIPT_DIR/$item"
     dest="/opt/pantry/$item"
     if [[ ! -e "$src" ]]; then
@@ -149,7 +149,33 @@ copy_deploy_files() {
   if [[ -f /opt/pantry/systemd/pantry-update.sh ]]; then
     chmod +x /opt/pantry/systemd/pantry-update.sh
   fi
+  if [[ -f /opt/pantry/lan-guard.sh ]]; then
+    chmod +x /opt/pantry/lan-guard.sh
+  fi
   log_success "Deployment files copied"
+}
+
+# install_lan_guard drops non-private clients on HOST_PORT. Docker's published
+# ports skip ufw, so the rule lives in DOCKER-USER. Failure here does not stop
+# the LAN service; status reports the filter as missing.
+install_lan_guard() {
+  if [[ ! -f /opt/pantry/lan-guard.sh ]]; then
+    log_warn "lan-guard.sh is missing, so the LAN port is not filtered"
+    return
+  fi
+  chmod +x /opt/pantry/lan-guard.sh
+  if [[ -f /opt/pantry/systemd/pantry-lan-guard.service ]] && command_exists systemctl; then
+    cp /opt/pantry/systemd/pantry-lan-guard.service /etc/systemd/system/pantry-lan-guard.service
+    systemctl daemon-reload || true
+    if ! systemctl enable pantry-lan-guard.service; then
+      log_warn "Could not enable pantry-lan-guard.service. Re-run it after Docker starts: sudo /opt/pantry/lan-guard.sh"
+    fi
+  fi
+  if /opt/pantry/lan-guard.sh; then
+    log_success "LAN port is limited to private networks"
+  else
+    log_warn "Could not install the LAN port filter. Do not forward that port on the router."
+  fi
 }
 
 # ============================================================================
@@ -268,6 +294,8 @@ cmd_install() {
   else
     log_info "Automatic updates NOT enabled (pass --with-updates to enable)"
   fi
+
+  install_lan_guard
 
   log_success "Pantry deployment setup complete"
   log_info "Next: sudo ./setup.sh status"
@@ -519,7 +547,15 @@ cmd_status() {
     fi
   fi
 
-  # 8. Public proxy. Empty PUBLIC_HOST is the LAN-only default, not a failure.
+  # 8. LAN port filter. Docker publishes HOST_PORT past ufw. Missing iptables
+  # is a warning: a desktop Docker engine may not have DOCKER-USER.
+  if command_exists iptables && iptables -S DOCKER-USER 2>/dev/null | grep -q pantry-lan-guard; then
+    log_success "LAN port ${host_port:-8080} is limited to private networks"
+  else
+    log_warn "LAN port filter is not installed. Run: sudo /opt/pantry/lan-guard.sh"
+  fi
+
+  # 9. Public proxy. Empty PUBLIC_HOST is the LAN-only default, not a failure.
   if [[ -n "$public_host" ]]; then
     if [[ ! -f /opt/pantry/auth.caddy ]]; then
       log_warn "PUBLIC_HOST=$public_host but /opt/pantry/auth.caddy is missing, so the proxy will not start. Run: sudo ./setup.sh publish"
@@ -610,6 +646,8 @@ cmd_publish() {
   unset auth_hash
   chmod 600 /opt/pantry/.env /opt/pantry/auth.caddy
   log_success "Wrote /opt/pantry/auth.caddy and restricted .env to the owner"
+
+  install_lan_guard
 
   log_info "Starting the public HTTPS proxy for https://$public_host"
   if ! docker compose --project-directory /opt/pantry -f /opt/pantry/docker-compose.yml --profile public up -d; then

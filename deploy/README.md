@@ -151,19 +151,23 @@ Create two forwards to the Pi's LAN address:
 
 UDP 443 is optional. It enables HTTP/3. The site works with only the two TCP forwards.
 
-Do not forward port 8080.
+Do not forward port 8080. Do not forward any other port the Pi is listening on.
 
-If the Pi itself is running a firewall (`sudo ufw status` says `active`), allow the proxy ports without opening 8080 to the world:
+`ufw` does not control ports Docker publishes. A rule that "allows 8080 only from the LAN" still lets Docker accept that port from anywhere, because Docker adds its own accept rule in front of ufw. `setup.sh` installs `lan-guard.sh` instead. That filter lives in the `DOCKER-USER` chain: private and Tailscale (`100.64.0.0/10`) clients can open the LAN port, and everyone else is dropped, including traffic that a router rewrote to look like the LAN gateway. Confirm it after install:
+
+```bash
+sudo iptables -S DOCKER-USER | grep pantry-lan-guard
+```
+
+The filter is reapplied when Docker starts (`pantry-lan-guard.service`). It is not a substitute for leaving 8080 unforwarded. If `iptables` has no `DOCKER-USER` chain, the script leaves the port as Docker published it and says so.
+
+Leave a firewall that is currently inactive turned off. Enabling ufw without an SSH allow rule can lock you out of the Pi. If ufw is already active, allow the proxy only:
 
 ```bash
 sudo ufw allow 80/tcp
 sudo ufw allow 443/tcp
 sudo ufw allow 443/udp
-sudo ufw allow from 192.168.0.0/16 to any port 8080 proto tcp
-sudo ufw allow from 10.0.0.0/8 to any port 8080 proto tcp
 ```
-
-Leave a firewall that is currently inactive turned off. Enabling it without an SSH allow rule can lock you out of the Pi.
 
 ### 3. Point the Squarespace domain at that address
 
@@ -253,6 +257,24 @@ Two free options, neither of which is wired into this repo. Pick one; do not run
 
 **Tailscale Funnel** (fits a stable URL when you do not need `rhionin.com`). The free personal tier can expose the Pi as a `*.ts.net` name without opening ports. Putting a Squarespace name on Funnel is more work than the Caddy path; use Funnel when a Tailscale hostname is enough.
 
+### Hardening and residual risk
+
+Port forwarding publishes a device on the home network to the whole internet. Caddy's shared password is the only login. The Pantry process itself does not check one: anyone who can open port 8080 can change inventory, wipe it, read the shopping list, and use a connected grocery account. Prefer a VPN or an outbound tunnel (Tailscale, or Cloudflare Tunnel with Access) when a public hostname is not required. Those keep the home router from accepting inbound connections at all. Use the port-forward path only when you have decided that tradeoff is worth the hostname.
+
+On the router, alongside the two forwards:
+
+- Reserve the Pi's DHCP lease (or set a static LAN address) so the forward cannot follow a new address.
+- Forward only TCP 80 and TCP 443 to the Pi. UDP 443 is optional and only enables HTTP/3.
+- Delete unused forwards. Do not forward 8080, 22, or the Pi's other services.
+- Turn off UPnP / NAT-PMP so nothing on the LAN can open a forward by itself.
+- Turn off WAN ping and remote router administration if the router offers them.
+
+The public site asks for one password on every route, including static files and `/api/events`. There is no per-user account and no lockout. Use a long passphrase (several random words). The 12-character minimum only stops an empty or tiny value; it is not a strength target. Caddy's stock image has no request rate limit. If the Pi is hit with password guesses, `fail2ban` (or the router's connection limits) has to live on the host, reading `docker logs pantry-caddy`. Re-run `sudo ./setup.sh publish` after pulling a new `Caddyfile` so HSTS and the other response headers are actually in use.
+
+`/opt/pantry/.env` holds the shared password and any Product Opener password in plaintext, mode `0600`. Grocery client secrets and OAuth tokens are plaintext in the `pantry-data` volume (`pantry.db`). The API does not return those secrets, but a copy of the volume or a backup of the database does. Do not put that file in a sync folder. `docker inspect pantry` shows the container's environment, including `PRODUCT_OPENER_PASSWORD` when it is set.
+
+The LAN port is published on IPv4 only (`0.0.0.0`). Browsers on the LAN should use the Pi's IPv4 address. IPv6 clients should use `https://PUBLIC_HOST`, which asks for the password. A global IPv6 address on the Pi no longer answers on 8080.
+
 ### Keeping HTTPS across automatic updates
 
 `pantry-update.sh` includes the `public` profile only when `PUBLIC_HOST` is set, so a timer pull renews the proxy instead of forgetting it. `sudo ./setup.sh publish` copies the updated unit into `/etc/systemd/system/` if that unit is already installed. If you enabled the timer before this change and have not run `publish` yet:
@@ -287,7 +309,7 @@ All configuration is handled through environment variables in `/opt/pantry/.env`
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `PANTRY_IMAGE_TAG` | `latest` | Container image tag to deploy. Use `latest` for newest build, `master` for master branch, or full commit SHA to pin version |
-| `HOST_PORT` | `8080` | Host port to expose Pantry service on the LAN. Container always uses port 8080 internally. Do not forward this port on the router |
+| `HOST_PORT` | `8080` | IPv4 LAN port for Pantry. The container always uses port 8080 internally. No password. Do not forward it. `lan-guard.sh` drops clients outside private networks. Must not be 80 or 443 |
 | `PUBLIC_HOST` | empty | Hostname for the public HTTPS proxy, such as `pantry.rhionin.com`. Empty keeps the install LAN-only. No `https://` |
 | `ACME_EMAIL` | empty | Email Let's Encrypt uses for certificate expiry notices. Required when `PUBLIC_HOST` is set. Not a Pantry login |
 | `BASIC_AUTH_USER` | `pantry` | Username the browser asks for on the public site |

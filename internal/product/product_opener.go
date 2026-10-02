@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
+	"strings"
 	"time"
 
 	"github.com/go-json-experiment/json"
@@ -144,7 +146,11 @@ func (c *ProductOpenerClient) LookupBarcode(ctx context.Context, barcode string)
 		return nil, fmt.Errorf("barcode cannot be empty")
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, fmt.Sprintf("%s/%s.json", c.baseURL, barcode), nil)
+	endpoint, err := productOpenerLookupURL(c.baseURL, barcode)
+	if err != nil {
+		return nil, err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -184,6 +190,28 @@ func (c *ProductOpenerClient) LookupBarcode(ctx context.Context, barcode string)
 		ImageURL:      data.Product.ImageThumbURL,
 	}
 	return ps, nil
+}
+
+// productOpenerLookupURL builds the read URL for one barcode. The barcode is a
+// single escaped path segment, so slashes, question marks, or a second host
+// inside it cannot retarget the request.
+func productOpenerLookupURL(baseURL, barcode string) (string, error) {
+	base, err := url.Parse(baseURL)
+	if err != nil || base.Hostname() == "" || (base.Scheme != "https" && base.Scheme != "http") {
+		return "", fmt.Errorf("product lookup URL is not configured")
+	}
+	host := base.Hostname()
+	segment := url.PathEscape(barcode)
+	rawPath := strings.TrimRight(base.EscapedPath(), "/") + "/" + segment + ".json"
+	decoded, err := url.PathUnescape(rawPath)
+	if err != nil {
+		return "", fmt.Errorf("product lookup URL is not configured")
+	}
+	out := &url.URL{Scheme: base.Scheme, Host: base.Host, Path: decoded, RawPath: rawPath}
+	if out.Hostname() != host {
+		return "", fmt.Errorf("product lookup URL is not configured")
+	}
+	return out.String(), nil
 }
 
 // shouldRetryIncluding429 wraps the default retry logic and adds 429 (rate-limit) handling.

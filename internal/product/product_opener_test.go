@@ -745,3 +745,32 @@ func TestProductIDInvariantAcrossDatabases(t *testing.T) {
 		}
 	}
 }
+
+func TestLookupBarcodeStaysOnConfiguredHost(t *testing.T) {
+	var got *http.Request
+	mock := mockTransport{fn: func(req *http.Request) (*http.Response, error) {
+		got = req
+		return &http.Response{
+			StatusCode: http.StatusNotFound,
+			Body:       io.NopCloser(strings.NewReader("")),
+			Header:     make(http.Header),
+		}, nil
+	}}
+	client := NewProductOpenerClientWithHTTPClient(ExternalSourceOpenFoodFacts, "https://world.openfoodfacts.org/api/v2/product", &http.Client{
+		Transport: mock,
+	})
+	_, err := client.LookupBarcode(context.Background(), "../../secret?x=1")
+	if !errors.Is(err, ErrProductNotFound) {
+		t.Fatalf("lookup error: %v", err)
+	}
+	if got == nil {
+		t.Fatal("upstream was not called")
+	}
+	if got.URL.Host != "world.openfoodfacts.org" {
+		t.Fatalf("host = %q", got.URL.Host)
+	}
+	escaped := got.URL.EscapedPath()
+	if escaped != "/api/v2/product/..%2F..%2Fsecret%3Fx=1.json" {
+		t.Fatalf("escaped path = %q", escaped)
+	}
+}

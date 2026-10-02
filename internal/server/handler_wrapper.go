@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"fmt"
+	"log"
 	"net/http"
 	"regexp"
 
@@ -36,10 +37,15 @@ type handlerFunc[TBody, TPathParams, TResp any] func(req Request[TBody, TPathPar
 // Success defaults to 200 OK, or 201 Created if the response type is Created.
 // Errors are converted to HTTP status codes via httpStatusFromError.
 // The pattern is extracted from r.Pattern at runtime (Go 1.22+).
+// maxJSONBodyBytes caps a JSON request. Camera frames stay in the browser;
+// the largest intentional body is a product or shopping-list write.
+const maxJSONBodyBytes = 1 << 20
+
 func HandleJSON[TBody, TPathParams, TResp any](fn handlerFunc[TBody, TPathParams, TResp]) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var body TBody
 
+		r.Body = http.MaxBytesReader(w, r.Body, maxJSONBodyBytes)
 		if r.ContentLength > 0 {
 			if err := json.UnmarshalRead(r.Body, &body); err != nil {
 				writeError(w, http.StatusBadRequest, fmt.Sprintf("invalid request body: %v", err))
@@ -117,5 +123,9 @@ func writeJSON(w http.ResponseWriter, status int, data interface{}) {
 
 // writeError writes a JSON error response.
 func writeError(w http.ResponseWriter, status int, message string) {
+	if status >= http.StatusInternalServerError {
+		log.Printf("server error: %s", message)
+		message = "Something went wrong."
+	}
 	writeJSON(w, status, map[string]string{"error": message})
 }

@@ -52,9 +52,8 @@ func (h *ProviderCredentialPutHandler) Handle(req Request[providerCredentialBody
 	if modality != "PICKUP" && modality != "DELIVERY" {
 		return nil, &HTTPError{Code: 422, Message: "Modality must be PICKUP or DELIVERY."}
 	}
-	parsed, parseErr := url.Parse(redirectURI)
-	if parseErr != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Host == "" {
-		return nil, &HTTPError{Code: 422, Message: "Redirect URI must be an http or https URL."}
+	if !acceptableRedirectURI(redirectURI) {
+		return nil, &HTTPError{Code: 422, Message: "Redirect URI must be https, or http on localhost."}
 	}
 
 	providerID := string(provider.ID())
@@ -129,6 +128,28 @@ func (h *ProviderCredentialDeleteHandler) Handle(req Request[struct{}, providerC
 }
 
 var errCredentialStore = &HTTPError{Code: 500, Message: "Credential store is not available."}
+
+// acceptableRedirectURI is the OAuth redirect the browser will be sent to with
+// the authorization code in the query string. https is required except for
+// loopback, so a public hostname cannot receive that code over cleartext.
+func acceptableRedirectURI(raw string) bool {
+	if raw == "" || strings.ContainsAny(raw, " \t\r\n\\") {
+		return false
+	}
+	parsed, err := url.Parse(raw)
+	if err != nil || parsed.Host == "" || parsed.User != nil {
+		return false
+	}
+	host := strings.ToLower(parsed.Hostname())
+	switch parsed.Scheme {
+	case "https":
+		return host != ""
+	case "http":
+		return host == "localhost" || host == "127.0.0.1" || host == "::1"
+	default:
+		return false
+	}
+}
 
 func (h *ProvidersHandler) credentialSink(providerID string) (cart.Provider, cart.AppCredentialSink, error) {
 	if h.Registry == nil {

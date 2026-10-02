@@ -483,6 +483,18 @@ func TestMountingWebUIPerturbsNoRoute(t *testing.T) {
 		// dynamic values.
 		composedHeader.Del("Content-Length")
 		apiHeader.Del("Content-Length")
+		// hardenHTTP adds the same browser headers to every composed response.
+		// They are not produced by mounting the web UI, which is what this
+		// property compares.
+		for _, name := range []string{
+			"X-Content-Type-Options",
+			"X-Frame-Options",
+			"Referrer-Policy",
+			"Permissions-Policy",
+		} {
+			composedHeader.Del(name)
+			apiHeader.Del(name)
+		}
 		if !headersEqual(composedHeader, apiHeader) {
 			t.Fatalf("%s %s: headers differ: composed=%v apiMux=%v",
 				rr.method, rr.path, composedHeader, apiHeader)

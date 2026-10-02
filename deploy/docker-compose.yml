@@ -4,7 +4,12 @@ services:
     container_name: pantry
     restart: unless-stopped
     ports:
-      - "${HOST_PORT:-8080}:8080"
+      # IPv4 only. The short form "8080:8080" also publishes on [::]. A Pi
+      # with a global IPv6 address would then expose this unauthenticated
+      # port on the internet even when the router forwards only ports 80
+      # and 443. Caddy reaches the app on the compose network, not here.
+      # LAN browsers use http://<pi-ipv4>:<HOST_PORT>.
+      - "0.0.0.0:${HOST_PORT:-8080}:8080"
     environment:
       ADDR: ":8080"
       DB_PATH: /data/pantry.db

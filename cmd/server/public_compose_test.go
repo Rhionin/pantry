@@ -42,6 +42,9 @@ func TestPublicProxyIsOptIn(t *testing.T) {
 	if !hasContainerPort(pantry.Ports, "8080") {
 		t.Fatalf("pantry must still publish the container port 8080, got %v", pantry.Ports)
 	}
+	if !hasIPv4OnlyPort(pantry.Ports, "8080") {
+		t.Fatalf("pantry must publish 8080 on 0.0.0.0 only so IPv6 does not expose it, got %v", pantry.Ports)
+	}
 
 	caddy, ok := compose.Services["caddy"]
 	if !ok {
@@ -77,6 +80,11 @@ func TestPublicProxyIsOptIn(t *testing.T) {
 		"path /api/events",
 		"reverse_proxy pantry:8080",
 		"flush_interval -1",
+		"Strict-Transport-Security",
+		"X-Content-Type-Options",
+		"X-Frame-Options",
+		"Referrer-Policy",
+		"max_size 1MB",
 	} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("Caddyfile missing %q", want)
@@ -117,6 +125,22 @@ func TestPublicProxyIsOptIn(t *testing.T) {
 	if !strings.Contains(updaterText, "-f /opt/pantry/auth.caddy") {
 		t.Fatal("automatic updates must not start the public proxy without the password hash file")
 	}
+	if !strings.Contains(setupText, "install_lan_guard") || !strings.Contains(setupText, "lan-guard.sh") {
+		t.Fatal("setup.sh must install the LAN port filter")
+	}
+	guard, err := os.ReadFile(filepath.Join("..", "..", "deploy", "lan-guard.sh"))
+	if err != nil {
+		t.Fatalf("read lan-guard.sh: %v", err)
+	}
+	guardText := string(guard)
+	for _, want := range []string{"DOCKER-USER", "pantry-lan-guard", "100.64.0.0/10", "--ctorigdstport"} {
+		if !strings.Contains(guardText, want) {
+			t.Fatalf("lan-guard.sh missing %q", want)
+		}
+	}
+	if strings.Contains(setupText, "basic_auth /") {
+		t.Fatal("basic auth must not be limited to a path; the whole public site needs the password")
+	}
 
 	ignore, err := os.ReadFile(filepath.Join("..", "..", ".gitignore"))
 	if err != nil {
@@ -130,6 +154,16 @@ func TestPublicProxyIsOptIn(t *testing.T) {
 func hasExactPort(ports []string, want string) bool {
 	for _, port := range ports {
 		if port == want {
+			return true
+		}
+	}
+	return false
+}
+
+func hasIPv4OnlyPort(ports []string, containerPort string) bool {
+	wantSuffix := ":" + containerPort
+	for _, port := range ports {
+		if strings.HasPrefix(port, "0.0.0.0:") && strings.HasSuffix(port, wantSuffix) && !strings.Contains(port, "[::]") {
 			return true
 		}
 	}
