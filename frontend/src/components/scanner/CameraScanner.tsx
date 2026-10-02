@@ -81,10 +81,9 @@ export function CameraScanner({
 
   useEffect(() => () => window.clearTimeout(flashTimer.current), []);
 
-  const previewOpen = active && block === null;
   useEffect(() => {
-    onOpenChangeRef.current?.(previewOpen);
-  }, [previewOpen]);
+    onOpenChangeRef.current?.(active);
+  }, [active]);
 
   useEffect(() => {
     if (!active || block !== null) return;

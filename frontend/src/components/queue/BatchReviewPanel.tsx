@@ -40,7 +40,7 @@ export const BatchReviewPanel = ({ selectedIds, onComplete }: BatchReviewPanelPr
         loading={submitting}
         aria-label={`Approve ${selectedIds.length} selected scans`}
       >
-        Approve {selectedIds.length} selected
+        Approve {selectedIds.length}
       </Button>
       {error !== '' && (
         <Alert color="red" py={4}>

@@ -14,8 +14,8 @@ typed barcode so the item can still be queued.
 - `camera-mode` a control barcode read by the camera switches stock in / stock out
   and does not create a product scan.
 - `camera-disconnected` a disconnected hardware scanner points at the camera
-  without changing the connection line. That line hides while the preview
-  is open so the queue can stay on screen.
+  without changing the connection line. That line hides while the camera
+  panel is open so the queue can stay on screen.
 
 ## How to get to it (user POV)
 

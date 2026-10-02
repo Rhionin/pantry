@@ -248,10 +248,10 @@ export const ScanQueuePage = ({ userId = DEFAULT_USER_ID }: ScanQueuePageProps) 
         <BarcodeInputField onScan={(barcode) => void captureBarcode(barcode)} />
         <div className="scan-toolbar-primary">
           <Title order={1} className="scan-toolbar-title">Scan queue</Title>
-          {/* DOM order starts with "Mode: stock_…" so the queue banner matcher
-              can find it. CSS reverses the lines so the short label leads. */}
+          {/* "Mode: stock_…" stays in the DOM for the queue banner matcher.
+              The visible label is the short STOCK IN / STOCK OUT text. */}
           <div role="alert" className={`scan-mode-chip scan-mode-chip--${scannerMode}`}>
-            <span className="scan-mode-chip-key">Mode: {scannerMode}</span>
+            <span className="scan-mode-chip-key" aria-hidden="true">Mode: {scannerMode}</span>
             <strong className="scan-mode-chip-label">{modeLabel}</strong>
           </div>
           <CameraScanner onScan={noteCameraCapture} onOpenChange={setCameraOpen} />
@@ -321,7 +321,7 @@ export const ScanQueuePage = ({ userId = DEFAULT_USER_ID }: ScanQueuePageProps) 
             {error}
           </Alert>
         )}
-        {!loading && error === '' && entries.length === 0 && processing.length === 0 && (
+        {!loading && error === '' && viewEntries.length === 0 && processingForView.length === 0 && (
           <Text c="dimmed" size="sm">No pending scans.</Text>
         )}
         <SimpleGrid className="scan-entry-list" cols={{ base: 1, sm: 2, lg: 3 }} spacing={6}>

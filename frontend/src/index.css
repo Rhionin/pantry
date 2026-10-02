@@ -122,18 +122,16 @@ code {
   font-weight: 650;
 }
 
-/* The key line is first in the DOM so "Mode: stock_in" stays the banner text.
-   column-reverse shows the short STOCK IN / STOCK OUT label above it. */
+/* The key string stays first in the DOM so existing drivers can match
+   "Mode: stock_in". Sighted users get the short STOCK IN / STOCK OUT label. */
 .scan-mode-chip {
-  display: flex;
-  flex-direction: column-reverse;
-  align-items: flex-start;
-  justify-content: center;
+  display: inline-flex;
+  align-items: center;
+  position: relative;
   flex: none;
-  gap: 0;
-  padding: 2px 8px;
-  border-radius: var(--mantine-radius-sm);
-  line-height: 1.15;
+  padding: 4px 10px;
+  border-radius: 999px;
+  line-height: 1.2;
   white-space: nowrap;
 }
 
@@ -148,14 +146,21 @@ code {
 }
 
 .scan-mode-chip-label {
-  font-size: 0.72rem;
+  font-size: 0.75rem;
   font-weight: 700;
-  letter-spacing: 0.03em;
+  letter-spacing: 0.04em;
 }
 
 .scan-mode-chip-key {
-  font-size: 0.65rem;
-  font-weight: 550;
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
 
 .scan-toolbar-primary > .camera-scanner-region {
