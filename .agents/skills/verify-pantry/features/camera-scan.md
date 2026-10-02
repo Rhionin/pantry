@@ -14,15 +14,19 @@ typed barcode so the item can still be queued.
 - `camera-mode` a control barcode read by the camera switches stock in / stock out
   and does not create a product scan.
 - `camera-disconnected` a disconnected hardware scanner points at the camera
-  without changing the connection banner.
+  without changing the connection banner. The banner hides while the preview
+  is open so the queue can stay on screen.
 
 ## How to get to it (user POV)
 
 - Open `Scan Queue` (`/`). The `Scan with camera` button sits under the hardware
   scanner connection banner.
 - Choose `Scan with camera`. Allow the camera prompt on a secure (HTTPS or
-  localhost) page. Point the lens at a barcode, or type one if the camera cannot
-  start.
+  localhost) page. The preview stays short so the queue remains on screen. If
+  the picture has not started, tap `Tap to start scanning`. Otherwise the frame
+  says it scans automatically. A captured code flashes the preview, outlines
+  the barcode when the detector reports its location, and highlights the new
+  queue card. Type a barcode if the camera cannot start.
 - Review and approve the card the same way as a hardware scan.
 
 ## Driving it with Playwright
@@ -42,10 +46,12 @@ Steps:
 - Click `Scan with camera`.
 - If `Camera scanning unavailable` appears, fill `Type a barcode` with the seeded
   code and click `Add scan`.
-- If `Point the camera at a barcode.` appears, the preview started. This
-  environment has no printed code in frame, so enqueue through `Barcode scanner
-  input` instead. A real decoded frame uses that same capture handler; component
-  tests cover the decode callback.
+- If `Tap to start scanning` appears, click it.
+- If `Hold a barcode in the frame. It scans automatically.` appears, the preview
+  started. A verification run can arm an injected detector; a real phone just
+  holds the barcode in frame.
+  This environment has no printed code, so if nothing is queued, enqueue through
+  `Barcode scanner input` instead. A decoded frame uses that same capture handler.
 - Wait for the article `Scan <barcode>`, then `Approve` it.
 - Confirm the card detaches, the inventory API reports one unit, and the
   Inventory route shows `1 box`.
@@ -54,9 +60,10 @@ Steps:
 
 ## Gotchas
 
-- Headless Chromium cannot decode a real barcode image from a camera. Do not
-  treat a green or empty preview as a failed scan. The e2e suite does not drive
-  a lens for the same reason; frame decoding is covered by component tests.
+- Headless Chromium cannot decode a real barcode image from a camera. The
+  camera driver injects a detector and a fake lens so the phone layout, capture
+  line, and barcode outline can be checked. A run without that injection still
+  falls back to typing. Do not treat a green or empty preview as a failed scan.
 - `getUserMedia` only works in a secure context. Localhost counts. A phone
   opening the Pi over plain `http://` will see the HTTPS explanation and the
   typed fallback.

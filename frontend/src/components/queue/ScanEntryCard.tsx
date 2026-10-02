@@ -11,6 +11,7 @@ export interface ScanEntryCardProps {
   entry: ScanEntry;
   selected: boolean;
   itemId?: string;
+  justCaptured?: boolean;
   onSelectedChange: (selected: boolean) => void;
   onChanged: () => void;
 }
@@ -19,6 +20,7 @@ export const ScanEntryCard = ({
   entry,
   selected,
   itemId,
+  justCaptured = false,
   onSelectedChange,
   onChanged,
 }: ScanEntryCardProps) => {
@@ -60,11 +62,14 @@ export const ScanEntryCard = ({
     return () => clearTimeout(timer);
   }, [entry.unitCount]);
 
-  const changeIndicatorClass = !showChangeIndicator
-    ? undefined
-    : prefersReducedMotion()
-      ? 'scan-entry-card--changed-static'
-      : 'scan-entry-card--changed-animated';
+  const changeIndicatorClass = [
+    !showChangeIndicator
+      ? undefined
+      : prefersReducedMotion()
+        ? 'scan-entry-card--changed-static'
+        : 'scan-entry-card--changed-animated',
+    justCaptured ? 'scan-entry-card--just-captured' : undefined,
+  ].filter(Boolean).join(' ') || undefined;
 
   const handleApprove = async () => {
     setApproving(true);

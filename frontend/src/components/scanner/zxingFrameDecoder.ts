@@ -54,7 +54,18 @@ export function createZxingFrameDecoder(formats: readonly string[]): FrameDecode
       try {
         const luminance = new HTMLCanvasElementLuminanceSource(canvas);
         const bitmap = new BinaryBitmap(new HybridBinarizer(luminance));
-        return [reader.decodeWithState(bitmap).getText()];
+        const result = reader.decodeWithState(bitmap);
+        const value = result.getText().trim();
+        if (value === '') return [];
+        // Result points are in the scaled canvas, which keeps the video's
+        // aspect ratio, so the preview can map them with the same crop as the picture.
+        const points = result.getResultPoints() ?? [];
+        return [{
+          value,
+          corners: points.map((point) => ({ x: point.getX(), y: point.getY() })),
+          frameWidth: canvas.width,
+          frameHeight: canvas.height,
+        }];
       } catch {
         return [];
       } finally {

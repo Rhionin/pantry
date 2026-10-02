@@ -1,7 +1,9 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('./zxingFrameDecoder', () => ({
-  createZxingFrameDecoder: vi.fn(() => ({ detect: vi.fn().mockResolvedValue(['from-zxing']) })),
+  createZxingFrameDecoder: vi.fn(() => ({
+    detect: vi.fn().mockResolvedValue([{ value: 'from-zxing', corners: [], frameWidth: 0, frameHeight: 0 }]),
+  })),
 }));
 
 import { createZxingFrameDecoder } from './zxingFrameDecoder';
@@ -31,7 +33,69 @@ describe('createFrameDecoder', () => {
 
     expect(createZxing).not.toHaveBeenCalled();
     expect(window.BarcodeDetector).toHaveBeenCalledWith({ formats: ['ean_13', 'upc_a'] });
-    await expect(decoder?.detect(document.createElement('video'))).resolves.toEqual(['0123456789012']);
+    await expect(decoder?.detect(document.createElement('video'))).resolves.toEqual([
+      { value: '0123456789012', corners: [], frameWidth: 0, frameHeight: 0 },
+    ]);
+  });
+
+  it('keeps native corner points so the preview can outline the code', async () => {
+    const detect = vi.fn().mockResolvedValue([{
+      rawValue: '111',
+      cornerPoints: [
+        { x: 1, y: 2 },
+        { x: 3, y: 2 },
+        { x: 3, y: 4 },
+        { x: 1, y: 4 },
+      ],
+    }]);
+    window.BarcodeDetector = vi.fn(function BarcodeDetector() {
+      return { detect };
+    }) as unknown as typeof window.BarcodeDetector;
+    const video = document.createElement('video');
+    Object.defineProperty(video, 'videoWidth', { value: 100 });
+    Object.defineProperty(video, 'videoHeight', { value: 80 });
+
+    const decoder = await createFrameDecoder(['ean_13']);
+
+    await expect(decoder?.detect(video)).resolves.toEqual([{
+      value: '111',
+      corners: [
+        { x: 1, y: 2 },
+        { x: 3, y: 2 },
+        { x: 3, y: 4 },
+        { x: 1, y: 4 },
+      ],
+      frameWidth: 100,
+      frameHeight: 80,
+    }]);
+  });
+
+  it('builds an outline from a bounding box when corners are missing', async () => {
+    window.BarcodeDetector = vi.fn(function BarcodeDetector() {
+      return {
+        detect: vi.fn().mockResolvedValue([{
+          rawValue: '111',
+          boundingBox: { x: 5, y: 6, width: 10, height: 4 },
+        }]),
+      };
+    }) as unknown as typeof window.BarcodeDetector;
+    const video = document.createElement('video');
+    Object.defineProperty(video, 'videoWidth', { value: 50 });
+    Object.defineProperty(video, 'videoHeight', { value: 40 });
+
+    const decoder = await createFrameDecoder(['ean_13']);
+
+    await expect(decoder?.detect(video)).resolves.toEqual([{
+      value: '111',
+      corners: [
+        { x: 5, y: 6 },
+        { x: 15, y: 6 },
+        { x: 15, y: 10 },
+        { x: 5, y: 10 },
+      ],
+      frameWidth: 50,
+      frameHeight: 40,
+    }]);
   });
 
   it('asks the native detector only for formats it supports', async () => {
@@ -55,7 +119,9 @@ describe('createFrameDecoder', () => {
     const decoder = await createFrameDecoder(['ean_13']);
 
     expect(createZxing).toHaveBeenCalledWith(['ean_13']);
-    await expect(decoder?.detect(document.createElement('video'))).resolves.toEqual(['from-zxing']);
+    await expect(decoder?.detect(document.createElement('video'))).resolves.toEqual([
+      { value: 'from-zxing', corners: [], frameWidth: 0, frameHeight: 0 },
+    ]);
   });
 
   it('uses ZXing when the browser has no BarcodeDetector', async () => {
