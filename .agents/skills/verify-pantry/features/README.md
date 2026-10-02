@@ -25,7 +25,9 @@ evidence, and cleanup mechanics.
 
 - The web UI is the primary surface. Its three routes are `Scan Queue` (`/`),
   `Inventory` (`/inventory`), and `Shopping List` (`/shopping`), reachable from
-  the header links.
+  the header links. A footer link, `Diagnostics` (`/diagnostics`), shows
+  page-load timings from `GET /api/telemetry`. It is outside the scan, inventory,
+  and shopping flows. Drive it with `scripts/drive-diagnostics.mjs`.
 - Prefer ARIA roles and accessible names over CSS selectors or DOM position.
   Scanning is the core action: fill the `Barcode scanner input` textbox and press
   Enter, exactly as an HID scanner types then terminates.

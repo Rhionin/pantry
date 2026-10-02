@@ -6,6 +6,7 @@ package telemetry
 
 import (
 	"errors"
+	"fmt"
 	"log"
 	"math"
 	"net/url"
@@ -26,6 +27,10 @@ const (
 	maxPathLen        = 128
 	maxClientDuration = time.Hour
 	maxClientSkipped  = 10000
+	maxSlowRoutes     = 5
+	maxClientRoutes   = 64
+	maxResourceCount  = 500
+	maxResourceBytes  = 64 << 20
 )
 
 // latencyEdgesMs are inclusive upper bounds. A sample of 3ms lands in the 5ms
@@ -37,6 +42,7 @@ var (
 	errNegativeDuration = errors.New("duration must not be negative")
 	errBadStatus        = errors.New("status is invalid")
 	errBadSkipped       = errors.New("skipped count is invalid")
+	errBadResources     = errors.New("resource counts are invalid")
 )
 
 var (
@@ -90,6 +96,16 @@ type Registry struct {
 	client    clientStats
 	recent    []ClientReport
 	clientLog map[string]*logGate
+
+	pageDuration latencyHist
+	pageTTFB     latencyHist
+	pageDCL      latencyHist
+	latestPage   *ClientReport
+	jsAssets     assetMax
+	cssAssets    assetMax
+
+	clientAPI     map[string]*apiRouteStats
+	firstPaintAPI map[string]*apiRouteStats
 }
 
 type routeStats struct {
@@ -121,6 +137,18 @@ type clientStats struct {
 	sseOpens  int64
 	sseErrors int64
 	sseGaps   int64
+}
+
+type apiRouteStats struct {
+	calls   int64
+	errors  int64
+	latency latencyHist
+}
+
+type assetMax struct {
+	resources int
+	transfer  int64
+	encoded   int64
 }
 
 type latencyHist struct {
@@ -157,6 +185,13 @@ type InboundReport struct {
 	Message            string  `json:"message"`
 	Session            string  `json:"session"`
 	Skipped            int     `json:"skipped"`
+	JSResources        int     `json:"jsResources"`
+	JSTransferBytes    int64   `json:"jsTransferBytes"`
+	JSEncodedBytes     int64   `json:"jsEncodedBytes"`
+	CSSResources       int     `json:"cssResources"`
+	CSSTransferBytes   int64   `json:"cssTransferBytes"`
+	CSSEncodedBytes    int64   `json:"cssEncodedBytes"`
+	FirstPaint         bool    `json:"firstPaint"`
 }
 
 // ClientReport is one stored browser report. At is when the server received
@@ -173,6 +208,13 @@ type ClientReport struct {
 	Message            string  `json:"message,omitempty"`
 	Session            string  `json:"session,omitempty"`
 	Skipped            int     `json:"skipped,omitempty"`
+	JSResources        int     `json:"jsResources,omitempty"`
+	JSTransferBytes    int64   `json:"jsTransferBytes,omitempty"`
+	JSEncodedBytes     int64   `json:"jsEncodedBytes,omitempty"`
+	CSSResources       int     `json:"cssResources,omitempty"`
+	CSSTransferBytes   int64   `json:"cssTransferBytes,omitempty"`
+	CSSEncodedBytes    int64   `json:"cssEncodedBytes,omitempty"`
+	FirstPaint         bool    `json:"firstPaint,omitempty"`
 }
 
 // LatencySnapshot summarizes a duration histogram. Percentiles are upper
@@ -264,6 +306,61 @@ type ClientSnapshot struct {
 	Recent       []ClientReport `json:"recent"`
 }
 
+// AssetSnapshot is the largest JS or CSS payload seen on a page_load report.
+// Counts and sizes only: resource URLs are not stored.
+type AssetSnapshot struct {
+	MaxResources     int   `json:"maxResources"`
+	MaxTransferBytes int64 `json:"maxTransferBytes"`
+	MaxEncodedBytes  int64 `json:"maxEncodedBytes"`
+}
+
+// PageLoadLatest is the most recent page_load with the gaps already subtracted.
+// DocumentMs is DOM ready minus time to first byte. AfterDomMs is full load
+// minus DOM ready, and stays 0 when the browser left duration at 0.
+type PageLoadLatest struct {
+	At                 string  `json:"at"`
+	Page               string  `json:"page,omitempty"`
+	DurationMs         float64 `json:"durationMs"`
+	TTFBMs             float64 `json:"ttfbMs"`
+	DOMContentLoadedMs float64 `json:"domContentLoadedMs"`
+	DocumentMs         float64 `json:"documentMs"`
+	AfterDomMs         float64 `json:"afterDomMs"`
+	JSResources        int     `json:"jsResources,omitempty"`
+	JSTransferBytes    int64   `json:"jsTransferBytes,omitempty"`
+	JSEncodedBytes     int64   `json:"jsEncodedBytes,omitempty"`
+	CSSResources       int     `json:"cssResources,omitempty"`
+	CSSTransferBytes   int64   `json:"cssTransferBytes,omitempty"`
+	CSSEncodedBytes    int64   `json:"cssEncodedBytes,omitempty"`
+}
+
+// RouteTiming is one route's client or server latency, for the short list at
+// the top of the snapshot.
+type RouteTiming struct {
+	Route   string          `json:"route"`
+	Calls   int64           `json:"calls"`
+	Errors  int64           `json:"errors,omitempty"`
+	Latency LatencySnapshot `json:"latency"`
+}
+
+// PageLoadSnapshot is the short reading of "why is the page slow?".
+// Duration, TTFB, and DOMContentLoaded percentiles use the same buckets as
+// other latency fields. Latest holds the exact milliseconds from the most
+// recent page_load. Dominant is ttfb, document, after_dom, api, or unknown.
+type PageLoadSnapshot struct {
+	Samples          int64           `json:"samples"`
+	Duration         LatencySnapshot `json:"duration"`
+	TTFB             LatencySnapshot `json:"ttfb"`
+	DOMContentLoaded LatencySnapshot `json:"domContentLoaded"`
+	Latest           *PageLoadLatest `json:"latest,omitempty"`
+	JS               AssetSnapshot   `json:"js"`
+	CSS              AssetSnapshot   `json:"css"`
+	FirstPaintAPI    []RouteTiming   `json:"firstPaintApi"`
+	SlowestClientAPI []RouteTiming   `json:"slowestClientApi"`
+	SlowestHTTP      []RouteTiming   `json:"slowestHttp"`
+	Dominant         string          `json:"dominant"`
+	Note             string          `json:"note"`
+}
+
 // RuntimeSnapshot is a point-in-time view of the Go process.
 type RuntimeSnapshot struct {
 	Goroutines  int    `json:"goroutines"`
@@ -284,17 +381,20 @@ type Snapshot struct {
 	Streams       StreamSnapshot   `json:"streams"`
 	ScanSync      ScanSyncSnapshot `json:"scanSync"`
 	Client        ClientSnapshot   `json:"client"`
+	PageLoad      PageLoadSnapshot `json:"pageLoad"`
 }
 
 // NewRegistry returns an empty registry stamped with the current time.
 func NewRegistry() *Registry {
 	r := &Registry{
-		started:   time.Now(),
-		routes:    map[string]*routeStats{},
-		httpLog:   map[string]*logGate{},
-		byEvent:   map[string]*eventStats{},
-		noSubLog:  map[string]*logGate{},
-		clientLog: map[string]*logGate{},
+		started:       time.Now(),
+		routes:        map[string]*routeStats{},
+		httpLog:       map[string]*logGate{},
+		byEvent:       map[string]*eventStats{},
+		noSubLog:      map[string]*logGate{},
+		clientLog:     map[string]*logGate{},
+		clientAPI:     map[string]*apiRouteStats{},
+		firstPaintAPI: map[string]*apiRouteStats{},
 	}
 	for _, kind := range []string{"scan", "scan_processing", "scan_processing_failed", "inventory", "scanner_mode"} {
 		r.byEvent[kind] = &eventStats{}
@@ -454,6 +554,11 @@ func (r *Registry) AcceptClientReport(in InboundReport) error {
 	if in.Skipped < 0 || in.Skipped > maxClientSkipped {
 		return errBadSkipped
 	}
+	if badResourceCount(in.JSResources) || badResourceCount(in.CSSResources) ||
+		badResourceBytes(in.JSTransferBytes) || badResourceBytes(in.JSEncodedBytes) ||
+		badResourceBytes(in.CSSTransferBytes) || badResourceBytes(in.CSSEncodedBytes) {
+		return errBadResources
+	}
 
 	rep := ClientReport{
 		At:                 time.Now().UTC().Format(time.RFC3339),
@@ -466,6 +571,13 @@ func (r *Registry) AcceptClientReport(in InboundReport) error {
 		DOMContentLoadedMs: round1(clampMs(in.DOMContentLoadedMs)),
 		Message:            sanitizeMessage(in.Message),
 		Skipped:            in.Skipped,
+		JSResources:        in.JSResources,
+		JSTransferBytes:    in.JSTransferBytes,
+		JSEncodedBytes:     in.JSEncodedBytes,
+		CSSResources:       in.CSSResources,
+		CSSTransferBytes:   in.CSSTransferBytes,
+		CSSEncodedBytes:    in.CSSEncodedBytes,
+		FirstPaint:         in.Kind == "api" && in.FirstPaint,
 	}
 	if sessionRE.MatchString(in.Session) {
 		rep.Session = in.Session
@@ -481,6 +593,13 @@ func (r *Registry) AcceptClientReport(in InboundReport) error {
 	switch in.Kind {
 	case "page_load":
 		r.client.pageLoads++
+		r.pageDuration.observe(rep.DurationMs)
+		r.pageTTFB.observe(rep.TTFBMs)
+		r.pageDCL.observe(rep.DOMContentLoadedMs)
+		r.jsAssets.fold(rep.JSResources, rep.JSTransferBytes, rep.JSEncodedBytes)
+		r.cssAssets.fold(rep.CSSResources, rep.CSSTransferBytes, rep.CSSEncodedBytes)
+		copied := rep
+		r.latestPage = &copied
 		remember = true
 	case "route":
 		r.client.routes++
@@ -491,7 +610,14 @@ func (r *Registry) AcceptClientReport(in InboundReport) error {
 		logIt = true
 	case "api":
 		r.client.apiCalls++
-		if in.Status == 0 || in.Status >= 400 {
+		failed := in.Status == 0 || in.Status >= 400
+		if rep.Route != "" {
+			r.observeClientAPI(r.clientAPI, rep.Route, rep.DurationMs, failed)
+			if rep.FirstPaint {
+				r.observeClientAPI(r.firstPaintAPI, rep.Route, rep.DurationMs, failed)
+			}
+		}
+		if failed {
 			r.client.apiErrors++
 			remember = true
 			logIt = true
@@ -627,6 +753,71 @@ func (r *Registry) Snapshot() Snapshot {
 			SSEGaps:      r.client.sseGaps,
 			Recent:       recent,
 		},
+		PageLoad: r.pageLoadSnapshot(routes),
+	}
+}
+
+func (r *Registry) pageLoadSnapshot(httpRoutes []RouteSnapshot) PageLoadSnapshot {
+	first := topClientRoutes(r.firstPaintAPI)
+	slowAPI := topClientRoutes(r.clientAPI)
+	slowHTTP := topHTTPRoutes(httpRoutes)
+	var latest *PageLoadLatest
+	if r.latestPage != nil {
+		built := pageLoadLatest(*r.latestPage)
+		latest = &built
+	}
+	dominant := dominantWait(latest, first)
+	return PageLoadSnapshot{
+		Samples:          r.client.pageLoads,
+		Duration:         r.pageDuration.snapshot(),
+		TTFB:             r.pageTTFB.snapshot(),
+		DOMContentLoaded: r.pageDCL.snapshot(),
+		Latest:           latest,
+		JS:               r.jsAssets.snapshot(),
+		CSS:              r.cssAssets.snapshot(),
+		FirstPaintAPI:    first,
+		SlowestClientAPI: slowAPI,
+		SlowestHTTP:      slowHTTP,
+		Dominant:         dominant,
+		Note:             pageLoadNote(latest, first, dominant),
+	}
+}
+
+func (r *Registry) observeClientAPI(m map[string]*apiRouteStats, route string, ms float64, failed bool) {
+	stats := m[route]
+	if stats == nil {
+		// POST /api/telemetry/client is reachable without the household
+		// password, so a flood of distinct routes must not grow this map.
+		if len(m) >= maxClientRoutes {
+			return
+		}
+		stats = &apiRouteStats{}
+		m[route] = stats
+	}
+	stats.calls++
+	stats.latency.observe(ms)
+	if failed {
+		stats.errors++
+	}
+}
+
+func (a *assetMax) fold(resources int, transfer, encoded int64) {
+	if resources > a.resources {
+		a.resources = resources
+	}
+	if transfer > a.transfer {
+		a.transfer = transfer
+	}
+	if encoded > a.encoded {
+		a.encoded = encoded
+	}
+}
+
+func (a assetMax) snapshot() AssetSnapshot {
+	return AssetSnapshot{
+		MaxResources:     a.resources,
+		MaxTransferBytes: a.transfer,
+		MaxEncodedBytes:  a.encoded,
 	}
 }
 
@@ -754,6 +945,153 @@ func clampMs(v float64) float64 {
 
 func badFloat(v float64) bool {
 	return math.IsNaN(v) || math.IsInf(v, 0) || v < 0
+}
+
+func badResourceCount(n int) bool {
+	return n < 0 || n > maxResourceCount
+}
+
+func badResourceBytes(n int64) bool {
+	return n < 0 || n > maxResourceBytes
+}
+
+func pageLoadLatest(rep ClientReport) PageLoadLatest {
+	latest := PageLoadLatest{
+		At:                 rep.At,
+		Page:               rep.Page,
+		DurationMs:         rep.DurationMs,
+		TTFBMs:             rep.TTFBMs,
+		DOMContentLoadedMs: rep.DOMContentLoadedMs,
+		JSResources:        rep.JSResources,
+		JSTransferBytes:    rep.JSTransferBytes,
+		JSEncodedBytes:     rep.JSEncodedBytes,
+		CSSResources:       rep.CSSResources,
+		CSSTransferBytes:   rep.CSSTransferBytes,
+		CSSEncodedBytes:    rep.CSSEncodedBytes,
+	}
+	if latest.DOMContentLoadedMs >= latest.TTFBMs {
+		latest.DocumentMs = round1(latest.DOMContentLoadedMs - latest.TTFBMs)
+	}
+	if latest.DurationMs > 0 && latest.DurationMs >= latest.DOMContentLoadedMs {
+		latest.AfterDomMs = round1(latest.DurationMs - latest.DOMContentLoadedMs)
+	}
+	return latest
+}
+
+func dominantWait(latest *PageLoadLatest, first []RouteTiming) string {
+	if latest == nil {
+		return "unknown"
+	}
+	apiMs := 0.0
+	for _, row := range first {
+		if row.Latency.MaxMs > apiMs {
+			apiMs = row.Latency.MaxMs
+		}
+	}
+	bestName := "unknown"
+	bestMs := 0.0
+	for _, candidate := range []struct {
+		name string
+		ms   float64
+	}{
+		{"ttfb", latest.TTFBMs},
+		{"document", latest.DocumentMs},
+		{"after_dom", latest.AfterDomMs},
+		{"api", apiMs},
+	} {
+		if candidate.ms > bestMs {
+			bestName = candidate.name
+			bestMs = candidate.ms
+		}
+	}
+	return bestName
+}
+
+func pageLoadNote(latest *PageLoadLatest, first []RouteTiming, dominant string) string {
+	if latest == nil {
+		return "No page load has been reported yet."
+	}
+	note := fmt.Sprintf("Latest page load: first byte %.0fms, DOM ready %.0fms", latest.TTFBMs, latest.DOMContentLoadedMs)
+	if latest.DurationMs > 0 {
+		note += fmt.Sprintf(", full load %.0fms", latest.DurationMs)
+	} else if latest.DOMContentLoadedMs > 0 {
+		note += ", full load was not recorded"
+	}
+	switch dominant {
+	case "document":
+		note += fmt.Sprintf(". Most of the wait is the document after the first byte (%.0fms)", latest.DocumentMs)
+	case "ttfb":
+		note += ". Most of the wait is time to first byte"
+	case "after_dom":
+		note += fmt.Sprintf(". Most of the wait is after DOM ready (%.0fms)", latest.AfterDomMs)
+	case "api":
+		route, ms := slowestFirstPaint(first)
+		if route != "" {
+			note += fmt.Sprintf(". Most of the wait is the first API call %s (%.0fms)", route, ms)
+		}
+	}
+	return note + "."
+}
+
+func slowestFirstPaint(first []RouteTiming) (string, float64) {
+	var route string
+	var ms float64
+	for _, row := range first {
+		if row.Latency.MaxMs > ms {
+			route = row.Route
+			ms = row.Latency.MaxMs
+		}
+	}
+	return route, ms
+}
+
+func topClientRoutes(m map[string]*apiRouteStats) []RouteTiming {
+	rows := make([]RouteTiming, 0, len(m))
+	for route, stats := range m {
+		rows = append(rows, RouteTiming{
+			Route:   route,
+			Calls:   stats.calls,
+			Errors:  stats.errors,
+			Latency: stats.latency.snapshot(),
+		})
+	}
+	sortRouteTimings(rows)
+	if len(rows) > maxSlowRoutes {
+		rows = rows[:maxSlowRoutes]
+	}
+	return rows
+}
+
+func topHTTPRoutes(routes []RouteSnapshot) []RouteTiming {
+	rows := make([]RouteTiming, 0, len(routes))
+	for _, route := range routes {
+		if route.Requests == 0 {
+			continue
+		}
+		rows = append(rows, RouteTiming{
+			Route:   route.Route,
+			Calls:   route.Requests,
+			Errors:  route.ClientErrors + route.ServerErrors,
+			Latency: route.Latency,
+		})
+	}
+	sortRouteTimings(rows)
+	if len(rows) > maxSlowRoutes {
+		rows = rows[:maxSlowRoutes]
+	}
+	return rows
+}
+
+func sortRouteTimings(rows []RouteTiming) {
+	sort.Slice(rows, func(i, j int) bool {
+		if rows[i].Latency.P95Ms != rows[j].Latency.P95Ms {
+			return rows[i].Latency.P95Ms > rows[j].Latency.P95Ms
+		}
+		if rows[i].Latency.MaxMs != rows[j].Latency.MaxMs {
+			return rows[i].Latency.MaxMs > rows[j].Latency.MaxMs
+		}
+		return rows[i].Route < rows[j].Route
+	})
 }
 
 func sanitizePath(raw string) string {

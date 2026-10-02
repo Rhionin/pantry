@@ -192,6 +192,75 @@ func TestTelemetry_ClientReportRoundTripStripsBarcode(t *testing.T) {
 	}
 }
 
+func TestTelemetry_PageLoadSummaryRoundTrip(t *testing.T) {
+	handler, _ := setupTestWithDB(t)
+
+	body := `{
+		"kind":"page_load",
+		"page":"/inventory?barcode=123456789012",
+		"durationMs":1400,
+		"ttfbMs":202,
+		"domContentLoadedMs":1297,
+		"jsResources":2,
+		"jsTransferBytes":840000,
+		"jsEncodedBytes":1100000,
+		"cssResources":1,
+		"cssTransferBytes":40000
+	}`
+	post := httptest.NewRequest(http.MethodPost, "/api/telemetry/client", strings.NewReader(body))
+	post.Header.Set("Content-Type", "application/json")
+	postRec := httptest.NewRecorder()
+	handler.ServeHTTP(postRec, post)
+	if postRec.Code != http.StatusNoContent {
+		t.Fatalf("POST page_load status = %d, body %s", postRec.Code, postRec.Body.String())
+	}
+
+	apiBody := `{"kind":"api","route":"/api/inventory?q=milk","status":200,"durationMs":34,"firstPaint":true}`
+	apiReq := httptest.NewRequest(http.MethodPost, "/api/telemetry/client", strings.NewReader(apiBody))
+	apiReq.Header.Set("Content-Type", "application/json")
+	apiRec := httptest.NewRecorder()
+	handler.ServeHTTP(apiRec, apiReq)
+	if apiRec.Code != http.StatusNoContent {
+		t.Fatalf("POST api status = %d, body %s", apiRec.Code, apiRec.Body.String())
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/telemetry", nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("GET status = %d", rec.Code)
+	}
+	raw := rec.Body.String()
+	if strings.Contains(raw, "123456789012") || strings.Contains(raw, "milk") {
+		t.Fatalf("snapshot kept private data: %s", raw)
+	}
+	for _, want := range []string{
+		`"pageLoad"`,
+		`"dominant":"document"`,
+		`"documentMs":1095`,
+		`"firstPaintApi":[`,
+		`"/api/inventory"`,
+		`"jsTransferBytes":840000`,
+		`"slowestClientApi":[`,
+		`"slowestHttp":[`,
+	} {
+		if !strings.Contains(raw, want) {
+			t.Fatalf("snapshot missing %q in %s", want, raw)
+		}
+	}
+
+	snap := getTelemetry(t, handler)
+	if snap.PageLoad.Latest == nil || snap.PageLoad.Latest.Page != "/inventory" {
+		t.Fatalf("latest = %+v", snap.PageLoad.Latest)
+	}
+	if snap.PageLoad.Latest.DurationMs != 1400 || snap.PageLoad.JS.MaxResources != 2 {
+		t.Fatalf("page load = %+v", snap.PageLoad)
+	}
+	if len(snap.PageLoad.FirstPaintAPI) != 1 || snap.PageLoad.FirstPaintAPI[0].Route != "/api/inventory" {
+		t.Fatalf("first paint = %+v", snap.PageLoad.FirstPaintAPI)
+	}
+}
+
 func TestTelemetry_ClientReportRejectsBadInput(t *testing.T) {
 	handler, _ := setupTestWithDB(t)
 
@@ -203,6 +272,7 @@ func TestTelemetry_ClientReportRejectsBadInput(t *testing.T) {
 		{name: "unknown kind", body: `{"kind":"password"}`, want: "unknown report kind"},
 		{name: "not json", body: `{"kind"`, want: "invalid report"},
 		{name: "too large", body: `{"kind":"page_load","message":"` + strings.Repeat("a", maxClientReportBytes) + `"}`, want: "report is too large"},
+		{name: "bad resources", body: `{"kind":"page_load","jsResources":-1}`, want: "resource counts are invalid"},
 	}
 	for _, tt := range cases {
 		t.Run(tt.name, func(t *testing.T) {
