@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Alert, Button, Group, Stack } from '@mantine/core';
+import { Alert, Button, Stack, VisuallyHidden } from '@mantine/core';
 import { batchCommitScanEntries } from '../../api/client';
 import type { BatchCommitResponse } from '../../types';
 
@@ -29,21 +29,21 @@ export const BatchReviewPanel = ({ selectedIds, onComplete }: BatchReviewPanelPr
   };
 
   return (
-    <Stack component="section" aria-labelledby="approve-heading" gap="xs">
-      <h2 id="approve-heading">Approve scans</h2>
-      <Group align="end" gap="xs">
-        <Button
-          size="xs"
-          onClick={() => void handleApprove()}
-          disabled={selectedIds.length === 0}
-          loading={submitting}
-          aria-label={`Approve ${selectedIds.length} selected scans`}
-        >
-          Approve {selectedIds.length} selected
-        </Button>
-      </Group>
+    <Stack component="section" aria-labelledby="approve-heading" gap={4} className="scan-batch-approve">
+      <VisuallyHidden>
+        <h2 id="approve-heading">Approve scans</h2>
+      </VisuallyHidden>
+      <Button
+        size="compact-xs"
+        onClick={() => void handleApprove()}
+        disabled={selectedIds.length === 0}
+        loading={submitting}
+        aria-label={`Approve ${selectedIds.length} selected scans`}
+      >
+        Approve {selectedIds.length}
+      </Button>
       {error !== '' && (
-        <Alert color="red" py="xs">
+        <Alert color="red" py={4}>
           Unable to approve selected scans.
         </Alert>
       )}

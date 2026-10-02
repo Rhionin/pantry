@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { BrowserRouter, Link, Route, Routes, useLocation } from 'react-router-dom';
+import { BrowserRouter, Link, NavLink, Route, Routes, useLocation } from 'react-router-dom';
 import { AppShell, Box, Group, Title } from '@mantine/core';
 import { ScanQueuePage } from './components/queue/ScanQueuePage';
 import { InventoryPage } from './components/inventory/InventoryPage';
@@ -21,14 +21,18 @@ function App() {
   return (
     <BrowserRouter>
       <RouteTelemetry />
-      <AppShell className="app-shell" header={{ height: 60 }} padding="md">
+      <AppShell
+        className="app-shell"
+        header={{ height: { base: 48, sm: 56 } }}
+        padding={{ base: 'xs', sm: 'md' }}
+      >
         <AppShell.Header>
-          <Group h="100%" px="md" justify="space-between">
-            <Title order={3}>Pantry</Title>
-            <Group>
-              <Link to="/">Scan Queue</Link>
-              <Link to="/inventory">Inventory</Link>
-              <Link to="/shopping">Shopping List</Link>
+          <Group h="100%" px="sm" justify="space-between" wrap="nowrap" gap="xs">
+            <Title order={3} size="h4">Pantry</Title>
+            <Group component="nav" aria-label="Sections" gap="sm" wrap="nowrap" className="app-nav">
+              <NavLink to="/" end>Scan Queue</NavLink>
+              <NavLink to="/inventory">Inventory</NavLink>
+              <NavLink to="/shopping">Shopping List</NavLink>
             </Group>
           </Group>
         </AppShell.Header>

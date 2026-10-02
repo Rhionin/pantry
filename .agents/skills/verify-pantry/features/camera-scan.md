@@ -14,13 +14,15 @@ typed barcode so the item can still be queued.
 - `camera-mode` a control barcode read by the camera switches stock in / stock out
   and does not create a product scan.
 - `camera-disconnected` a disconnected hardware scanner points at the camera
-  without changing the connection banner. The banner hides while the preview
-  is open so the queue can stay on screen.
+  without changing the connection line. That line hides while the camera
+  panel is open so the queue can stay on screen.
 
 ## How to get to it (user POV)
 
-- Open `Scan Queue` (`/`). The `Scan with camera` button sits under the hardware
-  scanner connection banner.
+- Open `Scan Queue` (`/`). The toolbar's `Scan with camera` button (visible
+  label `Camera`) sits on the same row as the mode chip. A one-line hardware
+  status sits under that row and mentions the camera when the scanner is
+  disconnected.
 - Choose `Scan with camera`. Allow the camera prompt on a secure (HTTPS or
   localhost) page. The preview stays short so the queue remains on screen. If
   the picture has not started, tap `Tap to start scanning`. Otherwise the frame
@@ -40,7 +42,7 @@ Preconditions:
 
 Steps:
 
-- Open `/` and confirm `Scan with camera` is visible. The hardware banner may
+- Open `/` and confirm `Scan with camera` is visible. The hardware status may
   read `Scanner disconnected` in this environment; that sentence also mentions
   the camera.
 - Click `Scan with camera`.

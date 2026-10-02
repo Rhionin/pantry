@@ -100,6 +100,188 @@ code {
   overflow: auto;
 }
 
+.scan-toolbar {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.scan-toolbar-primary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.scan-toolbar .scan-toolbar-title {
+  flex: none;
+  margin: 0;
+  font-size: 1.05rem;
+  line-height: 1.2;
+  font-weight: 650;
+}
+
+/* The key string stays first in the DOM so existing drivers can match
+   "Mode: stock_in". Sighted users get the short STOCK IN / STOCK OUT label. */
+.scan-mode-chip {
+  display: inline-flex;
+  align-items: center;
+  position: relative;
+  flex: none;
+  padding: 4px 10px;
+  border-radius: 999px;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.scan-mode-chip--stock_in {
+  background: var(--mantine-color-blue-light);
+  color: var(--mantine-color-blue-light-color);
+}
+
+.scan-mode-chip--stock_out {
+  background: var(--mantine-color-orange-light);
+  color: var(--mantine-color-orange-light-color);
+}
+
+.scan-mode-chip-label {
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.scan-mode-chip-key {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.scan-toolbar-primary > .camera-scanner-region {
+  margin-left: auto;
+  flex: none;
+  min-width: 0;
+}
+
+.scan-toolbar-primary > .camera-scanner-region:has(.camera-preview),
+.scan-toolbar-primary > .camera-scanner-region:has(.camera-scanner-fallback) {
+  flex: 1 0 100%;
+  margin-left: 0;
+}
+
+.scan-status {
+  margin: 0;
+  line-height: 1.3;
+}
+
+.scan-status--on {
+  color: var(--mantine-color-green-filled);
+}
+
+.scan-status--off {
+  color: var(--mantine-color-red-filled);
+}
+
+.scan-view-tabs .mantine-Tabs-list {
+  flex-wrap: nowrap;
+}
+
+.scan-view-tabs .mantine-Tabs-tab {
+  flex: 1 1 0;
+  justify-content: center;
+  padding-top: 6px;
+  padding-bottom: 6px;
+}
+
+.scan-batch-row {
+  min-height: 0;
+}
+
+.scan-batch-approve {
+  flex: none;
+}
+
+.scan-entry-layout {
+  display: grid;
+  grid-template-columns: auto auto minmax(0, 1fr);
+  gap: 2px 8px;
+  align-items: center;
+}
+
+.scan-entry-check {
+  width: 20px;
+  display: flex;
+  justify-content: center;
+}
+
+.scan-entry-avatar {
+  flex: none;
+}
+
+.scan-entry-body {
+  min-width: 0;
+}
+
+.scan-entry-titleline {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.scan-entry-titleline .mantine-Title-root {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 0.92rem;
+  line-height: 1.25;
+}
+
+.scan-entry-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 1px 8px;
+}
+
+.scan-entry-actions {
+  margin-top: 6px;
+}
+
+.scan-entry-qty {
+  width: 4.6rem;
+  flex: none;
+}
+
+.scan-entry-expiry {
+  width: 8.6rem;
+  flex: none;
+  min-width: 0;
+}
+
+.scan-entry-actions .mantine-Input-input {
+  min-height: 30px;
+  height: 30px;
+}
+
+.scan-entry-expiry .mantine-Input-input {
+  min-width: 0;
+}
+
+.scan-entry-extra {
+  margin-top: 6px;
+}
+
+.processing-scan-card .mantine-Title-root {
+  font-size: 0.92rem;
+  line-height: 1.25;
+}
+
 /* iOS sizes a <video> from its intrinsic frame and ignores max-height, which
    used to cover the scan queue. The wrapper owns the height; the picture fills it. */
 .camera-preview {
@@ -109,6 +291,12 @@ code {
   overflow: hidden;
   border-radius: 8px;
   background: #111;
+}
+
+@media (max-width: 47.99em) {
+  .camera-preview {
+    height: clamp(120px, 22dvh, 160px);
+  }
 }
 
 @media (min-width: 48em) {

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { notifications } from '@mantine/notifications';
 import { trackEventSource } from '../../telemetry/client';
-import { Alert, Badge, Checkbox, Loader, Tabs, SimpleGrid, Stack, Text, Title } from '@mantine/core';
+import { Alert, Badge, Checkbox, Group, Loader, Tabs, SimpleGrid, Stack, Text, Title } from '@mantine/core';
 import { createScanEntry, getInventoryList, getScannerConfig, listScanEntries, setScannerMode } from '../../api/client';
 import type { InventoryItem, ProcessingFailure, ProcessingNotice, ScanEntry, ScannerConfig } from '../../types';
 import { BarcodeInputField } from '../scanner/BarcodeInputField';
@@ -240,92 +240,110 @@ export const ScanQueuePage = ({ userId = DEFAULT_USER_ID }: ScanQueuePageProps) 
     );
   };
 
+  const modeLabel = scannerMode === 'stock_in' ? 'STOCK IN' : 'STOCK OUT';
+
   return (
-    <Stack gap="sm" className="scan-page">
-      <Stack gap="sm" className="scan-page-tools">
-        <Title order={1} size="h3">Scan queue</Title>
-      <BarcodeInputField onScan={(barcode) => void captureBarcode(barcode)} />
-      {scanError !== '' && (
-        <Alert color="red" py="xs">
-          {scanError}
-        </Alert>
-      )}
-      {scannerConnected !== null && !cameraOpen && (
-        <Alert color={scannerConnected ? 'green' : 'red'} py="xs" title={scannerConnected ? 'Scanner connected' : 'Scanner disconnected'}>
-          {scannerConnected
-            ? 'The barcode scanner is connected.'
-            : 'The barcode scanner is not connected. You can scan with this device\'s camera instead.'}
-        </Alert>
-      )}
-      <CameraScanner onScan={noteCameraCapture} onOpenChange={setCameraOpen} />
-      <Alert color={scannerMode === 'stock_in' ? 'blue' : 'orange'} py="xs" title={`Mode: ${scannerMode}`}>
-        Current scanner mode: <strong>{scannerMode === 'stock_in' ? 'STOCK IN' : 'STOCK OUT'}</strong>
-      </Alert>
-      <Tabs value={activeView} onChange={handleViewChange}>
-        <Tabs.List>
-          <Tabs.Tab
-            value="stock_in"
-            rightSection={stockInCount > 0
-              ? <Badge size="sm" circle aria-hidden>{formatReviewCount(stockInCount)}</Badge>
-              : undefined}
+    <Stack gap={6} className="scan-page">
+      <div className="scan-page-tools scan-toolbar">
+        <BarcodeInputField onScan={(barcode) => void captureBarcode(barcode)} />
+        <div className="scan-toolbar-primary">
+          <Title order={1} className="scan-toolbar-title">Scan queue</Title>
+          {/* "Mode: stock_…" stays in the DOM for the queue banner matcher.
+              The visible label is the short STOCK IN / STOCK OUT text. */}
+          <div role="alert" className={`scan-mode-chip scan-mode-chip--${scannerMode}`}>
+            <span className="scan-mode-chip-key" aria-hidden="true">Mode: {scannerMode}</span>
+            <strong className="scan-mode-chip-label">{modeLabel}</strong>
+          </div>
+          <CameraScanner onScan={noteCameraCapture} onOpenChange={setCameraOpen} />
+        </div>
+        {scanError !== '' && (
+          <Alert color="red" py={4}>
+            {scanError}
+          </Alert>
+        )}
+        {scannerConnected !== null && !cameraOpen && (
+          <Text
+            size="xs"
+            className={scannerConnected ? 'scan-status scan-status--on' : 'scan-status scan-status--off'}
           >
-            Stock in
-          </Tabs.Tab>
-          <Tabs.Tab
-            value="stock_out"
-            rightSection={stockOutCount > 0
-              ? <Badge size="sm" circle aria-hidden>{formatReviewCount(stockOutCount)}</Badge>
-              : undefined}
-          >
-            Stock out
-          </Tabs.Tab>
-        </Tabs.List>
-      </Tabs>
-      </Stack>
-      <Stack gap="sm" className="scan-page-queue" aria-label="Scan queue entries">
-      <Checkbox
-        label="Select all for approval"
-        aria-label="Select all eligible scans for batch approval"
-        checked={allEligibleSelected}
-        disabled={eligibleEntries.length === 0}
-        onChange={() => setSelectedIds((current) => toggleSelectAll(viewEntries, current))}
-      />
-      <BatchReviewPanel
-        selectedIds={selectedIds.filter((id) => viewEntryIds.has(id))}
-        onComplete={() => {
-          setSelectedIds([]);
-          void loadQueue();
-        }}
-      />
-      {loading && <Loader aria-label="Loading scan queue" />}
-      {error !== '' && (
-        <Alert color="red" py="xs">
-          {error}
-        </Alert>
-      )}
-      {!loading && error === '' && entries.length === 0 && processing.length === 0 && (
-        <Text c="dimmed">No pending scans.</Text>
-      )}
-      <SimpleGrid cols={{ base: 1, sm: 2, lg: 3 }} spacing="xs">
-        {processingForView.map((notice) => (
-          <ProcessingScanCard
-            key={notice.id}
-            notice={notice}
-            justCaptured={capturedBarcode !== '' && notice.barcode === capturedBarcode}
-          />
-        ))}
-        {viewEntries.map((entry) => (
-          <ScanEntryCard
-            key={entry.id}
-            entry={entry}
-            itemId={entry.productId === null ? undefined : itemIdByProductId.get(entry.productId)}
-            justCaptured={capturedBarcode !== '' && entry.barcode === capturedBarcode}
-            selected={selectedIds.includes(entry.id)}
-            onSelectedChange={(selected) => setEntrySelected(entry.id, selected)}
-            onChanged={() => void loadQueue()}
-          />
-        ))}
-      </SimpleGrid>
+            {scannerConnected ? 'Scanner connected' : (
+              <>
+                <span>Scanner disconnected</span>
+                {'. You can scan with this device\'s camera instead.'}
+              </>
+            )}
+          </Text>
+        )}
+        <Tabs value={activeView} onChange={handleViewChange} className="scan-view-tabs">
+          <Tabs.List>
+            <Tabs.Tab
+              value="stock_in"
+              rightSection={stockInCount > 0
+                ? <Badge size="sm" circle aria-hidden>{formatReviewCount(stockInCount)}</Badge>
+                : undefined}
+            >
+              Stock in
+            </Tabs.Tab>
+            <Tabs.Tab
+              value="stock_out"
+              rightSection={stockOutCount > 0
+                ? <Badge size="sm" circle aria-hidden>{formatReviewCount(stockOutCount)}</Badge>
+                : undefined}
+            >
+              Stock out
+            </Tabs.Tab>
+          </Tabs.List>
+        </Tabs>
+        {viewEntries.length > 0 && (
+          <Group className="scan-batch-row" justify="space-between" align="center" wrap="nowrap" gap="xs">
+            <Checkbox
+              size="xs"
+              label="Select all"
+              aria-label="Select all eligible scans for batch approval"
+              checked={allEligibleSelected}
+              disabled={eligibleEntries.length === 0}
+              onChange={() => setSelectedIds((current) => toggleSelectAll(viewEntries, current))}
+            />
+            <BatchReviewPanel
+              selectedIds={selectedIds.filter((id) => viewEntryIds.has(id))}
+              onComplete={() => {
+                setSelectedIds([]);
+                void loadQueue();
+              }}
+            />
+          </Group>
+        )}
+      </div>
+      <Stack gap={6} className="scan-page-queue" aria-label="Scan queue entries">
+        {loading && <Loader size="sm" aria-label="Loading scan queue" />}
+        {error !== '' && (
+          <Alert color="red" py={4}>
+            {error}
+          </Alert>
+        )}
+        {!loading && error === '' && viewEntries.length === 0 && processingForView.length === 0 && (
+          <Text c="dimmed" size="sm">No pending scans.</Text>
+        )}
+        <SimpleGrid className="scan-entry-list" cols={{ base: 1, sm: 2, lg: 3 }} spacing={6}>
+          {processingForView.map((notice) => (
+            <ProcessingScanCard
+              key={notice.id}
+              notice={notice}
+              justCaptured={capturedBarcode !== '' && notice.barcode === capturedBarcode}
+            />
+          ))}
+          {viewEntries.map((entry) => (
+            <ScanEntryCard
+              key={entry.id}
+              entry={entry}
+              itemId={entry.productId === null ? undefined : itemIdByProductId.get(entry.productId)}
+              justCaptured={capturedBarcode !== '' && entry.barcode === capturedBarcode}
+              selected={selectedIds.includes(entry.id)}
+              onSelectedChange={(selected) => setEntrySelected(entry.id, selected)}
+              onChanged={() => void loadQueue()}
+            />
+          ))}
+        </SimpleGrid>
       </Stack>
     </Stack>
   );

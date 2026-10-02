@@ -28,6 +28,17 @@ export interface CameraScannerProps {
 
 const CAPTURE_FLASH_MS = 700;
 
+function CameraIcon() {
+  return (
+    <svg className="scan-camera-icon" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
+      <path
+        fill="currentColor"
+        d="M9.5 6.5 8.2 8H5.5A1.5 1.5 0 0 0 4 9.5v8A1.5 1.5 0 0 0 5.5 19h13a1.5 1.5 0 0 0 1.5-1.5v-8A1.5 1.5 0 0 0 18.5 8h-2.7l-1.3-1.5h-5Zm2.5 3.2a3.3 3.3 0 1 1 0 6.6 3.3 3.3 0 0 1 0-6.6Z"
+      />
+    </svg>
+  );
+}
+
 export function CameraScanner({
   onScan,
   onOpenChange,
@@ -70,10 +81,9 @@ export function CameraScanner({
 
   useEffect(() => () => window.clearTimeout(flashTimer.current), []);
 
-  const previewOpen = active && block === null;
   useEffect(() => {
-    onOpenChangeRef.current?.(previewOpen);
-  }, [previewOpen]);
+    onOpenChangeRef.current?.(active);
+  }, [active]);
 
   useEffect(() => {
     if (!active || block !== null) return;
@@ -269,17 +279,24 @@ export function CameraScanner({
 
   if (!active) {
     return (
-      <Stack gap="xs" role="region" aria-label="Camera barcode scanner">
-        <Button type="button" onClick={open} w={{ base: '100%', sm: 'auto' }}>
-          Scan with camera
+      <div className="camera-scanner-region" role="region" aria-label="Camera barcode scanner">
+        <Button
+          type="button"
+          size="compact-sm"
+          variant="light"
+          leftSection={<CameraIcon />}
+          aria-label="Scan with camera"
+          onClick={open}
+        >
+          Camera
         </Button>
-      </Stack>
+      </div>
     );
   }
 
   if (block !== null) {
     return (
-      <Stack gap="sm" role="region" aria-label="Camera barcode scanner">
+      <Stack gap="sm" className="camera-scanner-region camera-scanner-fallback" role="region" aria-label="Camera barcode scanner">
         <Alert color="yellow" title="Camera scanning unavailable">
           {block.message}
         </Alert>
@@ -313,7 +330,7 @@ export function CameraScanner({
   const outlinePoints = outline === null ? '' : outlineAttribute(outline.corners);
 
   return (
-    <Stack gap="sm" role="region" aria-label="Camera barcode scanner">
+    <Stack gap="xs" className="camera-scanner-region" role="region" aria-label="Camera barcode scanner">
       <Box className={flash ? 'camera-preview camera-preview--captured' : 'camera-preview'}>
         <video
           ref={videoRef}
