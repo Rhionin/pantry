@@ -59,7 +59,13 @@ func TestWebUIRouting(t *testing.T) {
 				},
 				bodyContains: []string{placeholderMarker},
 			},
-			afterRequest: assertContentTypePrefix("text/html"),
+			afterRequest: func(env testEnv) {
+				assertContentTypePrefix("text/html")(env)
+				etag := env.Res.Header.Get("ETag")
+				if !strings.HasPrefix(etag, `W/"`) || !strings.HasSuffix(etag, `"`) {
+					env.T.Errorf("shell ETag = %q, want a weak validator", etag)
+				}
+			},
 		},
 		{
 			name: "GET /inventory (client-side route) returns SPA document",
@@ -73,6 +79,30 @@ func TestWebUIRouting(t *testing.T) {
 				bodyContains: []string{placeholderMarker},
 			},
 			afterRequest: assertContentTypePrefix("text/html"),
+		},
+		{
+			name: "GET /assets/index-missing.js does not cache the shell",
+			httpExchange: httpExchange{
+				method:         "GET",
+				url:            "/assets/index-missing.js",
+				expectedStatus: http.StatusNotFound,
+				expectedHeaders: map[string]string{
+					"Cache-Control": "no-store",
+				},
+			},
+			afterRequest: assertBodyExcludesPlaceholder,
+		},
+		{
+			name: "GET /favicon.ico does not cache the shell",
+			httpExchange: httpExchange{
+				method:         "GET",
+				url:            "/favicon.ico",
+				expectedStatus: http.StatusNotFound,
+				expectedHeaders: map[string]string{
+					"Cache-Control": "no-store",
+				},
+			},
+			afterRequest: assertBodyExcludesPlaceholder,
 		},
 		{
 			name: "POST /inventory returns 405 Method Not Allowed",

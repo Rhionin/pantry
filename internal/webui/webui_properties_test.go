@@ -1,10 +1,12 @@
 package webui
 
 import (
+	"bytes"
 	"io"
 	"mime"
 	"net/http"
 	"net/http/httptest"
+	"path"
 	"strings"
 	"testing"
 	"testing/fstest"
@@ -339,7 +341,8 @@ func generateAssetTreeForFidelity(t *rapid.T) fstest.MapFS {
 // embedded asset is received, THE Pantry_Server SHALL apply SPA_Fallback and respond
 // with status 200 and the embedded `index.html` document."
 //
-// This property test verifies that unmatched paths fall back to index.html content.
+// This property test verifies that unmatched client routes fall back to
+// index.html, and that a missing static URL does not receive that document.
 func TestSPAFallbackProperty(t *testing.T) {
 	rapid.Check(t, func(t *rapid.T) {
 		// Generate an asset tree
@@ -357,49 +360,11 @@ func TestSPAFallbackProperty(t *testing.T) {
 
 		handler.ServeHTTP(w, req)
 
-		// Assert: status must be 200
-		if w.Code != http.StatusOK {
-			t.Fatalf("Expected status 200 for fallback GET %s, got %d", unmatchedPath, w.Code)
-		}
-
-		// Assert: body must be byte-identical to index.html
-		body, err := io.ReadAll(w.Body)
-		if err != nil {
-			t.Fatalf("Failed to read response body for %s: %v", unmatchedPath, err)
-		}
-
-		// Get expected index.html content
 		indexFile, exists := assetTree["index.html"]
 		if !exists {
 			t.Fatal("Asset tree must contain index.html")
 		}
-
-		expectedContent := indexFile.Data
-		if len(body) != len(expectedContent) {
-			t.Fatalf("Fallback content length mismatch for %s: expected %d bytes, got %d bytes",
-				unmatchedPath, len(expectedContent), len(body))
-		}
-
-		for i, b := range body {
-			if b != expectedContent[i] {
-				t.Fatalf("Fallback content mismatch for %s at byte %d: expected %02x, got %02x",
-					unmatchedPath, i, expectedContent[i], b)
-			}
-		}
-
-		// Assert: Content-Type should be text/html
-		contentType := w.Header().Get("Content-Type")
-		if !strings.HasPrefix(contentType, "text/html") {
-			t.Fatalf("Expected Content-Type to start with 'text/html' for fallback %s, got %q",
-				unmatchedPath, contentType)
-		}
-
-		// Assert: Cache-Control should be no-cache
-		cacheControl := w.Header().Get("Cache-Control")
-		if cacheControl != "no-cache" {
-			t.Fatalf("Expected Cache-Control 'no-cache' for fallback %s, got %q",
-				unmatchedPath, cacheControl)
-		}
+		assertUnmatchedGET(t, w, unmatchedPath, indexFile.Data)
 	})
 }
 
@@ -427,30 +392,53 @@ func TestSPAFallbackPlaceholderOnlyProperty(t *testing.T) {
 
 		handler.ServeHTTP(w, req)
 
-		// Assert: status must be 200 (proves clean checkout serves UI shell)
-		if w.Code != http.StatusOK {
-			t.Fatalf("Expected status 200 for placeholder fallback GET %s, got %d", unmatchedPath, w.Code)
-		}
-
-		// Assert: body must be the placeholder index.html content
-		body, err := io.ReadAll(w.Body)
-		if err != nil {
-			t.Fatalf("Failed to read response body for %s: %v", unmatchedPath, err)
-		}
-
-		expectedContent := assetTree["index.html"].Data
-		if len(body) != len(expectedContent) {
-			t.Fatalf("Placeholder fallback content length mismatch for %s: expected %d bytes, got %d bytes",
-				unmatchedPath, len(expectedContent), len(body))
-		}
-
-		for i, b := range body {
-			if b != expectedContent[i] {
-				t.Fatalf("Placeholder fallback content mismatch for %s at byte %d: expected %02x, got %02x",
-					unmatchedPath, i, expectedContent[i], b)
-			}
-		}
+		assertUnmatchedGET(t, w, unmatchedPath, assetTree["index.html"].Data)
 	})
+}
+
+// assertUnmatchedGET checks one path that names no file.
+// Client routes receive the shell with no-cache. Static URLs receive 404
+// no-store so the shell cannot be cached as a script or stylesheet.
+func assertUnmatchedGET(t interface{ Fatalf(string, ...any) }, w *httptest.ResponseRecorder, unmatchedPath string, index []byte) {
+	body, err := io.ReadAll(w.Body)
+	if err != nil {
+		t.Fatalf("Failed to read response body for %s: %v", unmatchedPath, err)
+	}
+
+	name := strings.TrimPrefix(path.Clean(unmatchedPath), "/")
+	if name == "." {
+		name = ""
+	}
+	if isStaticAssetMiss(name) {
+		if w.Code != http.StatusNotFound {
+			t.Fatalf("Expected status 404 for static miss GET %s, got %d", unmatchedPath, w.Code)
+		}
+		if w.Header().Get("Cache-Control") != "no-store" {
+			t.Fatalf("Expected Cache-Control 'no-store' for static miss %s, got %q",
+				unmatchedPath, w.Header().Get("Cache-Control"))
+		}
+		if bytes.Equal(body, index) {
+			t.Fatalf("static miss %s returned the HTML shell", unmatchedPath)
+		}
+		return
+	}
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("Expected status 200 for fallback GET %s, got %d", unmatchedPath, w.Code)
+	}
+	if !bytes.Equal(body, index) {
+		t.Fatalf("Fallback content mismatch for %s: expected %d bytes, got %d bytes",
+			unmatchedPath, len(index), len(body))
+	}
+	contentType := w.Header().Get("Content-Type")
+	if !strings.HasPrefix(contentType, "text/html") {
+		t.Fatalf("Expected Content-Type to start with 'text/html' for fallback %s, got %q",
+			unmatchedPath, contentType)
+	}
+	if w.Header().Get("Cache-Control") != "no-cache" {
+		t.Fatalf("Expected Cache-Control 'no-cache' for fallback %s, got %q",
+			unmatchedPath, w.Header().Get("Cache-Control"))
+	}
 }
 
 // generateAssetTreeForFallback creates a tree for testing SPA fallback behavior
@@ -509,14 +497,14 @@ func generateUnmatchedPath(t *rapid.T, assetTree fstest.MapFS) string {
 		// Paths that look like assets but don't exist
 		filename := rapid.StringMatching(`[a-z0-9-]+`).Draw(t, "fakeAssetName")
 		ext := rapid.SampledFrom([]string{".js", ".css", ".png", ".json"}).Draw(t, "fakeAssetExt")
-		
+
 		// Ensure the path doesn't exist in the tree (tree uses assets/XXX paths, not /assets/XXX)
 		checkPath := "assets/" + filename + ext
 		for assetTree[checkPath] != nil {
 			filename = filename + "x"
 			checkPath = "assets/" + filename + ext
 		}
-		
+
 		return "/" + checkPath
 	case 4:
 		// Directory paths (should fallback if they don't contain a real file)

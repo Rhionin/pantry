@@ -282,3 +282,128 @@ func TestBadFilesystem(t *testing.T) {
 		t.Errorf("expected status 500 when index.html is missing, got %d", w.Code)
 	}
 }
+
+func TestHashedAssetRevalidatesWithoutAFullDownload(t *testing.T) {
+	body := []byte("console.log('hashed');")
+	handler := NewHandlerFS(fstest.MapFS{
+		"index.html":           &fstest.MapFile{Data: []byte("<html>shell</html>")},
+		"assets/index-Ab12.js": &fstest.MapFile{Data: body},
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/assets/index-Ab12.js", nil)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d", w.Code)
+	}
+	if got := w.Header().Get("Cache-Control"); got != "public, max-age=31536000, immutable" {
+		t.Fatalf("Cache-Control = %q", got)
+	}
+	etag := w.Header().Get("ETag")
+	if !strings.HasPrefix(etag, `W/"`) {
+		t.Fatalf("ETag = %q", etag)
+	}
+	if w.Body.String() != string(body) {
+		t.Fatalf("body = %q", w.Body.String())
+	}
+
+	again := httptest.NewRequest(http.MethodGet, "/assets/index-Ab12.js/", nil)
+	again.Header.Set("If-None-Match", etag)
+	cached := httptest.NewRecorder()
+	handler.ServeHTTP(cached, again)
+	if cached.Code != http.StatusNotModified {
+		t.Fatalf("revalidated status = %d, want 304", cached.Code)
+	}
+	if cached.Body.Len() != 0 {
+		t.Fatalf("304 body = %q", cached.Body.String())
+	}
+	if got := cached.Header().Get("Cache-Control"); got != "public, max-age=31536000, immutable" {
+		t.Fatalf("304 Cache-Control = %q", got)
+	}
+	if cached.Header().Get("ETag") != etag {
+		t.Fatalf("304 ETag = %q, want %q", cached.Header().Get("ETag"), etag)
+	}
+}
+
+func TestShellRevalidationFollowsTheDocument(t *testing.T) {
+	first := NewHandlerFS(fstest.MapFS{
+		"index.html": &fstest.MapFile{Data: []byte("<html>v1</html>")},
+	})
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	w := httptest.NewRecorder()
+	first.ServeHTTP(w, req)
+	etag := w.Header().Get("ETag")
+	if w.Code != http.StatusOK || !strings.HasPrefix(etag, `W/"`) {
+		t.Fatalf("status %d etag %q", w.Code, etag)
+	}
+	if w.Header().Get("Cache-Control") != "no-cache" {
+		t.Fatalf("Cache-Control = %q", w.Header().Get("Cache-Control"))
+	}
+
+	same := httptest.NewRequest(http.MethodGet, "/inventory", nil)
+	same.Header.Set("If-None-Match", etag)
+	notModified := httptest.NewRecorder()
+	first.ServeHTTP(notModified, same)
+	if notModified.Code != http.StatusNotModified {
+		t.Fatalf("same shell status = %d", notModified.Code)
+	}
+	if notModified.Header().Get("Cache-Control") != "no-cache" {
+		t.Fatalf("304 Cache-Control = %q", notModified.Header().Get("Cache-Control"))
+	}
+
+	second := NewHandlerFS(fstest.MapFS{
+		"index.html": &fstest.MapFile{Data: []byte("<html>v2</html>")},
+	})
+	updated := httptest.NewRequest(http.MethodGet, "/", nil)
+	updated.Header.Set("If-None-Match", etag)
+	fresh := httptest.NewRecorder()
+	second.ServeHTTP(fresh, updated)
+	if fresh.Code != http.StatusOK {
+		t.Fatalf("new shell status = %d", fresh.Code)
+	}
+	if !strings.Contains(fresh.Body.String(), "v2") {
+		t.Fatalf("new shell body = %q", fresh.Body.String())
+	}
+	if fresh.Header().Get("ETag") == etag {
+		t.Fatal("new shell reused the previous ETag")
+	}
+}
+
+func TestMissingHashedAssetDoesNotServeTheShell(t *testing.T) {
+	shell := []byte("<html>shell</html>")
+	handler := NewHandlerFS(fstest.MapFS{
+		"index.html": &fstest.MapFile{Data: shell},
+	})
+
+	probe := httptest.NewRequest(http.MethodGet, "/", nil)
+	shellRec := httptest.NewRecorder()
+	handler.ServeHTTP(shellRec, probe)
+	shellETag := shellRec.Header().Get("ETag")
+
+	req := httptest.NewRequest(http.MethodGet, "/assets/index-oldhash.js", nil)
+	req.Header.Set("If-None-Match", shellETag)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("status = %d", w.Code)
+	}
+	if w.Header().Get("Cache-Control") != "no-store" {
+		t.Fatalf("Cache-Control = %q", w.Header().Get("Cache-Control"))
+	}
+	if strings.Contains(w.Body.String(), "shell") {
+		t.Fatalf("missing asset body = %q", w.Body.String())
+	}
+
+	icon := httptest.NewRequest(http.MethodHead, "/favicon.ico", nil)
+	iconRec := httptest.NewRecorder()
+	handler.ServeHTTP(iconRec, icon)
+	if iconRec.Code != http.StatusNotFound {
+		t.Fatalf("favicon status = %d", iconRec.Code)
+	}
+	if iconRec.Body.Len() != 0 {
+		t.Fatalf("HEAD favicon body = %q", iconRec.Body.String())
+	}
+	if iconRec.Header().Get("Cache-Control") != "no-store" {
+		t.Fatalf("favicon Cache-Control = %q", iconRec.Header().Get("Cache-Control"))
+	}
+}
