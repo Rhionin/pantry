@@ -28,3 +28,22 @@
   color: var(--text);
   text-decoration: none;
 }
+
+.app-nav a {
+  font-size: 0.875rem;
+  white-space: nowrap;
+}
+
+.app-nav a[aria-current="page"] {
+  font-weight: 650;
+}
+
+@media (max-width: 47.99em) {
+  .app-nav {
+    gap: 0.65rem;
+  }
+
+  .app-nav a {
+    font-size: 0.78rem;
+  }
+}

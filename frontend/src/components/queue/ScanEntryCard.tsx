@@ -63,13 +63,22 @@ export const ScanEntryCard = ({
   }, [entry.unitCount]);
 
   const changeIndicatorClass = [
+    'scan-entry-card',
     !showChangeIndicator
       ? undefined
       : prefersReducedMotion()
         ? 'scan-entry-card--changed-static'
         : 'scan-entry-card--changed-animated',
     justCaptured ? 'scan-entry-card--just-captured' : undefined,
-  ].filter(Boolean).join(' ') || undefined;
+  ].filter(Boolean).join(' ');
+
+  const productName = entry.product?.name ?? 'Unknown product';
+  const scannedAtLabel = new Date(entry.scannedAt).toLocaleString(undefined, {
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  });
 
   const handleApprove = async () => {
     setApproving(true);
@@ -150,138 +159,134 @@ export const ScanEntryCard = ({
   };
 
   return (
-    <Card component="article" withBorder padding="sm" className={changeIndicatorClass} aria-label={`Scan ${entry.barcode}`}>
-      <Stack gap="xs">
-        {/* Header: Product info + checkbox */}
-        <Group justify="space-between" align="flex-start" wrap="nowrap">
-          <Group gap="xs" wrap="nowrap" align="flex-start" style={{ flex: 1 }}>
-            <Avatar src={entry.product?.imageUrl} name={entry.product?.name ?? '?'} radius="sm" />
-            <div style={{ flex: 1 }}>
-              <Title order={3} size="h5">{entry.product?.name ?? 'Unknown product'}</Title>
-              <Text size="xs" c="dimmed">Barcode: {entry.barcode}</Text>
-              <ProvenanceBadge externalSource={entry.product?.externalSource} />
-            </div>
-          </Group>
-          <Group gap="xs" wrap="nowrap" align="center">
-            {entry.status === 'flagged' && <Badge color="orange">Flagged</Badge>}
-            {entry.status === 'pending' && (
-              <Checkbox
-                size="xs"
-                aria-label="Select scan for batch approval"
-                checked={selected}
-                onChange={(event) => onSelectedChange(event.currentTarget.checked)}
-              />
-            )}
-          </Group>
-        </Group>
-
-        {/* Timestamp */}
-        <Text size="xs" c="dimmed">
-          Scanned: {new Date(entry.scannedAt).toLocaleString()}
-        </Text>
-
-        {/* Unit count + Expiration date controls (pending only) */}
-        {entry.status === 'pending' && (
-          <Group gap="xs" align="center" wrap="nowrap">
-            <NumberInput
+    <Card component="article" withBorder padding="xs" radius="md" className={changeIndicatorClass} aria-label={`Scan ${entry.barcode}`}>
+      <div className="scan-entry-layout">
+        <div className="scan-entry-check">
+          {entry.status === 'pending' && (
+            <Checkbox
               size="xs"
-              min={1}
-              step={1}
-              allowDecimal={false}
-              value={unitCountDraft}
-              onChange={handleUnitCountChange}
-              onBlur={handleUnitCountBlur}
-              onKeyDown={handleUnitCountKeyDown}
-              w={80}
-              aria-label="Unit count"
+              aria-label="Select scan for batch approval"
+              checked={selected}
+              onChange={(event) => onSelectedChange(event.currentTarget.checked)}
             />
-            <TextInput
-              size="xs"
-              type="date"
-              placeholder="mm/dd/yyyy"
-              value={expiryDraft}
-              onChange={(event) => {
-                setExpiryDraft(event.currentTarget.value);
-                // Clear any previous error when user starts typing
-                setExpiryError('');
-              }}
-              onBlur={handleExpiryBlur}
-              w={120}
-              aria-label="Expiration date"
-            />
-          </Group>
-        )}
+          )}
+        </div>
+        <Avatar
+          className="scan-entry-avatar"
+          src={entry.product?.imageUrl}
+          name={productName}
+          radius="sm"
+          size={32}
+        />
+        <div className="scan-entry-body">
+          <div className="scan-entry-titleline">
+            <Title order={3} size="sm" lineClamp={1} mb={0}>{productName}</Title>
+            {entry.status === 'flagged' && <Badge size="xs" color="orange">Flagged</Badge>}
+          </div>
+          <div className="scan-entry-meta">
+            <Text size="xs" c="dimmed" component="span">Barcode: {entry.barcode}</Text>
+            <Text size="xs" c="dimmed" component="span">Scanned: {scannedAtLabel}</Text>
+            <ProvenanceBadge externalSource={entry.product?.externalSource} />
+          </div>
+        </div>
+      </div>
 
-        {/* Errors from unit count and expiration date */}
-        {(unitCountError !== '' || expiryError !== '') && (
-          <Stack gap="xs">
-            {unitCountError !== '' && (
-              <Alert color="red" py="xs">
-                {unitCountError}
-              </Alert>
-            )}
-            {expiryError !== '' && (
-              <Alert color="red" py="xs">
-                {expiryError}
-              </Alert>
-            )}
-          </Stack>
-        )}
-
-        {/* Instance selector for stock_out entries */}
-        {entry.status === 'pending' && entry.direction === 'stock_out' && itemId !== undefined && (
-          <StockOutInstanceSelector itemId={itemId} value={instanceId} onChange={setInstanceId} />
-        )}
-        {entry.status === 'pending' && entry.direction === 'stock_out' && itemId === undefined && (
-          <Alert color="yellow" py="xs">No inventory item is available for this product.</Alert>
-        )}
-
-        {/* Flagged entry resolver */}
-        {entry.status === 'flagged' && (
-          <FlaggedEntryResolver entry={entry} onResolved={onChanged} />
-        )}
-
-        {/* Approve and Remove buttons on same line (pending with direction only) */}
-        {entry.status === 'pending' && entry.direction !== null && (
-          <Group gap="xs">
-            <Button
-              size="xs"
-              loading={approving}
-              onClick={() => void handleApprove()}
-              style={{ flex: 1 }}
-            >
-              Approve
-            </Button>
-            <Button
-              size="xs"
-              variant="subtle"
-              color="red"
-              loading={removing}
-              onClick={() => void handleRemove()}
-            >
-              Remove
-            </Button>
-          </Group>
-        )}
-
-        {/* Remove-only button for flagged entries */}
-        {entry.status === 'flagged' && (
-          <Button
+      {entry.status === 'pending' && (
+        <Group className="scan-entry-actions" gap={4} align="center" wrap="wrap">
+          <NumberInput
+            className="scan-entry-qty"
             size="xs"
+            min={1}
+            step={1}
+            allowDecimal={false}
+            value={unitCountDraft}
+            onChange={handleUnitCountChange}
+            onBlur={handleUnitCountBlur}
+            onKeyDown={handleUnitCountKeyDown}
+            aria-label="Unit count"
+          />
+          <TextInput
+            className="scan-entry-expiry"
+            size="xs"
+            type="date"
+            placeholder="mm/dd/yyyy"
+            value={expiryDraft}
+            onChange={(event) => {
+              setExpiryDraft(event.currentTarget.value);
+              setExpiryError('');
+            }}
+            onBlur={handleExpiryBlur}
+            aria-label="Expiration date"
+          />
+          {entry.direction !== null && (
+            <>
+              <Button
+                size="compact-xs"
+                loading={approving}
+                onClick={() => void handleApprove()}
+              >
+                Approve
+              </Button>
+              <Button
+                size="compact-xs"
+                variant="subtle"
+                color="red"
+                loading={removing}
+                onClick={() => void handleRemove()}
+              >
+                Remove
+              </Button>
+            </>
+          )}
+        </Group>
+      )}
+
+      {(unitCountError !== '' || expiryError !== '') && (
+        <Stack gap={4} mt={4}>
+          {unitCountError !== '' && (
+            <Alert color="red" py={4}>
+              {unitCountError}
+            </Alert>
+          )}
+          {expiryError !== '' && (
+            <Alert color="red" py={4}>
+              {expiryError}
+            </Alert>
+          )}
+        </Stack>
+      )}
+
+      {entry.status === 'pending' && entry.direction === 'stock_out' && itemId !== undefined && (
+        <div className="scan-entry-extra">
+          <StockOutInstanceSelector itemId={itemId} value={instanceId} onChange={setInstanceId} />
+        </div>
+      )}
+      {entry.status === 'pending' && entry.direction === 'stock_out' && itemId === undefined && (
+        <Alert color="yellow" py={4} mt={4}>No inventory item is available for this product.</Alert>
+      )}
+
+      {entry.status === 'flagged' && (
+        <div className="scan-entry-extra">
+          <FlaggedEntryResolver entry={entry} onResolved={onChanged} />
+        </div>
+      )}
+
+      {entry.status === 'flagged' && (
+        <Group justify="flex-end" mt={4}>
+          <Button
+            size="compact-xs"
             variant="subtle"
             color="red"
             loading={removing}
             onClick={() => void handleRemove()}
-            w="100%"
           >
             Remove
           </Button>
-        )}
+        </Group>
+      )}
 
-        {/* Error alerts */}
-        {approveError !== '' && <Alert color="red" py="xs">{approveError}</Alert>}
-        {removeError !== '' && <Alert color="red" py="xs">{removeError}</Alert>}
-      </Stack>
+      {approveError !== '' && <Alert color="red" py={4} mt={4}>{approveError}</Alert>}
+      {removeError !== '' && <Alert color="red" py={4} mt={4}>{removeError}</Alert>}
     </Card>
   );
 };
