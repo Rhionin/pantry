@@ -140,11 +140,11 @@ On a Pi (or after removing `/opt/pantry` and the udev rule):
 
 ```bash
 cd /path/to/deploy
-sudo ./setup.sh install
+sudo ./setup.sh
 sudo ./setup.sh status
 ```
 
-**Expected:** `install` installs Docker (if needed), copies the tree to `/opt/pantry`, creates `.env`, installs the udev rule, starts the container, and polls health to success. `status` reports every link PASS (scanner absent is PASS-with-note).
+**Expected:** `sudo ./setup.sh` installs Docker (if needed), copies the tree to `/opt/pantry`, creates `.env`, installs the udev rule, starts the container, and polls health to success. `status` reports every link PASS (scanner absent is PASS-with-note).
 
 ---
 
@@ -155,9 +155,9 @@ sudo ./setup.sh status
    sudo sed -i 's/^PANTRY_IMAGE_TAG=.*/PANTRY_IMAGE_TAG=<known-sha>/' /opt/pantry/.env
    cd /opt/pantry && sudo docker compose up -d
    ```
-2. Re-run install:
+2. Re-run setup:
    ```bash
-   cd /path/to/deploy && sudo ./setup.sh install
+   cd /path/to/deploy && sudo ./setup.sh
    ```
 3. Verify:
    ```bash

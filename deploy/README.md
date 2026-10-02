@@ -13,10 +13,10 @@ New to this? Follow these steps in order on your Raspberry Pi and you'll have Pa
 3. **Run the setup script.** From the `deploy/` folder you copied over:
 
    ```bash
-   sudo ./setup.sh install
+   sudo ./setup.sh
    ```
 
-   This installs Docker if needed, copies the deployment files into `/opt/pantry`, creates your configuration, installs the scanner udev rule, starts Pantry, and waits until it reports healthy. It is safe to re-run: it never overwrites configuration values you already set.
+   This installs Docker if needed, copies the deployment files into `/opt/pantry`, creates your configuration, installs the scanner udev rule, starts Pantry, and waits until it reports healthy. It is safe to re-run: it never overwrites configuration values you already set. When `PUBLIC_HOST` is already set and `/opt/pantry/auth.caddy` exists, it also keeps the public HTTPS proxy on the current compose file and Caddyfile, and it applies the LAN firewall on the published Pantry port. `install`, `publish`, and `firewall` are the same command.
 
 4. **Check it works.** The installer already polled `/health` for you, but you can confirm any time. This should print `{"status":"ok"}`:
 
@@ -34,6 +34,18 @@ New to this? Follow these steps in order on your Raspberry Pi and you'll have Pa
 
 6. **Optional: open it to the public internet.** The steps above stay on your home network. To serve the same UI at a hostname you own, such as `https://pantry.rhionin.com`, follow [Public Internet access](#public-internet-access). The public site asks for one shared password.
 
+## Updating
+
+After `git pull` on the Pi, from `deploy/`:
+
+```bash
+sudo ./setup.sh
+```
+
+That one command is the whole update. It copies `deploy/` to `/opt/pantry`, starts the containers from the compose file you just pulled (including the public HTTPS proxy when `PUBLIC_HOST` is set and `/opt/pantry/auth.caddy` is already there), restarts Caddy so the current `Caddyfile` is what is serving, and applies the LAN firewall for the published Pantry port. Run it again any time. Existing `.env` values stay, an existing `auth.caddy` is not regenerated, and a site that is already on the public internet stays there. LAN `http://<pi-ip>:8080` stays up.
+
+`sudo ./setup.sh firewall-off` removes the port rule until the next setup. To leave it off, set `PANTRY_LAN_FIREWALL=off` in `/opt/pantry/.env` and run `sudo ./setup.sh` again.
+
 **The scanner is optional at every step.** Pantry starts and serves the web UI whether or not a barcode scanner is attached, and you can connect or disconnect the scanner at any time — see [Headless Scanner Input](#headless-scanner-input).
 
 The rest of this guide is reference material: configuration options, backups, the barcode scanner, rolling back, and troubleshooting.
@@ -46,7 +58,7 @@ Pantry is packaged as a `linux/arm64` container image and requires 64-bit Raspbe
 
 ## First-Time Setup
 
-The recommended path is `sudo ./setup.sh install`, which performs every step below in order and verifies the result. The steps are documented here so you understand what the script does and can run them by hand if you prefer.
+The recommended path is `sudo ./setup.sh`, which performs every step below in order and verifies the result. The steps are documented here so you understand what the script does and can run them by hand if you prefer.
 
 ### 1. Install Docker and Docker Compose
 
@@ -71,7 +83,7 @@ Log out and back in for the group membership to take effect.
 
 ### 2. Set up deployment files and configuration
 
-`setup.sh install` copies the whole `deploy/` tree to `/opt/pantry` (including `systemd/` and `udev/`) and reconciles `.env`. To do it by hand:
+`sudo ./setup.sh` copies the whole `deploy/` tree to `/opt/pantry` (including `systemd/` and `udev/`) and reconciles `.env`. To do it by hand:
 
 ```bash
 # Create deployment directory
@@ -163,13 +175,7 @@ sudo ufw allow 443/tcp
 sudo ufw allow 443/udp
 ```
 
-To also drop non-LAN clients that reach the Pantry port (loopback, private LAN, and Tailscale `100.64.0.0/10` stay allowed; ports 80 and 443 are not changed):
-
-```bash
-sudo ./setup.sh firewall
-```
-
-`sudo ./setup.sh firewall-off` removes that rule. It is optional. The router rule above is the one that matters.
+`sudo ./setup.sh` also drops non-LAN clients that reach the Pantry port (loopback, private LAN, and Tailscale `100.64.0.0/10` stay allowed; ports 80 and 443 are not changed). That runs whenever compose publishes the port, which the stock file always does, and whenever the public proxy is on. Set `PANTRY_LAN_FIREWALL=off` in `/opt/pantry/.env` and run `sudo ./setup.sh` again to leave the port reachable from any source. `sudo ./setup.sh firewall-off` removes the rule only until the next setup. Do not forward port 8080 either way. The router rule above is the one that matters for the public site.
 
 ### 3. Point the Squarespace domain at that address
 
@@ -200,7 +206,7 @@ When your home IP changes, edit this same A record. The certificate is for the h
 
 ### 4. Start the proxy
 
-On the Pi, edit `/opt/pantry/.env` (create the LAN install first with `sudo ./setup.sh install` if you have not):
+On the Pi, edit `/opt/pantry/.env` (create the LAN install first with `sudo ./setup.sh` if you have not):
 
 ```bash
 PUBLIC_HOST=pantry.rhionin.com
@@ -209,13 +215,13 @@ BASIC_AUTH_USER=pantry
 BASIC_AUTH_PASSWORD=replace-with-a-long-passphrase
 ```
 
-`PUBLIC_HOST` is the hostname only. `ACME_EMAIL` is where Let's Encrypt sends expiry notices. Replace `BASIC_AUTH_PASSWORD` with a passphrase of 12 to 72 characters, and do not wrap it in quotes. `publish` hashes it into `/opt/pantry/auth.caddy` (mode `0600`) and restricts `.env` to its owner. The password itself stays in `.env` so you can change it later; it is not written into the image or the repository.
+`PUBLIC_HOST` is the hostname only. `ACME_EMAIL` is where Let's Encrypt sends expiry notices. Replace `BASIC_AUTH_PASSWORD` with a passphrase of 12 to 72 characters, and do not wrap it in quotes. The first `sudo ./setup.sh` after that hashes it into `/opt/pantry/auth.caddy` (mode `0600`) and restricts `.env` to its owner. The password itself stays in `.env`. It is not written into the image or the repository. A later run keeps the existing `auth.caddy` and does not ask for the password again.
 
 ```bash
-sudo ./setup.sh publish
+sudo ./setup.sh
 ```
 
-That refreshes `docker-compose.yml` and `Caddyfile` into `/opt/pantry`, then starts [Caddy](https://caddyserver.com/) on ports 80 and 443. Caddy requests a Let's Encrypt certificate for `PUBLIC_HOST` and renews it on its own. Starting the proxy accepts the Let's Encrypt subscriber agreement.
+That refreshes `docker-compose.yml` and `Caddyfile` into `/opt/pantry`, starts Pantry, and starts [Caddy](https://caddyserver.com/) on ports 80 and 443. Caddy requests a Let's Encrypt certificate for `PUBLIC_HOST` and renews it on its own. Starting the proxy accepts the Let's Encrypt subscriber agreement. The same command restarts Caddy after a later pull so a new `Caddyfile` is what is serving.
 
 Certificates are stored in the Docker volume `caddy-data`. Do not delete that volume to "retry" a failure: Let's Encrypt rate-limits repeat issuances (on the order of five duplicate certificates per hostname per week).
 
@@ -229,9 +235,9 @@ curl -fsS -u 'pantry:replace-with-a-long-passphrase' https://pantry.rhionin.com/
 
 Without the password, that command returns `401`. With it, expect `{"status":"ok",...}`. Then open `https://pantry.rhionin.com` in the phone's browser, enter the same username and password when asked, and confirm the pantry UI loads. The scan queue and inventory pages keep a live connection to `/api/events`; new scans should show up without a refresh.
 
-To change the password, edit `BASIC_AUTH_PASSWORD` and run `sudo ./setup.sh publish` again. Browsers that saved the old password will ask again.
+To change the password, edit `BASIC_AUTH_PASSWORD`, remove `/opt/pantry/auth.caddy`, and run `sudo ./setup.sh` again. Leaving `auth.caddy` in place keeps the current hash, so a routine setup does not regenerate it or ask you to type the password again. Browsers that saved the old password will ask again after the hash changes.
 
-`sudo ./setup.sh unpublish` stops only the proxy. The LAN site keeps running. Clear `PUBLIC_HOST` as well if an automatic-update timer is enabled, or the next update will start the proxy again.
+`sudo ./setup.sh unpublish` stops only the proxy. The LAN site keeps running. Clear `PUBLIC_HOST` as well if an automatic-update timer is enabled, or the next `sudo ./setup.sh` will start the proxy again.
 
 ### When something fails
 
@@ -248,8 +254,8 @@ sudo docker compose --profile public logs --tail=80 caddy
 | Certificate error mentioning timeout, connection refused, or `404` from another site | Port 80 is not reaching this Pi. Re-check the router forward and that no other program is bound to port 80. |
 | Browser warning, certificate name mismatch | `PUBLIC_HOST` and the Squarespace host are not the same name. They must match exactly. |
 | `https://` works at home but not on cellular | The phone is still using the LAN address, or the forward is wrong. Test on cellular. |
-| Browser or curl gets `401` | The shared password is missing or does not match `.env`. A request with no password is supposed to be rejected. Re-run `sudo ./setup.sh publish` after changing `BASIC_AUTH_PASSWORD`. |
-| UI loads, but the scan queue never updates live | `/api/events` is being buffered. `deploy/Caddyfile` must keep `flush_interval -1` on that path. Re-run `sudo ./setup.sh publish` after pulling a fresh `Caddyfile`. |
+| Browser or curl gets `401` | The shared password is missing or does not match `.env`. A request with no password is supposed to be rejected. Edit `BASIC_AUTH_PASSWORD`, remove `/opt/pantry/auth.caddy`, and run `sudo ./setup.sh`. |
+| UI loads, but the scan queue never updates live | `/api/events` is being buffered. `deploy/Caddyfile` must keep `flush_interval -1` on that path. Run `sudo ./setup.sh` after pulling a fresh `Caddyfile`. |
 
 ### When port forwarding cannot work
 
@@ -269,11 +275,11 @@ Kroger client secrets and refresh tokens are stored in `pantry.db` as plain text
 
 Automatic updates run as root and pull `latest` when you enable the timer. A bad image then starts on the same Pi that is reachable from the internet. Leave the timer off unless you want that.
 
-Prefer a tunnel or Tailscale when you do not need a public listener. If you keep the port forward: only TCP 80 and 443, DHCP reservation, UPnP off, no forward of 8080, and `sudo ./setup.sh firewall` so a mistaken forward of the Pantry port still has to come from the LAN.
+Prefer a tunnel or Tailscale when you do not need a public listener. If you keep the port forward: only TCP 80 and 443, DHCP reservation, UPnP off, no forward of 8080. `sudo ./setup.sh` already limits the Pantry port to LAN sources, so a mistaken forward of that port still has to come from the LAN unless `PANTRY_LAN_FIREWALL=off`.
 
 ### Keeping HTTPS across automatic updates
 
-`pantry-update.sh` includes the `public` profile only when `PUBLIC_HOST` is set, so a timer pull renews the proxy instead of forgetting it. `sudo ./setup.sh publish` copies the updated unit into `/etc/systemd/system/` if that unit is already installed. If you enabled the timer before this change and have not run `publish` yet:
+`pantry-update.sh` includes the `public` profile only when `PUBLIC_HOST` is set and `auth.caddy` exists, so a timer pull renews the proxy instead of forgetting it. `sudo ./setup.sh` copies the updated unit into `/etc/systemd/system/` if that unit is already installed. If you enabled the timer before this change and have not run setup yet:
 
 ```bash
 sudo cp /opt/pantry/systemd/pantry-update.service /etc/systemd/system/
@@ -309,7 +315,8 @@ All configuration is handled through environment variables in `/opt/pantry/.env`
 | `PUBLIC_HOST` | empty | Hostname for the public HTTPS proxy, such as `pantry.rhionin.com`. Empty keeps the install LAN-only. No `https://` |
 | `ACME_EMAIL` | empty | Email Let's Encrypt uses for certificate expiry notices. Required when `PUBLIC_HOST` is set. Not a Pantry login |
 | `BASIC_AUTH_USER` | `pantry` | Username the browser asks for on the public site |
-| `BASIC_AUTH_PASSWORD` | empty | Shared password for the public site, 12 to 72 characters. Required before `publish` will start. The hash is written to `auth.caddy`; this value stays in `.env` |
+| `BASIC_AUTH_PASSWORD` | empty | Shared password for the public site, 12 to 72 characters. Required the first time the public proxy starts, unless `auth.caddy` already exists. The hash is written to `auth.caddy`; this value stays in `.env`. Setup does not replace an existing `auth.caddy` |
+| `PANTRY_LAN_FIREWALL` | `on` | `off` leaves `HOST_PORT` reachable from any source. Any other value, including empty, installs the LAN-only rule when compose publishes that port or the public proxy is on |
 | `PRODUCT_CACHE_TTL` | `720h` | How long to cache product lookups (720h = 30 days) |
 | `PRODUCT_MISS_TTL` | `168h` | How long to cache "not found" results (168h = 7 days) |
 | `DISABLE_EXTERNAL_PRODUCT_LOOKUP` | `false` | Set to `true` to disable external API calls for product information. This also keeps product contribution local |
@@ -332,7 +339,7 @@ cd /opt/pantry
 sudo docker compose up -d
 ```
 
-Setting `PUBLIC_HOST` does not publish the site by itself. Run `sudo ./setup.sh publish` so the `public` profile starts. A plain `docker compose up` leaves that profile off.
+Setting `PUBLIC_HOST` does not publish the site by itself. Run `sudo ./setup.sh` so the `public` profile starts when `ACME_EMAIL` is set and `auth.caddy` exists (or `BASIC_AUTH_PASSWORD` is set and `auth.caddy` does not). A plain `docker compose up` leaves that profile off.
 
 ## Headless Scanner Input
 
@@ -528,7 +535,7 @@ Available tags:
 - `master` - Alias for latest master branch build
 - `<commit-sha>` - Specific commit (full SHA)
 
-A pinned tag is preserved across re-runs of `sudo ./setup.sh install` and is never silently reset to `latest`.
+A pinned tag is preserved across re-runs of `sudo ./setup.sh` and is never silently reset to `latest`.
 
 ### Rolling Back
 
@@ -547,7 +554,7 @@ If you need to rollback to a previous version:
 
 ## Automatic Updates (Optional)
 
-For automatic updates, you can install systemd units that periodically check for and apply new releases. `setup.sh install` does **not** enable them by default — pass `--with-updates` or enable them manually when you are done iterating.
+For automatic updates, you can install systemd units that periodically check for and apply new releases. `sudo ./setup.sh` does **not** enable them by default, and a later run does not disable a timer you already turned on. Pass `--with-updates` or enable them manually when you are done iterating.
 
 ### ⚠️ Important Considerations
 
@@ -565,7 +572,7 @@ For automatic updates, you can install systemd units that periodically check for
    # Should output: /usr/bin/docker
    ```
 
-2. Install the systemd units. The service runs `/opt/pantry/systemd/pantry-update.sh`, which `setup.sh install` copies into place and marks executable. When `PUBLIC_HOST` is set, that script keeps the HTTPS proxy in the update.
+2. Install the systemd units. The service runs `/opt/pantry/systemd/pantry-update.sh`, which `sudo ./setup.sh` copies into place and marks executable. When `PUBLIC_HOST` is set and `auth.caddy` exists, that script keeps the HTTPS proxy in the update. Or pass `--with-updates` to `sudo ./setup.sh`.
    ```bash
    sudo cp /opt/pantry/systemd/pantry-update.service /etc/systemd/system/
    sudo cp /opt/pantry/systemd/pantry-update.timer /etc/systemd/system/
@@ -710,7 +717,7 @@ Note the image is distroless, so `docker exec pantry sh` does not work — use l
    ```bash
    grep '^SCANNER_DEVICE=' /opt/pantry/.env
    ```
-   An older `.env` pinned `SCANNER_DEVICE=/dev/pantry-scanner`, and the container can no longer open that path — the symlink now lives at `/dev/input/pantry-scanner`. Running `sudo ./setup.sh install` migrates this obsolete default automatically; after it runs, the value should be `/dev/input/pantry-scanner`. (A custom path you set on purpose is left untouched.) Apply it with `cd /opt/pantry && sudo docker compose up -d`. Symptom of the stale value: logs show `failed to open device /dev/pantry-scanner: no such file or directory` and `status` reports the old path.
+   An older `.env` pinned `SCANNER_DEVICE=/dev/pantry-scanner`, and the container can no longer open that path — the symlink now lives at `/dev/input/pantry-scanner`. Running `sudo ./setup.sh` migrates this obsolete default automatically; after it runs, the value should be `/dev/input/pantry-scanner`. (A custom path you set on purpose is left untouched.) Symptom of the stale value: logs show `failed to open device /dev/pantry-scanner: no such file or directory` and `status` reports the old path.
 
 3. **Check scanner status via `/health`:**
    ```bash

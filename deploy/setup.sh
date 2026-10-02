@@ -10,12 +10,11 @@ set -euo pipefail
 # desired state without losing configuration.
 #
 # Usage:
-#   sudo ./setup.sh install          # One-time setup: Docker, udev, container
-#   sudo ./setup.sh install --with-updates  # ...and enable auto-update timer
-#   sudo ./setup.sh publish          # HTTPS on PUBLIC_HOST (Let's Encrypt via Caddy)
+#   sudo ./setup.sh                  # Sync files, containers, Caddy, and firewall
+#   sudo ./setup.sh apply            # Same command, explicit name
+#   sudo ./setup.sh --with-updates   # ...and enable the auto-update timer
 #   sudo ./setup.sh unpublish        # Stop the public proxy; LAN pantry keeps running
-#   sudo ./setup.sh firewall         # Drop non-LAN clients that reach the Pantry port
-#   sudo ./setup.sh firewall-off     # Remove that restriction
+#   sudo ./setup.sh firewall-off     # Remove the LAN port rule until the next setup
 #   sudo ./setup.sh rule             # Regenerate udev rule for a new scanner
 #   sudo ./setup.sh status           # Diagnose the full chain from udev to health
 #   sudo ./setup.sh logs             # Follow container logs
@@ -23,7 +22,9 @@ set -euo pipefail
 #   sudo ./setup.sh thaw             # Unmask pantry-update.timer when done
 #   sudo ./setup.sh help             # Show this message
 #
-# Default: help
+# install, publish, and firewall are aliases of apply so older scripts keep working.
+#
+# Default: apply
 
 # Color codes for output (TTY detection)
 if [[ -t 1 ]]; then
@@ -42,6 +43,11 @@ fi
 
 # Determine script directory
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# Deploy root. Tests point this at a temp directory; the Pi uses /opt/pantry.
+PANTRY_DIR="${PANTRY_DIR:-/opt/pantry}"
+# Where systemd units are installed. Tests point this at a temp directory.
+PANTRY_SYSTEMD_UNIT_DIR="${PANTRY_SYSTEMD_UNIT_DIR:-/etc/systemd/system}"
 
 # Helpers
 log_info() {
@@ -81,8 +87,12 @@ fatal() {
   exit 1
 }
 
-# Verify running as root
+# Verify running as root.
+# PANTRY_SETUP_SKIP_ROOT is a test seam so behavior tests can run without sudo.
 require_root() {
+  if [[ "${PANTRY_SETUP_SKIP_ROOT:-}" == 1 ]]; then
+    return 0
+  fi
   if [[ $EUID -ne 0 ]]; then
     fatal "This script must be run as root (use sudo)"
   fi
@@ -93,17 +103,17 @@ command_exists() {
   command -v "$1" &> /dev/null
 }
 
-# env_value prints KEY's value from /opt/pantry/.env, without surrounding whitespace.
+# env_value prints KEY's value from ${PANTRY_DIR}/.env, without surrounding whitespace.
 # Missing keys print nothing. Callers decide whether an empty value is an error.
 env_value() {
-  { grep "^${1}=" /opt/pantry/.env || true; } | head -1 | cut -d= -f2- | tr -d '[:space:]'
+  { grep "^${1}=" "${PANTRY_DIR}/.env" || true; } | head -1 | cut -d= -f2- | tr -d '[:space:]'
 }
 
 # env_value_keep_spaces is env_value for a passphrase. Internal spaces stay.
 # Only a trailing CR and whitespace at the ends are removed.
 env_value_keep_spaces() {
   local line
-  line=$({ grep "^${1}=" /opt/pantry/.env || true; } | head -1)
+  line=$({ grep "^${1}=" "${PANTRY_DIR}/.env" || true; } | head -1)
   line=${line#*=}
   line=${line%$'\r'}
   line="${line#"${line%%[![:space:]]*}"}"
@@ -116,68 +126,230 @@ env_value_keep_spaces() {
 # required: doubling the dollar signs makes the password stop matching.
 write_auth_caddy() {
   local user="$1" hash="$2" tmp
-  if [[ -d /opt/pantry/auth.caddy ]]; then
-    fatal "/opt/pantry/auth.caddy is a directory. Docker creates one when the file is missing. Remove it and re-run 'sudo ./setup.sh publish'"
+  if [[ -d ${PANTRY_DIR}/auth.caddy ]]; then
+    fatal "${PANTRY_DIR}/auth.caddy is a directory. Docker creates one when the file is missing. Remove it and re-run 'sudo ./setup.sh'"
   fi
-  tmp=$(mktemp /opt/pantry/auth.caddy.XXXXXX)
+  tmp=$(mktemp "${PANTRY_DIR}/auth.caddy.XXXXXX")
   # Realm is a directive argument. Inside the block, a line is a username and hash.
   printf 'basic_auth bcrypt Pantry {\n\t%s %s\n}\n' "$user" "$hash" > "$tmp"
-  chmod 600 "$tmp"
-  mv "$tmp" /opt/pantry/auth.caddy
+  chmod 600 "$tmp" || fatal "Could not protect the password hash file"
+  mv "$tmp" "${PANTRY_DIR}/auth.caddy" || fatal "Could not write the password hash file"
 }
 
-# copy_deploy_files refreshes /opt/pantry from this script's directory.
+# copy_deploy_files refreshes ${PANTRY_DIR} from this script's directory.
 # .env is never copied, so a re-run cannot clobber operator settings.
 # Copying a file onto itself (running the already-installed script) is skipped.
 copy_deploy_files() {
-  log_info "Copying deployment files to /opt/pantry..."
-  mkdir -p /opt/pantry
+  log_info "Copying deployment files to ${PANTRY_DIR}..."
+  mkdir -p "${PANTRY_DIR}"
   local item src dest
   for item in docker-compose.yml .env.example Caddyfile udev systemd firewall; do
     src="$SCRIPT_DIR/$item"
-    dest="/opt/pantry/$item"
+    dest="${PANTRY_DIR}/$item"
     if [[ ! -e "$src" ]]; then
       continue
     fi
     if [[ "$src" == "$dest" ]]; then
       continue
     fi
-    cp -r "$src" /opt/pantry/
+    cp -r "$src" "${PANTRY_DIR}/"
   done
-  if [[ "$SCRIPT_DIR/setup.sh" != "/opt/pantry/setup.sh" ]]; then
-    cp "$SCRIPT_DIR/setup.sh" /opt/pantry/setup.sh
+  if [[ "$SCRIPT_DIR/setup.sh" != "${PANTRY_DIR}/setup.sh" ]]; then
+    cp "$SCRIPT_DIR/setup.sh" "${PANTRY_DIR}/setup.sh"
   fi
-  chmod +x /opt/pantry/setup.sh
-  if [[ -f /opt/pantry/systemd/pantry-update.sh ]]; then
-    chmod +x /opt/pantry/systemd/pantry-update.sh
+  chmod +x "${PANTRY_DIR}/setup.sh"
+  if [[ -f "${PANTRY_DIR}/systemd/pantry-update.sh" ]]; then
+    chmod +x "${PANTRY_DIR}/systemd/pantry-update.sh"
   fi
-  if [[ -f /opt/pantry/firewall/pantry-lan-only.sh ]]; then
-    chmod +x /opt/pantry/firewall/pantry-lan-only.sh
+  if [[ -f "${PANTRY_DIR}/firewall/pantry-lan-only.sh" ]]; then
+    chmod +x "${PANTRY_DIR}/firewall/pantry-lan-only.sh"
   fi
   log_success "Deployment files copied"
 }
 
+# systemd_unit_dir is where pantry-lan-only.service and pantry-update.service live.
+systemd_unit_dir() {
+  printf '%s\n' "$PANTRY_SYSTEMD_UNIT_DIR"
+}
+
+# write_auth_from_env hashes BASIC_AUTH_PASSWORD into auth.caddy.
+# Returns 1 when the password is empty so the caller can keep a LAN-only install.
+# A password that is present but unusable is a fatal error: the operator set one
+# and it cannot protect the public site.
+write_auth_from_env() {
+  local auth_user auth_password auth_hash
+  auth_user=$(env_value BASIC_AUTH_USER)
+  auth_password=$(env_value_keep_spaces BASIC_AUTH_PASSWORD)
+  if [[ -z "$auth_user" ]]; then
+    auth_user=pantry
+  fi
+  if [[ -z "$auth_password" ]]; then
+    return 1
+  fi
+  if [[ ! "$auth_user" =~ ^[A-Za-z][A-Za-z0-9._-]{0,63}$ ]]; then
+    fatal "BASIC_AUTH_USER must be letters, digits, dots, underscores, or hyphens (got: $auth_user)"
+  fi
+  if [[ ${#auth_password} -lt 12 || ${#auth_password} -gt 72 ]]; then
+    fatal "BASIC_AUTH_PASSWORD must be 12 to 72 characters"
+  fi
+
+  # Hash on stdin so the password is not a docker argument. Caddy requires
+  # the trailing newline as a separator and does not treat it as part of the password.
+  log_info "Hashing the shared password"
+  if ! auth_hash=$(printf '%s\n' "$auth_password" | docker run --rm -i caddy:2.11.4-alpine caddy hash-password); then
+    fatal "Could not hash the shared password. Docker must be able to run caddy:2.11.4-alpine."
+  fi
+  auth_hash=${auth_hash//$'\r'/}
+  auth_hash=${auth_hash//$'\n'/}
+  if [[ ! "$auth_hash" =~ ^\$2[aby]\$ ]]; then
+    fatal "Caddy did not return a bcrypt password hash. The public proxy was not started."
+  fi
+  unset auth_password
+  write_auth_caddy "$auth_user" "$auth_hash"
+  unset auth_hash
+  chmod 600 "$PANTRY_DIR/.env" "$PANTRY_DIR/auth.caddy" || fatal "Could not restrict .env and auth.caddy"
+  log_success "Wrote $PANTRY_DIR/auth.caddy and restricted .env to the owner"
+  return 0
+}
+
+# prepare_public_profile is 0 when compose should include the public profile.
+# An existing auth.caddy is never rewritten and the operator is never prompted,
+# so a re-run cannot wipe BASIC_AUTH_PASSWORD or force it to be typed again.
+# A hash is written only when auth.caddy is absent and the password is already in .env.
+prepare_public_profile() {
+  local public_host acme_email
+  public_host=$(env_value PUBLIC_HOST)
+  if [[ -z "$public_host" ]]; then
+    return 1
+  fi
+  if [[ ! "$public_host" =~ ^[A-Za-z0-9.-]+$ ]] || [[ "$public_host" != *.* ]] || [[ "$public_host" == .* ]] || [[ "$public_host" == *. ]]; then
+    log_warn "PUBLIC_HOST must be a hostname such as pantry.rhionin.com, without a scheme or path (got: $public_host). The public proxy was left unchanged."
+    return 1
+  fi
+  if [[ -d "$PANTRY_DIR/Caddyfile" ]]; then
+    fatal "$PANTRY_DIR/Caddyfile is a directory. Docker creates one when the file is missing on first start. Remove it and re-run 'sudo ./setup.sh'"
+  fi
+  if [[ ! -f "$PANTRY_DIR/Caddyfile" ]]; then
+    fatal "Caddyfile is missing from $PANTRY_DIR"
+  fi
+  if [[ -d "$PANTRY_DIR/auth.caddy" ]]; then
+    fatal "$PANTRY_DIR/auth.caddy is a directory. Docker creates one when the file is missing. Remove it and re-run 'sudo ./setup.sh'"
+  fi
+
+  if [[ -f "$PANTRY_DIR/auth.caddy" ]]; then
+    chmod 600 "$PANTRY_DIR/auth.caddy" || fatal "Could not protect $PANTRY_DIR/auth.caddy"
+    log_success "Keeping existing $PANTRY_DIR/auth.caddy"
+  elif ! write_auth_from_env; then
+    log_warn "PUBLIC_HOST is set but $PANTRY_DIR/auth.caddy is missing and BASIC_AUTH_PASSWORD is empty. The public proxy was not started. LAN access is unchanged."
+    return 1
+  fi
+
+  acme_email=$(env_value ACME_EMAIL)
+  if [[ -z "$acme_email" ]] || [[ ! "$acme_email" =~ ^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$ ]]; then
+    log_warn "Set ACME_EMAIL in $PANTRY_DIR/.env to an email address for Let's Encrypt expiry notices. The public proxy was not started."
+    return 1
+  fi
+  return 0
+}
+
+# remove_lan_firewall deletes the HOST_PORT source filter and its systemd unit.
+remove_lan_firewall() {
+  if [[ -f "$PANTRY_DIR/firewall/pantry-lan-only.sh" ]]; then
+    "$PANTRY_DIR/firewall/pantry-lan-only.sh" --remove || true
+  fi
+  local unit_dir
+  unit_dir=$(systemd_unit_dir)
+  if [[ -f "$unit_dir/pantry-lan-only.service" ]]; then
+    systemctl disable --now pantry-lan-only.service || true
+    rm -f "$unit_dir/pantry-lan-only.service"
+    systemctl daemon-reload || true
+  fi
+}
+
+# apply_lan_firewall drops non-LAN clients on the published Pantry port.
+# The safe default is on: compose publishes that port, and the public proxy
+# does not close it. PANTRY_LAN_FIREWALL=off removes the rule instead.
+# Sets firewall_applied=true when the rule is installed.
+apply_lan_firewall() {
+  local flag
+  flag=$(env_value PANTRY_LAN_FIREWALL)
+  flag=$(printf '%s' "$flag" | tr '[:upper:]' '[:lower:]')
+  case "$flag" in
+    off|false|0|no)
+      log_info "PANTRY_LAN_FIREWALL=$flag; removing any LAN-only rule so the published port stays reachable from any source"
+      remove_lan_firewall
+      firewall_applied=false
+      return 0
+      ;;
+  esac
+
+  local published=false
+  if [[ -f "$PANTRY_DIR/docker-compose.yml" ]] && grep -q '0\.0\.0\.0:.*:8080' "$PANTRY_DIR/docker-compose.yml"; then
+    published=true
+  fi
+  if [[ "$use_public" != true && "$published" != true ]]; then
+    log_info "Compose does not publish the Pantry port and the public proxy is off; skipping the LAN firewall"
+    firewall_applied=false
+    return 0
+  fi
+
+  if [[ ! -f "$PANTRY_DIR/firewall/pantry-lan-only.sh" ]]; then
+    fatal "firewall/pantry-lan-only.sh is missing from $PANTRY_DIR"
+  fi
+  chmod +x "$PANTRY_DIR/firewall/pantry-lan-only.sh"
+
+  local unit_dir
+  unit_dir=$(systemd_unit_dir)
+  if [[ -f "$PANTRY_DIR/systemd/pantry-lan-only.service" ]]; then
+    mkdir -p "$unit_dir"
+    cp "$PANTRY_DIR/systemd/pantry-lan-only.service" "$unit_dir/pantry-lan-only.service"
+    systemctl daemon-reload
+    systemctl enable --now pantry-lan-only.service
+  else
+    "$PANTRY_DIR/firewall/pantry-lan-only.sh"
+  fi
+  firewall_applied=true
+  log_success "Published Pantry port accepts LAN, loopback, and Tailscale sources"
+  log_info "Ports 80 and 443 are unchanged. Opt out with PANTRY_LAN_FIREWALL=off in $PANTRY_DIR/.env, then re-run sudo ./setup.sh"
+  return 0
+}
+
+# refresh_update_unit copies the update unit when it is already installed so
+# a timer pull keeps using the script that includes the public profile.
+refresh_update_unit() {
+  local unit_dir
+  unit_dir=$(systemd_unit_dir)
+  if [[ -f "$unit_dir/pantry-update.service" && -f "$PANTRY_DIR/systemd/pantry-update.service" ]]; then
+    cp "$PANTRY_DIR/systemd/pantry-update.service" "$unit_dir/pantry-update.service"
+    systemctl daemon-reload
+    log_success "Refreshed pantry-update.service so automatic updates keep the public proxy"
+  fi
+}
+
 # ============================================================================
-# install: Full deployment setup
+# apply: sync files, containers, Caddy, and the LAN firewall
 # ============================================================================
-cmd_install() {
+cmd_apply() {
   require_root
 
-  # Parse flags. --with-updates opts into automatic updates; by default the
-  # update timer is left disabled so iteration is not disrupted mid-experiment.
+  # --with-updates opts into automatic updates. The timer stays as it is
+  # unless this flag is passed, so a routine re-run does not disable it.
   local with_updates=false
-  shift || true  # drop the "install" subcommand
+  if [[ $# -gt 0 ]]; then
+    case "$1" in
+      apply|install|publish|firewall) shift ;;
+    esac
+  fi
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --with-updates) with_updates=true ;;
-      *) log_warn "Ignoring unknown install option: $1" ;;
+      *) log_warn "Ignoring unknown option: $1" ;;
     esac
     shift
   done
 
-  log_info "Starting Pantry deployment setup..."
+  log_info "Applying Pantry setup..."
 
-  # Verify Docker and compose plugin exist; install if missing
   if ! command_exists docker; then
     log_warn "Docker not found, installing..."
     if ! curl -fsSL https://get.docker.com | sh; then
@@ -193,7 +365,6 @@ cmd_install() {
   fi
   log_success "Docker Compose plugin available"
 
-  # Add current user to docker group
   local current_user="${SUDO_USER:-$USER}"
   if [[ -z "$current_user" ]]; then
     log_warn "Could not determine current user, skipping docker group add"
@@ -206,88 +377,159 @@ cmd_install() {
     fi
   fi
 
-  # Copy deploy tree
-  if [[ ! -d /opt/pantry ]]; then
-    mkdir -p /opt/pantry
-    log_success "Created /opt/pantry"
+  if [[ ! -d "$PANTRY_DIR" ]]; then
+    mkdir -p "$PANTRY_DIR"
+    log_success "Created $PANTRY_DIR"
   fi
 
   copy_deploy_files
-
-  # Reconcile .env
   cmd_reconcile_env
+  if [[ -f "$PANTRY_DIR/.env" ]]; then
+    chmod 600 "$PANTRY_DIR/.env"
+  fi
 
-  # Ensure /dev/input exists
   if [[ ! -d /dev/input ]]; then
     log_warn "/dev/input does not exist, creating it (scanner nodes will not appear inside container otherwise)"
-    mkdir -p /dev/input
+    if ! mkdir -p /dev/input; then
+      # The scanner is optional. A failed mkdir must not block copying files
+      # or starting the containers.
+      log_warn "Could not create /dev/input. Pantry will still start; scanner nodes appear after that directory exists."
+    else
+      log_success "Created /dev/input"
+    fi
   else
     log_success "/dev/input exists"
   fi
 
-  # Generate udev rule
+  # A missing scanner must not block a file and container update. `rule`
+  # still fails when the operator asks to regenerate and nothing matches.
+  local rule_mode=optional
   cmd_rule
 
-  # Start container
-  log_info "Starting Pantry container..."
-  if ! cd /opt/pantry && docker compose up -d; then
-    fatal "Failed to start Pantry container"
+  local use_public=false
+  if prepare_public_profile; then
+    use_public=true
   fi
-  log_success "Container started"
 
-  # Poll for health
+  local -a compose
+  compose=(docker compose --project-directory "$PANTRY_DIR" -f "$PANTRY_DIR/docker-compose.yml")
+  if [[ "$use_public" == true ]]; then
+    compose+=(--profile public)
+    log_info "Starting Pantry and the public HTTPS proxy for https://$(env_value PUBLIC_HOST)"
+  else
+    log_info "Starting Pantry on the LAN"
+  fi
+  if ! "${compose[@]}" up -d; then
+    fatal "Failed to start Pantry"
+  fi
+
+  if [[ "$use_public" == true ]]; then
+    # admin is off in the Caddyfile, so `caddy reload` cannot apply a new
+    # file. Restarting the proxy re-reads the bind-mounted Caddyfile.
+    local proxy_deadline=$((SECONDS + 20))
+    local running=false
+    while [[ $SECONDS -lt $proxy_deadline ]]; do
+      if docker inspect -f '{{.State.Running}}' pantry-caddy 2>/dev/null | grep -qx true; then
+        running=true
+        break
+      fi
+      sleep 1
+    done
+    if [[ "$running" != true ]]; then
+      log_error "The proxy container exited. Recent logs:"
+      docker compose --project-directory "$PANTRY_DIR" -f "$PANTRY_DIR/docker-compose.yml" --profile public logs --tail=80 caddy || true
+      fatal "Public proxy did not stay running"
+    fi
+    log_info "Restarting the public proxy so the current Caddyfile is loaded"
+    if ! docker restart pantry-caddy >/dev/null; then
+      docker compose --project-directory "$PANTRY_DIR" -f "$PANTRY_DIR/docker-compose.yml" --profile public logs --tail=80 caddy || true
+      fatal "Could not restart the public proxy"
+    fi
+  fi
+
+  # The unit's ExecStart points at the script copy_deploy_files just refreshed.
+  # Recopy the unit itself when it is already installed so a timer keeps the
+  # public profile without enabling the timer on a LAN-only box.
+  refresh_update_unit
+
   log_info "Waiting for Pantry to become healthy..."
   local deadline=$((SECONDS + 60))
   local host_port
-  host_port=$(grep "^HOST_PORT=" /opt/pantry/.env | cut -d= -f2)
+  host_port=$(env_value HOST_PORT)
   host_port=${host_port:-8080}
-
+  local healthy=false
   while [[ $SECONDS -lt $deadline ]]; do
     if curl -sf "http://localhost:$host_port/health" > /dev/null 2>&1; then
-      log_success "Pantry is healthy"
+      healthy=true
       break
     fi
     sleep 2
   done
-
-  if [[ $SECONDS -ge $deadline ]]; then
+  if [[ "$healthy" != true ]]; then
     log_error "Pantry failed to become healthy within 60 seconds"
     log_error "Recent logs:"
-    docker compose -f /opt/pantry/docker-compose.yml logs --tail=50 pantry || true
+    docker compose -f "$PANTRY_DIR/docker-compose.yml" logs --tail=50 pantry || true
     fatal "Health check timeout"
   fi
+  log_success "Pantry is healthy"
 
-  # Automatic updates: opt-in only. Left disabled by default so an update does
-  # not recreate the container mid-iteration.
+  local firewall_applied=false
+  apply_lan_firewall
+
   if [[ "$with_updates" == true ]]; then
     log_info "Installing automatic-update systemd units (--with-updates)..."
-    if [[ -f /opt/pantry/systemd/pantry-update.service ]] && [[ -f /opt/pantry/systemd/pantry-update.timer ]]; then
-      cp /opt/pantry/systemd/pantry-update.service /etc/systemd/system/
-      cp /opt/pantry/systemd/pantry-update.timer /etc/systemd/system/
+    local unit_dir
+    unit_dir=$(systemd_unit_dir)
+    if [[ -f "$PANTRY_DIR/systemd/pantry-update.service" && -f "$PANTRY_DIR/systemd/pantry-update.timer" ]]; then
+      mkdir -p "$unit_dir"
+      cp "$PANTRY_DIR/systemd/pantry-update.service" "$unit_dir/"
+      cp "$PANTRY_DIR/systemd/pantry-update.timer" "$unit_dir/"
       systemctl daemon-reload
       systemctl enable --now pantry-update.timer
       log_success "pantry-update.timer enabled (updates will run automatically)"
     else
-      log_warn "systemd unit files not found under /opt/pantry/systemd; skipping update timer"
+      log_warn "systemd unit files not found under $PANTRY_DIR/systemd; skipping update timer"
     fi
   else
-    log_info "Automatic updates NOT enabled (pass --with-updates to enable)"
+    log_info "Automatic updates were not changed (pass --with-updates to enable the timer)"
   fi
 
-  log_success "Pantry deployment setup complete"
-  log_info "Next: sudo ./setup.sh status"
+  log_success "Pantry setup complete"
+  log_info "LAN: http://<pi-address>:$host_port"
+  if [[ "$use_public" == true ]]; then
+    log_info "Public: https://$(env_value PUBLIC_HOST) (shared password; LAN does not ask for it)"
+  fi
+  if [[ "$firewall_applied" == true ]]; then
+    log_info "Non-LAN clients are blocked on port $host_port"
+  fi
+  log_info "Check: sudo ./setup.sh status"
+}
+
+cmd_install() {
+  log_info "install runs the full setup (same as sudo ./setup.sh)"
+  cmd_apply "$@"
+}
+
+cmd_publish() {
+  log_info "publish runs the full setup (same as sudo ./setup.sh)"
+  cmd_apply "$@"
+}
+
+cmd_firewall() {
+  log_info "firewall runs the full setup (same as sudo ./setup.sh)"
+  cmd_apply "$@"
 }
 
 # ============================================================================
 # reconcile_env: Idempotent .env management
 # ============================================================================
 cmd_reconcile_env() {
-  log_info "Reconciling /opt/pantry/.env..."
+  log_info "Reconciling ${PANTRY_DIR}/.env..."
 
   # Create from example if absent
-  if [[ ! -f /opt/pantry/.env ]]; then
-    cp /opt/pantry/.env.example /opt/pantry/.env
-    log_success "Created /opt/pantry/.env from .env.example"
+  if [[ ! -f ${PANTRY_DIR}/.env ]]; then
+    cp "${PANTRY_DIR}/.env.example" "${PANTRY_DIR}/.env"
+    log_success "Created ${PANTRY_DIR}/.env from .env.example"
     return
   fi
 
@@ -297,8 +539,8 @@ cmd_reconcile_env() {
   # no longer open it, since the symlink now lives under /dev/input. Rewrite
   # only that exact obsolete default; a custom path an operator set on purpose
   # (anything other than the old default) is left untouched.
-  if grep -q '^SCANNER_DEVICE=/dev/pantry-scanner$' /opt/pantry/.env; then
-    sed -i 's|^SCANNER_DEVICE=/dev/pantry-scanner$|SCANNER_DEVICE=/dev/input/pantry-scanner|' /opt/pantry/.env
+  if grep -q '^SCANNER_DEVICE=/dev/pantry-scanner$' "${PANTRY_DIR}/.env"; then
+    sed -i 's|^SCANNER_DEVICE=/dev/pantry-scanner$|SCANNER_DEVICE=/dev/input/pantry-scanner|' "${PANTRY_DIR}/.env"
     log_warn "Migrated obsolete SCANNER_DEVICE=/dev/pantry-scanner -> /dev/input/pantry-scanner"
   fi
 
@@ -310,12 +552,12 @@ cmd_reconcile_env() {
     [[ -z "$key" ]] && continue
 
     # Check if key exists in .env
-    if ! grep -q "^${key}=" /opt/pantry/.env; then
-      echo "${key}=${value}" >> /opt/pantry/.env
+    if ! grep -q "^${key}=" "${PANTRY_DIR}/.env"; then
+      echo "${key}=${value}" >> "${PANTRY_DIR}/.env"
       log_info "Added missing key: $key"
       added=$((added + 1))
     fi
-  done < /opt/pantry/.env.example
+  done < "${PANTRY_DIR}/.env.example"
 
   if [[ $added -gt 0 ]]; then
     log_success "Added $added missing keys to .env"
@@ -362,6 +604,10 @@ cmd_rule() {
 
   # Show candidates or use first
   if [[ ${#candidate_names[@]} -eq 0 ]]; then
+    if [[ "${rule_mode:-required}" == "optional" ]]; then
+      log_warn "No scanner candidates found; leaving udev rules unchanged. Plug in a scanner and run 'sudo ./setup.sh rule' to generate one."
+      return 0
+    fi
     log_warn "No scanner candidates found in /proc/bus/input/devices"
     log_info "Devices available:"
     grep "^N: " /proc/bus/input/devices || true
@@ -432,23 +678,23 @@ cmd_status() {
   local failed=0
 
   # 1. Deployment files
-  if [[ -d /opt/pantry ]]; then
+  if [[ -d ${PANTRY_DIR} ]]; then
     log_success "Deployment directory exists"
   else
-    log_error "Deployment directory /opt/pantry missing"
+    log_error "Deployment directory ${PANTRY_DIR} missing"
     failed=$((failed + 1))
   fi
 
   # 2. .env file
   local image_tag="" host_port="" scanner_device="" public_host=""
-  if [[ -f /opt/pantry/.env ]]; then
-    image_tag=$(grep "^PANTRY_IMAGE_TAG=" /opt/pantry/.env | cut -d= -f2 || echo "latest")
-    host_port=$(grep "^HOST_PORT=" /opt/pantry/.env | cut -d= -f2 || echo "8080")
-    scanner_device=$(grep "^SCANNER_DEVICE=" /opt/pantry/.env | cut -d= -f2 || echo "/dev/input/pantry-scanner")
+  if [[ -f ${PANTRY_DIR}/.env ]]; then
+    image_tag=$(grep "^PANTRY_IMAGE_TAG=" "${PANTRY_DIR}/.env" | cut -d= -f2 || echo "latest")
+    host_port=$(grep "^HOST_PORT=" "${PANTRY_DIR}/.env" | cut -d= -f2 || echo "8080")
+    scanner_device=$(grep "^SCANNER_DEVICE=" "${PANTRY_DIR}/.env" | cut -d= -f2 || echo "/dev/input/pantry-scanner")
     public_host=$(env_value PUBLIC_HOST)
     log_success ".env present: PANTRY_IMAGE_TAG=$image_tag, HOST_PORT=$host_port, SCANNER_DEVICE=$scanner_device"
   else
-    log_error ".env not found at /opt/pantry/.env"
+    log_error ".env not found at ${PANTRY_DIR}/.env"
     failed=$((failed + 1))
   fi
 
@@ -507,7 +753,7 @@ cmd_status() {
   fi
 
   # 6. Container running
-  if docker compose -f /opt/pantry/docker-compose.yml ps 2>/dev/null | grep -q "pantry.*Up"; then
+  if docker compose -f "${PANTRY_DIR}/docker-compose.yml" ps 2>/dev/null | grep -q "pantry.*Up"; then
     log_success "Pantry container is running"
   else
     log_error "Pantry container is not running"
@@ -526,12 +772,12 @@ cmd_status() {
 
   # 8. Public proxy. Empty PUBLIC_HOST is the LAN-only default, not a failure.
   if [[ -n "$public_host" ]]; then
-    if [[ ! -f /opt/pantry/auth.caddy ]]; then
-      log_warn "PUBLIC_HOST=$public_host but /opt/pantry/auth.caddy is missing, so the proxy will not start. Run: sudo ./setup.sh publish"
+    if [[ ! -f ${PANTRY_DIR}/auth.caddy ]]; then
+      log_warn "PUBLIC_HOST=$public_host but ${PANTRY_DIR}/auth.caddy is missing, so the proxy will not start. Set BASIC_AUTH_PASSWORD and run: sudo ./setup.sh"
     elif docker inspect -f '{{.State.Running}}' pantry-caddy 2>/dev/null | grep -qx true; then
       log_success "Public proxy is running for https://$public_host (shared password required)"
     else
-      log_warn "PUBLIC_HOST=$public_host but the proxy container is not running. Start it with: sudo ./setup.sh publish"
+      log_warn "PUBLIC_HOST=$public_host but the proxy container is not running. Start it with: sudo ./setup.sh"
     fi
   else
     log_info "Public internet access is not configured (PUBLIC_HOST is empty)"
@@ -547,166 +793,25 @@ cmd_status() {
 }
 
 # ============================================================================
-# publish: HTTPS reverse proxy for PUBLIC_HOST
-# ============================================================================
-cmd_publish() {
-  require_root
-
-  if [[ ! -f /opt/pantry/.env ]]; then
-    fatal "No /opt/pantry/.env yet. Run 'sudo ./setup.sh install', set PUBLIC_HOST, ACME_EMAIL, and BASIC_AUTH_PASSWORD, then re-run 'sudo ./setup.sh publish'"
-  fi
-
-  copy_deploy_files
-  cmd_reconcile_env
-
-  if [[ -d /opt/pantry/Caddyfile ]]; then
-    fatal "/opt/pantry/Caddyfile is a directory. Docker creates one when the file is missing on first start. Remove it and re-run 'sudo ./setup.sh publish'"
-  fi
-  if [[ ! -f /opt/pantry/Caddyfile ]]; then
-    fatal "Caddyfile is missing from /opt/pantry"
-  fi
-
-  local public_host acme_email
-  public_host=$(env_value PUBLIC_HOST)
-  acme_email=$(env_value ACME_EMAIL)
-
-  if [[ -z "$public_host" ]]; then
-    fatal "Set PUBLIC_HOST in /opt/pantry/.env to a hostname such as pantry.rhionin.com (no https://), then re-run 'sudo ./setup.sh publish'"
-  fi
-  if [[ ! "$public_host" =~ ^[A-Za-z0-9.-]+$ ]] || [[ "$public_host" != *.* ]] || [[ "$public_host" == .* ]] || [[ "$public_host" == *. ]]; then
-    fatal "PUBLIC_HOST must be a hostname such as pantry.rhionin.com, without a scheme or path (got: $public_host)"
-  fi
-  if [[ -z "$acme_email" ]]; then
-    fatal "Set ACME_EMAIL in /opt/pantry/.env to an email address for Let's Encrypt expiry notices, then re-run 'sudo ./setup.sh publish'"
-  fi
-  if [[ ! "$acme_email" =~ ^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$ ]]; then
-    fatal "ACME_EMAIL must be an email address (got: $acme_email)"
-  fi
-
-  local auth_user auth_password auth_hash
-  auth_user=$(env_value BASIC_AUTH_USER)
-  auth_password=$(env_value_keep_spaces BASIC_AUTH_PASSWORD)
-  if [[ -z "$auth_user" ]]; then
-    auth_user=pantry
-  fi
-  if [[ ! "$auth_user" =~ ^[A-Za-z][A-Za-z0-9._-]{0,63}$ ]]; then
-    fatal "BASIC_AUTH_USER must be letters, digits, dots, underscores, or hyphens (got: $auth_user)"
-  fi
-  if [[ -z "$auth_password" ]]; then
-    fatal "Set BASIC_AUTH_PASSWORD in /opt/pantry/.env to a shared password of 12 to 72 characters, then re-run 'sudo ./setup.sh publish'"
-  fi
-  if [[ ${#auth_password} -lt 12 || ${#auth_password} -gt 72 ]]; then
-    fatal "BASIC_AUTH_PASSWORD must be 12 to 72 characters"
-  fi
-
-  # Hash on stdin so the password is not a docker argument. Caddy requires
-  # the trailing newline as a separator and does not treat it as part of the password.
-  log_info "Hashing the shared password"
-  if ! auth_hash=$(printf '%s\n' "$auth_password" | docker run --rm -i caddy:2.11.4-alpine caddy hash-password); then
-    fatal "Could not hash the shared password. Docker must be able to run caddy:2.11.4-alpine."
-  fi
-  auth_hash=${auth_hash//$'\r'/}
-  auth_hash=${auth_hash//$'\n'/}
-  if [[ ! "$auth_hash" =~ ^\$2[aby]\$ ]]; then
-    fatal "Caddy did not return a bcrypt password hash. The public proxy was not started."
-  fi
-  unset auth_password
-  write_auth_caddy "$auth_user" "$auth_hash"
-  unset auth_hash
-  chmod 600 /opt/pantry/.env /opt/pantry/auth.caddy
-  log_success "Wrote /opt/pantry/auth.caddy and restricted .env to the owner"
-
-  log_info "Starting the public HTTPS proxy for https://$public_host"
-  if ! docker compose --project-directory /opt/pantry -f /opt/pantry/docker-compose.yml --profile public up -d; then
-    fatal "Failed to start the public proxy"
-  fi
-
-  local deadline=$((SECONDS + 20))
-  local running=false
-  while [[ $SECONDS -lt $deadline ]]; do
-    if docker inspect -f '{{.State.Running}}' pantry-caddy 2>/dev/null | grep -qx true; then
-      running=true
-      break
-    fi
-    sleep 1
-  done
-  if [[ "$running" != true ]]; then
-    log_error "The proxy container exited. Recent logs:"
-    docker compose --project-directory /opt/pantry -f /opt/pantry/docker-compose.yml --profile public logs --tail=80 caddy || true
-    fatal "Public proxy did not stay running"
-  fi
-
-  # An already-installed update timer must include the public profile, or the
-  # next unattended pull recreates Pantry without refreshing the proxy.
-  if [[ -f /etc/systemd/system/pantry-update.service ]]; then
-    cp /opt/pantry/systemd/pantry-update.service /etc/systemd/system/pantry-update.service
-    systemctl daemon-reload
-    log_success "Refreshed pantry-update.service so automatic updates keep the public proxy"
-  fi
-
-  local host_port
-  host_port=$(env_value HOST_PORT)
-  host_port=${host_port:-8080}
-
-  log_success "Public proxy is running"
-  log_info "Browsers will ask for user $auth_user and the shared password in /opt/pantry/.env."
-  log_info "LAN access does not ask for that password: http://<pi-address>:$host_port"
-  log_warn "Do not forward port $host_port on the router. It has no password."
-  log_info "Optional: sudo ./setup.sh firewall   # reject non-LAN clients that still reach port $host_port"
-  log_info "After DNS and router port forwards are in place, check from outside the house:"
-  log_info "  curl -fsS -u '$auth_user:<password>' https://$public_host/health"
-}
-
-# ============================================================================
 # unpublish: stop HTTPS proxy, leave the LAN service running
 # ============================================================================
 cmd_unpublish() {
   require_root
-  if [[ ! -f /opt/pantry/docker-compose.yml ]]; then
-    fatal "Nothing installed at /opt/pantry. Run 'sudo ./setup.sh install' first"
+  if [[ ! -f ${PANTRY_DIR}/docker-compose.yml ]]; then
+    fatal "Nothing installed at ${PANTRY_DIR}. Run 'sudo ./setup.sh' first"
   fi
   log_info "Stopping the public HTTPS proxy. Pantry keeps running on the LAN."
-  docker compose --project-directory /opt/pantry -f /opt/pantry/docker-compose.yml --profile public stop caddy || true
-  docker compose --project-directory /opt/pantry -f /opt/pantry/docker-compose.yml --profile public rm -f caddy || true
-  log_success "Public proxy stopped. The certificate volume was kept so a later publish can reuse it."
-  log_info "Clear PUBLIC_HOST in /opt/pantry/.env if automatic updates should not start the proxy again."
-}
-
-# ============================================================================
-# firewall: reject non-LAN clients on the published Pantry port
-# ============================================================================
-cmd_firewall() {
-  require_root
-  if [[ ! -f /opt/pantry/docker-compose.yml ]]; then
-    fatal "Nothing installed at /opt/pantry. Run 'sudo ./setup.sh install' first"
-  fi
-  copy_deploy_files
-  if [[ ! -f /opt/pantry/firewall/pantry-lan-only.sh ]]; then
-    fatal "firewall/pantry-lan-only.sh is missing from /opt/pantry"
-  fi
-  chmod +x /opt/pantry/firewall/pantry-lan-only.sh
-  if [[ -f /opt/pantry/systemd/pantry-lan-only.service ]]; then
-    cp /opt/pantry/systemd/pantry-lan-only.service /etc/systemd/system/pantry-lan-only.service
-    systemctl daemon-reload
-    systemctl enable --now pantry-lan-only.service
-  else
-    /opt/pantry/firewall/pantry-lan-only.sh
-  fi
-  log_success "Published Pantry port accepts LAN, loopback, and Tailscale sources"
-  log_info "Ports 80 and 443 are unchanged. Remove this with: sudo ./setup.sh firewall-off"
+  docker compose --project-directory "${PANTRY_DIR}" -f "${PANTRY_DIR}/docker-compose.yml" --profile public stop caddy || true
+  docker compose --project-directory "${PANTRY_DIR}" -f "${PANTRY_DIR}/docker-compose.yml" --profile public rm -f caddy || true
+  log_success "Public proxy stopped. The certificate volume was kept so a later setup can reuse it."
+  log_info "Clear PUBLIC_HOST in ${PANTRY_DIR}/.env if automatic updates should not start the proxy again."
 }
 
 cmd_firewall_off() {
   require_root
-  if [[ -f /opt/pantry/firewall/pantry-lan-only.sh ]]; then
-    /opt/pantry/firewall/pantry-lan-only.sh --remove || true
-  fi
-  if [[ -f /etc/systemd/system/pantry-lan-only.service ]]; then
-    systemctl disable --now pantry-lan-only.service || true
-    rm -f /etc/systemd/system/pantry-lan-only.service
-    systemctl daemon-reload
-  fi
+  remove_lan_firewall
   log_success "Removed the LAN-only rule. The published port is reachable from any source again."
+  log_info "The next 'sudo ./setup.sh' installs that rule again unless PANTRY_LAN_FIREWALL=off is set in $PANTRY_DIR/.env."
 }
 
 # ============================================================================
@@ -715,7 +820,7 @@ cmd_firewall_off() {
 cmd_logs() {
   require_root
   log_info "Following Pantry container logs (Ctrl+C to stop)..."
-  docker compose -f /opt/pantry/docker-compose.yml logs --tail=100 -f pantry || true
+  docker compose -f "${PANTRY_DIR}/docker-compose.yml" logs --tail=100 -f pantry || true
 }
 
 # ============================================================================
@@ -762,50 +867,59 @@ Pantry Deployment Setup Script
 USAGE:
   sudo ./setup.sh [COMMAND] [OPTIONS]
 
+After git pull, from deploy/:
+
+  sudo ./setup.sh
+
+That syncs this folder to /opt/pantry, starts the containers (including the
+public HTTPS proxy when PUBLIC_HOST is set and auth.caddy already exists),
+restarts Caddy so the current Caddyfile is loaded, and applies the LAN
+firewall on the published Pantry port. It is safe to re-run.
+
 COMMANDS:
-  install          One-time setup: Docker, udev, container, health check
-                   Pass --with-updates to also enable the automatic-update timer
-                   (disabled by default). The timer fires every 5 minutes, pulls
-                   'latest', and recreates the container, so leave it off while
-                   iterating.
-  publish          Serve PUBLIC_HOST over HTTPS with Let's Encrypt (Caddy).
-                   Requires PUBLIC_HOST, ACME_EMAIL, and BASIC_AUTH_PASSWORD
-                   in /opt/pantry/.env. The public site asks for that shared
-                   password. See deploy/README.md.
+  apply            Same as running setup.sh with no command.
+                   Pass --with-updates to enable the automatic-update timer
+                   (left unchanged otherwise). The timer fires every 5 minutes,
+                   pulls 'latest', and recreates the container, so leave it off
+                   while iterating.
+  install          Alias of apply.
+  publish          Alias of apply. Does not rewrite /opt/pantry/auth.caddy when
+                   that file already exists, and does not prompt for a password.
+  firewall         Alias of apply. The LAN port rule is part of apply.
   unpublish        Stop the HTTPS proxy. Pantry keeps running on the LAN.
-  firewall         Drop non-LAN clients that reach the published Pantry port.
-                   LAN, loopback, and Tailscale (100.64.0.0/10) still work.
-                   Does not change ports 80 or 443. See deploy/README.md.
-  firewall-off     Remove that restriction.
+  firewall-off     Remove the LAN port rule until the next setup. To leave it
+                   off, set PANTRY_LAN_FIREWALL=off in /opt/pantry/.env.
   rule             Regenerate and install udev rule for current scanner
   status           Diagnose the deployment chain and report issues
   logs             Follow container logs (Ctrl+C to stop)
   freeze           Mask pantry-update.timer to prevent automatic updates during iteration
   thaw             Unmask pantry-update.timer to resume automatic updates
-  help             Show this message (default if no command given)
+  help             Show this message
 
 EXAMPLES:
-  # Initial setup
-  sudo ./setup.sh install
-
-  # After DNS and port forwards: HTTPS on the hostname in PUBLIC_HOST
-  sudo ./setup.sh publish
+  # First install, and every update after git pull
+  sudo ./setup.sh
 
   # Check status after setup or troubleshooting
   sudo ./setup.sh status
 
+  # Change the shared password: set BASIC_AUTH_PASSWORD, delete auth.caddy, re-run
+  sudo rm /opt/pantry/auth.caddy
+  sudo ./setup.sh
+
   # Iterate on configuration
   sudo ./setup.sh freeze          # Pause auto-updates
   # ... make changes to /opt/pantry/.env ...
-  sudo docker compose -f /opt/pantry/docker-compose.yml up -d
-  sudo ./setup.sh status
+  sudo ./setup.sh
   sudo ./setup.sh thaw            # Resume auto-updates
 
 NOTES:
   - The container is distroless, so 'docker exec pantry sh' does not work.
   - Use 'sudo ./setup.sh logs' and GET /health for runtime introspection.
-  - Run install multiple times—it is idempotent. Existing .env values are preserved.
-  - PANTRY_IMAGE_TAG and HOST_PORT are never overwritten if already set.
+  - Existing .env values are preserved. PANTRY_IMAGE_TAG and HOST_PORT are
+    never overwritten if already set.
+  - LAN http://<pi-address>:8080 keeps working. The firewall allows LAN,
+    loopback, and Tailscale, and does not change ports 80 or 443.
 EOF
 }
 
@@ -813,20 +927,22 @@ EOF
 # Main dispatch
 # ============================================================================
 main() {
-  local cmd="${1:-help}"
+  local cmd="${1:-apply}"
 
   case "$cmd" in
+    help|--help|-h) cmd_help ;;
+    --*)      cmd_apply apply "$@" ;;
+    apply)    cmd_apply "$@" ;;
     install)  cmd_install "$@" ;;
-    publish)  cmd_publish ;;
+    publish)  cmd_publish "$@" ;;
     unpublish) cmd_unpublish ;;
-    firewall) cmd_firewall ;;
+    firewall) cmd_firewall "$@" ;;
     firewall-off) cmd_firewall_off ;;
     rule)     cmd_rule ;;
     status)   cmd_status ;;
     logs)     cmd_logs ;;
     freeze)   cmd_freeze ;;
     thaw)     cmd_thaw ;;
-    help|--help|-h) cmd_help ;;
     *)        fatal "Unknown command: $cmd (try 'help')" ;;
   esac
 }
