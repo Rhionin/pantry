@@ -17,10 +17,11 @@ under `/api`. Products normally come from Open Food Facts; verification disables
 that external lookup and seeds products locally instead.
 
 **Primary surface: the web UI.** Three routes cover everything a user does:
-`/` (Scan Queue), `/inventory` (Inventory), `/shopping` (Shopping List). There is
-also a headless HID/stdin scanner path and the raw HTTP API; those are secondary
-and noted in the feature map, but proofs drive the web UI unless a feature has no
-UI entry point.
+`/` (Scan Queue), `/inventory` (Inventory), `/shopping` (Shopping List). A footer
+link opens `/diagnostics` for page-load timings. There is also a headless
+HID/stdin scanner path and the raw HTTP API; those are secondary and noted in
+the feature map, but proofs drive the web UI unless a feature has no UI entry
+point.
 
 ## Critical environment constraint (read first)
 

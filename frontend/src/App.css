@@ -21,3 +21,10 @@
   flex: none;
   padding-bottom: env(safe-area-inset-bottom);
 }
+
+.diagnostics-link {
+  flex: none;
+  font-size: 0.75rem;
+  color: var(--text);
+  text-decoration: none;
+}

@@ -56,7 +56,7 @@ For Raspberry Pi deployment with a USB barcode scanner:
 3. The container will automatically reconnect if the scanner is unplugged
    and replugged
 
-Public HTTPS, for a hostname you own, is an optional step on top of that LAN install. See `deploy/README.md` (Public Internet access). The public site asks for one shared password.
+Public HTTPS, for a hostname you own, is an optional step on top of that LAN install. See `deploy/README.md` (Public Internet access). The public site asks for one shared password. The timing snapshot is the exception: `https://<your-host>/api/telemetry` is readable without that password.
 
 ### Health Endpoint
 
@@ -95,6 +95,20 @@ curl -s http://localhost:8080/health
 curl -s http://localhost:8080/api/telemetry
 ```
 
+On the public hostname the same snapshot is intentionally unauthenticated. It
+has no barcodes, product names, or user ids, so an agent can read it without
+the household password:
+
+```bash
+curl -s https://pantry.rhionin.com/api/telemetry
+```
+
+`POST /api/telemetry/client` is public on that hostname as well, so the page
+can report timings. Every other path still asks for the shared password. The
+LAN listener on `:8080` is unchanged: it has no password. The footer link
+Diagnostics renders `pageLoad` for someone at the screen. On a Pi that is
+already public, `sudo ./setup.sh` is what loads the Caddyfile exception.
+
 In development the Vite server proxies `/api`, so the same path works against
 the dev UI's origin. The browser posts its own timings and errors to
 `POST /api/telemetry/client`; you read them back from the snapshot.
@@ -111,5 +125,6 @@ How to read a bad morning:
 | The page never loads | If `curl /health` fails the same way, the process is not accepting connections. If `/health` is ok, check `http.recentProblems`, `http.serverErrors`, and `http.latency` for the route that hung (`GET /`, `GET /api/products`, `GET /api/scans`, `GET /api/inventory`). `streams.openLatency` is how long `GET /api/events` took to send headers. |
 | A scan is missing until refresh | `scanSync.publishedWithNoSubscribers` (and `scanSync.byEvent.scan`) counts events saved while `subscribers` was 0. Refresh works because `GET /api/scans` reads the database; the live stream does not replay. `streams.active` and `scanSync.subscribers` are the browsers listening right now. |
 | A scan disappears, or the page misses one while it stays open | `scanSync.droppedSlowClients` and `writeErrors` mean a browser fell behind and was disconnected. `client.sseGaps` and `client.sseErrors` are the page reporting a hole in event ids or a dropped stream. `client.recent` lists the latest page loads, route changes, API failures, and those stream errors. `at` on a client report is when the server received it. |
+| The page loads, but it feels slow | Read `pageLoad` (the Diagnostics page shows the same numbers). `pageLoad.latest` is the last visit: compare `ttfbMs` (first byte), `documentMs` (DOM ready minus first byte: scripts and styles), `domContentLoadedMs`, `afterDomMs` (full load minus DOM ready), and `durationMs` (full load). `pageLoad.dominant` names the largest of those and the slowest `firstPaintApi` call. `pageLoad.js` and `pageLoad.css` are file counts and transfer size, with no URLs. `pageLoad.slowestClientApi` is how long the browser waited on API routes. `pageLoad.slowestHttp` is server time; `GET /` is the document and the UI files, and `GET /api/inventory` is the inventory payload. `pageLoad.duration`, `ttfb`, and `domContentLoaded` are p50/p95 over recent page loads. A `durationMs` of 0 with a real `domContentLoadedMs` means full load was not recorded (`loadEventEnd` was still 0); use `ttfbMs` and `domContentLoadedMs`. |
 
 Latency fields are milliseconds. `p50Ms` / `p95Ms` / `p99Ms` are upper bounds of fixed buckets (1, 5, 10, 25, 50, 100, 250, 500, 1000, 2500, 5000, 10000), not exact percentiles. `delivery` is publish-to-write. `ingestToDelivery` is the scan's `scannedAt` to that write. The `GET /api/telemetry` request itself is recorded after the snapshot is sent, so it shows up on the next fetch. UI asset requests share the `GET /` route because one handler serves the page.

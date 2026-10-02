@@ -22,12 +22,67 @@ export interface ClientEvent {
   message?: string;
   session?: string;
   skipped?: number;
+  jsResources?: number;
+  jsTransferBytes?: number;
+  jsEncodedBytes?: number;
+  cssResources?: number;
+  cssTransferBytes?: number;
+  cssEncodedBytes?: number;
+  firstPaint?: boolean;
+}
+
+export interface PageLoadTiming {
+  durationMs: number;
+  ttfbMs: number;
+  domContentLoadedMs: number;
+}
+
+export interface AssetTotals {
+  jsResources: number;
+  jsTransferBytes: number;
+  jsEncodedBytes: number;
+  cssResources: number;
+  cssTransferBytes: number;
+  cssEncodedBytes: number;
+}
+
+interface NavigationTimingLike {
+  loadEventEnd: number;
+  duration: number;
+  responseStart: number;
+  domContentLoadedEventEnd: number;
+  responseEnd?: number;
+}
+
+interface ResourceTimingLike {
+  name?: string;
+  initiatorType?: string;
+  transferSize?: number;
+  encodedBodySize?: number;
 }
 
 const sessionKey = 'pantry-telemetry-session';
 const eventTypes = ['scan', 'scan_processing', 'scan_processing_failed', 'inventory', 'scanner_mode'] as const;
 
+// Routes the first screen actually requests. Exact paths only, so a lookup
+// URL cannot be recorded as the product list.
+const firstPaintRoutes = new Set([
+  '/api/inventory',
+  '/api/scans',
+  '/api/products',
+  '/api/scanner/config',
+  '/api/shopping-list',
+  '/api/shopping-list/considerations',
+  '/api/providers',
+  '/api/build',
+]);
+
+// Calls that start shortly after the load event still belong to first paint:
+// React effects run just after the document finishes.
+const firstPaintGraceMs = 1500;
+
 let lastSSEId = 0;
+let loadEventAtMs = Number.POSITIVE_INFINITY;
 
 export function sanitizePage(raw: string | undefined): string {
   if (!raw) return '';
@@ -71,6 +126,94 @@ export function resetSSETracking(): void {
   lastSSEId = 0;
 }
 
+export function resetPageLoadTracking(): void {
+  loadEventAtMs = Number.POSITIVE_INFINITY;
+}
+
+// pageLoadTiming reads a navigation entry. Inside the load listener,
+// loadEventEnd is still 0, and duration is defined as loadEventEnd minus
+// startTime, so it is 0 too. nowMs is performance.now(), which shares that
+// time origin and is the full-load time we can actually see.
+export function pageLoadTiming(nav: NavigationTimingLike, nowMs: number): PageLoadTiming {
+  let durationMs = 0;
+  if (nav.loadEventEnd > 0) {
+    durationMs = nav.loadEventEnd;
+  } else if (nowMs > 0) {
+    durationMs = nowMs;
+  } else if (nav.domContentLoadedEventEnd > 0) {
+    durationMs = nav.domContentLoadedEventEnd;
+  } else if ((nav.responseEnd ?? 0) > 0) {
+    durationMs = nav.responseEnd ?? 0;
+  }
+  return {
+    durationMs,
+    ttfbMs: nav.responseStart > 0 ? nav.responseStart : 0,
+    domContentLoadedMs: nav.domContentLoadedEventEnd > 0 ? nav.domContentLoadedEventEnd : 0,
+  };
+}
+
+export function notePageLoad(nowMs: number): void {
+  if (Number.isFinite(nowMs) && nowMs >= 0) {
+    loadEventAtMs = nowMs;
+  }
+}
+
+// firstPaintRoute marks an API call that started before the load event, or
+// within a short grace after it. Later polls of the same route are not first
+// paint. The flag is all that is sent; the route string is sanitized separately.
+export function firstPaintRoute(route: string, startedAtMs: number): boolean {
+  const path = routeFromPath(route);
+  if (!firstPaintRoutes.has(path)) return false;
+  return startedAtMs <= loadEventAtMs + firstPaintGraceMs;
+}
+
+// assetTotals sums JS and CSS resource timing. Names and query strings are
+// not copied into the result.
+export function assetTotals(entries: readonly ResourceTimingLike[]): AssetTotals {
+  const totals: AssetTotals = {
+    jsResources: 0,
+    jsTransferBytes: 0,
+    jsEncodedBytes: 0,
+    cssResources: 0,
+    cssTransferBytes: 0,
+    cssEncodedBytes: 0,
+  };
+  for (const entry of entries) {
+    const kind = assetKind(entry);
+    if (kind === 'js') {
+      totals.jsResources += 1;
+      totals.jsTransferBytes += positiveBytes(entry.transferSize);
+      totals.jsEncodedBytes += positiveBytes(entry.encodedBodySize);
+    } else if (kind === 'css') {
+      totals.cssResources += 1;
+      totals.cssTransferBytes += positiveBytes(entry.transferSize);
+      totals.cssEncodedBytes += positiveBytes(entry.encodedBodySize);
+    }
+  }
+  return totals;
+}
+
+function assetKind(entry: ResourceTimingLike): 'js' | 'css' | '' {
+  const resourcePath = stripResourceName(entry.name);
+  if (resourcePath.endsWith('.js') || resourcePath.endsWith('.mjs')) return 'js';
+  if (resourcePath.endsWith('.css')) return 'css';
+  if (entry.initiatorType === 'script') return 'js';
+  if (entry.initiatorType === 'css') return 'css';
+  return '';
+}
+
+function stripResourceName(name: string | undefined): string {
+  if (!name) return '';
+  const noHash = name.split('#')[0] ?? '';
+  const noQuery = (noHash.split('?')[0] ?? '').toLowerCase();
+  return noQuery;
+}
+
+function positiveBytes(value: number | undefined): number {
+  if (value === undefined || !Number.isFinite(value) || value <= 0) return 0;
+  return Math.round(value);
+}
+
 export function deliver(event: ClientEvent, fetchImpl: typeof fetch = fetch): void {
   const body: ClientEvent = {
     kind: event.kind,
@@ -83,6 +226,13 @@ export function deliver(event: ClientEvent, fetchImpl: typeof fetch = fetch): vo
     message: event.message ? sanitizeMessage(event.message) : undefined,
     session: event.session,
     skipped: event.skipped,
+    jsResources: event.jsResources,
+    jsTransferBytes: event.jsTransferBytes,
+    jsEncodedBytes: event.jsEncodedBytes,
+    cssResources: event.cssResources,
+    cssTransferBytes: event.cssTransferBytes,
+    cssEncodedBytes: event.cssEncodedBytes,
+    firstPaint: event.firstPaint,
   };
   try {
     const pending = fetchImpl('/api/telemetry/client', {
@@ -137,12 +287,14 @@ export function reportRoute(page: string): void {
   report({ kind: 'route', page });
 }
 
-export function reportApiResult(route: string, status: number, durationMs: number): void {
+export function reportApiResult(route: string, status: number, durationMs: number, startedAtMs = 0): void {
+  if (!reportingEnabled()) return;
   report({
     kind: 'api',
     route: routeFromPath(route),
     status,
     durationMs,
+    firstPaint: firstPaintRoute(route, startedAtMs) || undefined,
   });
 }
 
@@ -187,18 +339,16 @@ export function installBrowserTelemetry(): void {
   });
 
   const sendLoad = () => {
+    const now = performance.now();
+    notePageLoad(now);
     const nav = performance.getEntriesByType('navigation')[0] as PerformanceNavigationTiming | undefined;
     if (!nav) {
       report({ kind: 'page_load' });
       return;
     }
-    const duration = nav.loadEventEnd > 0 ? nav.loadEventEnd : nav.duration;
-    report({
-      kind: 'page_load',
-      durationMs: duration,
-      ttfbMs: nav.responseStart,
-      domContentLoadedMs: nav.domContentLoadedEventEnd,
-    });
+    const timing = pageLoadTiming(nav, now);
+    const assets = assetTotals(performance.getEntriesByType('resource') as PerformanceResourceTiming[]);
+    report({ kind: 'page_load', ...timing, ...assets });
   };
   if (document.readyState === 'complete') {
     sendLoad();

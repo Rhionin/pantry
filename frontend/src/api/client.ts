@@ -52,7 +52,7 @@ async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
   try {
     res = await fetch(`${BASE_URL}${path}`, { ...options, headers });
   } catch (err) {
-    reportApiResult(route, 0, performance.now() - started);
+    reportApiResult(route, 0, performance.now() - started, started);
     throw err;
   }
 
@@ -66,14 +66,14 @@ async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
     } catch {
       // Response body was not JSON; fall back to statusText.
     }
-    reportApiResult(route, res.status, performance.now() - started);
+    reportApiResult(route, res.status, performance.now() - started, started);
     throw new ApiError(res.status, message);
   }
 
   // DELETE endpoints return `{}` with a 200 status (see handler_wrapper.go),
   // not an empty 204 body, but callers of those endpoints don't need the value.
   const text = await res.text();
-  reportApiResult(route, res.status, performance.now() - started);
+  reportApiResult(route, res.status, performance.now() - started, started);
   return text ? (JSON.parse(text) as T) : (undefined as T);
 }
 

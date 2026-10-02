@@ -92,6 +92,7 @@ func TestPublicProxyIsOptIn(t *testing.T) {
 		"{$PUBLIC_HOST}",
 		"{$ACME_EMAIL}",
 		"import auth.caddy",
+		"path /api/telemetry /api/telemetry/client",
 		"path /api/events",
 		"reverse_proxy pantry:8080",
 		"flush_interval -1",
@@ -103,6 +104,17 @@ func TestPublicProxyIsOptIn(t *testing.T) {
 	} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("Caddyfile missing %q", want)
+		}
+	}
+	telemetryAt := strings.Index(text, "path /api/telemetry /api/telemetry/client")
+	authAt := strings.Index(text, "import auth.caddy")
+	if telemetryAt < 0 || authAt < 0 || telemetryAt > authAt {
+		t.Fatal("telemetry path exception must be configured before basic auth is imported")
+	}
+	beforeAuth := text[:authAt]
+	for _, closed := range []string{"/api/inventory", "/api/scans", "/api/events", "/health"} {
+		if strings.Contains(beforeAuth, closed) {
+			t.Fatalf("path %s is outside basic auth", closed)
 		}
 	}
 

@@ -7,42 +7,55 @@
 	admin off
 }
 
+# Same browser headers on the public timing paths and on the password-protected site.
+(security_headers) {
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options nosniff
+		X-Frame-Options DENY
+		Referrer-Policy no-referrer
+		Permissions-Policy "camera=(self), microphone=(), geolocation=()"
+		Content-Security-Policy "default-src 'self'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; object-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' https: data:; font-src 'self' data:; connect-src 'self'"
+		-Server
+	}
+}
+
 {$PUBLIC_HOST} {
-	# route keeps this order. basic_auth is first, so it covers the UI, static
-	# files, /health, /api, and the /api/events stream. Do not move the import
-	# inside only one handle: the other handle would then be reachable with
-	# no password. Let's Encrypt's HTTP-01 check is not this site block; it
-	# stays on port 80 and can still complete.
-	#
-	# Stock Caddy has no login rate limit. Use a long shared password. A
-	# guessed password is a full pantry login, including Kroger credential
-	# changes if that connection is configured.
-	route {
-		import auth.caddy
-
-		header {
-			Strict-Transport-Security "max-age=31536000; includeSubDomains"
-			X-Content-Type-Options nosniff
-			X-Frame-Options DENY
-			Referrer-Policy no-referrer
-			Permissions-Policy "camera=(self), microphone=(), geolocation=()"
-			Content-Security-Policy "default-src 'self'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; object-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' https: data:; font-src 'self' data:; connect-src 'self'"
-			-Server
-		}
-
-		# Scan and inventory pages keep a Server-Sent Events stream open on
-		# /api/events. Buffering or compressing that response holds events
-		# until the stream ends, so the UI never updates live.
-		@events path /api/events
-		handle @events {
-			reverse_proxy pantry:8080 {
-				flush_interval -1
-			}
-		}
-
-		handle {
+	# handle is first-match. This matcher is exact: /api/telemetry and
+	# /api/telemetry/client only. The snapshot has no barcodes, product names,
+	# or user ids, and the page posts timings here, so both stay reachable
+	# without the household password. Do not add other API paths to this matcher.
+	@telemetry path /api/telemetry /api/telemetry/client
+	handle @telemetry {
+		route {
+			import security_headers
 			encode gzip
 			reverse_proxy pantry:8080
+		}
+	}
+
+	# Everything else asks for the shared password. basic_auth lives in this
+	# handle so the telemetry handle above is the only public exception.
+	handle {
+		route {
+			import auth.caddy
+
+			import security_headers
+
+			# Scan and inventory pages keep a Server-Sent Events stream open on
+			# /api/events. Buffering or compressing that response holds events
+			# until the stream ends, so the UI never updates live.
+			@events path /api/events
+			handle @events {
+				reverse_proxy pantry:8080 {
+					flush_interval -1
+				}
+			}
+
+			handle {
+				encode gzip
+				reverse_proxy pantry:8080
+			}
 		}
 	}
 }
