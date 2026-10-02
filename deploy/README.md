@@ -151,19 +151,25 @@ Create two forwards to the Pi's LAN address:
 
 UDP 443 is optional. It enables HTTP/3. The site works with only the two TCP forwards.
 
-Do not forward port 8080.
+Do not forward port 8080. Leave UPnP off, and delete any other forward you are not using.
 
-If the Pi itself is running a firewall (`sudo ufw status` says `active`), allow the proxy ports without opening 8080 to the world:
+The published Pantry port is IPv4-only (`0.0.0.0`). That keeps a global IPv6 address on the Pi from answering on 8080. It does not stop a router forward: a forwarded packet is still addressed to the Pi's LAN IPv4 address, and Docker's userland proxy accepts it. `ufw` does not close that port either. Docker accepts the connection in its own proxy and, separately, DNATs it around the `INPUT` chain `ufw` edits.
+
+If `sudo ufw status` says `active`, allow the proxy ports. Leave a firewall that is currently inactive turned off. Enabling it without an SSH allow rule can lock you out of the Pi.
 
 ```bash
 sudo ufw allow 80/tcp
 sudo ufw allow 443/tcp
 sudo ufw allow 443/udp
-sudo ufw allow from 192.168.0.0/16 to any port 8080 proto tcp
-sudo ufw allow from 10.0.0.0/8 to any port 8080 proto tcp
 ```
 
-Leave a firewall that is currently inactive turned off. Enabling it without an SSH allow rule can lock you out of the Pi.
+To also drop non-LAN clients that reach the Pantry port (loopback, private LAN, and Tailscale `100.64.0.0/10` stay allowed; ports 80 and 443 are not changed):
+
+```bash
+sudo ./setup.sh firewall
+```
+
+`sudo ./setup.sh firewall-off` removes that rule. It is optional. The router rule above is the one that matters.
 
 ### 3. Point the Squarespace domain at that address
 
@@ -251,7 +257,19 @@ Two free options, neither of which is wired into this repo. Pick one; do not run
 
 **Cloudflare Tunnel** (fits `pantry.rhionin.com` when you cannot forward ports). Create a free Cloudflare account, add `rhionin.com`, and let Cloudflare show you two nameservers. In Squarespace: **Domains → rhionin.com → DNS → Nameservers → use custom nameservers**, and paste those two. That moves DNS for the whole domain to Cloudflare; the registration stays at Squarespace. Then install `cloudflared` on the Pi. Do not point the tunnel at port 8080: that port has no password. Put Cloudflare Access (free for a small number of users) in front of the hostname, or publish through Caddy on localhost and tunnel to that. The tunnel login writes a credential on the Pi. Leave it there; do not commit it. No ports to forward, and a changing home IP does not matter.
 
-**Tailscale Funnel** (fits a stable URL when you do not need `rhionin.com`). The free personal tier can expose the Pi as a `*.ts.net` name without opening ports. Putting a Squarespace name on Funnel is more work than the Caddy path; use Funnel when a Tailscale hostname is enough.
+**Tailscale Funnel** (fits a stable URL when you do not need `rhionin.com`). The free personal tier can expose the Pi as a `*.ts.net` name without opening ports. Putting a Squarespace name on Funnel is more work than the Caddy path; use Funnel when a Tailscale hostname is enough. Do not funnel port 8080; that port has no password. Funnel the Caddy port, or put Tailscale in front of the LAN address and skip Funnel.
+
+### What stays exposed if you forward ports
+
+Forwarding 80 and 443 to a computer in the house is a different risk from a VPN or a tunnel. The Pi is on your LAN. Anyone who gets past the shared password is on a process that can read the pantry database, change inventory, and, if you connected Kroger, use the refresh token stored in that database. A bug or a guessed password is not confined to a cloud VM. A tunnel or Tailscale does not put a listening port on the home router; the router path does.
+
+The shared password is one secret for the whole household. Caddy applies it to every path on the public hostname, including `/api/events`, static files, and `/health`. There is no lockout and no rate limit in this Caddy build, so the password needs to be long (12 to 72 characters, and longer is better). The LAN address `http://<pi-ip>:8080` never asks for it. That is deliberate. Do not publish that port.
+
+Kroger client secrets and refresh tokens are stored in `pantry.db` as plain text. The HTTP API does not return them. A copy of the database (a backup, or the Docker volume) does. Treat `pantry.db` like a password file. The app has no login of its own: if Caddy is stopped or mis-mounted and something else forwards port 8080, every route is open, including wiping inventory (the body must contain `WIPE INVENTORY`) and saving a Kroger client secret.
+
+Automatic updates run as root and pull `latest` when you enable the timer. A bad image then starts on the same Pi that is reachable from the internet. Leave the timer off unless you want that.
+
+Prefer a tunnel or Tailscale when you do not need a public listener. If you keep the port forward: only TCP 80 and 443, DHCP reservation, UPnP off, no forward of 8080, and `sudo ./setup.sh firewall` so a mistaken forward of the Pantry port still has to come from the LAN.
 
 ### Keeping HTTPS across automatic updates
 
@@ -287,7 +305,7 @@ All configuration is handled through environment variables in `/opt/pantry/.env`
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `PANTRY_IMAGE_TAG` | `latest` | Container image tag to deploy. Use `latest` for newest build, `master` for master branch, or full commit SHA to pin version |
-| `HOST_PORT` | `8080` | Host port to expose Pantry service on the LAN. Container always uses port 8080 internally. Do not forward this port on the router |
+| `HOST_PORT` | `8080` | IPv4 port for the LAN site. The container still listens on 8080. Published on `0.0.0.0` only, not IPv6. Do not forward this port on the router |
 | `PUBLIC_HOST` | empty | Hostname for the public HTTPS proxy, such as `pantry.rhionin.com`. Empty keeps the install LAN-only. No `https://` |
 | `ACME_EMAIL` | empty | Email Let's Encrypt uses for certificate expiry notices. Required when `PUBLIC_HOST` is set. Not a Pantry login |
 | `BASIC_AUTH_USER` | `pantry` | Username the browser asks for on the public site |

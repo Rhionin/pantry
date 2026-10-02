@@ -3,11 +3,16 @@ package server
 import (
 	"context"
 	"fmt"
+	"log"
 	"net/http"
 	"regexp"
 
 	"github.com/go-json-experiment/json"
 )
+
+// maxJSONBodyBytes caps a JSON request. Inventory and scan payloads are small;
+// a larger body is rejected instead of being buffered.
+const maxJSONBodyBytes = 1 << 20
 
 var pathParamRegExp = regexp.MustCompile(`\/{(.*?)}`)
 
@@ -39,6 +44,12 @@ type handlerFunc[TBody, TPathParams, TResp any] func(req Request[TBody, TPathPar
 func HandleJSON[TBody, TPathParams, TResp any](fn handlerFunc[TBody, TPathParams, TResp]) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var body TBody
+
+		if r.ContentLength > maxJSONBodyBytes {
+			writeError(w, http.StatusBadRequest, "request body is too large")
+			return
+		}
+		r.Body = http.MaxBytesReader(w, r.Body, maxJSONBodyBytes)
 
 		if r.ContentLength > 0 {
 			if err := json.UnmarshalRead(r.Body, &body); err != nil {
@@ -110,12 +121,18 @@ func parsePathParams[Pp any](r *http.Request, pattern string) (Pp, error) {
 func writeJSON(w http.ResponseWriter, status int, data interface{}) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	if err := json.MarshalWrite(w, data); err != nil {
+	if err := json.MarshalWrite(w, scrubImageURLs(data)); err != nil {
 		fmt.Printf("error encoding JSON response: %v\n", err)
 	}
 }
 
-// writeError writes a JSON error response.
+// writeError writes a JSON error response. A 5xx status keeps the underlying
+// detail in the server log and returns a fixed sentence, so a database or
+// upstream message is not part of the HTTP body.
 func writeError(w http.ResponseWriter, status int, message string) {
+	if status >= 500 {
+		log.Printf("request failed: %s", message)
+		message = "Something went wrong. Please try again."
+	}
 	writeJSON(w, status, map[string]string{"error": message})
 }

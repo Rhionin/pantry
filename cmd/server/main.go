@@ -3,7 +3,9 @@ package main
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"strconv"
@@ -235,9 +237,38 @@ func main() {
 	}
 
 	log.Printf("listening on %s", addr)
-	if err := http.ListenAndServe(addr, handler); err != nil {
+	if warning := unauthenticatedListenWarning(addr); warning != "" {
+		log.Print(warning)
+	}
+	// ReadHeaderTimeout closes a connection that never sends headers.
+	// WriteTimeout is left unset so a live /api/events stream is not cut off.
+	srv := &http.Server{
+		Addr:              addr,
+		Handler:           handler,
+		ReadHeaderTimeout: 10 * time.Second,
+		IdleTimeout:       120 * time.Second,
+		MaxHeaderBytes:    1 << 16,
+	}
+	if err := srv.ListenAndServe(); err != nil {
 		log.Fatalf("listen: %v", err)
 	}
+}
+
+// unauthenticatedListenWarning reports when addr is reachable beyond this
+// process's loopback interface. The application has no login of its own;
+// the LAN listener is intentional, and a router forward of this port is not.
+func unauthenticatedListenWarning(addr string) string {
+	host, _, err := net.SplitHostPort(addr)
+	if err != nil {
+		host = addr
+	}
+	if host == "localhost" {
+		return ""
+	}
+	if ip := net.ParseIP(host); ip != nil && ip.IsLoopback() {
+		return ""
+	}
+	return fmt.Sprintf("warning: %s has no application login; it is meant for the LAN. Do not forward this port from the router", addr)
 }
 
 type disabledExternalLookup struct{}

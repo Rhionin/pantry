@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
@@ -743,5 +744,65 @@ func TestProductIDInvariantAcrossDatabases(t *testing.T) {
 				}
 			})
 		}
+	}
+}
+
+func TestLookupBarcodeKeepsBarcodeInOnePathSegment(t *testing.T) {
+	var gotPath string
+	client := NewProductOpenerClientWithHTTPClient(ExternalSourceOpenFoodFacts, "https://world.openfoodfacts.org/api/v2/product", &http.Client{
+		Transport: mockTransport{fn: func(req *http.Request) (*http.Response, error) {
+			gotPath = req.URL.Path
+			return &http.Response{
+				StatusCode: http.StatusNotFound,
+				Body:       io.NopCloser(strings.NewReader("")),
+				Header:     make(http.Header),
+			}, nil
+		}},
+	})
+
+	if _, err := client.LookupBarcode(context.Background(), "012345678905"); err != ErrProductNotFound {
+		t.Fatalf("lookup: %v", err)
+	}
+	if gotPath != "/api/v2/product/012345678905.json" {
+		t.Fatalf("path = %q", gotPath)
+	}
+
+	for _, barcode := range []string{"../admin", "a/b", "a?b=1", "has space trailing ", "\n"} {
+		if _, err := client.LookupBarcode(context.Background(), barcode); err == nil || !strings.Contains(err.Error(), "invalid") {
+			t.Errorf("barcode %q: got %v, want invalid", barcode, err)
+		}
+	}
+}
+
+func TestLookupBarcodeDropsPrivateImageURL(t *testing.T) {
+	client := NewProductOpenerClientWithHTTPClient(ExternalSourceOpenFoodFacts, "https://world.openfoodfacts.org/api/v2/product", &http.Client{
+		Transport: mockTransport{fn: func(req *http.Request) (*http.Response, error) {
+			body := `{"status":1,"product":{"product_name":"Milk","image_front_small_url":"http://192.168.1.1/cam.jpg"}}`
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Body:       io.NopCloser(strings.NewReader(body)),
+				Header:     make(http.Header),
+			}, nil
+		}},
+	})
+	ps, err := client.LookupBarcode(context.Background(), "012345678905")
+	if err != nil {
+		t.Fatalf("lookup: %v", err)
+	}
+	if ps.ImageURL != "" {
+		t.Fatalf("ImageURL = %q, want empty", ps.ImageURL)
+	}
+}
+
+func TestLookupBarcodeRefusesCrossHostRedirect(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "http://127.0.0.1:1/secret", http.StatusFound)
+	}))
+	t.Cleanup(upstream.Close)
+
+	client := NewProductOpenerClient(ExternalSourceOpenFoodFacts, upstream.URL+"/api/v2/product")
+	_, err := client.LookupBarcode(context.Background(), "012345678905")
+	if err == nil || !strings.Contains(err.Error(), "redirect") {
+		t.Fatalf("lookup error = %v, want a redirect refusal", err)
 	}
 }

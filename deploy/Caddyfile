@@ -1,29 +1,48 @@
 # Public HTTPS entrypoint for a hostname you own (PUBLIC_HOST).
 # Caddy obtains and renews a Let's Encrypt certificate over HTTP-01,
 # which requires TCP port 80 to reach this container from the internet.
+# The admin API stays off so it is not another listener on the Pi.
 {
 	email {$ACME_EMAIL}
+	admin off
 }
 
 {$PUBLIC_HOST} {
-	# Shared password for the public hostname. The hash lives in auth.caddy,
-	# written on the Pi by setup.sh, so it is not stored in git. This block
-	# is the HTTPS site only: Let's Encrypt's HTTP-01 check on port 80 stays
-	# outside it and can still complete.
-	import auth.caddy
+	# route keeps this order. basic_auth is first, so it covers the UI, static
+	# files, /health, /api, and the /api/events stream. Do not move the import
+	# inside only one handle: the other handle would then be reachable with
+	# no password. Let's Encrypt's HTTP-01 check is not this site block; it
+	# stays on port 80 and can still complete.
+	#
+	# Stock Caddy has no login rate limit. Use a long shared password. A
+	# guessed password is a full pantry login, including Kroger credential
+	# changes if that connection is configured.
+	route {
+		import auth.caddy
 
-	# Scan and inventory pages keep a Server-Sent Events stream open on
-	# /api/events. Buffering or compressing that response holds events
-	# until the stream ends, so the UI never updates live.
-	@events path /api/events
-	handle @events {
-		reverse_proxy pantry:8080 {
-			flush_interval -1
+		header {
+			Strict-Transport-Security "max-age=31536000; includeSubDomains"
+			X-Content-Type-Options nosniff
+			X-Frame-Options DENY
+			Referrer-Policy no-referrer
+			Permissions-Policy "camera=(self), microphone=(), geolocation=()"
+			Content-Security-Policy "default-src 'self'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; object-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' https: data:; font-src 'self' data:; connect-src 'self'"
+			-Server
 		}
-	}
 
-	handle {
-		encode gzip
-		reverse_proxy pantry:8080
+		# Scan and inventory pages keep a Server-Sent Events stream open on
+		# /api/events. Buffering or compressing that response holds events
+		# until the stream ends, so the UI never updates live.
+		@events path /api/events
+		handle @events {
+			reverse_proxy pantry:8080 {
+				flush_interval -1
+			}
+		}
+
+		handle {
+			encode gzip
+			reverse_proxy pantry:8080
+		}
 	}
 }
