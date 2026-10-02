@@ -106,7 +106,8 @@ curl -s https://pantry.rhionin.com/api/telemetry
 `POST /api/telemetry/client` is public on that hostname as well, so the page
 can report timings. Every other path still asks for the shared password. The
 LAN listener on `:8080` is unchanged: it has no password. The footer link
-Diagnostics renders `pageLoad` for someone at the screen.
+Diagnostics renders `pageLoad` for someone at the screen. On a Pi that is
+already public, `sudo ./setup.sh` is what loads the Caddyfile exception.
 
 In development the Vite server proxies `/api`, so the same path works against
 the dev UI's origin. The browser posts its own timings and errors to
