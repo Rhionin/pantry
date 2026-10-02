@@ -1687,6 +1687,7 @@ describe('ScanQueuePage', () => {
       fireEvent.click(screen.getByRole('button', { name: 'Scan with camera' }));
 
       expect(await screen.findByText('Barcode: 0123456789012')).toBeInTheDocument();
+      expect(screen.getByRole('article', { name: 'Scan 0123456789012' })).toHaveClass('scan-entry-card--just-captured');
       expect(posts).toEqual([{ barcode: '0123456789012', direction: 'stock_out', userId: 'user-1' }]);
     });
 

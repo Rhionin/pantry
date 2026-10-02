@@ -3,7 +3,7 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import { MantineProvider } from '@mantine/core';
 import { CameraScanner, type CameraScannerProps } from './CameraScanner';
 import { RESCAN_COOLDOWN_MS } from './cameraAccess';
-import type { FrameDecoder } from './frameDecoder';
+import type { DecodedBarcode, FrameDecoder } from './frameDecoder';
 
 function renderScanner(props: CameraScannerProps) {
   return render(
@@ -154,9 +154,13 @@ describe('CameraScanner', () => {
       return {
         detect: vi.fn().mockImplementation(async () => {
           const next = queue.shift();
-          return next === undefined ? [] : [next];
+          return next === undefined ? [] : [code(next)];
         }),
       };
+    }
+
+    function code(value: string, extras: Partial<DecodedBarcode> = {}): DecodedBarcode {
+      return { value, corners: [], frameWidth: 0, frameHeight: 0, ...extras };
     }
 
     it('shows the preview and reports each distinct barcode', async () => {
@@ -169,7 +173,9 @@ describe('CameraScanner', () => {
       await vi.waitFor(() => expect(onScan).toHaveBeenCalledTimes(2));
       expect(onScan).toHaveBeenNthCalledWith(1, '111');
       expect(onScan).toHaveBeenNthCalledWith(2, '222');
-      expect(screen.getByText('Scanned 222')).toBeInTheDocument();
+      expect(screen.getByText('Captured 222')).toBeInTheDocument();
+      expect(screen.queryByText(/scans automatically/i)).not.toBeInTheDocument();
+      expect(document.querySelector('.camera-preview-flash')).not.toBeNull();
       expect(getUserMedia).toHaveBeenCalledWith({
         video: { facingMode: { ideal: 'environment' } },
         audio: false,
@@ -183,7 +189,7 @@ describe('CameraScanner', () => {
       const detect = vi.fn().mockImplementation(async () => {
         reads += 1;
         if (reads >= 3) now = 10_000 + RESCAN_COOLDOWN_MS + 1;
-        return ['0123456789012'];
+        return [code('0123456789012')];
       });
       const onScan = vi.fn();
       renderScanner({ onScan, createDecoder: async () => ({ detect }) });
@@ -233,6 +239,61 @@ describe('CameraScanner', () => {
         video: { facingMode: { ideal: 'user' } },
         audio: false,
       });
+    });
+
+    it('asks for a tap when the preview cannot start playing on its own', async () => {
+      HTMLMediaElement.prototype.play = vi.fn()
+        .mockRejectedValueOnce(new DOMException('gesture', 'NotAllowedError'))
+        .mockResolvedValue(undefined);
+      renderScanner({ onScan: vi.fn(), createDecoder: async () => decoderReturning([]) });
+
+      fireEvent.click(screen.getByRole('button', { name: 'Scan with camera' }));
+
+      expect(await screen.findByRole('button', { name: 'Tap to start scanning' })).toBeInTheDocument();
+      expect(stop).not.toHaveBeenCalled();
+
+      fireEvent.click(screen.getByRole('button', { name: 'Tap to start scanning' }));
+
+      expect(await screen.findByText(/scans automatically/i)).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Tap to start scanning' })).not.toBeInTheDocument();
+    });
+
+    it('draws an outline around a barcode the detector locates', async () => {
+      const located = code('111', {
+        corners: [
+          { x: 10, y: 20 },
+          { x: 80, y: 20 },
+          { x: 80, y: 50 },
+          { x: 10, y: 50 },
+        ],
+        frameWidth: 200,
+        frameHeight: 100,
+      });
+      const { container } = renderScanner({
+        onScan: vi.fn(),
+        createDecoder: async () => ({ detect: vi.fn().mockResolvedValue([located]) }),
+      });
+
+      fireEvent.click(screen.getByRole('button', { name: 'Scan with camera' }));
+
+      const polygon = await vi.waitFor(() => {
+        const node = container.querySelector('.camera-preview-boxes polygon');
+        expect(node).not.toBeNull();
+        return node;
+      });
+      expect(polygon).toHaveAttribute('points', '10,20 80,20 80,50 10,50');
+      expect(container.querySelector('.camera-preview-boxes')).toHaveAttribute('viewBox', '0 0 200 100');
+    });
+
+    it('sizes the picture from a wrapper so a phone can still see the queue', async () => {
+      const { container } = renderScanner({ onScan: vi.fn(), createDecoder: async () => decoderReturning([]) });
+
+      fireEvent.click(screen.getByRole('button', { name: 'Scan with camera' }));
+
+      const video = await screen.findByLabelText('Camera preview');
+      expect(video).toHaveClass('camera-preview-video');
+      expect(container.querySelector('.camera-preview')).toContainElement(video);
+      expect(await screen.findByText(/scans automatically/i)).toBeInTheDocument();
     });
   });
 });

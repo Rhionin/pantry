@@ -1,25 +1,58 @@
 // drive-camera-scan.mjs — proves a browser barcode reaches the scan queue.
 //
-// A headless browser has no barcode in front of a lens, so this driver does not
-// claim to decode a printed code. It opens the opt-in camera control, then
-// enqueues a barcode through whichever path the environment actually offers:
-// the manual field shown when the camera cannot start, or the existing scanner
-// input once a live preview is up. Either path uses the same capture handler
-// as a decoded frame. Run through scripts/pantry-verify.sh:
+// A headless browser has no printed barcode in front of a lens. This driver
+// opens the camera at a phone size, arms an injected detector when the preview
+// is up, and checks that the queue stays on screen with a capture cue and a
+// barcode outline. If the camera cannot start, it types the barcode instead.
+// Run through scripts/pantry-verify.sh:
 //   scripts/pantry-verify.sh drive scripts/drive-camera-scan.mjs camera-scan
 import {
-  openBrowser, createKnownProduct, scanBarcode, captureProof, readInventory, assert,
+  openBrowser, createKnownProduct, scanBarcode, captureProof, readInventory, assert, EVIDENCE_DIR,
 } from './harness.mjs';
+import { join } from 'node:path';
 
 const BARCODE = '910000000017';
 const PRODUCT = 'Verify Camera Oats';
 
-const { browser, page } = await openBrowser();
+const { browser, page } = await openBrowser({
+  args: ['--use-fake-device-for-media-stream', '--use-fake-ui-for-media-stream'],
+  viewport: { width: 390, height: 844 },
+  permissions: ['camera'],
+});
 let failed = false;
 try {
   await createKnownProduct(page, {
     barcode: BARCODE, name: PRODUCT, category: 'Grocery', unitOfMeasure: 'box',
   });
+
+  await page.addInitScript((barcode) => {
+    let armedAt = 0;
+    window.__armCameraDetector = () => {
+      armedAt = Date.now();
+    };
+    window.__disarmCameraDetector = () => {
+      armedAt = 0;
+    };
+    class FakeBarcodeDetector {
+      static async getSupportedFormats() {
+        return ['ean_13', 'ean_8', 'upc_a', 'upc_e', 'code_128', 'code_39', 'itf', 'qr_code'];
+      }
+      async detect() {
+        if (armedAt === 0) return [];
+        return [{
+          rawValue: barcode,
+          cornerPoints: [
+            { x: 80, y: 140 },
+            { x: 520, y: 140 },
+            { x: 520, y: 280 },
+            { x: 80, y: 280 },
+          ],
+          boundingBox: { x: 80, y: 140, width: 440, height: 140 },
+        }];
+      }
+    }
+    window.BarcodeDetector = FakeBarcodeDetector;
+  }, BARCODE);
 
   await page.goto('/');
   await page.getByText('Mode: stock_in').waitFor({ state: 'visible', timeout: 10_000 });
@@ -33,12 +66,22 @@ try {
   await page.getByRole('button', { name: 'Scan with camera' }).click();
 
   const unavailable = page.getByText('Camera scanning unavailable');
-  const ready = page.getByText('Point the camera at a barcode.');
+  const automatic = page.getByText(/scans automatically/i);
+  const tapToStart = page.getByRole('button', { name: 'Tap to start scanning' });
   await Promise.race([
     unavailable.waitFor({ state: 'visible', timeout: 15_000 }),
-    ready.waitFor({ state: 'visible', timeout: 15_000 }),
+    automatic.waitFor({ state: 'visible', timeout: 15_000 }),
+    tapToStart.waitFor({ state: 'visible', timeout: 15_000 }),
   ]);
+  if (await tapToStart.isVisible()) {
+    await tapToStart.click();
+    await Promise.race([
+      unavailable.waitFor({ state: 'visible', timeout: 15_000 }),
+      automatic.waitFor({ state: 'visible', timeout: 15_000 }),
+    ]);
+  }
 
+  const card = page.getByRole('article', { name: `Scan ${BARCODE}` });
   let capturePath;
   if (await unavailable.isVisible()) {
     await captureProof(page, 'camera-fallback', {
@@ -50,16 +93,36 @@ try {
     await page.getByRole('button', { name: 'Add scan' }).click();
     capturePath = 'manual-fallback';
   } else {
-    // The preview is live, but this environment has no barcode in frame.
-    // The hardware-scanner field still feeds the same queue.
-    capturePath = 'live-preview';
-    await scanBarcode(page, BARCODE);
+    await page.evaluate(() => window.__armCameraDetector?.());
+    try {
+      await card.waitFor({ state: 'visible', timeout: 8_000 });
+      capturePath = 'camera-decode';
+    } catch {
+      // Preview is up, but this run could not decode a frame. The hardware
+      // scanner field still feeds the same queue.
+      capturePath = 'live-preview';
+      await scanBarcode(page, BARCODE);
+    }
   }
 
-  const card = page.getByRole('article', { name: `Scan ${BARCODE}` });
   await card.waitFor({ state: 'visible', timeout: 15_000 });
   await card.getByText(`Barcode: ${BARCODE}`).waitFor({ state: 'visible' });
   await card.getByRole('heading', { name: PRODUCT }).waitFor({ state: 'visible' });
+  if (capturePath === 'camera-decode') {
+    const preview = page.getByLabel('Camera preview');
+    const previewBox = await preview.boundingBox();
+    const cardBox = await card.boundingBox();
+    const viewport = page.viewportSize();
+    assert(previewBox !== null && cardBox !== null && viewport !== null, 'preview and queue card are laid out');
+    assert(previewBox.height <= 220, `camera preview stays compact (height ${previewBox.height})`);
+    assert(cardBox.y < viewport.height, `scan card is inside the phone viewport (y ${cardBox.y}, viewport ${viewport.height})`);
+    await page.getByRole('status').filter({ hasText: `Captured ${BARCODE}` }).waitFor({ state: 'visible' });
+    await page.locator('.camera-preview-boxes polygon').waitFor({ state: 'visible', timeout: 3_000 });
+    const highlighted = await card.evaluate((node) => node.classList.contains('scan-entry-card--just-captured'));
+    assert(highlighted, 'the captured scan card is highlighted');
+    await page.screenshot({ path: join(EVIDENCE_DIR, 'camera-phone-viewport.png') });
+    await page.evaluate(() => window.__disarmCameraDetector?.());
+  }
   await captureProof(page, 'camera-queued', {
     feature: 'camera-scan',
     step: 'queued',

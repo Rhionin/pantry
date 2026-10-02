@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { notifications } from '@mantine/notifications';
 import { trackEventSource } from '../../telemetry/client';
 import { Alert, Badge, Checkbox, Loader, Tabs, SimpleGrid, Stack, Text, Title } from '@mantine/core';
 import { createScanEntry, getInventoryList, getScannerConfig, listScanEntries, setScannerMode } from '../../api/client';
@@ -34,6 +35,9 @@ export const ScanQueuePage = ({ userId = DEFAULT_USER_ID }: ScanQueuePageProps) 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [scanError, setScanError] = useState('');
+  const [cameraOpen, setCameraOpen] = useState(false);
+  const [capturedBarcode, setCapturedBarcode] = useState('');
+  const captureHighlightTimer = useRef(0);
   
   // Move the scanner mode and keep the visible tab following it, so a scan
   // taken in the current direction lands in the tab the user is looking at.
@@ -84,6 +88,14 @@ export const ScanQueuePage = ({ userId = DEFAULT_USER_ID }: ScanQueuePageProps) 
   useEffect(() => {
     void Promise.resolve().then(loadQueue);
   }, [loadQueue]);
+
+  useEffect(() => () => window.clearTimeout(captureHighlightTimer.current), []);
+
+  useEffect(() => {
+    if (capturedBarcode === '') return;
+    const node = document.querySelector('.scan-entry-card--just-captured, .processing-scan-card--just-captured');
+    node?.scrollIntoView?.({ block: 'nearest' });
+  }, [capturedBarcode, entries, processing]);
 
   // Load the reserved control-barcode strings so captureBarcode can classify a
   // scan as a mode switch instead of a product barcode, and seed the displayed
@@ -199,6 +211,29 @@ export const ScanQueuePage = ({ userId = DEFAULT_USER_ID }: ScanQueuePageProps) 
     }
   };
 
+  const noteCameraCapture = (barcode: string) => {
+    const targetMode = classifyControlBarcode(barcode);
+    if (targetMode !== null) {
+      notifications.show({
+        message: targetMode === 'stock_in' ? 'Switched to stock in' : 'Switched to stock out',
+        color: targetMode === 'stock_in' ? 'blue' : 'orange',
+        autoClose: 2000,
+        position: 'top-center',
+      });
+    } else {
+      setCapturedBarcode(barcode);
+      window.clearTimeout(captureHighlightTimer.current);
+      captureHighlightTimer.current = window.setTimeout(() => setCapturedBarcode(''), 4000);
+      notifications.show({
+        message: `Captured ${barcode}`,
+        color: 'teal',
+        autoClose: 2000,
+        position: 'top-center',
+      });
+    }
+    void captureBarcode(barcode);
+  };
+
   const setEntrySelected = (entryId: string, selected: boolean) => {
     setSelectedIds((current) =>
       selected ? [...new Set([...current, entryId])] : current.filter((id) => id !== entryId),
@@ -206,22 +241,23 @@ export const ScanQueuePage = ({ userId = DEFAULT_USER_ID }: ScanQueuePageProps) 
   };
 
   return (
-    <Stack gap="sm">
-      <Title order={1} size="h3">Scan queue</Title>
+    <Stack gap="sm" className="scan-page">
+      <Stack gap="sm" className="scan-page-tools">
+        <Title order={1} size="h3">Scan queue</Title>
       <BarcodeInputField onScan={(barcode) => void captureBarcode(barcode)} />
       {scanError !== '' && (
         <Alert color="red" py="xs">
           {scanError}
         </Alert>
       )}
-      {scannerConnected !== null && (
+      {scannerConnected !== null && !cameraOpen && (
         <Alert color={scannerConnected ? 'green' : 'red'} py="xs" title={scannerConnected ? 'Scanner connected' : 'Scanner disconnected'}>
           {scannerConnected
             ? 'The barcode scanner is connected.'
             : 'The barcode scanner is not connected. You can scan with this device\'s camera instead.'}
         </Alert>
       )}
-      <CameraScanner onScan={(barcode) => void captureBarcode(barcode)} />
+      <CameraScanner onScan={noteCameraCapture} onOpenChange={setCameraOpen} />
       <Alert color={scannerMode === 'stock_in' ? 'blue' : 'orange'} py="xs" title={`Mode: ${scannerMode}`}>
         Current scanner mode: <strong>{scannerMode === 'stock_in' ? 'STOCK IN' : 'STOCK OUT'}</strong>
       </Alert>
@@ -245,6 +281,8 @@ export const ScanQueuePage = ({ userId = DEFAULT_USER_ID }: ScanQueuePageProps) 
           </Tabs.Tab>
         </Tabs.List>
       </Tabs>
+      </Stack>
+      <Stack gap="sm" className="scan-page-queue" aria-label="Scan queue entries">
       <Checkbox
         label="Select all for approval"
         aria-label="Select all eligible scans for batch approval"
@@ -270,19 +308,25 @@ export const ScanQueuePage = ({ userId = DEFAULT_USER_ID }: ScanQueuePageProps) 
       )}
       <SimpleGrid cols={{ base: 1, sm: 2, lg: 3 }} spacing="xs">
         {processingForView.map((notice) => (
-          <ProcessingScanCard key={notice.id} notice={notice} />
+          <ProcessingScanCard
+            key={notice.id}
+            notice={notice}
+            justCaptured={capturedBarcode !== '' && notice.barcode === capturedBarcode}
+          />
         ))}
         {viewEntries.map((entry) => (
           <ScanEntryCard
             key={entry.id}
             entry={entry}
             itemId={entry.productId === null ? undefined : itemIdByProductId.get(entry.productId)}
+            justCaptured={capturedBarcode !== '' && entry.barcode === capturedBarcode}
             selected={selectedIds.includes(entry.id)}
             onSelectedChange={(selected) => setEntrySelected(entry.id, selected)}
             onChanged={() => void loadQueue()}
           />
         ))}
       </SimpleGrid>
+      </Stack>
     </Stack>
   );
 };

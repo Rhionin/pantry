@@ -3,14 +3,16 @@ import type { ProcessingNotice } from '../../types';
 
 export interface ProcessingScanCardProps {
   notice: ProcessingNotice;
+  justCaptured?: boolean;
 }
 
-export const ProcessingScanCard = ({ notice }: ProcessingScanCardProps) => (
+export const ProcessingScanCard = ({ notice, justCaptured = false }: ProcessingScanCardProps) => (
   <Card
     component="article"
     withBorder
     padding="sm"
     aria-busy="true"
+    className={justCaptured ? 'processing-scan-card--just-captured' : undefined}
     aria-label={`Scan ${notice.barcode} processing`}
   >
     <Group gap="xs" wrap="nowrap" align="flex-start">

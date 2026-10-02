@@ -1,8 +1,8 @@
 // Opt-in camera capture for phones and for desktops that have a webcam.
 // The camera stays off until the user asks for it, and the same onScan
 // callback the hardware scanner uses receives each barcode.
-import { useEffect, useRef, useState } from 'react';
-import { Alert, Box, Button, Group, Loader, Stack, Text, TextInput } from '@mantine/core';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { Alert, Box, Button, Group, Loader, Stack, TextInput } from '@mantine/core';
 import {
   CAMERA_START_TIMEOUT_MS,
   RESCAN_COOLDOWN_MS,
@@ -15,33 +15,65 @@ import {
   type FacingMode,
   type PriorScan,
 } from './cameraAccess';
-import { createFrameDecoder, DEFAULT_BARCODE_FORMATS, type FrameDecoder } from './frameDecoder';
+import { outlineAttribute } from './cameraOverlay';
+import { createFrameDecoder, DEFAULT_BARCODE_FORMATS, type DecodedBarcode, type FrameDecoder } from './frameDecoder';
 
 export interface CameraScannerProps {
   onScan: (barcode: string) => void;
+  onOpenChange?: (open: boolean) => void;
   formats?: readonly string[];
   // Test seam. Production uses the native detector, then ZXing.
   createDecoder?: (formats: readonly string[]) => Promise<FrameDecoder | null>;
 }
 
+const CAPTURE_FLASH_MS = 700;
+
 export function CameraScanner({
   onScan,
+  onOpenChange,
   formats = DEFAULT_BARCODE_FORMATS,
   createDecoder = createFrameDecoder,
 }: CameraScannerProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const onScanRef = useRef(onScan);
+  const onOpenChangeRef = useRef(onOpenChange);
+  const flashTimer = useRef(0);
   useEffect(() => {
     onScanRef.current = onScan;
   }, [onScan]);
+  useEffect(() => {
+    onOpenChangeRef.current = onOpenChange;
+  }, [onOpenChange]);
 
   const [active, setActive] = useState(false);
   const [block, setBlock] = useState<CameraBlock | null>(null);
   const [facing, setFacing] = useState<FacingMode>('environment');
   const [previewReady, setPreviewReady] = useState(false);
+  const [needsTap, setNeedsTap] = useState(false);
   const [canSwitch, setCanSwitch] = useState(false);
   const [lastScan, setLastScan] = useState('');
+  const [flash, setFlash] = useState(false);
+  const [outline, setOutline] = useState<DecodedBarcode | null>(null);
   const [manualBarcode, setManualBarcode] = useState('');
+
+  const markCaptured = useCallback((value: string) => {
+    setLastScan(value);
+    setFlash(true);
+    window.clearTimeout(flashTimer.current);
+    flashTimer.current = window.setTimeout(() => setFlash(false), CAPTURE_FLASH_MS);
+    try {
+      navigator.vibrate?.(40);
+    } catch {
+      // Vibration is a bonus cue; a missing or blocked API should not stop the scan.
+    }
+  }, []);
+
+  useEffect(() => () => window.clearTimeout(flashTimer.current), []);
+
+  const previewOpen = active && block === null;
+  useEffect(() => {
+    onOpenChangeRef.current?.(previewOpen);
+  }, [previewOpen]);
 
   useEffect(() => {
     if (!active || block !== null) return;
@@ -117,12 +149,20 @@ export function CameraScanner({
       }
       video.srcObject = stream;
       video.muted = true;
+      // iOS drops the click gesture during the camera prompt, so play() can
+      // reject until the person taps the picture. Keep the stream and ask.
       try {
         await video.play();
-      } catch {
-        releaseStream();
-        if (!cancelled) setBlock({ kind: 'camera', message: 'The camera preview could not start.' });
-        return;
+        if (!cancelled) setNeedsTap(false);
+      } catch (error) {
+        const name = error instanceof DOMException ? error.name : '';
+        if (name === 'NotAllowedError' || name === 'AbortError') {
+          if (!cancelled) setNeedsTap(true);
+        } else {
+          releaseStream();
+          if (!cancelled) setBlock({ kind: 'camera', message: 'The camera preview could not start.' });
+          return;
+        }
       }
       if (cancelled) {
         releaseStream();
@@ -141,13 +181,17 @@ export function CameraScanner({
       while (!cancelled) {
         if (!document.hidden) {
           try {
-            const values = await decoder.detect(video);
-            const value = values.find((entry) => entry.trim() !== '')?.trim();
+            const hits = await decoder.detect(video);
+            const hit = hits.find((entry) => entry.value !== '');
+            const located = hit !== undefined && hit.frameWidth > 0 && hit.frameHeight > 0 && hit.corners.length >= 2
+              ? hit
+              : null;
+            setOutline((current) => (located === null && current === null ? current : located));
             const now = Date.now();
-            if (value !== undefined && shouldAcceptScan(last, value, now, RESCAN_COOLDOWN_MS)) {
-              last = { value, at: now };
-              setLastScan(value);
-              onScanRef.current(value);
+            if (hit !== undefined && shouldAcceptScan(last, hit.value, now, RESCAN_COOLDOWN_MS)) {
+              last = { value: hit.value, at: now };
+              markCaptured(hit.value);
+              onScanRef.current(hit.value);
             }
           } catch {
             // One undecodable frame is normal between successful reads.
@@ -162,12 +206,15 @@ export function CameraScanner({
       cancelled = true;
       releaseStream();
     };
-  }, [active, block, createDecoder, facing, formats]);
+  }, [active, block, createDecoder, facing, formats, markCaptured]);
 
   function open() {
     const blocked = cameraBlockReason();
     setLastScan('');
+    setFlash(false);
+    setOutline(null);
     setPreviewReady(false);
+    setNeedsTap(false);
     setCanSwitch(false);
     setManualBarcode('');
     setBlock(blocked);
@@ -178,20 +225,38 @@ export function CameraScanner({
     setActive(false);
     setBlock(null);
     setPreviewReady(false);
+    setNeedsTap(false);
     setCanSwitch(false);
     setLastScan('');
+    setFlash(false);
+    setOutline(null);
     setManualBarcode('');
   }
 
   function retry() {
     setPreviewReady(false);
+    setNeedsTap(false);
     setCanSwitch(false);
+    setOutline(null);
     setBlock(null);
   }
 
   function switchCamera() {
     setPreviewReady(false);
+    setNeedsTap(false);
+    setOutline(null);
     setFacing((current) => (current === 'environment' ? 'user' : 'environment'));
+  }
+
+  async function resumePreview() {
+    const video = videoRef.current;
+    if (video === null) return;
+    try {
+      await video.play();
+      setNeedsTap(false);
+    } catch {
+      setNeedsTap(true);
+    }
   }
 
   function submitManualBarcode(event: React.FormEvent) {
@@ -240,49 +305,54 @@ export function CameraScanner({
     );
   }
 
+  const status = !previewReady
+    ? 'Starting camera…'
+    : lastScan !== ''
+      ? `Captured ${lastScan}`
+      : 'Hold a barcode in the frame. It scans automatically.';
+  const outlinePoints = outline === null ? '' : outlineAttribute(outline.corners);
+
   return (
     <Stack gap="sm" role="region" aria-label="Camera barcode scanner">
-      <Box pos="relative" maw={480}>
+      <Box className={flash ? 'camera-preview camera-preview--captured' : 'camera-preview'}>
         <video
           ref={videoRef}
+          className="camera-preview-video"
           muted
           playsInline
           autoPlay
           aria-label="Camera preview"
-          style={{
-            width: '100%',
-            minHeight: 220,
-            maxHeight: 360,
-            objectFit: 'cover',
-            borderRadius: 8,
-            background: '#111',
-          }}
+          onPlay={() => setNeedsTap(false)}
         />
-        <Box
-          pos="absolute"
-          top="15%"
-          left="10%"
-          w="80%"
-          h="70%"
-          style={{
-            border: '3px solid var(--mantine-color-blue-5)',
-            borderRadius: 8,
-            pointerEvents: 'none',
-          }}
-        />
+        {outline !== null && outlinePoints !== '' && (
+          <svg
+            className="camera-preview-boxes"
+            viewBox={`0 0 ${outline.frameWidth} ${outline.frameHeight}`}
+            preserveAspectRatio="xMidYMid slice"
+            aria-hidden="true"
+          >
+            <polygon points={outlinePoints} />
+          </svg>
+        )}
+        {outline === null && previewReady && !needsTap && (
+          <div className="camera-preview-reticle" aria-hidden="true" />
+        )}
+        {flash && <div className="camera-preview-flash" aria-hidden="true" />}
         {!previewReady && (
           <Box pos="absolute" top="50%" left="50%" style={{ transform: 'translate(-50%, -50%)' }}>
             <Loader aria-label="Starting camera" />
           </Box>
         )}
+        {needsTap ? (
+          <button type="button" className="camera-preview-tap" onClick={() => void resumePreview()}>
+            Tap to start scanning
+          </button>
+        ) : (
+          <p className={lastScan !== '' ? 'camera-preview-status camera-preview-status--captured' : 'camera-preview-status'} role="status" aria-live="polite">
+            {status}
+          </p>
+        )}
       </Box>
-      <Text size="sm" c="dimmed" aria-live="polite">
-        {lastScan !== ''
-          ? `Scanned ${lastScan}`
-          : previewReady
-            ? 'Point the camera at a barcode.'
-            : 'Starting camera…'}
-      </Text>
       <Group>
         <Button type="button" variant="default" onClick={close}>Stop camera</Button>
         {canSwitch && (
