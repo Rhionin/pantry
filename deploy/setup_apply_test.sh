@@ -10,6 +10,9 @@ SETUP="$ROOT/deploy/setup.sh"
 bash -n "$SETUP"
 bash -n "$ROOT/deploy/firewall/pantry-lan-only.sh"
 bash -n "$ROOT/deploy/systemd/pantry-update.sh"
+bash -n "$ROOT/deploy/mdns/pantry-mdns.sh"
+bash -n "$ROOT/deploy/mdns/lan-ipv4.sh"
+bash -n "$ROOT/deploy/dns/pantry-split-dns.sh"
 
 fail() {
   echo "FAIL: $*" >&2
@@ -21,6 +24,9 @@ LAST_OUT=""
 LAST_DOCKER=""
 LAST_IPTABLES=""
 LAST_SYSTEMCTL=""
+LAST_AVAHI_SERVICE=""
+LAST_DNSMASQ=""
+LAST_MDNS_UNIT=""
 
 make_bin() {
   local bin="$1"
@@ -72,7 +78,15 @@ EOF
 exit 0
 EOF
 
-  chmod +x "$bin/docker" "$bin/systemctl" "$bin/iptables" "$bin/curl" "$bin/usermod" "$bin/udevadm"
+  # Present so a machine that also has Avahi still resolves this stub first.
+  # publish_lan_name only runs when a test sets PANTRY_SKIP_MDNS=0.
+  cat > "$bin/avahi-publish-address" << 'EOF'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >> "${AVAHI_LOG:?}"
+exit 0
+EOF
+
+  chmod +x "$bin/docker" "$bin/systemctl" "$bin/iptables" "$bin/curl" "$bin/usermod" "$bin/udevadm" "$bin/avahi-publish-address"
 }
 
 run_setup() {
@@ -87,15 +101,20 @@ run_setup() {
   : > "$work/docker.log"
   : > "$work/systemctl.log"
   : > "$work/iptables.log"
-  mkdir -p "$work/systemd"
+  : > "$work/avahi.log"
+  mkdir -p "$work/systemd" "$work/avahi" "$work/dnsmasq"
 
   set +e
   DOCKER_LOG="$work/docker.log" \
     SYSTEMCTL_LOG="$work/systemctl.log" \
     IPTABLES_LOG="$work/iptables.log" \
+    AVAHI_LOG="$work/avahi.log" \
     PANTRY_DIR="$pantry" \
     PANTRY_SYSTEMD_UNIT_DIR="$work/systemd" \
     PANTRY_SETUP_SKIP_ROOT=1 \
+    PANTRY_SKIP_MDNS="${PANTRY_SKIP_MDNS:-1}" \
+    PANTRY_AVAHI_SERVICES_DIR="${PANTRY_AVAHI_SERVICES_DIR:-$work/avahi}" \
+    PANTRY_DNSMASQ_DIR="${PANTRY_DNSMASQ_DIR:-$work/dnsmasq}" \
     PATH="$bin:$PATH" \
     bash "$SETUP" "$@" >"$out" 2>"$err"
   LAST_RC=$?
@@ -105,6 +124,18 @@ run_setup() {
   LAST_DOCKER=$(cat "$work/docker.log")
   LAST_IPTABLES=$(cat "$work/iptables.log")
   LAST_SYSTEMCTL=$(cat "$work/systemctl.log")
+  LAST_AVAHI_SERVICE=""
+  if [[ -f "$work/avahi/pantry-http.service" ]]; then
+    LAST_AVAHI_SERVICE=$(cat "$work/avahi/pantry-http.service")
+  fi
+  LAST_DNSMASQ=""
+  if [[ -f "$work/dnsmasq/pantry-split-horizon.conf" ]]; then
+    LAST_DNSMASQ=$(cat "$work/dnsmasq/pantry-split-horizon.conf")
+  fi
+  LAST_MDNS_UNIT=""
+  if [[ -f "$work/systemd/pantry-mdns.service" ]]; then
+    LAST_MDNS_UNIT=$(cat "$work/systemd/pantry-mdns.service")
+  fi
   rm -rf "$work"
 }
 
@@ -149,6 +180,9 @@ lack "$LAST_DOCKER" "restart pantry-caddy" "LAN must not restart Caddy"
 have "$LAST_IPTABLES" "--dport 9090" "firewall uses HOST_PORT"
 have "$LAST_OUT" "Pantry setup complete" "LAN success"
 have "$LAST_OUT" "Non-LAN clients are blocked on port 9090" "LAN firewall summary"
+have "$LAST_OUT" "LAN: http://" "LAN URL is printed"
+lack "$LAST_OUT" "Home Wi-Fi cannot open" "LAN-only must not warn about hairpin"
+lack "$LAST_SYSTEMCTL" "pantry-mdns.service" "default test run does not install mDNS"
 grep -q '0\.0\.0\.0:.*:8080' "$lan/docker-compose.yml" || fail "compose must still publish the LAN port"
 
 # Existing auth.caddy is kept even when BASIC_AUTH_PASSWORD is empty or different.
@@ -173,6 +207,9 @@ lack "$LAST_DOCKER" "hash-password" "must not hash when auth.caddy exists"
 lack "$LAST_DOCKER" "stop caddy" "must not disable public HTTPS"
 have "$LAST_OUT" "Keeping existing" "kept auth.caddy"
 have "$LAST_IPTABLES" "--dport 8080" "public setup still firewalls the LAN port"
+have "$LAST_OUT" "Home Wi-Fi cannot open https://pantry.example.com" "hairpin warning names the public host"
+have "$LAST_OUT" "shared password" "public summary still mentions the password"
+lack "$LAST_DOCKER" "stop caddy" "hairpin warning must not stop the public proxy"
 
 # A second run stays idempotent.
 run_setup "$pub"
@@ -263,5 +300,117 @@ if [[ -e /opt/pantry ]]; then
   fail "setup wrote /opt/pantry; tests must stay on PANTRY_DIR"
 fi
 
-rm -rf "$lan" "$pub" "$first" "$bad" "$incomplete" "$opt"
+# Home Wi-Fi name: publish pantry.local and keep the public proxy on.
+mdns=$(mktemp -d)
+write_env "$mdns" \
+  "PUBLIC_HOST=pantry.example.com" \
+  "ACME_EMAIL=you@example.com" \
+  "BASIC_AUTH_USER=pantry" \
+  "BASIC_AUTH_PASSWORD=" \
+  "HOST_PORT=8080" \
+  "PANTRY_LAN_IPV4=192.168.1.203"
+printf '%s\n' 'basic_auth bcrypt Pantry {' '	pantry ORIGINAL-HASH' '}' > "$mdns/auth.caddy"
+PANTRY_SKIP_MDNS=0 run_setup "$mdns"
+[[ "$LAST_RC" -eq 0 ]] || fail "mdns setup exited $LAST_RC: $LAST_OUT"
+have "$LAST_OUT" "LAN: http://192.168.1.203:8080" "pinned LAN URL"
+have "$LAST_OUT" "LAN name: http://pantry.local:8080" "mDNS name"
+have "$LAST_OUT" "Published http://pantry.local:8080" "mDNS publish success"
+have "$LAST_SYSTEMCTL" "enable pantry-mdns.service" "mDNS unit enabled"
+have "$LAST_SYSTEMCTL" "restart pantry-mdns.service" "mDNS unit restarted"
+have "$LAST_MDNS_UNIT" "/opt/pantry/mdns/pantry-mdns.sh" "mDNS unit runs the publisher"
+have "$LAST_AVAHI_SERVICE" "<port>8080</port>" "Avahi advertisement uses HOST_PORT"
+have "$LAST_DOCKER" "--profile public" "mDNS setup keeps the public proxy"
+lack "$LAST_DOCKER" "stop caddy" "mDNS setup must not stop Caddy"
+grep -q 'basic_auth bcrypt Pantry' "$mdns/auth.caddy" || fail "mDNS setup rewrote auth.caddy"
+
+# Split horizon maps only the public name at the LAN address.
+split=$(mktemp -d)
+write_env "$split" \
+  "PUBLIC_HOST=pantry.example.com" \
+  "ACME_EMAIL=you@example.com" \
+  "BASIC_AUTH_USER=pantry" \
+  "BASIC_AUTH_PASSWORD=" \
+  "HOST_PORT=8080" \
+  "PANTRY_LAN_IPV4=192.168.1.203" \
+  "PANTRY_SPLIT_DNS=on"
+printf '%s\n' 'basic_auth bcrypt Pantry {' '	pantry ORIGINAL-HASH' '}' > "$split/auth.caddy"
+run_setup "$split"
+[[ "$LAST_RC" -eq 0 ]] || fail "split-dns setup exited $LAST_RC: $LAST_OUT"
+have "$LAST_OUT" "split-horizon: pantry.example.com -> 192.168.1.203" "split-horizon mapping"
+have "$LAST_DNSMASQ" "address=/pantry.example.com/192.168.1.203" "dnsmasq answer"
+have "$LAST_DNSMASQ" "listen-address=192.168.1.203" "dnsmasq binds the LAN address"
+have "$LAST_DNSMASQ" "no-dhcp-interface=192.168.1.203" "dnsmasq does not serve DHCP"
+lack "$LAST_DNSMASQ" "0.0.0.0" "dnsmasq must not listen on every interface"
+have "$LAST_DOCKER" "--profile public" "split-horizon keeps the public proxy"
+grep -q 'ORIGINAL-HASH' "$split/auth.caddy" || fail "split-horizon rewrote auth.caddy"
+# Turning it off removes the answer so the Pi stops overriding the name.
+write_env "$split" \
+  "PUBLIC_HOST=pantry.example.com" \
+  "ACME_EMAIL=you@example.com" \
+  "BASIC_AUTH_USER=pantry" \
+  "BASIC_AUTH_PASSWORD=" \
+  "HOST_PORT=8080" \
+  "PANTRY_LAN_IPV4=192.168.1.203" \
+  "PANTRY_SPLIT_DNS=off"
+printf '%s\n' 'basic_auth bcrypt Pantry {' '	pantry ORIGINAL-HASH' '}' > "$split/auth.caddy"
+run_setup "$split"
+[[ "$LAST_RC" -eq 0 ]] || fail "split-dns off exited $LAST_RC: $LAST_OUT"
+[[ ! -e "$split/dns/pantry-split-horizon.conf" ]] || fail "split-horizon config remained after off"
+lack "$LAST_DNSMASQ" "address=/pantry.example.com/192.168.1.203" "off run must not reinstall dnsmasq"
+have "$LAST_DOCKER" "--profile public" "turning split-horizon off keeps the public proxy"
+
+# A public address must not be published as the LAN workaround.
+badip=$(mktemp -d)
+write_env "$badip" \
+  "PUBLIC_HOST=pantry.example.com" \
+  "ACME_EMAIL=you@example.com" \
+  "BASIC_AUTH_USER=pantry" \
+  "BASIC_AUTH_PASSWORD=" \
+  "HOST_PORT=8080" \
+  "PANTRY_LAN_IPV4=8.8.8.8" \
+  "PANTRY_SPLIT_DNS=on"
+printf '%s\n' 'basic_auth bcrypt Pantry {' '	pantry ORIGINAL-HASH' '}' > "$badip/auth.caddy"
+run_setup "$badip"
+[[ "$LAST_RC" -eq 0 ]] || fail "bad LAN IP must not fail the rest of setup, exited $LAST_RC: $LAST_OUT"
+have "$LAST_OUT" "Split-horizon DNS was not applied" "bad LAN IP skips split-horizon"
+lack "$LAST_DNSMASQ" "8.8.8.8" "public address was written into dnsmasq"
+have "$LAST_DOCKER" "--profile public" "bad LAN IP still starts the public proxy"
+have "$LAST_OUT" "Home Wi-Fi cannot open https://pantry.example.com" "hairpin warning remains without a detected LAN IP"
+
+# shellcheck disable=SC1091
+source "$ROOT/deploy/mdns/lan-ipv4.sh"
+unset PANTRY_DIR
+got=$(PANTRY_LAN_IPV4=10.1.2.3 lan_ipv4)
+[[ "$got" == "10.1.2.3" ]] || fail "pinned 10/8 address, got $got"
+got=$(PANTRY_LAN_IPV4=172.16.5.5 lan_ipv4)
+[[ "$got" == "172.16.5.5" ]] || fail "pinned 172.16/12 address, got $got"
+if PANTRY_LAN_IPV4=8.8.8.8 lan_ipv4 >/dev/null 2>&1; then
+  fail "public address accepted as a LAN address"
+fi
+if PANTRY_LAN_IPV4=192.168.001.203 lan_ipv4 >/dev/null 2>&1; then
+  fail "leading-zero address accepted"
+fi
+if PANTRY_LAN_IPV4=192.168.1.256 lan_ipv4 >/dev/null 2>&1; then
+  fail "octet 256 accepted"
+fi
+
+mdns_bin=$(mktemp -d)
+cat > "$mdns_bin/avahi-publish-address" << 'EOF'
+#!/usr/bin/env bash
+printf '%s\n' "$*" > "${AVAHI_LOG:?}"
+exit 0
+EOF
+chmod +x "$mdns_bin/avahi-publish-address"
+mdns_log=$(mktemp)
+AVAHI_LOG="$mdns_log" PANTRY_LAN_IPV4=192.168.1.203 PATH="$mdns_bin:$PATH" \
+  bash "$ROOT/deploy/mdns/pantry-mdns.sh"
+have "$(cat "$mdns_log")" "-R pantry.local 192.168.1.203" "publisher arguments"
+set +e
+AVAHI_LOG="$mdns_log" PANTRY_LAN_IPV4=1.2.3.4 PATH="$mdns_bin:$PATH" \
+  bash "$ROOT/deploy/mdns/pantry-mdns.sh" >/dev/null 2>&1
+mdns_rc=$?
+set -e
+[[ "$mdns_rc" -ne 0 ]] || fail "publisher accepted a public address"
+
+rm -rf "$lan" "$pub" "$first" "$bad" "$incomplete" "$opt" "$mdns" "$split" "$badip" "$mdns_bin"
 echo "setup_apply_test ok"

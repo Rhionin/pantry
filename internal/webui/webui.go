@@ -7,7 +7,9 @@ package webui
 
 import (
 	"bytes"
+	"crypto/sha256"
 	"embed"
+	"encoding/hex"
 	"io"
 	"io/fs"
 	"mime"
@@ -36,7 +38,8 @@ var embedded embed.FS
 //
 // Assets are served from the embedded filesystem with proper Content-Type
 // headers and cache controls. Requests that don't match embedded assets
-// fall back to serving index.html (SPA fallback behavior).
+// fall back to serving index.html (SPA fallback behavior), except URLs that
+// name a static file: those answer 404 so the shell is not stored in their place.
 func NewHandler() http.Handler {
 	assets, err := fs.Sub(embedded, "assets")
 	if err != nil {
@@ -52,25 +55,17 @@ func NewHandler() http.Handler {
 // inject synthetic asset trees. If the filesystem contains no readable
 // index.html, fallback requests will return HTTP 500.
 func NewHandlerFS(assets fs.FS) http.Handler {
-	// Read index.html once during construction and hold it in memory
-	var indexHTML []byte
-	var indexErr error
-
-	if file, err := assets.Open("index.html"); err != nil {
-		indexErr = err
-	} else {
-		defer file.Close()
-		if data, err := io.ReadAll(file); err != nil {
-			indexErr = err
-		} else {
-			indexHTML = data
-		}
+	indexHTML, indexErr := readIndex(assets)
+	var indexETag string
+	if indexErr == nil {
+		indexETag = weakETag(indexHTML)
 	}
-
 	return &handler{
 		assets:    assets,
 		indexHTML: indexHTML,
 		indexErr:  indexErr,
+		indexETag: indexETag,
+		etags:     fileETags(assets),
 	}
 }
 
@@ -79,6 +74,8 @@ type handler struct {
 	assets    fs.FS
 	indexHTML []byte
 	indexErr  error
+	indexETag string
+	etags     map[string]string
 }
 
 func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -89,49 +86,145 @@ func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Name resolution - clean path and remove leading slash
+	// Name resolution - clean path and remove leading slash.
+	// ServeContent below uses this cleaned name. http.FileServer would 301
+	// "/index.html" and any trailing-slash URL, and browsers store 301s
+	// permanently, which pins a hashed URL to the wrong target after a deploy.
 	name := strings.TrimPrefix(path.Clean(r.URL.Path), "/")
+	if name == "." {
+		name = ""
+	}
 
-	// Special case: treat literal "index.html" as SPA fallback to avoid redirect
-	if name == "index.html" {
-		h.serveFallback(w, r)
+	// Literal index.html is the shell, not a second URL for the same document.
+	if name != "index.html" && name != "" {
+		if f, err := h.assets.Open(name); err == nil {
+			info, statErr := f.Stat()
+			if statErr == nil && info.Mode().IsRegular() {
+				defer f.Close()
+				h.serveOpened(w, r, name, f)
+				return
+			}
+			f.Close()
+		}
+	}
+
+	// A missing script, style, or font must not answer with the HTML shell.
+	// A 200 document stored under that URL is what the browser runs next time.
+	if name != "" && name != "index.html" && isStaticAssetMiss(name) {
+		h.serveStaticMiss(w, r)
 		return
 	}
 
-	// Try to stat the requested file
-	if info, err := fs.Stat(h.assets, name); err == nil && info.Mode().IsRegular() {
-		// Asset hit - set cache headers before delegating to FileServer
-		h.setCacheHeaders(w, r.URL.Path)
-		http.FileServerFS(h.assets).ServeHTTP(w, r)
-		return
-	}
-
-	// SPA fallback - empty name, directory, stat error, or miss
 	h.serveFallback(w, r)
 }
 
-// serveFallback serves the index.html document for SPA routing
+// serveOpened writes one regular file. Cache-Control is chosen from the
+// path: Vite's content-hashed files live under assets/ and can be kept for
+// a year. Everything else is revalidated so a replaced favicon still updates.
+func (h *handler) serveOpened(w http.ResponseWriter, r *http.Request, name string, f fs.File) {
+	rs, ok := f.(io.ReadSeeker)
+	if !ok {
+		data, err := io.ReadAll(f)
+		if err != nil {
+			http.Error(w, "The file could not be read.", http.StatusInternalServerError)
+			return
+		}
+		rs = bytes.NewReader(data)
+	}
+
+	// Set these only once the body is readable. A long-lived cache header on
+	// an error response would pin the failure to that hashed URL.
+	if strings.HasPrefix(name, "assets/") {
+		w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+	} else {
+		w.Header().Set("Cache-Control", "no-cache")
+	}
+	if etag := h.etags[name]; etag != "" {
+		w.Header().Set("ETag", etag)
+	}
+	http.ServeContent(w, r, path.Base(name), time.Time{}, rs)
+}
+
+// serveFallback serves the index.html document for SPA routing.
+// no-cache forces a check on every navigation. The weak ETag turns that
+// check into 304 while the document is unchanged, and a new build changes
+// the bytes (new hashed chunk names), so the shell cannot stay stale.
 func (h *handler) serveFallback(w http.ResponseWriter, r *http.Request) {
-	// If index.html couldn't be read during construction, return 500
 	if h.indexErr != nil {
 		http.Error(w, "Internal Server Error: "+h.indexErr.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	// Set no-cache for index.html to prevent stale cached versions after updates
 	w.Header().Set("Cache-Control", "no-cache")
+	if h.indexETag != "" {
+		w.Header().Set("ETag", h.indexETag)
+	}
 
-	// Use ServeContent for proper HEAD handling and content-type detection
 	http.ServeContent(w, r, "index.html", time.Time{}, bytes.NewReader(h.indexHTML))
 }
 
-// setCacheHeaders sets appropriate cache headers based on the request path
-func (h *handler) setCacheHeaders(w http.ResponseWriter, requestPath string) {
-	// Assets under /assets/ are content-hashed by Vite, so they can be cached indefinitely
-	if strings.HasPrefix(requestPath, "/assets/") {
-		w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
-	} else {
-		// Other files (like direct asset requests not under /assets/) get no-cache
-		w.Header().Set("Cache-Control", "no-cache")
+// serveStaticMiss answers a URL the browser will treat as a file.
+// no-store keeps a deploy gap from sticking: the next request asks again
+// instead of replaying a cached HTML document or a cached 404.
+func (h *handler) serveStaticMiss(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "no-store")
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.WriteHeader(http.StatusNotFound)
+	if r.Method == http.MethodHead {
+		return
 	}
+	_, _ = io.WriteString(w, "404 page not found\n")
+}
+
+// isStaticAssetMiss reports paths that are files to the browser, not client routes.
+// /assets/ is Vite's output directory even when the extension is unusual.
+func isStaticAssetMiss(name string) bool {
+	if name == "assets" || strings.HasPrefix(name, "assets/") {
+		return true
+	}
+	switch strings.ToLower(path.Ext(name)) {
+	case ".js", ".mjs", ".css", ".map",
+		".woff", ".woff2", ".ttf", ".otf", ".eot",
+		".svg", ".png", ".jpg", ".jpeg", ".gif", ".webp", ".ico", ".avif",
+		".json", ".wasm", ".webmanifest", ".txt", ".xml":
+		return true
+	default:
+		return false
+	}
+}
+
+func readIndex(assets fs.FS) ([]byte, error) {
+	file, err := assets.Open("index.html")
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+	data, err := io.ReadAll(file)
+	if err != nil {
+		return nil, err
+	}
+	return data, nil
+}
+
+func fileETags(assets fs.FS) map[string]string {
+	tags := make(map[string]string)
+	_ = fs.WalkDir(assets, ".", func(name string, entry fs.DirEntry, err error) error {
+		if err != nil || entry == nil || entry.IsDir() {
+			return nil
+		}
+		data, err := fs.ReadFile(assets, name)
+		if err != nil {
+			return nil
+		}
+		tags[name] = weakETag(data)
+		return nil
+	})
+	return tags
+}
+
+// weakETag is a semantic validator. Caddy gzip leaves weak tags unchanged,
+// so a conditional request still matches after the proxy compresses the body.
+func weakETag(data []byte) string {
+	sum := sha256.Sum256(data)
+	return `W/"` + hex.EncodeToString(sum[:]) + `"`
 }
