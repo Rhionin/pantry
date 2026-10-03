@@ -4,9 +4,10 @@ import { getBuildInfo } from '../../api/client';
 import type { BuildInfo } from '../../types';
 import { formatBuildLabel } from '../../utils/buildLabel';
 
-// BuildStamp shows which build is running. It sits in the app menu so the id
-// stays reachable without a bar on every page. The subject and timestamp make
-// a freshly deployed change recognizable; the commit matches the container tag.
+// BuildStamp shows which build is running. It sits in the menu's Build section
+// so the id stays reachable without a bar on every page. The subject and
+// timestamp make a freshly deployed change recognizable; the commit matches
+// the container tag.
 export function BuildStamp() {
   const [info, setInfo] = useState<BuildInfo | null>(null);
 

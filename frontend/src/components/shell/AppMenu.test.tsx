@@ -44,7 +44,7 @@ const renderMenu = (rows: ProviderInfo[], onCredentialsChanged: () => void = () 
 
 const openMenu = async () => {
   fireEvent.click(screen.getByRole('button', { name: 'Menu' }));
-  return screen.findByRole('menuitem', { name: 'Edit Kroger credentials' });
+  return screen.findByRole('menuitem', { name: 'Manage Kroger connection' });
 };
 
 describe('AppMenu', () => {
@@ -52,28 +52,44 @@ describe('AppMenu', () => {
     vi.unstubAllGlobals();
   });
 
-  it('keeps credentials, diagnostics, and the build id in the menu', async () => {
+  it('keeps the connection action, diagnostics, and a labeled build section in the menu', async () => {
     renderMenu([provider({ connectionState: 'connected' })]);
-    const credentials = await openMenu();
-    expect(credentials).toBeEnabled();
-    expect(screen.getByRole('menuitem', { name: 'Disconnect Kroger' })).toBeEnabled();
+    const connection = await openMenu();
+    expect(connection).toBeEnabled();
+    expect(screen.queryByRole('menuitem', { name: 'Edit Kroger credentials' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('menuitem', { name: 'Disconnect Kroger' })).not.toBeInTheDocument();
     expect(screen.getByRole('menuitem', { name: 'Diagnostics' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /setup/i })).not.toBeInTheDocument();
-    expect(await screen.findByRole('note', { name: 'build abc123def456' })).toBeVisible();
+    const note = await screen.findByRole('note', { name: 'build abc123def456' });
+    expect(note).toBeVisible();
+    expect(screen.getByText('Build')).toBeVisible();
+    expect(screen.queryByRole('menuitem', { name: 'build abc123def456' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('menuitem', { name: 'Build' })).not.toBeInTheDocument();
     expect(screen.queryByLabelText('Client ID')).not.toBeInTheDocument();
   });
 
-  it('opens the credentials dialog for a store that is not connected yet', async () => {
+  it('opens credentials from the connection item without leaving the page', async () => {
     renderMenu([provider({ credentialsConfigured: false, connectionState: 'disconnected' })]);
-    const credentials = await openMenu();
+    const connection = await openMenu();
     expect(screen.queryByRole('menuitem', { name: 'Disconnect Kroger' })).not.toBeInTheDocument();
-    fireEvent.click(credentials);
-    expect(await screen.findByRole('dialog', { name: 'Kroger credentials' })).toBeInTheDocument();
+    fireEvent.click(connection);
+    expect(await screen.findByRole('dialog', { name: 'Kroger connection' })).toBeInTheDocument();
+    expect(screen.getByRole('form', { name: 'Kroger credentials' })).toBeInTheDocument();
     expect(screen.getByLabelText('Client ID')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Disconnect Kroger' })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Menu' })).toBeInTheDocument();
   });
 
-  it('disconnects a connected store from the menu', async () => {
+  it('reaches disconnect from the connection item only while connected', async () => {
+    renderMenu([provider({ connectionState: 'connected' })]);
+    fireEvent.click(await openMenu());
+    expect(await screen.findByRole('dialog', { name: 'Kroger connection' })).toBeInTheDocument();
+    expect(screen.getByLabelText('Client ID')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Disconnect Kroger' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Menu' })).toBeInTheDocument();
+  });
+
+  it('disconnects a connected store from the connection dialog', async () => {
     const onChanged = vi.fn();
     const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
@@ -94,14 +110,16 @@ describe('AppMenu', () => {
     );
 
     fireEvent.click(screen.getByRole('button', { name: 'Menu' }));
-    fireEvent.click(await screen.findByRole('menuitem', { name: 'Disconnect Kroger' }));
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Manage Kroger connection' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Disconnect Kroger' }));
 
     await waitFor(() => expect(onChanged).toHaveBeenCalledTimes(1));
     expect(fetchMock).toHaveBeenCalledWith('/api/providers/kroger/connection', expect.objectContaining({ method: 'DELETE' }));
-    await waitFor(() => expect(screen.queryByRole('menuitem', { name: 'Disconnect Kroger' })).not.toBeInTheDocument());
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'Disconnect Kroger' })).not.toBeInTheDocument());
+    expect(screen.queryByRole('dialog', { name: 'Kroger connection' })).not.toBeInTheDocument();
   });
 
-  it('reports a disconnect failure and leaves the menu open', async () => {
+  it('reports a disconnect failure and leaves the connection dialog open', async () => {
     const onChanged = vi.fn();
     vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
@@ -121,11 +139,14 @@ describe('AppMenu', () => {
     );
 
     fireEvent.click(screen.getByRole('button', { name: 'Menu' }));
-    fireEvent.click(await screen.findByRole('menuitem', { name: 'Disconnect Kroger' }));
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Manage Kroger connection' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Disconnect Kroger' }));
 
     expect(await screen.findByRole('alert')).toHaveTextContent('Kroger could not be disconnected');
     expect(onChanged).not.toHaveBeenCalled();
-    expect(screen.getByRole('menuitem', { name: 'Disconnect Kroger' })).toBeInTheDocument();
+    expect(screen.getByRole('dialog', { name: 'Kroger connection' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Disconnect Kroger' })).toBeInTheDocument();
+    expect(screen.getByLabelText('Client ID')).toBeInTheDocument();
   });
 
   it('opens diagnostics from the menu', async () => {

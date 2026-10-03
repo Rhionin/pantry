@@ -1,7 +1,8 @@
 // drive-shopping-connected.mjs — phone shopping page with Kroger already connected.
 //
 // Credential fields stay off the page. Daily cart actions stay. Editing client
-// id, secret, redirect URI, and modality, and disconnecting, are the header menu.
+// id, secret, redirect URI, and modality, and disconnecting, are reached from
+// the header menu's Manage Kroger connection item.
 // A real Kroger OAuth redirect cannot finish here, so the connected row is
 // seeded in the server's SQLite database after credentials are saved through
 // the API. The page then loads that state itself.
@@ -70,16 +71,25 @@ try {
 
   assert(await page.getByRole('button', { name: 'Setup', exact: true }).count() === 0, 'Setup stayed on the Kroger row');
   await page.getByRole('button', { name: 'Menu' }).click();
-  const disconnectItem = page.getByRole('menuitem', { name: 'Disconnect Kroger' });
-  await disconnectItem.waitFor({ state: 'visible' });
+  const connectionItem = page.getByRole('menuitem', { name: 'Manage Kroger connection' });
+  await connectionItem.waitFor({ state: 'visible' });
+  await page.getByRole('menuitem', { name: 'Diagnostics' }).waitFor({ state: 'visible' });
+  await page.getByText('Build', { exact: true }).waitFor({ state: 'visible' });
+  await page.getByRole('note').waitFor({ state: 'visible' });
   await page.waitForFunction(() => {
     const node = document.querySelector('.mantine-Menu-dropdown');
     return node !== null && getComputedStyle(node).opacity === '1';
   });
-  await captureProof(page, 'shopping-menu-disconnect', { menuItem: 'Disconnect Kroger' });
-  await page.screenshot({ path: '/opt/cursor/artifacts/phone_menu_disconnect.png' });
-  await page.getByRole('menuitem', { name: 'Edit Kroger credentials' }).click();
-  await page.getByRole('dialog', { name: 'Kroger credentials' }).waitFor({ state: 'visible' });
+  assert(await page.getByRole('menuitem', { name: 'Disconnect Kroger' }).count() === 0, 'Disconnect is still its own menu item');
+  assert(await page.getByRole('menuitem', { name: 'Edit Kroger credentials' }).count() === 0, 'Edit credentials is still its own menu item');
+  await captureProof(page, 'shopping-menu-connection', { menuItem: 'Manage Kroger connection', section: 'Build' });
+  mkdirSync('/opt/cursor/artifacts', { recursive: true });
+  await page.screenshot({ path: '/opt/cursor/artifacts/phone-menu-build.png' });
+  await connectionItem.click();
+  const connectionDialog = page.getByRole('dialog', { name: 'Kroger connection' });
+  await connectionDialog.waitFor({ state: 'visible' });
+  assert(await page.getByRole('heading', { name: 'Shopping list' }).isVisible(), 'connection dialog replaced the shopping page');
+  assert(await connectionDialog.getByRole('button', { name: 'Disconnect Kroger' }).isVisible(), 'Disconnect is missing while connected');
   const clientId = page.getByLabel('Client ID');
   await clientId.waitFor({ state: 'visible' });
   assert((await clientId.inputValue()) === 'pantry-verify-client', 'saved client id was not shown');
@@ -113,20 +123,24 @@ try {
   assert(await page.getByLabel('Client ID').count() === 0, 'Client ID stayed on the page after closing setup');
 
   await page.getByRole('button', { name: 'Menu' }).click();
+  await page.getByRole('menuitem', { name: 'Manage Kroger connection' }).click();
   const disconnected = page.waitForResponse((res) => (
     res.url().includes('/api/providers/kroger/connection')
     && res.request().method() === 'DELETE'
     && res.ok()
   ));
-  await page.getByRole('menuitem', { name: 'Disconnect Kroger' }).click();
+  await page.getByRole('button', { name: 'Disconnect Kroger' }).click();
   await disconnected;
   await page.getByText('Disconnected', { exact: true }).waitFor({ state: 'visible' });
   await page.getByRole('button', { name: 'Connect' }).waitFor({ state: 'visible' });
   assert(await page.getByRole('button', { name: 'Add to Kroger cart' }).isVisible(), 'Add to Kroger cart left after disconnect');
-  assert(await page.getByRole('button', { name: 'Disconnect' }).count() === 0, 'Disconnect returned to the shopping page');
+  assert(await page.getByRole('button', { name: 'Disconnect Kroger' }).count() === 0, 'Disconnect returned to the shopping page');
   await page.getByRole('button', { name: 'Menu' }).click();
-  await page.getByRole('menuitem', { name: 'Edit Kroger credentials' }).waitFor({ state: 'visible' });
-  assert(await page.getByRole('menuitem', { name: 'Disconnect Kroger' }).count() === 0, 'Disconnect stayed in the menu after it ran');
+  await page.getByRole('menuitem', { name: 'Manage Kroger connection' }).click();
+  await page.getByRole('dialog', { name: 'Kroger connection' }).waitFor({ state: 'visible' });
+  await page.getByLabel('Client ID').waitFor({ state: 'visible' });
+  assert(await page.getByRole('heading', { name: 'Shopping list' }).isVisible(), 'credentials took over the shopping page');
+  assert(await page.getByRole('button', { name: 'Disconnect Kroger' }).count() === 0, 'Disconnect stayed available after it ran');
 } catch (error) {
   failed = true;
   console.error(error);

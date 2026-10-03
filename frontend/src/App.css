@@ -17,14 +17,24 @@
   padding-bottom: calc(var(--mantine-spacing-xs) + env(safe-area-inset-bottom));
 }
 
+.app-menu-about:not(:has(.app-menu-build:not(:empty))) {
+  display: none;
+}
+
+.mantine-Menu-dropdown .app-menu-about-label {
+  color: var(--mantine-color-gray-7);
+  font-size: var(--mantine-font-size-xs);
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
 .app-menu-build:empty {
   display: none;
 }
 
 .app-menu-build:not(:empty) {
-  margin-top: 4px;
-  padding: 8px 12px 10px;
-  border-top: 1px solid var(--border);
+  padding: 0 12px 10px;
 }
 
 .app-header {
@@ -119,6 +129,10 @@
 }
 
 :where([data-mantine-color-scheme='dark']) .app-menu-button {
+  color: var(--mantine-color-gray-3);
+}
+
+:where([data-mantine-color-scheme='dark']) .mantine-Menu-dropdown .app-menu-about-label {
   color: var(--mantine-color-gray-3);
 }
 

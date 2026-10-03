@@ -14,7 +14,8 @@ const requireBox = async (locator: Locator): Promise<Box> => {
   return box!
 }
 
-// The build id and Diagnostics live in the menu. The default page has no
+// Diagnostics and the store connection live in the menu. The build id sits in
+// that menu's Build section, not in the action list. The default page has no
 // footer strip, so main runs to the bottom of the viewport.
 const expectNoFooterBar = async (page: Page, viewportHeight: number) => {
   await expect(page.getByRole('contentinfo')).toHaveCount(0)
@@ -39,10 +40,13 @@ test('the menu keeps the build id and diagnostics reachable', async ({ page }) =
   await expectNoFooterBar(page, viewport.height)
 
   await page.getByRole('button', { name: 'Menu' }).click()
+  await expect(page.getByRole('menuitem', { name: 'Manage Kroger connection' })).toBeVisible()
+  await expect(page.getByRole('menuitem', { name: 'Diagnostics' })).toBeVisible()
+  await expect(page.getByText('Build', { exact: true })).toBeVisible()
   const note = page.getByRole('note')
   await expect(note).toBeVisible()
   await expect(note).toContainText('build')
-  await expect(page.getByRole('menuitem', { name: 'Diagnostics' })).toBeVisible()
+  await expect(page.getByRole('menuitem', { name: /build/i })).toHaveCount(0)
 
   const noteBox = await requireBox(note)
   expect(noteBox.x).toBeGreaterThanOrEqual(-1)
