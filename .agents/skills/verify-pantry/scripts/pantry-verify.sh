@@ -147,6 +147,7 @@ cmd_drive() {
 
   log "driving with $driver (evidence -> $RUN_DIR)"
   PANTRY_WEB_URL="$WEB_URL" PANTRY_API_URL="$API_URL" PANTRY_EVIDENCE_DIR="$RUN_DIR" \
+    PANTRY_DB_PATH="$db_path" \
     node "$driver"
   local rc=$?
   log "driver exit code: $rc"

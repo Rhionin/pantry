@@ -17,11 +17,16 @@ inventory changes only when the bought item is later stocked in.
 - `shopping-purchase` `Mark <product> purchased` removes the entry from the list
   (works on both materialized derived entries and manual entries).
 - `shopping-remove` `Remove <product>` removes an entry.
+- `shopping-store-setup` client id, client secret, redirect URI, and modality are
+  edited from the store setup menu. They are not on the shopping page.
 
 ## How to get to it (user POV)
 
 - Open `Shopping List` (`/shopping`) to view entries, add an item, mark
-  purchased, or remove.
+  purchased, or remove. With a store connected, `Add to <store> cart`,
+  `Disconnect`, and `Start a new cart` stay on the page.
+- Change store credentials from the same page: `Kroger setup`, then `Edit
+  credentials`. Saving and `Clear saved credentials` stay in that dialog.
 - Set a target quantity from `Inventory` (`/inventory`): open a product's `View
   instances`, then use its `Target quantity` panel.
 
@@ -62,6 +67,11 @@ Preconditions:
 the materialized derived row purchased directly and confirms inventory stays at
 `1 bag`.
 
+Credential fields (`Client ID`, `Client secret`, `Redirect URI`, `Modality`,
+`Save credentials`) are absent until `Kroger setup` → `Edit credentials`.
+`scripts/drive-shopping-connected.mjs` proves that phone layout with Kroger
+already connected, then saves a modality change from the dialog.
+
 ## Gotchas
 
 - A derived entry only appears after a target quantity is set AND current stock is
@@ -81,3 +91,8 @@ the materialized derived row purchased directly and confirms inventory stays at
   stock-in.
 - The `Pantry item` select lists inventory products by name; a product with no
   inventory will not be selectable for a manual add.
+- Store credential fields are not rendered on the shopping page. Open
+  `getByRole('button', { name: 'Kroger setup' })`, then
+  `getByRole('menuitem', { name: 'Edit credentials' })`. A saved secret still
+  shows `A client secret is saved and is not shown.` and `Clear saved
+  credentials` inside that dialog.

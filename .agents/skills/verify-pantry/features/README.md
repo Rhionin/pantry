@@ -87,6 +87,8 @@ behavior, then uses exactly these four H2 sections in order:
   quantity, or add an item manually, then mark it purchased. Proven end to end by
   `scripts/drive-shopping-list.mjs`. Shared store brands, a noted sale, and a
   locked brand preference are proven by `scripts/drive-brand-deals.mjs`.
+  `scripts/drive-shopping-connected.mjs` proves the connected phone page keeps
+  credential setup in the store menu.
 - [Wipe inventory](./wipe-inventory.md) — type `WIPE INVENTORY` to clear stock
   without deleting the product lookup cache. Proven end to end by
   `scripts/drive-wipe-inventory.mjs`.

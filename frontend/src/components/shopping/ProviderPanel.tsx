@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Badge, Button, Group, NativeSelect, PasswordInput, Stack, Text, TextInput } from '@mantine/core';
+import { Badge, Button, Group, Menu, Modal, NativeSelect, PasswordInput, Stack, Text, TextInput } from '@mantine/core';
 import {
   authorizeProvider,
   clearProviderCredentials,
@@ -69,61 +69,113 @@ export const ProviderPanel = ({ providers, onChanged }: ProviderPanelProps) => {
 
   return (
     <Stack gap="xs" aria-label="Grocery providers">
-      {providers.map((provider) => {
-        const busy = pending === provider.id || pending === `${provider.id}-ledger`;
-        const saved = provider.credentials;
-        return (
-          <Stack key={provider.id} gap="xs">
-          <Group justify="space-between" wrap="wrap">
-            <Group gap="xs">
-              <Text fw={600}>{provider.displayName}</Text>
-              {!provider.credentialsConfigured && <Badge color="gray">unconfigured</Badge>}
-              {provider.credentialsConfigured && provider.connectionState !== 'not_required' && (
-                <Badge variant="light">{stateLabel[provider.connectionState]}</Badge>
-              )}
-            </Group>
-            <Group gap="xs">
-              {provider.credentialsConfigured && provider.connectionState === 'disconnected' && (
-                <Button size="xs" loading={busy} onClick={() => void connect(provider)}>
-                  Connect
+      {providers.map((provider) => (
+        <ProviderRow
+          key={provider.id}
+          provider={provider}
+          pending={pending}
+          onConnect={() => void connect(provider)}
+          onDisconnect={() => void disconnect(provider)}
+          onResetLedger={() => void resetLedger(provider)}
+          onChanged={onChanged}
+        />
+      ))}
+      {error !== '' && <Text c="red" size="sm">{error}</Text>}
+    </Stack>
+  );
+};
+
+const ProviderRow = ({
+  provider,
+  pending,
+  onConnect,
+  onDisconnect,
+  onResetLedger,
+  onChanged,
+}: {
+  provider: ProviderInfo;
+  pending: string;
+  onConnect: () => void;
+  onDisconnect: () => void;
+  onResetLedger: () => void;
+  onChanged: () => void;
+}) => {
+  const [credentialsOpen, setCredentialsOpen] = useState(false);
+  const busy = pending === provider.id || pending === `${provider.id}-ledger`;
+  const saved = provider.credentials;
+  const canEditCredentials = provider.capabilities.auth === 'oauth2_authorization_code';
+
+  return (
+    <Stack gap="xs">
+      <Group justify="space-between" wrap="wrap">
+        <Group gap="xs">
+          <Text fw={600}>{provider.displayName}</Text>
+          {!provider.credentialsConfigured && <Badge color="gray">unconfigured</Badge>}
+          {provider.credentialsConfigured && provider.connectionState !== 'not_required' && (
+            <Badge variant="light">{stateLabel[provider.connectionState]}</Badge>
+          )}
+        </Group>
+        <Group gap="xs">
+          {provider.credentialsConfigured && provider.connectionState === 'disconnected' && (
+            <Button size="xs" loading={busy} onClick={onConnect}>
+              Connect
+            </Button>
+          )}
+          {provider.credentialsConfigured && provider.connectionState === 'reauth_required' && (
+            <Button size="xs" loading={busy} onClick={onConnect}>
+              Reconnect
+            </Button>
+          )}
+          {provider.credentialsConfigured && provider.connectionState === 'connected' && (
+            <Button size="xs" variant="default" loading={busy} onClick={onDisconnect}>
+              Disconnect
+            </Button>
+          )}
+          {provider.credentialsConfigured && (provider.connectionState === 'connected' || provider.connectionState === 'not_required') && (
+            <Button
+              size="xs"
+              variant="light"
+              loading={pending === `${provider.id}-ledger`}
+              onClick={onResetLedger}
+            >
+              Start a new cart
+            </Button>
+          )}
+          {canEditCredentials && (
+            <Menu position="bottom-end" shadow="sm" width={220}>
+              <Menu.Target>
+                <Button size="xs" variant="subtle" aria-label={`${provider.displayName} setup`}>
+                  Setup
                 </Button>
-              )}
-              {provider.credentialsConfigured && provider.connectionState === 'reauth_required' && (
-                <Button size="xs" loading={busy} onClick={() => void connect(provider)}>
-                  Reconnect
-                </Button>
-              )}
-              {provider.credentialsConfigured && provider.connectionState === 'connected' && (
-                <Button size="xs" variant="default" loading={busy} onClick={() => void disconnect(provider)}>
-                  Disconnect
-                </Button>
-              )}
-              {provider.credentialsConfigured && (provider.connectionState === 'connected' || provider.connectionState === 'not_required') && (
-                <Button
-                  size="xs"
-                  variant="light"
-                  loading={pending === `${provider.id}-ledger`}
-                  onClick={() => void resetLedger(provider)}
-                >
-                  Start a new cart
-                </Button>
-              )}
-            </Group>
-            {provider.connectionState === 'reauth_required' && (
-              <Text size="sm" c="dimmed">The connection expired. Reconnect to keep provisioning.</Text>
-            )}
-          </Group>
-          {provider.capabilities.auth === 'oauth2_authorization_code' && (
+              </Menu.Target>
+              <Menu.Dropdown>
+                <Menu.Item onClick={() => setCredentialsOpen(true)}>
+                  Edit credentials
+                </Menu.Item>
+              </Menu.Dropdown>
+            </Menu>
+          )}
+        </Group>
+        {provider.connectionState === 'reauth_required' && (
+          <Text size="sm" c="dimmed">The connection expired. Reconnect to keep provisioning.</Text>
+        )}
+      </Group>
+      {canEditCredentials && (
+        <Modal
+          opened={credentialsOpen}
+          onClose={() => setCredentialsOpen(false)}
+          title={`${provider.displayName} credentials`}
+          size="sm"
+        >
+          {credentialsOpen && (
             <CredentialForm
               key={`${provider.id}:${saved?.source ?? ''}:${saved?.clientId ?? ''}:${saved?.redirectUri ?? ''}:${saved?.modality ?? ''}:${saved?.secretSet ? '1' : '0'}`}
               provider={provider}
               onChanged={onChanged}
             />
           )}
-          </Stack>
-        );
-      })}
-      {error !== '' && <Text c="red" size="sm">{error}</Text>}
+        </Modal>
+      )}
     </Stack>
   );
 };
