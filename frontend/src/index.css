@@ -253,6 +253,64 @@ code {
   margin-top: 6px;
 }
 
+.scan-entry-stock-in-identity {
+  display: grid;
+  grid-template-columns: 20px 28px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 6px;
+  min-height: 28px;
+}
+
+.scan-entry-stock-in-product {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.scan-entry-stock-in-product .mantine-Title-root {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 0.92rem;
+  line-height: 1.2;
+}
+
+.scan-entry-stock-in-barcode {
+  flex: 0 2 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.scan-entry-stock-in-expiry {
+  flex: none;
+  min-width: 0;
+}
+
+.scan-entry-stock-in-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  margin-top: 2px;
+}
+
+.scan-entry-stock-in-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+}
+
+.scan-entry-stock-in-action.mantine-Button-root {
+  height: 44px;
+  min-height: 44px;
+  padding-inline: 10px;
+}
+
 .scan-entry-qty {
   width: 4.6rem;
   flex: none;
@@ -277,22 +335,22 @@ code {
 .scan-entry-stepper {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: 0;
   flex: none;
 }
 
 .scan-entry-stepper-value {
-  width: 4.5rem;
+  width: 38px;
   flex: none;
-  --input-height: 48px;
+  --input-height: 44px;
 }
 
 .scan-entry-stepper-btn {
   box-sizing: border-box;
-  width: 48px;
-  height: 48px;
-  min-width: 48px;
-  min-height: 48px;
+  width: 44px;
+  height: 44px;
+  min-width: 44px;
+  min-height: 44px;
   padding: 0;
   margin: 0;
   display: inline-flex;
@@ -303,8 +361,8 @@ code {
   line-height: 1;
   font-family: inherit;
   color: var(--mantine-color-text);
-  background-color: var(--mantine-color-body);
-  border: 1px solid var(--mantine-color-default-border);
+  background: transparent;
+  border: 0;
   border-radius: var(--mantine-radius-md);
   cursor: pointer;
   touch-action: manipulation;
@@ -325,46 +383,74 @@ code {
 }
 
 .scan-entry-stepper .mantine-Input-input {
-  min-height: 48px;
-  height: 48px;
+  min-height: 44px;
+  height: 44px;
+  border: 0;
+  background: transparent;
   text-align: center;
-  font-size: 1.25rem;
+  font-size: 1.1rem;
   font-weight: 650;
   padding-inline: 0;
-}
-
-.scan-entry-expiry-slot {
-  flex: 1 0 100%;
 }
 
 .scan-entry-expiry-editor {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
+  min-width: 0;
+  margin-top: 2px;
+}
+
+.scan-entry-expiry-editor .scan-entry-expiry {
+  flex: 1 1 auto;
+  width: auto;
+}
+
+.scan-entry-expiry-editor .scan-entry-expiry .mantine-Input-input {
+  min-height: 44px;
+  height: 44px;
 }
 
 .scan-entry-expiry-summary {
   display: flex;
-  flex-wrap: wrap;
   align-items: center;
-  gap: 0 12px;
+  min-width: 0;
   color: var(--mantine-color-dimmed);
-  font-size: var(--mantine-font-size-sm);
+  font-size: var(--mantine-font-size-xs);
 }
 
 .scan-entry-add-expiry,
 .scan-entry-expiry-action {
   box-sizing: border-box;
-  min-height: 44px;
-  padding: 0 2px;
+  min-height: 28px;
+  padding: 0 3px;
   border: 0;
   background: transparent;
   color: var(--mantine-color-dimmed);
   font-family: inherit;
-  font-size: var(--mantine-font-size-sm);
+  font-size: var(--mantine-font-size-xs);
   font-weight: 400;
   line-height: 1.2;
   cursor: pointer;
+}
+
+.scan-entry-expiry-change {
+  max-width: 8.5rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.scan-entry-expiry-clear {
+  width: 28px;
+  min-width: 28px;
+  padding: 0;
+  font-size: 1.15rem;
+}
+
+.scan-entry-expiry-editor > .scan-entry-expiry-action {
+  min-height: 44px;
+  padding-inline: 8px;
 }
 
 .scan-entry-add-expiry:hover,

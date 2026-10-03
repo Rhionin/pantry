@@ -1226,10 +1226,20 @@ describe('ScanEntryCard stock-in confirmation', () => {
     vi.stubGlobal('fetch', vi.fn());
     renderStockIn();
 
+    const card = screen.getByRole('article');
+    const layoutRows = Array.from(card.children)
+      .map((child) => child.getAttribute('data-layout-row'))
+      .filter((row): row is string => row !== null);
+    expect(layoutRows).toEqual(['identity', 'toolbar']);
     expect(screen.getByRole('button', { name: 'Decrease unit count' })).toBeDisabled();
     expect(screen.getByRole('button', { name: 'Increase unit count' })).toBeEnabled();
     expect(screen.getByLabelText('Unit count')).toHaveValue('1');
-    expect(screen.getByRole('button', { name: 'Add expiration' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Add expiration' }).closest('[data-layout-row]'))
+      .toHaveAttribute('data-layout-row', 'identity');
+    expect(screen.getByRole('button', { name: 'Approve' }).closest('[data-layout-row]'))
+      .toHaveAttribute('data-layout-row', 'toolbar');
+    expect(screen.getByRole('button', { name: 'Remove' }).closest('[data-layout-row]'))
+      .toHaveAttribute('data-layout-row', 'toolbar');
     expect(screen.queryByLabelText('Expiration date')).not.toBeInTheDocument();
   });
 
@@ -1297,6 +1307,7 @@ describe('ScanEntryCard stock-in confirmation', () => {
     renderStockIn();
     fireEvent.click(screen.getByRole('button', { name: 'Add expiration' }));
     const input = screen.getByLabelText('Expiration date');
+    expect(input.closest('[data-layout-row]')).toHaveAttribute('data-layout-row', 'expiration');
     expect(input).toHaveValue('');
     fireEvent.change(input, { target: { value: '2026-06-01' } });
     fireEvent.blur(input);
