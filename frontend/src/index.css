@@ -277,12 +277,18 @@ code {
   line-height: 1.2;
 }
 
-.scan-entry-stock-in-barcode {
+.scan-entry-stock-in-barcode,
+.scan-entry-stock-in-scanned {
   flex: 0 2 auto;
-  min-width: 0;
+  min-width: 1px;
+  max-width: 7rem;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.scan-entry-stock-in-scanned {
+  max-width: 5.5rem;
 }
 
 .scan-entry-stock-in-expiry {

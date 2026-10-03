@@ -245,6 +245,9 @@ export const ScanEntryCard = ({
               <Text className="scan-entry-stock-in-barcode" size="xs" c="dimmed" component="span">
                 Barcode: {entry.barcode}
               </Text>
+              <Text className="scan-entry-stock-in-scanned" size="xs" c="dimmed" component="span">
+                Scanned: {scannedAtLabel}
+              </Text>
             </div>
             <div className="scan-entry-stock-in-expiry">
               {expiryEditorOpen ? (
