@@ -78,8 +78,11 @@ export const ScanEntryCard = ({
     return () => clearTimeout(timer);
   }, [entry.unitCount]);
 
+  const isStockIn = entry.direction === 'stock_in';
+  const isCompactStockIn = isStockIn && entry.status === 'pending';
   const changeIndicatorClass = [
     'scan-entry-card',
+    isCompactStockIn ? 'scan-entry-card--stock-in' : undefined,
     !showChangeIndicator
       ? undefined
       : prefersReducedMotion()
@@ -88,7 +91,6 @@ export const ScanEntryCard = ({
     justCaptured ? 'scan-entry-card--just-captured' : undefined,
   ].filter(Boolean).join(' ');
 
-  const isStockIn = entry.direction === 'stock_in';
   const productName = entry.product?.name ?? 'Unknown product';
   const scannedAtLabel = new Date(entry.scannedAt).toLocaleString(undefined, {
     month: 'short',
@@ -212,47 +214,77 @@ export const ScanEntryCard = ({
   };
 
   return (
-    <Card component="article" withBorder padding="xs" radius="md" className={changeIndicatorClass} aria-label={`Scan ${entry.barcode}`}>
-      <div className="scan-entry-layout">
-        <div className="scan-entry-check">
-          {entry.status === 'pending' && (
-            <Checkbox
-              size="xs"
-              aria-label="Select scan for batch approval"
-              checked={selected}
-              onChange={(event) => onSelectedChange(event.currentTarget.checked)}
+    <Card
+      component="article"
+      withBorder
+      padding={isCompactStockIn ? 6 : 'xs'}
+      radius="md"
+      className={changeIndicatorClass}
+      aria-label={`Scan ${entry.barcode}`}
+    >
+      {isCompactStockIn ? (
+        <>
+          <div className="scan-entry-stock-in-identity" data-layout-row="identity">
+            <div className="scan-entry-check">
+              <Checkbox
+                size="xs"
+                aria-label="Select scan for batch approval"
+                checked={selected}
+                onChange={(event) => onSelectedChange(event.currentTarget.checked)}
+              />
+            </div>
+            <Avatar
+              className="scan-entry-avatar"
+              src={entry.product?.imageUrl}
+              name={productName}
+              radius="sm"
+              size={28}
             />
-          )}
-        </div>
-        <Avatar
-          className="scan-entry-avatar"
-          src={entry.product?.imageUrl}
-          name={productName}
-          radius="sm"
-          size={32}
-        />
-        <div className="scan-entry-body">
-          <div className="scan-entry-titleline">
-            <Title order={3} size="sm" lineClamp={1} mb={0}>{productName}</Title>
-            {entry.status === 'flagged' && <Badge size="xs" color="orange">Flagged</Badge>}
+            <div className="scan-entry-stock-in-product">
+              <Title order={3} size="sm" lineClamp={1} mb={0}>{productName}</Title>
+              <Text className="scan-entry-stock-in-barcode" size="xs" c="dimmed" component="span">
+                Barcode: {entry.barcode}
+              </Text>
+              <Text className="scan-entry-stock-in-scanned" size="xs" c="dimmed" component="span">
+                Scanned: {scannedAtLabel}
+              </Text>
+            </div>
+            <div className="scan-entry-stock-in-expiry">
+              {expiryEditorOpen ? (
+                <Text size="xs" c="dimmed" component="span">Expiration</Text>
+              ) : expiryCommitted !== '' ? (
+                <div className="scan-entry-expiry-summary">
+                  <button
+                    type="button"
+                    className="scan-entry-expiry-action scan-entry-expiry-change"
+                    aria-label="Change expiration"
+                    onClick={openExpiryEditor}
+                  >
+                    Expires {formatExpiryDate(`${expiryCommitted}T00:00:00.000Z`)}
+                  </button>
+                  <button
+                    type="button"
+                    className="scan-entry-expiry-action scan-entry-expiry-clear"
+                    aria-label="Clear expiration"
+                    onClick={() => void clearExpiry()}
+                  >
+                    <span aria-hidden="true">×</span>
+                  </button>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  className="scan-entry-add-expiry"
+                  aria-label="Add expiration"
+                  onClick={openExpiryEditor}
+                >
+                  Add expiration
+                </button>
+              )}
+            </div>
           </div>
-          <div className="scan-entry-meta">
-            <Text size="xs" c="dimmed" component="span">Barcode: {entry.barcode}</Text>
-            <Text size="xs" c="dimmed" component="span">Scanned: {scannedAtLabel}</Text>
-            <ProvenanceBadge externalSource={entry.product?.externalSource} />
-          </div>
-        </div>
-      </div>
 
-      {entry.status === 'pending' && (
-        <Group
-          className="scan-entry-actions"
-          gap={4}
-          align="center"
-          wrap="wrap"
-          justify={isStockIn ? 'space-between' : 'flex-start'}
-        >
-          {isStockIn ? (
+          <div className="scan-entry-stock-in-toolbar" data-layout-row="toolbar">
             <div className="scan-entry-stepper">
               <button
                 type="button"
@@ -284,46 +316,18 @@ export const ScanEntryCard = ({
                 <span aria-hidden="true">+</span>
               </button>
             </div>
-          ) : (
-            <NumberInput
-              className="scan-entry-qty"
-              size="xs"
-              min={1}
-              step={1}
-              allowDecimal={false}
-              value={unitCountDraft}
-              onChange={handleUnitCountChange}
-              onBlur={handleUnitCountBlur}
-              onKeyDown={handleUnitCountKeyDown}
-              aria-label="Unit count"
-            />
-          )}
-          {!isStockIn && (
-            <TextInput
-              className="scan-entry-expiry"
-              size="xs"
-              type="date"
-              placeholder="mm/dd/yyyy"
-              value={expiryDraft}
-              onChange={(event) => {
-                setExpiryDraft(event.currentTarget.value);
-                setExpiryError('');
-              }}
-              onBlur={handleExpiryBlur}
-              aria-label="Expiration date"
-            />
-          )}
-          {entry.direction !== null && (
-            <Group gap={4} wrap="nowrap">
+            <div className="scan-entry-stock-in-actions">
               <Button
-                size="compact-xs"
+                className="scan-entry-stock-in-action"
+                size="compact-sm"
                 loading={approving}
                 onClick={() => void handleApprove()}
               >
                 Approve
               </Button>
               <Button
-                size="compact-xs"
+                className="scan-entry-stock-in-action"
+                size="compact-sm"
                 variant="light"
                 color="red"
                 loading={removing}
@@ -331,54 +335,120 @@ export const ScanEntryCard = ({
               >
                 Remove
               </Button>
-            </Group>
-          )}
-          {isStockIn && (
-            <div className="scan-entry-expiry-slot">
-              {expiryEditorOpen ? (
-                <div className="scan-entry-expiry-editor">
-                  <TextInput
-                    ref={expiryInputRef}
-                    className="scan-entry-expiry"
-                    size="xs"
-                    type="date"
-                    placeholder="mm/dd/yyyy"
-                    value={expiryDraft}
-                    onChange={(event) => {
-                      setExpiryDraft(event.currentTarget.value);
-                      setExpiryError('');
-                    }}
-                    onBlur={handleExpiryBlur}
-                    aria-label="Expiration date"
-                  />
-                  <button
-                    type="button"
-                    className="scan-entry-expiry-action"
-                    aria-label="Cancel expiration"
-                    onMouseDown={(event) => event.preventDefault()}
-                    onClick={closeExpiryEditor}
-                  >
-                    Cancel
-                  </button>
-                </div>
-              ) : expiryCommitted !== '' ? (
-                <div className="scan-entry-expiry-summary">
-                  <span>Expires {formatExpiryDate(`${expiryCommitted}T00:00:00.000Z`)}</span>
-                  <button type="button" className="scan-entry-expiry-action" aria-label="Change expiration" onClick={openExpiryEditor}>
-                    Change
-                  </button>
-                  <button type="button" className="scan-entry-expiry-action" aria-label="Clear expiration" onClick={() => void clearExpiry()}>
-                    Clear
-                  </button>
-                </div>
-              ) : (
-                <button type="button" className="scan-entry-add-expiry" onClick={openExpiryEditor}>
-                  Add expiration
-                </button>
-              )}
+            </div>
+          </div>
+
+          {expiryEditorOpen && (
+            <div className="scan-entry-expiry-editor" data-layout-row="expiration">
+              <TextInput
+                ref={expiryInputRef}
+                className="scan-entry-expiry"
+                size="xs"
+                type="date"
+                placeholder="mm/dd/yyyy"
+                value={expiryDraft}
+                onChange={(event) => {
+                  setExpiryDraft(event.currentTarget.value);
+                  setExpiryError('');
+                }}
+                onBlur={handleExpiryBlur}
+                aria-label="Expiration date"
+              />
+              <button
+                type="button"
+                className="scan-entry-expiry-action"
+                aria-label="Cancel expiration"
+                onMouseDown={(event) => event.preventDefault()}
+                onClick={closeExpiryEditor}
+              >
+                Cancel
+              </button>
             </div>
           )}
-        </Group>
+        </>
+      ) : (
+        <>
+          <div className="scan-entry-layout">
+            <div className="scan-entry-check">
+              {entry.status === 'pending' && (
+                <Checkbox
+                  size="xs"
+                  aria-label="Select scan for batch approval"
+                  checked={selected}
+                  onChange={(event) => onSelectedChange(event.currentTarget.checked)}
+                />
+              )}
+            </div>
+            <Avatar
+              className="scan-entry-avatar"
+              src={entry.product?.imageUrl}
+              name={productName}
+              radius="sm"
+              size={32}
+            />
+            <div className="scan-entry-body">
+              <div className="scan-entry-titleline">
+                <Title order={3} size="sm" lineClamp={1} mb={0}>{productName}</Title>
+                {entry.status === 'flagged' && <Badge size="xs" color="orange">Flagged</Badge>}
+              </div>
+              <div className="scan-entry-meta">
+                <Text size="xs" c="dimmed" component="span">Barcode: {entry.barcode}</Text>
+                <Text size="xs" c="dimmed" component="span">Scanned: {scannedAtLabel}</Text>
+                <ProvenanceBadge externalSource={entry.product?.externalSource} />
+              </div>
+            </div>
+          </div>
+
+          {entry.status === 'pending' && (
+            <Group className="scan-entry-actions" gap={4} align="center" wrap="wrap">
+              <NumberInput
+                className="scan-entry-qty"
+                size="xs"
+                min={1}
+                step={1}
+                allowDecimal={false}
+                value={unitCountDraft}
+                onChange={handleUnitCountChange}
+                onBlur={handleUnitCountBlur}
+                onKeyDown={handleUnitCountKeyDown}
+                aria-label="Unit count"
+              />
+              <TextInput
+                className="scan-entry-expiry"
+                size="xs"
+                type="date"
+                placeholder="mm/dd/yyyy"
+                value={expiryDraft}
+                onChange={(event) => {
+                  setExpiryDraft(event.currentTarget.value);
+                  setExpiryError('');
+                }}
+                onBlur={handleExpiryBlur}
+                aria-label="Expiration date"
+              />
+              {entry.direction !== null && (
+                <>
+                  <Button
+                    size="compact-xs"
+                    loading={approving}
+                    onClick={() => void handleApprove()}
+                  >
+                    Approve
+                  </Button>
+                  <Button
+                    size="compact-xs"
+                    variant="light"
+                    color="red"
+                    loading={removing}
+                    onClick={() => void handleRemove()}
+                  >
+                    Remove
+                  </Button>
+                </>
+              )}
+            </Group>
+          )}
+        </>
       )}
 
       {(unitCountError !== '' || expiryError !== '') && (
