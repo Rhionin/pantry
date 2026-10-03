@@ -30,6 +30,25 @@ const jsonResponse = (body: unknown) =>
   new Response(JSON.stringify(body), { status: 200, headers: { 'Content-Type': 'application/json' } });
 
 describe('ScanEntryCard stock-out review', () => {
+  it('keeps stock-out review inside a bordered card', () => {
+    vi.stubGlobal('fetch', vi.fn(() => Promise.resolve(jsonResponse(instances))));
+    render(
+      <MantineProvider>
+        <ScanEntryCard
+          entry={entry}
+          itemId="item-1"
+          selected={false}
+          onSelectedChange={vi.fn()}
+          onChanged={vi.fn()}
+        />
+      </MantineProvider>,
+    );
+
+    const card = screen.getByRole('article', { name: 'Scan 123' });
+    expect(card).toHaveClass('mantine-Card-root');
+    expect(card).not.toHaveClass('scan-entry-row');
+  });
+
   it('orders instances oldest first and commits the specifically selected instance', async () => {
     const fetchMock = vi.fn((input: RequestInfo | URL, request?: RequestInit) => {
       const url = String(input);
@@ -1226,10 +1245,14 @@ describe('ScanEntryCard stock-in confirmation', () => {
     vi.stubGlobal('fetch', vi.fn());
     renderStockIn();
 
+    const row = screen.getByRole('article', { name: 'Scan 123' });
+    expect(row).toHaveClass('scan-entry-row');
+    expect(row).not.toHaveClass('mantine-Card-root');
     expect(screen.getByRole('button', { name: 'Decrease unit count' })).toBeDisabled();
     expect(screen.getByRole('button', { name: 'Increase unit count' })).toBeEnabled();
     expect(screen.getByLabelText('Unit count')).toHaveValue('1');
-    expect(screen.getByRole('button', { name: 'Add expiration' })).toBeInTheDocument();
+    const addExpiration = screen.getByRole('button', { name: 'Add expiration' });
+    expect(addExpiration).toHaveClass('scan-entry-add-expiry');
     expect(screen.queryByLabelText('Expiration date')).not.toBeInTheDocument();
   });
 

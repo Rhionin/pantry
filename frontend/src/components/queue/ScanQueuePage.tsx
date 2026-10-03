@@ -324,7 +324,11 @@ export const ScanQueuePage = ({ userId = DEFAULT_USER_ID }: ScanQueuePageProps) 
         {!loading && error === '' && viewEntries.length === 0 && processingForView.length === 0 && (
           <Text c="dimmed" size="sm">No pending scans.</Text>
         )}
-        <SimpleGrid className="scan-entry-list" cols={{ base: 1, sm: 2, lg: 3 }} spacing={6}>
+        <SimpleGrid
+          className={activeView === 'stock_in' ? 'scan-entry-list scan-entry-list--flat' : 'scan-entry-list'}
+          cols={activeView === 'stock_in' ? 1 : { base: 1, sm: 2, lg: 3 }}
+          spacing={activeView === 'stock_in' ? 0 : 6}
+        >
           {processingForView.map((notice) => (
             <ProcessingScanCard
               key={notice.id}
