@@ -14,36 +14,42 @@ const requireBox = async (locator: Locator): Promise<Box> => {
   return box!
 }
 
-// The stamp is in normal flow under the scrollport, so its box starts at or
-// below the main region's bottom edge and stays inside the viewport.
-const expectFooterClearsMain = async (page: Page, viewportHeight: number) => {
-  const footer = page.getByRole('contentinfo')
-  const note = footer.getByRole('note')
-  await expect(note).toBeVisible()
-  await expect(note).toContainText('build')
-
+// The build id and Diagnostics live in the menu. The default page has no
+// footer strip, so main runs to the bottom of the viewport.
+const expectNoFooterBar = async (page: Page, viewportHeight: number) => {
+  await expect(page.getByRole('contentinfo')).toHaveCount(0)
   const mainBox = await requireBox(page.getByRole('main'))
-  const footerBox = await requireBox(footer)
-  const noteBox = await requireBox(note)
-
-  expect(footerBox.y).toBeGreaterThanOrEqual(mainBox.y + mainBox.height - 1)
-  expect(noteBox.y).toBeGreaterThanOrEqual(mainBox.y + mainBox.height - 1)
-  expect(footerBox.y + footerBox.height).toBeLessThanOrEqual(viewportHeight + 1)
-  expect(noteBox.x).toBeGreaterThanOrEqual(-1)
-  expect(noteBox.x + noteBox.width).toBeLessThanOrEqual(page.viewportSize()!.width + 1)
+  expect(mainBox.y + mainBox.height).toBeGreaterThanOrEqual(viewportHeight - 1)
 }
 
-test('build footer stays below page content on every tab', async ({ page }) => {
+test('phone pages give the footer strip back to the page', async ({ page }) => {
   const viewport = { width: 390, height: 844 }
   await page.setViewportSize(viewport)
 
   for (const path of ['/', '/inventory', '/shopping']) {
     await page.goto(path)
-    await expectFooterClearsMain(page, viewport.height)
+    await expectNoFooterBar(page, viewport.height)
   }
 })
 
-test('inventory cards scroll above the build footer', async ({ page, request }) => {
+test('the menu keeps the build id and diagnostics reachable', async ({ page }) => {
+  const viewport = { width: 390, height: 844 }
+  await page.setViewportSize(viewport)
+  await page.goto('/shopping')
+  await expectNoFooterBar(page, viewport.height)
+
+  await page.getByRole('button', { name: 'Menu' }).click()
+  const note = page.getByRole('note')
+  await expect(note).toBeVisible()
+  await expect(note).toContainText('build')
+  await expect(page.getByRole('menuitem', { name: 'Diagnostics' })).toBeVisible()
+
+  const noteBox = await requireBox(note)
+  expect(noteBox.x).toBeGreaterThanOrEqual(-1)
+  expect(noteBox.x + noteBox.width).toBeLessThanOrEqual(viewport.width + 1)
+})
+
+test('inventory cards can use the bottom of the screen', async ({ page, request }) => {
   const viewport = { width: 390, height: 700 }
   await page.setViewportSize(viewport)
 
@@ -69,18 +75,17 @@ test('inventory cards scroll above the build footer', async ({ page, request }) 
   }
 
   await page.getByRole('link', { name: 'Inventory' }).click()
-  await expectFooterClearsMain(page, viewport.height)
+  await expectNoFooterBar(page, viewport.height)
 
   const main = page.getByRole('main')
   await main.evaluate((element) => {
     element.scrollTop = element.scrollHeight
   })
 
-  const footerBox = await requireBox(page.getByRole('contentinfo'))
   for (const [, name] of items) {
     const row = inventoryRow(page, name)
     await row.scrollIntoViewIfNeeded()
     const rowBox = await requireBox(row)
-    expect(rowBox.y + rowBox.height).toBeLessThanOrEqual(footerBox.y + 1)
+    expect(rowBox.y + rowBox.height).toBeLessThanOrEqual(viewport.height + 1)
   }
 })

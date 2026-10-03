@@ -22,7 +22,8 @@ try {
   assert(typeof snap.pageLoad.note === 'string' && snap.pageLoad.note.length > 0, 'pageLoad.note');
   assert(!JSON.stringify(snap).includes('barcode'), 'snapshot omits barcodes');
 
-  await page.getByRole('link', { name: 'Diagnostics' }).click();
+  await page.getByRole('button', { name: 'Menu' }).click();
+  await page.getByRole('menuitem', { name: 'Diagnostics' }).click();
   await page.getByRole('heading', { name: 'Diagnostics' }).waitFor({ state: 'visible' });
   await page.getByText(/Time to first byte:/).waitFor({ state: 'visible' });
   await page.getByText(snap.pageLoad.note).waitFor({ state: 'visible' });

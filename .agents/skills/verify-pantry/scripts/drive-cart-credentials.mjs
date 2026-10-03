@@ -14,6 +14,9 @@ let failed = false;
 try {
   await page.goto('/shopping');
   await page.getByRole('heading', { name: 'Shopping list' }).waitFor({ state: 'visible', timeout: 10_000 });
+  assert(await page.getByRole('form', { name: 'Kroger credentials' }).count() === 0, 'credentials form takes over the shopping page');
+  await page.getByRole('button', { name: 'Menu' }).click();
+  await page.getByRole('menuitem', { name: 'Edit Kroger credentials' }).click();
   const form = page.getByRole('form', { name: 'Kroger credentials' });
   await form.waitFor({ state: 'visible' });
   await page.getByText('unconfigured', { exact: true }).waitFor({ state: 'visible' });

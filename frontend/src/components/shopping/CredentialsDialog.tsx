@@ -1,0 +1,130 @@
+import { useState } from 'react';
+import { Button, Group, Modal, NativeSelect, PasswordInput, Stack, Text, TextInput } from '@mantine/core';
+import { clearProviderCredentials, saveProviderCredentials } from '../../api/client';
+import type { ProviderInfo } from '../../types';
+
+export interface CredentialsDialogProps {
+  provider: ProviderInfo | null;
+  opened: boolean;
+  onClose: () => void;
+  onChanged: () => void;
+}
+
+export const CredentialsDialog = ({ provider, opened, onClose, onChanged }: CredentialsDialogProps) => {
+  const saved = provider?.credentials;
+  return (
+    <Modal
+      opened={opened && provider !== null}
+      onClose={onClose}
+      title={provider === null ? 'Credentials' : `${provider.displayName} credentials`}
+      size="sm"
+    >
+      {opened && provider !== null && (
+        <CredentialForm
+          key={`${provider.id}:${saved?.source ?? ''}:${saved?.clientId ?? ''}:${saved?.redirectUri ?? ''}:${saved?.modality ?? ''}:${saved?.secretSet ? '1' : '0'}`}
+          provider={provider}
+          onChanged={onChanged}
+        />
+      )}
+    </Modal>
+  );
+};
+
+const CredentialForm = ({ provider, onChanged }: { provider: ProviderInfo; onChanged: () => void }) => {
+  const saved = provider.credentials;
+  const [clientId, setClientId] = useState(saved?.clientId ?? '');
+  const [clientSecret, setClientSecret] = useState('');
+  const [redirectUri, setRedirectUri] = useState(saved?.redirectUri ?? '');
+  const [modality, setModality] = useState(saved?.modality || 'PICKUP');
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState('');
+
+  const save = async () => {
+    setPending(true);
+    setError('');
+    try {
+      await saveProviderCredentials(provider.id, {
+        clientId,
+        clientSecret,
+        redirectUri,
+        modality,
+      });
+      setClientSecret('');
+      onChanged();
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : 'Unable to save credentials.');
+    } finally {
+      setPending(false);
+    }
+  };
+
+  const clear = async () => {
+    setPending(true);
+    setError('');
+    try {
+      await clearProviderCredentials(provider.id);
+      onChanged();
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : 'Unable to clear credentials.');
+    } finally {
+      setPending(false);
+    }
+  };
+
+  return (
+    <Stack
+      gap="xs"
+      component="form"
+      aria-label={`${provider.displayName} credentials`}
+      onSubmit={(event) => {
+        event.preventDefault();
+        void save();
+      }}
+    >
+      <TextInput
+        size="xs"
+        label="Client ID"
+        value={clientId}
+        onChange={(event) => setClientId(event.currentTarget.value)}
+      />
+      <PasswordInput
+        size="xs"
+        label="Client secret"
+        value={clientSecret}
+        placeholder={saved?.secretSet ? 'Leave blank to keep the saved secret' : ''}
+        onChange={(event) => setClientSecret(event.currentTarget.value)}
+      />
+      <TextInput
+        size="xs"
+        label="Redirect URI"
+        value={redirectUri}
+        onChange={(event) => setRedirectUri(event.currentTarget.value)}
+      />
+      <NativeSelect
+        size="xs"
+        label="Modality"
+        value={modality}
+        data={[
+          { value: 'PICKUP', label: 'Pickup' },
+          { value: 'DELIVERY', label: 'Delivery' },
+        ]}
+        onChange={(event) => setModality(event.currentTarget.value)}
+      />
+      {saved?.source === 'environment' && (
+        <Text size="sm" c="dimmed">These credentials come from the server environment. Saving replaces them until you clear the saved credentials.</Text>
+      )}
+      {saved?.secretSet && (
+        <Text size="sm" c="dimmed">A client secret is saved and is not shown.</Text>
+      )}
+      <Group gap="xs">
+        <Button size="xs" type="submit" loading={pending}>Save credentials</Button>
+        {saved?.source === 'saved' && (
+          <Button size="xs" type="button" variant="default" loading={pending} onClick={() => void clear()}>
+            Clear saved credentials
+          </Button>
+        )}
+      </Group>
+      {error !== '' && <Text c="red" size="sm">{error}</Text>}
+    </Stack>
+  );
+};

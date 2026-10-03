@@ -25,9 +25,10 @@ evidence, and cleanup mechanics.
 
 - The web UI is the primary surface. Its three routes are `Scan Queue` (`/`),
   `Inventory` (`/inventory`), and `Shopping List` (`/shopping`), reachable from
-  the header links. A footer link, `Diagnostics` (`/diagnostics`), shows
-  page-load timings from `GET /api/telemetry`. It is outside the scan, inventory,
-  and shopping flows. Drive it with `scripts/drive-diagnostics.mjs`.
+  the header links. The header menu's `Diagnostics` item opens `/diagnostics`
+  for page-load timings from `GET /api/telemetry`, and the same menu shows the
+  build id. Diagnostics is outside the scan, inventory, and shopping flows.
+  Drive it with `scripts/drive-diagnostics.mjs`.
 - Prefer ARIA roles and accessible names over CSS selectors or DOM position.
   Scanning is the core action: fill the `Barcode scanner input` textbox and press
   Enter, exactly as an HID scanner types then terminates.
@@ -88,7 +89,7 @@ behavior, then uses exactly these four H2 sections in order:
   `scripts/drive-shopping-list.mjs`. Shared store brands, a noted sale, and a
   locked brand preference are proven by `scripts/drive-brand-deals.mjs`.
   `scripts/drive-shopping-connected.mjs` proves the connected phone page keeps
-  credential setup in the store menu.
+  credential editing in the header menu.
 - [Wipe inventory](./wipe-inventory.md) — type `WIPE INVENTORY` to clear stock
   without deleting the product lookup cache. Proven end to end by
   `scripts/drive-wipe-inventory.mjs`.

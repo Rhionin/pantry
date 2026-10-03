@@ -23,7 +23,8 @@ test('diagnostics shows the page-load snapshot without private data', async ({ p
   expect(snap.pageLoad.note.length).toBeGreaterThan(0)
   expect(JSON.stringify(snap)).not.toContain('barcode')
 
-  await page.getByRole('link', { name: 'Diagnostics' }).click()
+  await page.getByRole('button', { name: 'Menu' }).click()
+  await page.getByRole('menuitem', { name: 'Diagnostics' }).click()
   await expect(page.getByRole('heading', { name: 'Diagnostics' })).toBeVisible()
   await expect(page.getByText(/^Time to first byte:/)).toBeVisible()
   await expect(page.getByText(/^DOM ready:/)).toBeVisible()

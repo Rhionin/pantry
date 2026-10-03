@@ -1,7 +1,7 @@
 // drive-shopping-connected.mjs — phone shopping page with Kroger already connected.
 //
 // Credential fields stay off the page. Daily cart actions stay. Editing client
-// id, secret, redirect URI, and modality is the Kroger setup menu.
+// id, secret, redirect URI, and modality is the header menu.
 // A real Kroger OAuth redirect cannot finish here, so the connected row is
 // seeded in the server's SQLite database after credentials are saved through
 // the API. The page then loads that state itself.
@@ -64,8 +64,9 @@ try {
     credentialsOnPage: false,
   });
 
-  await page.getByRole('button', { name: 'Kroger setup', exact: true }).click();
-  await page.getByRole('menuitem', { name: 'Edit credentials' }).click();
+  assert(await page.getByRole('button', { name: 'Setup', exact: true }).count() === 0, 'Setup stayed on the Kroger row');
+  await page.getByRole('button', { name: 'Menu' }).click();
+  await page.getByRole('menuitem', { name: 'Edit Kroger credentials' }).click();
   await page.getByRole('dialog', { name: 'Kroger credentials' }).waitFor({ state: 'visible' });
   const clientId = page.getByLabel('Client ID');
   await clientId.waitFor({ state: 'visible' });
@@ -77,12 +78,13 @@ try {
   assert(await page.getByRole('button', { name: 'Clear saved credentials' }).isVisible(), 'Clear saved credentials is missing');
 
   await page.getByLabel('Modality').selectOption('DELIVERY');
-  await page.getByRole('button', { name: 'Save credentials' }).click();
-  await page.waitForResponse((res) => (
+  const savedResponse = page.waitForResponse((res) => (
     res.url().includes('/api/providers/kroger/credentials')
     && res.request().method() === 'PUT'
     && res.ok()
   ));
+  await page.getByRole('button', { name: 'Save credentials' }).click();
+  await savedResponse;
   const listed = await page.request.get(`${API_URL}/api/providers`);
   if (!listed.ok()) throw new Error(`providers read failed: ${listed.status()}`);
   const providers = await listed.json();

@@ -161,7 +161,7 @@ describe('ShoppingListPage', () => {
     expect(screen.queryByRole('button', { name: 'Save credentials' })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Disconnect' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Start a new cart' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Kroger setup' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /setup/i })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Add to Kroger cart' }));
 
     expect(await screen.findByText('Kroger is not connected')).toBeInTheDocument();
