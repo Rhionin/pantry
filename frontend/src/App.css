@@ -1,6 +1,5 @@
-/* AppShell pins the footer with position:fixed, so a transparent stamp paints
-   over whatever card is at the bottom of the viewport. Keep the stamp in
-   normal flow under a viewport-sized shell and scroll only the main region. */
+/* The header is fixed. The shell fills the viewport and only the main region
+   scrolls, so content stays clear of the header and the page has one scrollbar. */
 .app-shell {
   flex: 1 1 auto;
   min-height: 0;
@@ -15,35 +14,186 @@
   overflow: auto;
   display: flex;
   flex-direction: column;
+  padding-bottom: calc(var(--mantine-spacing-xs) + env(safe-area-inset-bottom));
 }
 
-.build-footer {
-  flex: none;
-  padding-bottom: env(safe-area-inset-bottom);
+.app-menu-build:empty {
+  display: none;
 }
 
-.diagnostics-link {
+.app-menu-build:not(:empty) {
+  margin-top: 4px;
+  padding: 8px 12px 10px;
+  border-top: 1px solid var(--border);
+}
+
+.app-header {
+  box-sizing: border-box;
+  height: 100%;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 var(--mantine-spacing-sm);
+}
+
+.app-header-brand {
   flex: none;
-  font-size: 0.75rem;
-  color: var(--text);
+}
+
+.app-header-menu {
+  flex: none;
+}
+
+.app-menu-button {
+  width: 42px;
+  height: 42px;
+  color: var(--mantine-color-gray-8);
+  -webkit-tap-highlight-color: transparent;
+}
+
+.app-nav {
+  --nav-muted: var(--mantine-color-gray-7);
+  --nav-current: var(--mantine-color-black);
+  --nav-track: var(--mantine-color-gray-1);
+  --nav-current-bg: var(--mantine-color-white);
+  display: flex;
+  flex: 0 1 auto;
+  align-items: center;
+  min-width: 0;
+  margin-left: auto;
+  gap: 2px;
+  padding: 3px;
+  border-radius: 999px;
+  background: var(--nav-track);
+}
+
+/* Every state shares one color so a visit or a press cannot fall through
+   to the browser's blue, purple, or red link colors. */
+.app-nav-link,
+.app-nav-link:link,
+.app-nav-link:visited,
+.app-nav-link:hover,
+.app-nav-link:active,
+.app-nav-link:focus {
+  flex: 0 0 auto;
+  text-align: center;
   text-decoration: none;
-}
-
-.app-nav a {
+  color: var(--nav-muted);
+  background: transparent;
   font-size: 0.875rem;
+  font-weight: 550;
+  line-height: 1.2;
+  padding: 8px 12px;
+  border-radius: 999px;
   white-space: nowrap;
+  -webkit-tap-highlight-color: transparent;
 }
 
-.app-nav a[aria-current="page"] {
+.app-nav-link:focus {
+  outline: none;
+}
+
+.app-nav-link:focus-visible {
+  outline: 2px solid var(--mantine-color-blue-6);
+  outline-offset: 2px;
+}
+
+.app-nav-link[aria-current="page"],
+.app-nav-link[aria-current="page"]:link,
+.app-nav-link[aria-current="page"]:visited,
+.app-nav-link[aria-current="page"]:hover,
+.app-nav-link[aria-current="page"]:active,
+.app-nav-link[aria-current="page"]:focus {
+  color: var(--nav-current);
+  background: var(--nav-current-bg);
   font-weight: 650;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+}
+
+:where([data-mantine-color-scheme='dark']) .app-nav {
+  --nav-muted: var(--mantine-color-gray-4);
+  --nav-current: var(--mantine-color-gray-0);
+  --nav-track: var(--mantine-color-dark-6);
+  --nav-current-bg: var(--mantine-color-dark-4);
+}
+
+:where([data-mantine-color-scheme='dark']) .app-menu-button {
+  color: var(--mantine-color-gray-3);
 }
 
 @media (max-width: 47.99em) {
-  .app-nav {
-    gap: 0.65rem;
+  .app-header {
+    gap: 8px;
+    padding-inline: 8px;
   }
 
-  .app-nav a {
-    font-size: 0.78rem;
+  .app-nav {
+    flex: 1 1 auto;
+  }
+
+  .app-nav-link,
+  .app-nav-link:link,
+  .app-nav-link:visited,
+  .app-nav-link:hover,
+  .app-nav-link:active,
+  .app-nav-link:focus {
+    flex: 1 1 0;
+    min-width: 0;
+    font-size: 0.72rem;
+    padding: 8px 2px;
+  }
+}
+
+.shopping-entries-scroll {
+  overflow-x: auto;
+}
+
+@media (min-width: 48em) {
+  .shopping-entries {
+    min-width: 680px;
+  }
+}
+
+@media (max-width: 47.99em) {
+  .shopping-entries-scroll {
+    overflow: visible;
+  }
+
+  .shopping-entries thead {
+    display: none;
+  }
+
+  .shopping-entries,
+  .shopping-entries tbody,
+  .shopping-entries tr,
+  .shopping-entries td {
+    display: block;
+    width: auto;
+    min-width: 0;
+  }
+
+  .shopping-entries tr {
+    margin-bottom: 10px;
+    padding: 8px 10px;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+  }
+
+  .shopping-entries td {
+    border: 0;
+    padding: 4px 0;
+    background: transparent;
+  }
+
+  .shopping-entries td[data-label]::before {
+    content: attr(data-label);
+    display: block;
+    margin-bottom: 2px;
+    font-size: 0.7rem;
+    font-weight: 650;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+    color: var(--mantine-color-dimmed);
   }
 }

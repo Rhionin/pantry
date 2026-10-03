@@ -1,13 +1,14 @@
 // drive-shopping-connected.mjs — phone shopping page with Kroger already connected.
 //
 // Credential fields stay off the page. Daily cart actions stay. Editing client
-// id, secret, redirect URI, and modality is the Kroger setup menu.
+// id, secret, redirect URI, and modality, and disconnecting, are the header menu.
 // A real Kroger OAuth redirect cannot finish here, so the connected row is
 // seeded in the server's SQLite database after credentials are saved through
 // the API. The page then loads that state itself.
 //
 //   scripts/pantry-verify.sh drive scripts/drive-shopping-connected.mjs shopping-connected
 import { execFileSync } from 'node:child_process';
+import { mkdirSync } from 'node:fs';
 import {
   openBrowser, captureProof, assert, API_URL,
 } from './harness.mjs';
@@ -54,7 +55,7 @@ try {
   assert(await page.getByRole('button', { name: 'Save credentials' }).count() === 0, 'Save credentials is on the shopping page');
   assert(await page.getByText('A client secret is saved and is not shown.').count() === 0, 'saved-secret note is on the shopping page');
   assert(await page.getByRole('button', { name: 'Add to Kroger cart' }).isVisible(), 'Add to Kroger cart is missing');
-  assert(await page.getByRole('button', { name: 'Disconnect' }).isVisible(), 'Disconnect is missing');
+  assert(await page.getByRole('button', { name: 'Disconnect' }).count() === 0, 'Disconnect is still on the shopping page');
   assert(await page.getByRole('button', { name: 'Start a new cart' }).isVisible(), 'Start a new cart is missing');
   assert(await page.getByRole('button', { name: 'Add to shopping list' }).isVisible(), 'Add to shopping list is missing');
   assert(await page.getByText('Your shopping list is empty.').isVisible(), 'empty shopping list is missing');
@@ -62,10 +63,22 @@ try {
   await captureProof(page, 'shopping-connected-phone', {
     connectionState: 'connected',
     credentialsOnPage: false,
+    disconnectOnPage: false,
   });
+  mkdirSync('/opt/cursor/artifacts', { recursive: true });
+  await page.screenshot({ path: '/opt/cursor/artifacts/phone_shopping_no_disconnect.png' });
 
-  await page.getByRole('button', { name: 'Kroger setup', exact: true }).click();
-  await page.getByRole('menuitem', { name: 'Edit credentials' }).click();
+  assert(await page.getByRole('button', { name: 'Setup', exact: true }).count() === 0, 'Setup stayed on the Kroger row');
+  await page.getByRole('button', { name: 'Menu' }).click();
+  const disconnectItem = page.getByRole('menuitem', { name: 'Disconnect Kroger' });
+  await disconnectItem.waitFor({ state: 'visible' });
+  await page.waitForFunction(() => {
+    const node = document.querySelector('.mantine-Menu-dropdown');
+    return node !== null && getComputedStyle(node).opacity === '1';
+  });
+  await captureProof(page, 'shopping-menu-disconnect', { menuItem: 'Disconnect Kroger' });
+  await page.screenshot({ path: '/opt/cursor/artifacts/phone_menu_disconnect.png' });
+  await page.getByRole('menuitem', { name: 'Edit Kroger credentials' }).click();
   await page.getByRole('dialog', { name: 'Kroger credentials' }).waitFor({ state: 'visible' });
   const clientId = page.getByLabel('Client ID');
   await clientId.waitFor({ state: 'visible' });
@@ -77,12 +90,13 @@ try {
   assert(await page.getByRole('button', { name: 'Clear saved credentials' }).isVisible(), 'Clear saved credentials is missing');
 
   await page.getByLabel('Modality').selectOption('DELIVERY');
-  await page.getByRole('button', { name: 'Save credentials' }).click();
-  await page.waitForResponse((res) => (
+  const savedResponse = page.waitForResponse((res) => (
     res.url().includes('/api/providers/kroger/credentials')
     && res.request().method() === 'PUT'
     && res.ok()
   ));
+  await page.getByRole('button', { name: 'Save credentials' }).click();
+  await savedResponse;
   const listed = await page.request.get(`${API_URL}/api/providers`);
   if (!listed.ok()) throw new Error(`providers read failed: ${listed.status()}`);
   const providers = await listed.json();
@@ -97,6 +111,22 @@ try {
   await page.getByLabel('Client ID').waitFor({ state: 'hidden' });
   assert(await page.getByText('Connected', { exact: true }).isVisible(), 'Connected badge left the page');
   assert(await page.getByLabel('Client ID').count() === 0, 'Client ID stayed on the page after closing setup');
+
+  await page.getByRole('button', { name: 'Menu' }).click();
+  const disconnected = page.waitForResponse((res) => (
+    res.url().includes('/api/providers/kroger/connection')
+    && res.request().method() === 'DELETE'
+    && res.ok()
+  ));
+  await page.getByRole('menuitem', { name: 'Disconnect Kroger' }).click();
+  await disconnected;
+  await page.getByText('Disconnected', { exact: true }).waitFor({ state: 'visible' });
+  await page.getByRole('button', { name: 'Connect' }).waitFor({ state: 'visible' });
+  assert(await page.getByRole('button', { name: 'Add to Kroger cart' }).isVisible(), 'Add to Kroger cart left after disconnect');
+  assert(await page.getByRole('button', { name: 'Disconnect' }).count() === 0, 'Disconnect returned to the shopping page');
+  await page.getByRole('button', { name: 'Menu' }).click();
+  await page.getByRole('menuitem', { name: 'Edit Kroger credentials' }).waitFor({ state: 'visible' });
+  assert(await page.getByRole('menuitem', { name: 'Disconnect Kroger' }).count() === 0, 'Disconnect stayed in the menu after it ran');
 } catch (error) {
   failed = true;
   console.error(error);

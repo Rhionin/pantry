@@ -229,7 +229,7 @@ export const ScanEntryCard = ({
               </Button>
               <Button
                 size="compact-xs"
-                variant="subtle"
+                variant="light"
                 color="red"
                 loading={removing}
                 onClick={() => void handleRemove()}
@@ -275,7 +275,7 @@ export const ScanEntryCard = ({
         <Group justify="flex-end" mt={4}>
           <Button
             size="compact-xs"
-            variant="subtle"
+            variant="light"
             color="red"
             loading={removing}
             onClick={() => void handleRemove()}

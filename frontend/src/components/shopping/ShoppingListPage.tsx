@@ -29,6 +29,7 @@ import {
   setShoppingListAdjustment,
 } from '../../api/client';
 import type { InventoryItem, ProviderInfo, ReplenishmentMode, ShoppingConsideration, ShoppingConsiderations, ShoppingListEntry } from '../../types';
+import { useCredentialsRevision } from '../../credentialsRefresh';
 import { ProviderPanel } from './ProviderPanel';
 import { ProvisionButton } from './ProvisionButton';
 
@@ -103,6 +104,12 @@ export const ShoppingListPage = () => {
   useEffect(() => {
     void Promise.resolve().then(loadShoppingList);
   }, [loadShoppingList]);
+
+  const credentialsRevision = useCredentialsRevision();
+  useEffect(() => {
+    if (credentialsRevision === 0) return;
+    void Promise.resolve().then(loadShoppingList);
+  }, [credentialsRevision, loadShoppingList]);
 
   const targetProvider = providers.find((row) => row.credentialsConfigured) ?? providers[0] ?? null;
 
@@ -304,7 +311,7 @@ export const ShoppingListPage = () => {
               </Button>
               <Button
                 size="xs"
-                variant="subtle"
+                variant="default"
                 disabled={saleItemId === '' || selectedSale?.onSale !== true}
                 onClick={() => void clearSale()}
               >
@@ -363,8 +370,8 @@ export const ShoppingListPage = () => {
         <Text c="dimmed">Your shopping list is empty.</Text>
       )}
       {!loading && entries.length > 0 && (
-        <Table.ScrollContainer minWidth={680}>
-          <Table aria-label="Shopping list entries">
+        <div className="shopping-entries-scroll">
+          <Table className="shopping-entries" aria-label="Shopping list entries">
             <Table.Thead>
               <Table.Tr>
                 <Table.Th>Item</Table.Th>
@@ -416,7 +423,7 @@ export const ShoppingListPage = () => {
                         )}
                       </Stack>
                     </Table.Td>
-                    <Table.Td>
+                    <Table.Td data-label="Quantity">
                       <Stack gap={4}>
                         <Text>{entry.quantity} {unit}</Text>
                         {entry.adjustment !== undefined && entry.computedQuantity !== undefined && (
@@ -457,8 +464,8 @@ export const ShoppingListPage = () => {
                         )}
                       </Stack>
                     </Table.Td>
-                    <Table.Td><Badge variant="light">{entry.source === 'auto' ? 'Derived' : 'Manual'}</Badge></Table.Td>
-                    <Table.Td>
+                    <Table.Td data-label="Source"><Badge variant="light">{entry.source === 'auto' ? 'Derived' : 'Manual'}</Badge></Table.Td>
+                    <Table.Td data-label="Actions">
                       {entry.id === '' ? (
                         <Text size="sm" c="dimmed">Updates when inventory changes</Text>
                       ) : (
@@ -482,7 +489,7 @@ export const ShoppingListPage = () => {
               })}
             </Table.Tbody>
           </Table>
-        </Table.ScrollContainer>
+        </div>
       )}
     </Stack>
   );

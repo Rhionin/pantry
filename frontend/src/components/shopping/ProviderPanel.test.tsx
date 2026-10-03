@@ -25,10 +25,10 @@ const renderPanel = (providers: ProviderInfo[], onChanged: () => void = () => un
   </MantineProvider>,
 );
 
-const openCredentialEditor = async () => {
-  fireEvent.click(screen.getByRole('button', { name: 'Kroger setup' }));
-  fireEvent.click(await screen.findByRole('menuitem', { name: 'Edit credentials' }));
-  await screen.findByLabelText('Client ID');
+const expectCredentialsStayOffTheRow = () => {
+  expect(screen.queryByRole('button', { name: /setup/i })).not.toBeInTheDocument();
+  expect(screen.queryByRole('menuitem', { name: /credentials/i })).not.toBeInTheDocument();
+  expect(screen.queryByLabelText('Client ID')).not.toBeInTheDocument();
 };
 
 describe('ProviderPanel', () => {
@@ -47,18 +47,19 @@ describe('ProviderPanel', () => {
     expect(screen.getByRole('button', { name: 'Reconnect' })).toBeInTheDocument();
   });
 
-  it('offers Disconnect and a new-cart control when connected', () => {
+  it('offers a new-cart control when connected and leaves disconnect off the row', () => {
     renderPanel([provider({ connectionState: 'connected' })]);
-    expect(screen.getByRole('button', { name: 'Disconnect' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Disconnect' })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Start a new cart' })).toBeInTheDocument();
-    expect(screen.queryByLabelText('Client ID')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Save credentials' })).not.toBeInTheDocument();
+    expectCredentialsStayOffTheRow();
   });
 
   it('marks an unconfigured provider and hides the connection control', () => {
     renderPanel([provider({ credentialsConfigured: false, connectionState: 'disconnected' })]);
     expect(screen.getByText('unconfigured')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Connect' })).not.toBeInTheDocument();
+    expectCredentialsStayOffTheRow();
   });
 
   it('shows no connection control when a connection is not required', () => {
@@ -66,97 +67,6 @@ describe('ProviderPanel', () => {
     expect(screen.queryByRole('button', { name: 'Connect' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Disconnect' })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Start a new cart' })).toBeInTheDocument();
-  });
-
-  it('saves credentials without showing a stored secret', async () => {
-    const onChanged = vi.fn();
-    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
-      const url = String(input);
-      if (url === '/api/providers/kroger/credentials' && init?.method === 'PUT') {
-        expect(init.body).toBe(JSON.stringify({
-          clientId: 'ui-client',
-          clientSecret: 'typed-once',
-          redirectUri: 'https://pantry.example/cb',
-          modality: 'PICKUP',
-        }));
-        return Promise.resolve(new Response(JSON.stringify({
-          clientId: 'ui-client',
-          redirectUri: 'https://pantry.example/cb',
-          modality: 'PICKUP',
-          secretSet: true,
-          source: 'saved',
-        }), { status: 200, headers: { 'Content-Type': 'application/json' } }));
-      }
-      return Promise.reject(new Error(`Unexpected request: ${url}`));
-    });
-    vi.stubGlobal('fetch', fetchMock);
-    render(
-      <MantineProvider>
-        <ProviderPanel
-          providers={[provider({
-            credentialsConfigured: false,
-            credentials: {
-              clientId: '',
-              redirectUri: '',
-              modality: 'PICKUP',
-              secretSet: true,
-              source: 'none',
-            },
-          })]}
-          onChanged={onChanged}
-        />
-      </MantineProvider>,
-    );
-    expect(screen.queryByLabelText('Client ID')).not.toBeInTheDocument();
-    expect(screen.queryByText('A client secret is saved and is not shown.')).not.toBeInTheDocument();
-    await openCredentialEditor();
-    expect(screen.getByLabelText('Client secret')).toHaveValue('');
-    expect(screen.getByText('A client secret is saved and is not shown.')).toBeInTheDocument();
-    fireEvent.change(screen.getByLabelText('Client ID'), { target: { value: 'ui-client' } });
-    fireEvent.change(screen.getByLabelText('Client secret'), { target: { value: 'typed-once' } });
-    fireEvent.change(screen.getByLabelText('Redirect URI'), { target: { value: 'https://pantry.example/cb' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Save credentials' }));
-    await screen.findByRole('button', { name: 'Save credentials' });
-    expect(onChanged).toHaveBeenCalled();
-  });
-
-  it('clears saved credentials from the setup menu', async () => {
-    const onChanged = vi.fn();
-    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
-      const url = String(input);
-      if (url === '/api/providers/kroger/credentials' && init?.method === 'DELETE') {
-        return Promise.resolve(new Response(JSON.stringify({
-          clientId: '',
-          redirectUri: '',
-          modality: 'PICKUP',
-          secretSet: false,
-          source: 'none',
-        }), { status: 200, headers: { 'Content-Type': 'application/json' } }));
-      }
-      return Promise.reject(new Error(`Unexpected request: ${url}`));
-    });
-    vi.stubGlobal('fetch', fetchMock);
-    renderPanel([provider({
-      connectionState: 'connected',
-      credentials: {
-        clientId: 'ui-client',
-        redirectUri: 'https://pantry.example/cb',
-        modality: 'PICKUP',
-        secretSet: true,
-        source: 'saved',
-      },
-    })], onChanged);
-
-    expect(screen.queryByRole('button', { name: 'Clear saved credentials' })).not.toBeInTheDocument();
-    await openCredentialEditor();
-    expect(screen.getByLabelText('Client ID')).toHaveValue('ui-client');
-    fireEvent.click(screen.getByRole('button', { name: 'Clear saved credentials' }));
-    await screen.findByRole('button', { name: 'Clear saved credentials' });
-    expect(onChanged).toHaveBeenCalled();
-    expect(fetchMock).toHaveBeenCalledWith(
-      '/api/providers/kroger/credentials',
-      expect.objectContaining({ method: 'DELETE' }),
-    );
   });
 
   it('starts the authorization redirect', async () => {

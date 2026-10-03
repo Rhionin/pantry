@@ -4,10 +4,9 @@ import { getBuildInfo } from '../../api/client';
 import type { BuildInfo } from '../../types';
 import { formatBuildLabel } from '../../utils/buildLabel';
 
-// BuildStamp shows which build is running, in type small enough to stay out
-// of the scan, inventory, and shopping workflows. The subject and timestamp
-// make a freshly deployed change recognizable; the commit matches the
-// container tag.
+// BuildStamp shows which build is running. It sits in the app menu so the id
+// stays reachable without a bar on every page. The subject and timestamp make
+// a freshly deployed change recognizable; the commit matches the container tag.
 export function BuildStamp() {
   const [info, setInfo] = useState<BuildInfo | null>(null);
 
@@ -37,7 +36,7 @@ export function BuildStamp() {
       role="note"
       aria-label={label.accessibleName}
       title={label.title}
-      ta="right"
+      ta="left"
       style={{ width: '100%', minWidth: 0, lineHeight: 1.3, overflowWrap: 'anywhere' }}
     >
       {label.subject !== '' ? <span style={{ display: 'block' }}>{label.subject}</span> : null}
