@@ -58,6 +58,14 @@ Preconditions:
 
 `scripts/drive-stock-in.mjs` is this recipe, verified end to end.
 
+`scripts/drive-stock-in-row.mjs` proves the card at phone width (390px). The
+stepper, Approve, and Remove share one 44px band after the name, and the date
+field stays hidden until `Add expiration`. A saved date folds back into `Exp …`.
+Two stepper taps and the date both reach inventory (3 units, each with that
+date), and Remove cancels a scan without stocking it. It also asserts one
+unclipped row at 360px. To show the provenance label, it marks a seeded product
+as Open Food Facts in the SQLite file at `PANTRY_DB_PATH`.
+
 ## Gotchas
 
 - Use `{ exact: true }` on the `Approve` button: `getByRole('button', { name:
@@ -76,3 +84,5 @@ Preconditions:
   exact: true })` for the field.
 - A saved date is a button named by its text (`Exp May 28, 2030`). `Change
   expiration` is its description, not its name.
+- At 320px the widest saved date (`Exp May 28, 2030`) is cut off with an
+  ellipsis. The row driver records 320px but only asserts 360px and wider.
