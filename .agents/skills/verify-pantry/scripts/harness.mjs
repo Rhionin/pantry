@@ -87,7 +87,9 @@ export async function scanBarcode(page, barcode) {
   const input = page.getByRole('textbox', { name: 'Barcode scanner input' });
   await input.fill(barcode);
   await input.press('Enter');
-  const card = page.getByRole('article', { name: `Scan ${barcode}` });
+  // Exact, because the "Looking up product" placeholder that can precede the
+  // card is named `Scan <barcode> processing` and has none of its controls.
+  const card = page.getByRole('article', { name: `Scan ${barcode}`, exact: true });
   await card.waitFor({ state: 'visible', timeout: 15_000 });
   return card;
 }

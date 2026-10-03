@@ -50,7 +50,9 @@ export const scanBarcode = async (page: Page, barcode: string): Promise<Locator>
   await scannerInput.fill(barcode)
   await scannerInput.press('Enter')
 
-  const scanCard = page.getByRole('article', { name: `Scan ${barcode}` })
+  // Exact, because the "Looking up product" placeholder that can precede the
+  // card is named `Scan <barcode> processing` and has none of its controls.
+  const scanCard = page.getByRole('article', { name: `Scan ${barcode}`, exact: true })
   await expect(scanCard).toBeVisible()
   return scanCard
 }
