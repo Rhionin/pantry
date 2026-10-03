@@ -253,6 +253,32 @@ code {
   margin-top: 6px;
 }
 
+/* Stock-in confirmation is a list row: no card box, controls on one inline line. */
+.scan-entry-list--flat {
+  gap: 0;
+}
+
+.scan-entry-row {
+  border: 0;
+  border-bottom: 1px solid var(--mantine-color-default-border);
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  padding: 8px 0 2px;
+}
+
+.scan-entry-row .scan-entry-actions {
+  margin-top: 0;
+}
+
+.scan-entry-row-controls {
+  width: 100%;
+}
+
+.scan-entry-list--flat > .processing-scan-card {
+  margin: 6px 0;
+}
+
 .scan-entry-qty {
   width: 4.6rem;
   flex: none;
@@ -277,35 +303,35 @@ code {
 .scan-entry-stepper {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: 0;
   flex: none;
 }
 
 .scan-entry-stepper-value {
-  width: 4.5rem;
+  width: 2.25rem;
   flex: none;
-  --input-height: 48px;
+  --input-height: 44px;
 }
 
 .scan-entry-stepper-btn {
   box-sizing: border-box;
-  width: 48px;
-  height: 48px;
-  min-width: 48px;
-  min-height: 48px;
+  width: 44px;
+  height: 44px;
+  min-width: 44px;
+  min-height: 44px;
   padding: 0;
   margin: 0;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  font-size: 1.75rem;
+  font-size: 1.65rem;
   font-weight: 500;
   line-height: 1;
   font-family: inherit;
   color: var(--mantine-color-text);
-  background-color: var(--mantine-color-body);
-  border: 1px solid var(--mantine-color-default-border);
-  border-radius: var(--mantine-radius-md);
+  background: transparent;
+  border: 0;
+  border-radius: 8px;
   cursor: pointer;
   touch-action: manipulation;
 }
@@ -324,32 +350,46 @@ code {
   outline-offset: 2px;
 }
 
+.scan-entry-stepper .mantine-Input-wrapper {
+  --input-bd: transparent;
+  --input-bg: transparent;
+}
+
 .scan-entry-stepper .mantine-Input-input {
-  min-height: 48px;
-  height: 48px;
+  min-height: 44px;
+  height: 44px;
   text-align: center;
-  font-size: 1.25rem;
+  font-size: 1.15rem;
   font-weight: 650;
   padding-inline: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
 }
 
 .scan-entry-expiry-slot {
-  flex: 1 0 100%;
+  flex: 0 0 auto;
+  width: auto;
+  max-width: 100%;
 }
 
 .scan-entry-expiry-editor {
   display: flex;
   align-items: center;
   gap: 8px;
+  width: max-content;
+  max-width: 100%;
 }
 
 .scan-entry-expiry-summary {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 0 12px;
+  gap: 0 8px;
+  width: max-content;
+  max-width: 100%;
   color: var(--mantine-color-dimmed);
-  font-size: var(--mantine-font-size-sm);
+  font-size: var(--mantine-font-size-xs);
 }
 
 .scan-entry-add-expiry,
@@ -361,7 +401,7 @@ code {
   background: transparent;
   color: var(--mantine-color-dimmed);
   font-family: inherit;
-  font-size: var(--mantine-font-size-sm);
+  font-size: var(--mantine-font-size-xs);
   font-weight: 400;
   line-height: 1.2;
   cursor: pointer;

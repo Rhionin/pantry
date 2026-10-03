@@ -8,9 +8,10 @@ appear in inventory. This is the core add-to-pantry flow.
 
 - `stock-in-scan` scanning a known barcode in stock-in mode creates a pending
   scan card stamped `stock_in`.
-- `stock-in-card` the card shows the product name, `Barcode: <code>`, a scanned
-  timestamp, a thumb-sized unit-count stepper (decrease, count, increase), an
-  `Add expiration` control that expands the expiration date only when opened,
+- `stock-in-card` the pending scan is a flat list row, not a bordered card. It
+  shows the product name, `Barcode: <code>`, a scanned timestamp, an inline
+  thumb-sized unit-count stepper (decrease, count, increase; at least 44px),
+  a small `Add expiration` text control that reveals the date only when opened,
   and Approve/Remove buttons. A saved date is shown as compact `Expires …` text
   with Change and Clear.
 - `stock-in-approve` approving the card commits it and removes it from the queue.
@@ -40,11 +41,11 @@ Preconditions:
   stock_in')`. The stock-in mode banner is visible.
 - **Scan.** `scanBarcode(page, barcode)` fills `getByRole('textbox', { name:
   'Barcode scanner input' })` and presses Enter. A `getByRole('article', { name:
-  'Scan <barcode>' })` card appears under the Stock in tab.
-- **Read the card.** The card contains `Barcode: <barcode>` and a heading with
+  'Scan <barcode>' })` row appears under the Stock in tab.
+- **Read the row.** The row contains `Barcode: <barcode>` and a heading with
   the product name.
 - **Approve.** `card.getByRole('button', { name: 'Approve', exact: true
-  }).click()`. The card detaches from the queue (`waitFor({ state: 'detached' })`).
+  }).click()`. The row detaches from the queue (`waitFor({ state: 'detached' })`).
 - **Confirm inventory (API view).** `readInventory(page)` returns a row whose
   `item.product.name` matches and whose `instanceCount` is `1`.
 - **Confirm inventory (UI view).** `getByRole('link', { name: 'Inventory'

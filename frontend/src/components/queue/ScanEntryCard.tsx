@@ -78,8 +78,13 @@ export const ScanEntryCard = ({
     return () => clearTimeout(timer);
   }, [entry.unitCount]);
 
+  const isStockIn = entry.direction === 'stock_in';
+  // Pending stock-in is a list row. Stock-out and flagged review stay cards.
+  const flatRow = isStockIn && entry.status === 'pending';
+
   const changeIndicatorClass = [
     'scan-entry-card',
+    flatRow ? 'scan-entry-row' : undefined,
     !showChangeIndicator
       ? undefined
       : prefersReducedMotion()
@@ -87,8 +92,6 @@ export const ScanEntryCard = ({
         : 'scan-entry-card--changed-animated',
     justCaptured ? 'scan-entry-card--just-captured' : undefined,
   ].filter(Boolean).join(' ');
-
-  const isStockIn = entry.direction === 'stock_in';
   const productName = entry.product?.name ?? 'Unknown product';
   const scannedAtLabel = new Date(entry.scannedAt).toLocaleString(undefined, {
     month: 'short',
@@ -211,8 +214,8 @@ export const ScanEntryCard = ({
     }
   };
 
-  return (
-    <Card component="article" withBorder padding="xs" radius="md" className={changeIndicatorClass} aria-label={`Scan ${entry.barcode}`}>
+  const queueItem = (
+    <>
       <div className="scan-entry-layout">
         <div className="scan-entry-check">
           {entry.status === 'pending' && (
@@ -246,11 +249,11 @@ export const ScanEntryCard = ({
 
       {entry.status === 'pending' && (
         <Group
-          className="scan-entry-actions"
-          gap={4}
+          className={flatRow ? 'scan-entry-actions scan-entry-row-controls' : 'scan-entry-actions'}
+          gap={flatRow ? 6 : 4}
           align="center"
           wrap="wrap"
-          justify={isStockIn ? 'space-between' : 'flex-start'}
+          justify="flex-start"
         >
           {isStockIn ? (
             <div className="scan-entry-stepper">
@@ -427,6 +430,20 @@ export const ScanEntryCard = ({
 
       {approveError !== '' && <Alert color="red" py={4} mt={4}>{approveError}</Alert>}
       {removeError !== '' && <Alert color="red" py={4} mt={4}>{removeError}</Alert>}
+    </>
+  );
+
+  if (flatRow) {
+    return (
+      <article className={changeIndicatorClass} aria-label={`Scan ${entry.barcode}`}>
+        {queueItem}
+      </article>
+    );
+  }
+
+  return (
+    <Card component="article" withBorder padding="xs" radius="md" className={changeIndicatorClass} aria-label={`Scan ${entry.barcode}`}>
+      {queueItem}
     </Card>
   );
 };
