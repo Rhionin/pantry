@@ -6,6 +6,15 @@ import (
 	"github.com/Rhionin/pantry/internal/scan"
 )
 
+// ModeControl is the direction stamped on the next product barcode. Set changes
+// it. NoteScan records product-scan traffic, which is the only event that
+// postpones an idle return to stock-out. Get applies that return when it is due.
+type ModeControl interface {
+	Get() scan.ScanDirection
+	Set(scan.ScanDirection)
+	NoteScan()
+}
+
 // modeState holds Current_Mode. A mutex guards it because ScanListener.Run is
 // the only writer but the same value could be inspected by future health
 // endpoints; the mutex is cheap and removes any doubt.

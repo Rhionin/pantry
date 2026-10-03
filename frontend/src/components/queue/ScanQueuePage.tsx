@@ -10,14 +10,11 @@ import { BatchReviewPanel } from './BatchReviewPanel';
 import { ProcessingScanCard } from './ProcessingScanCard';
 import { ScanEntryCard } from './ScanEntryCard';
 import { addProcessingNotice, entryMatchesView, formatReviewCount, getEntriesForView, isBatchEligible, mergeScanEvent, pruneSelection, removeProcessingNotice, settleProcessingNotice, sortScansNewestFirst, toggleSelectAll } from './queueUtils';
+import { scannerModeFromEventData } from './scannerModeEvent';
 
 const DEFAULT_USER_ID = 'user-1';
 
 export type QueueView = 'stock_in' | 'stock_out';
-
-export interface ScannerModeEvent {
-  mode: 'stock_in' | 'stock_out';
-}
 
 export interface ScanQueuePageProps {
   userId?: string;
@@ -38,10 +35,25 @@ export const ScanQueuePage = ({ userId = DEFAULT_USER_ID }: ScanQueuePageProps) 
   const [cameraOpen, setCameraOpen] = useState(false);
   const [capturedBarcode, setCapturedBarcode] = useState('');
   const captureHighlightTimer = useRef(0);
-  
-  // Move the scanner mode and keep the visible tab following it, so a scan
-  // taken in the current direction lands in the tab the user is looking at.
-  const applyScannerMode = useCallback((mode: QueueView) => {
+  const scannerModeRef = useRef<QueueView>('stock_in');
+  // Bumped when this page or an event stream sets the mode, so a config
+  // response that started earlier cannot put the previous direction back.
+  const modeEpoch = useRef(0);
+
+  // Apply a direction learned from the server. The visible tab follows only
+  // when the direction actually changes, so a refresh that reports the same
+  // mode does not pull the user off the queue they are reviewing.
+  const acceptRemoteMode = useCallback((mode: QueueView) => {
+    if (mode !== 'stock_in' && mode !== 'stock_out') return;
+    const changed = scannerModeRef.current !== mode;
+    scannerModeRef.current = mode;
+    setScannerModeState(mode);
+    if (changed) setActiveView(mode);
+  }, []);
+
+  const holdLocalMode = useCallback((mode: QueueView) => {
+    modeEpoch.current += 1;
+    scannerModeRef.current = mode;
     setScannerModeState(mode);
     setActiveView(mode);
   }, []);
@@ -104,14 +116,17 @@ export const ScanQueuePage = ({ userId = DEFAULT_USER_ID }: ScanQueuePageProps) 
   // classification falls back to off (no crash) and scans post as usual.
   useEffect(() => {
     let cancelled = false;
+    const epoch = modeEpoch.current;
     getScannerConfig()
       .then((config) => {
-        if (cancelled) return;
+        if (cancelled || modeEpoch.current !== epoch) return;
         setScannerConfig(config);
         if (typeof config.connected === 'boolean') {
           setScannerConnected(config.connected);
         }
-        applyScannerMode(config.currentMode);
+        if (config.currentMode === 'stock_in' || config.currentMode === 'stock_out') {
+          acceptRemoteMode(config.currentMode);
+        }
       })
       .catch(() => {
         if (!cancelled) setScannerConfig(null);
@@ -119,15 +134,20 @@ export const ScanQueuePage = ({ userId = DEFAULT_USER_ID }: ScanQueuePageProps) 
     return () => {
       cancelled = true;
     };
-  }, [applyScannerMode]);
+  }, [acceptRemoteMode]);
 
   useEffect(() => {
     let cancelled = false;
     const refreshConnection = () => {
+      const epoch = modeEpoch.current;
       getScannerConfig()
         .then((config) => {
-          if (!cancelled && typeof config.connected === 'boolean') {
+          if (cancelled || modeEpoch.current !== epoch) return;
+          if (typeof config.connected === 'boolean') {
             setScannerConnected(config.connected);
+          }
+          if (config.currentMode === 'stock_in' || config.currentMode === 'stock_out') {
+            acceptRemoteMode(config.currentMode);
           }
         })
         .catch(() => undefined);
@@ -137,7 +157,7 @@ export const ScanQueuePage = ({ userId = DEFAULT_USER_ID }: ScanQueuePageProps) 
       cancelled = true;
       window.clearInterval(timer);
     };
-  }, []);
+  }, [acceptRemoteMode]);
 
   useEffect(() => {
     const eventSource = new EventSource('/api/events');
@@ -161,13 +181,13 @@ export const ScanQueuePage = ({ userId = DEFAULT_USER_ID }: ScanQueuePageProps) 
       setScanError(failure.message);
     });
     eventSource.addEventListener('scanner_mode', (message) => {
-      const event = JSON.parse((message as MessageEvent).data) as ScannerModeEvent;
-      if (event.mode === 'stock_in' || event.mode === 'stock_out') {
-        applyScannerMode(event.mode);
-      }
+      const mode = scannerModeFromEventData((message as MessageEvent).data);
+      if (mode === null) return;
+      modeEpoch.current += 1;
+      acceptRemoteMode(mode);
     });
     return () => eventSource.close();
-  }, [applyScannerMode]);
+  }, [acceptRemoteMode]);
 
   const itemIdByProductId = useMemo(
     () => new Map(inventory.map((inventoryItem) => [inventoryItem.item.productId, inventoryItem.item.id])),
@@ -190,9 +210,9 @@ export const ScanQueuePage = ({ userId = DEFAULT_USER_ID }: ScanQueuePageProps) 
     setScanError('');
     const targetMode = classifyControlBarcode(barcode);
     if (targetMode !== null) {
-      // Optimistically reflect the switch; the resulting scanner_mode SSE event
-      // keeps every subscriber consistent with this value.
-      applyScannerMode(targetMode);
+      // Show the switch immediately. The mode write and the scanner_mode event
+      // confirm it; a config response that was already in flight is ignored.
+      holdLocalMode(targetMode);
       try {
         await setScannerMode(targetMode);
       } catch (requestError) {

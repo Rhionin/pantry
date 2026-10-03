@@ -18,6 +18,7 @@ import (
 	"github.com/Rhionin/pantry/internal/cart/kroger"
 	"github.com/Rhionin/pantry/internal/events"
 	"github.com/Rhionin/pantry/internal/product"
+	"github.com/Rhionin/pantry/internal/scan"
 	"github.com/Rhionin/pantry/internal/scanlistener"
 	"github.com/Rhionin/pantry/internal/server"
 	_ "modernc.org/sqlite"
@@ -203,6 +204,16 @@ func main() {
 
 	listener, listenerOK := loadScanListenerConfigWithSource()
 
+	// One mode for the HTTP switch and the headless listener. It publishes
+	// scanner_mode, including the idle return to scan-out, and keeps the
+	// health status on the same direction the next scan will use.
+	scannerMode := server.NewScannerMode(func(d scan.ScanDirection) {
+		broadcaster.PublishScannerModeEvent(d)
+		if listenerOK {
+			listener.SetStatusMode(d)
+		}
+	})
+
 	// Sharing stays local until an account is configured. The in-app switch
 	// still defaults off, so credentials alone never send a product.
 	contributor := product.NewContributorFromEnv(os.Getenv)
@@ -222,6 +233,7 @@ func main() {
 		server.WithProviderEnv(providerEnv),
 		server.WithRetailerDeals(os.Getenv("PANTRY_RETAILER_API_KEY"), os.Getenv("PANTRY_RETAILER_API_URL")),
 		server.WithContributor(contributor),
+		server.WithScannerMode(scannerMode),
 	}
 	if listenerOK {
 		opts = append(opts, server.WithScannerStatus(listener.Status))
@@ -231,7 +243,7 @@ func main() {
 	if listenerOK {
 		listener.Queue = scanQueue
 		listener.LookupService = lookupService
-		listener.ModePublisher = broadcaster
+		listener.Mode = scannerMode
 		listener.ProcessingPublisher = broadcaster
 		go listener.Run(context.Background())
 	}

@@ -41,6 +41,7 @@ type config struct {
 	providerEnv   ProviderEnv
 	retailer      shopping.RetailerDealConfig
 	contributor   product.UpstreamContributor
+	scannerMode   *scannerMode
 }
 
 // Option is a functional option for NewHandler.
@@ -99,6 +100,15 @@ func WithRetailerDeals(apiKey, baseURL string) Option {
 func WithContributor(contributor product.UpstreamContributor) Option {
 	return func(c *config) {
 		c.contributor = contributor
+	}
+}
+
+// WithScannerMode supplies the process-wide scan direction. The headless
+// listener stamps its next barcode with the same value POST /api/scanner/mode
+// updates. When unset, NewHandler creates one.
+func WithScannerMode(mode *scannerMode) Option {
+	return func(c *config) {
+		c.scannerMode = mode
 	}
 }
 
@@ -217,12 +227,24 @@ func newAPIMux(
 			scannerConfig.StockOutBarcode = cfg.scannerConfig.StockOutBarcode
 		}
 	}
-	// One scannerMode instance is shared by the mode-switch and config handlers,
-	// so GET /api/scanner/config can seed a newly connected browser with the
-	// current direction instead of the browser guessing a default that may
-	// disagree with the backend.
-	mode := newScannerMode()
-	scannerModeHandler := &ScannerModeHandler{Mode: mode, Broadcaster: broadcaster}
+	// One scannerMode is shared by the mode switch, config reads, scan creation,
+	// and (when the process passes it in) the headless listener. A change,
+	// including the idle return to scan-out, publishes scanner_mode on the
+	// broadcaster those subscribers already use.
+	var mode *scannerMode
+	if cfg != nil && cfg.scannerMode != nil {
+		mode = cfg.scannerMode
+	} else {
+		mode = newScannerMode(nil)
+	}
+	if mode.publish == nil {
+		mode.mu.Lock()
+		mode.publish = func(d scan.ScanDirection) {
+			broadcaster.PublishScannerModeEvent(d)
+		}
+		mode.mu.Unlock()
+	}
+	scannerModeHandler := &ScannerModeHandler{Mode: mode}
 	scannerConfigHandler := &ScannerConfigHandler{Config: scannerConfig, Mode: mode}
 	if cfg != nil {
 		scannerConfigHandler.Status = cfg.statusFn
@@ -268,6 +290,7 @@ func newAPIMux(
 		Queue:         scanQueue,
 		LookupService: lookupService,
 		Events:        broadcaster,
+		Mode:          mode,
 	}
 	scanListHandler := &ScanListHandler{Queue: scanQueue}
 	scanHistoryHandler := &ScanHistoryHandler{Queue: scanQueue}

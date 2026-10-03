@@ -642,6 +642,49 @@ func TestCreateEntry_AnnouncesFailureWhenLookupFails(t *testing.T) {
 	}
 }
 
+type stubMode struct {
+	current scan.ScanDirection
+	noted   int
+}
+
+func (s *stubMode) Get() scan.ScanDirection  { return s.current }
+func (s *stubMode) Set(d scan.ScanDirection) { s.current = d }
+func (s *stubMode) NoteScan()                { s.noted++ }
+
+// TestHandleLine_SharedModeStampsTheNextScan verifies a control barcode updates
+// the shared direction and the following product barcode is stamped with it.
+// A control barcode is not scan traffic.
+func TestHandleLine_SharedModeStampsTheNextScan(t *testing.T) {
+	shared := &stubMode{current: scan.StockOut}
+	listener := New()
+	listener.Source = SourceStdin
+	listener.StockInBarcode = "STOCK_IN"
+	listener.StockOutBarcode = "STOCK_OUT"
+	listener.Stdin = strings.NewReader("STOCK_IN\n123456\n")
+	listener.Queue = &fakeQueue{}
+	listener.LookupService = &fakeLookup{}
+	listener.Mode = shared
+
+	listener.Run(context.Background())
+
+	if shared.current != scan.StockIn {
+		t.Fatalf("shared mode = %s, want stock_in", shared.current)
+	}
+	if shared.noted != 1 {
+		t.Fatalf("NoteScan calls = %d, want 1 (the control barcode is not a scan)", shared.noted)
+	}
+	entries := listener.Queue.(*fakeQueue).entries
+	if len(entries) != 1 {
+		t.Fatalf("entries = %d, want 1", len(entries))
+	}
+	if entries[0].Direction == nil || *entries[0].Direction != scan.StockIn {
+		t.Fatalf("next scan direction = %v, want stock_in", entries[0].Direction)
+	}
+	if got := listener.Status().Mode; got != "stock_in" {
+		t.Fatalf("status mode = %q, want stock_in", got)
+	}
+}
+
 func TestHandleLine_ControlBarcodeDoesNotAnnounceProcessing(t *testing.T) {
 	publisher := &recordingPublisher{}
 	listener := New()
