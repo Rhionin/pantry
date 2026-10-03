@@ -108,7 +108,7 @@ export const ShoppingListPage = () => {
   const credentialsRevision = useCredentialsRevision();
   useEffect(() => {
     if (credentialsRevision === 0) return;
-    void loadShoppingList();
+    void Promise.resolve().then(loadShoppingList);
   }, [credentialsRevision, loadShoppingList]);
 
   const targetProvider = providers.find((row) => row.credentialsConfigured) ?? providers[0] ?? null;

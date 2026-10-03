@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MantineProvider } from '@mantine/core';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -20,8 +20,8 @@ const provider = (overrides: Partial<ProviderInfo> = {}): ProviderInfo => ({
   ...overrides,
 });
 
-const jsonResponse = (body: unknown) =>
-  new Response(JSON.stringify(body), { status: 200, headers: { 'Content-Type': 'application/json' } });
+const jsonResponse = (body: unknown, status = 200) =>
+  new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
 
 const renderMenu = (rows: ProviderInfo[], onCredentialsChanged: () => void = () => undefined) => {
   vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL) => {
@@ -56,6 +56,7 @@ describe('AppMenu', () => {
     renderMenu([provider({ connectionState: 'connected' })]);
     const credentials = await openMenu();
     expect(credentials).toBeEnabled();
+    expect(screen.getByRole('menuitem', { name: 'Disconnect Kroger' })).toBeEnabled();
     expect(screen.getByRole('menuitem', { name: 'Diagnostics' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /setup/i })).not.toBeInTheDocument();
     expect(await screen.findByRole('note', { name: 'build abc123def456' })).toBeVisible();
@@ -64,10 +65,67 @@ describe('AppMenu', () => {
 
   it('opens the credentials dialog for a store that is not connected yet', async () => {
     renderMenu([provider({ credentialsConfigured: false, connectionState: 'disconnected' })]);
-    fireEvent.click(await openMenu());
+    const credentials = await openMenu();
+    expect(screen.queryByRole('menuitem', { name: 'Disconnect Kroger' })).not.toBeInTheDocument();
+    fireEvent.click(credentials);
     expect(await screen.findByRole('dialog', { name: 'Kroger credentials' })).toBeInTheDocument();
     expect(screen.getByLabelText('Client ID')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Menu' })).toBeInTheDocument();
+  });
+
+  it('disconnects a connected store from the menu', async () => {
+    const onChanged = vi.fn();
+    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === '/api/providers') return Promise.resolve(jsonResponse([provider({ connectionState: 'connected' })]));
+      if (url === '/api/providers/kroger/connection' && init?.method === 'DELETE') {
+        return Promise.resolve(jsonResponse({}));
+      }
+      if (url === '/api/build') return Promise.resolve(jsonResponse({ commit: 'abc123def456' }));
+      return Promise.reject(new Error(`Unexpected request: ${url}`));
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    render(
+      <MantineProvider>
+        <MemoryRouter>
+          <AppMenu onCredentialsChanged={onChanged} />
+        </MemoryRouter>
+      </MantineProvider>,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Menu' }));
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Disconnect Kroger' }));
+
+    await waitFor(() => expect(onChanged).toHaveBeenCalledTimes(1));
+    expect(fetchMock).toHaveBeenCalledWith('/api/providers/kroger/connection', expect.objectContaining({ method: 'DELETE' }));
+    await waitFor(() => expect(screen.queryByRole('menuitem', { name: 'Disconnect Kroger' })).not.toBeInTheDocument());
+  });
+
+  it('reports a disconnect failure and leaves the menu open', async () => {
+    const onChanged = vi.fn();
+    vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === '/api/providers') return Promise.resolve(jsonResponse([provider({ connectionState: 'connected' })]));
+      if (url === '/api/providers/kroger/connection' && init?.method === 'DELETE') {
+        return Promise.resolve(jsonResponse({ error: 'Kroger could not be disconnected' }, 500));
+      }
+      if (url === '/api/build') return Promise.resolve(jsonResponse({ commit: 'abc123def456' }));
+      return Promise.reject(new Error(`Unexpected request: ${url}`));
+    }));
+    render(
+      <MantineProvider>
+        <MemoryRouter>
+          <AppMenu onCredentialsChanged={onChanged} />
+        </MemoryRouter>
+      </MantineProvider>,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Menu' }));
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Disconnect Kroger' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Kroger could not be disconnected');
+    expect(onChanged).not.toHaveBeenCalled();
+    expect(screen.getByRole('menuitem', { name: 'Disconnect Kroger' })).toBeInTheDocument();
   });
 
   it('opens diagnostics from the menu', async () => {

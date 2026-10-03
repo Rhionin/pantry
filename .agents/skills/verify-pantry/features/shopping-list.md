@@ -23,11 +23,12 @@ inventory changes only when the bought item is later stocked in.
 ## How to get to it (user POV)
 
 - Open `Shopping List` (`/shopping`) to view entries, add an item, mark
-  purchased, or remove. With a store connected, `Add to <store> cart`,
-  `Disconnect`, and `Start a new cart` stay on the page.
+  purchased, or remove. With a store connected, `Add to <store> cart` and
+  `Start a new cart` stay on the page.
 - Change store credentials from the header menu: `Menu`, then `Edit Kroger
-  credentials`. Saving and `Clear saved credentials` stay in that dialog. The
-  same menu reaches `Diagnostics` and the build id.
+  credentials`. Saving and `Clear saved credentials` stay in that dialog.
+  `Disconnect Kroger` is in that same menu, and only while Kroger is connected.
+  The same menu reaches `Diagnostics` and the build id.
 - Set a target quantity from `Inventory` (`/inventory`): open a product's `View
   instances`, then use its `Target quantity` panel.
 
@@ -71,8 +72,9 @@ the materialized derived row purchased directly and confirms inventory stays at
 Credential fields (`Client ID`, `Client secret`, `Redirect URI`, `Modality`,
 `Save credentials`) are absent until `Menu` → `Edit Kroger credentials`.
 `scripts/drive-shopping-connected.mjs` proves that phone layout with Kroger
-already connected, then saves a modality change from the dialog. When Kroger
-is not connected yet, the same menu item opens the dialog; the form does not
+already connected, then saves a modality change from the dialog. `Disconnect
+Kroger` is in the header menu, not on the shopping page. When Kroger is not
+connected yet, the same credentials item opens the dialog; the form does not
 replace the shopping page.
 
 ## Gotchas

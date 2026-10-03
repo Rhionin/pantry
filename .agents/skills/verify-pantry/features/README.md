@@ -89,7 +89,7 @@ behavior, then uses exactly these four H2 sections in order:
   `scripts/drive-shopping-list.mjs`. Shared store brands, a noted sale, and a
   locked brand preference are proven by `scripts/drive-brand-deals.mjs`.
   `scripts/drive-shopping-connected.mjs` proves the connected phone page keeps
-  credential editing in the header menu.
+  credential editing and disconnect in the header menu.
 - [Wipe inventory](./wipe-inventory.md) — type `WIPE INVENTORY` to clear stock
   without deleting the product lookup cache. Proven end to end by
   `scripts/drive-wipe-inventory.mjs`.

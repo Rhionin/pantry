@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Burger, Menu } from '@mantine/core';
+import { Burger, Menu, Text } from '@mantine/core';
 import { useNavigate } from 'react-router-dom';
-import { listProviders } from '../../api/client';
+import { disconnectProvider, listProviders } from '../../api/client';
 import type { ProviderInfo } from '../../types';
 import { BuildStamp } from '../build/BuildStamp';
 import { CredentialsDialog } from '../shopping/CredentialsDialog';
@@ -13,12 +13,19 @@ export interface AppMenuProps {
 const canEditCredentials = (provider: ProviderInfo) =>
   provider.capabilities.auth === 'oauth2_authorization_code';
 
+const canDisconnect = (provider: ProviderInfo) =>
+  canEditCredentials(provider)
+  && provider.credentialsConfigured
+  && provider.connectionState === 'connected';
+
 export const AppMenu = ({ onCredentialsChanged }: AppMenuProps) => {
   const navigate = useNavigate();
   const [opened, setOpened] = useState(false);
   const [providers, setProviders] = useState<ProviderInfo[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [loadError, setLoadError] = useState('');
+  const [disconnectError, setDisconnectError] = useState('');
+  const [disconnectingId, setDisconnectingId] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
 
   const reload = useCallback(async () => {
@@ -34,8 +41,23 @@ export const AppMenu = ({ onCredentialsChanged }: AppMenuProps) => {
   }, []);
 
   useEffect(() => {
-    void reload();
+    void Promise.resolve().then(reload);
   }, [reload]);
+
+  const disconnect = async (provider: ProviderInfo) => {
+    setDisconnectingId(provider.id);
+    setDisconnectError('');
+    try {
+      await disconnectProvider(provider.id);
+      await reload();
+      onCredentialsChanged();
+      setOpened(false);
+    } catch (requestError) {
+      setDisconnectError(requestError instanceof Error ? requestError.message : 'Unable to disconnect.');
+    } finally {
+      setDisconnectingId(null);
+    }
+  };
 
   const editable = providers.filter(canEditCredentials);
   const editing = editable.find((provider) => provider.id === editingId) ?? null;
@@ -46,7 +68,10 @@ export const AppMenu = ({ onCredentialsChanged }: AppMenuProps) => {
         opened={opened}
         onChange={(next) => {
           setOpened(next);
-          if (next) void reload();
+          if (next) {
+            setDisconnectError('');
+            void reload();
+          }
         }}
         position="bottom-end"
         width={280}
@@ -62,6 +87,19 @@ export const AppMenu = ({ onCredentialsChanged }: AppMenuProps) => {
               {`Edit ${provider.displayName} credentials`}
             </Menu.Item>
           ))}
+          {editable.filter(canDisconnect).map((provider) => (
+            <Menu.Item
+              key={`${provider.id}-disconnect`}
+              closeMenuOnClick={false}
+              disabled={disconnectingId === provider.id}
+              onClick={() => void disconnect(provider)}
+            >
+              {`Disconnect ${provider.displayName}`}
+            </Menu.Item>
+          ))}
+          {disconnectError !== '' && (
+            <Text c="red" size="sm" px="sm" py={4} role="alert">{disconnectError}</Text>
+          )}
           {!loaded && editable.length === 0 && (
             <Menu.Item disabled>Loading store settings</Menu.Item>
           )}

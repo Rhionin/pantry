@@ -2,7 +2,6 @@ import { useState } from 'react';
 import { Badge, Button, Group, Stack, Text } from '@mantine/core';
 import {
   authorizeProvider,
-  disconnectProvider,
   resetProviderLedger,
 } from '../../api/client';
 import type { ProviderInfo } from '../../types';
@@ -39,19 +38,6 @@ export const ProviderPanel = ({ providers, onChanged }: ProviderPanelProps) => {
     }
   };
 
-  const disconnect = async (provider: ProviderInfo) => {
-    setPending(provider.id);
-    setError('');
-    try {
-      await disconnectProvider(provider.id);
-      onChanged();
-    } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : 'Unable to disconnect.');
-    } finally {
-      setPending('');
-    }
-  };
-
   const resetLedger = async (provider: ProviderInfo) => {
     setPending(`${provider.id}-ledger`);
     setError('');
@@ -73,7 +59,6 @@ export const ProviderPanel = ({ providers, onChanged }: ProviderPanelProps) => {
           provider={provider}
           pending={pending}
           onConnect={() => void connect(provider)}
-          onDisconnect={() => void disconnect(provider)}
           onResetLedger={() => void resetLedger(provider)}
         />
       ))}
@@ -86,13 +71,11 @@ const ProviderRow = ({
   provider,
   pending,
   onConnect,
-  onDisconnect,
   onResetLedger,
 }: {
   provider: ProviderInfo;
   pending: string;
   onConnect: () => void;
-  onDisconnect: () => void;
   onResetLedger: () => void;
 }) => {
   const busy = pending === provider.id || pending === `${provider.id}-ledger`;
@@ -116,11 +99,6 @@ const ProviderRow = ({
           {provider.credentialsConfigured && provider.connectionState === 'reauth_required' && (
             <Button size="xs" loading={busy} onClick={onConnect}>
               Reconnect
-            </Button>
-          )}
-          {provider.credentialsConfigured && provider.connectionState === 'connected' && (
-            <Button size="xs" variant="default" loading={busy} onClick={onDisconnect}>
-              Disconnect
             </Button>
           )}
           {provider.credentialsConfigured && (provider.connectionState === 'connected' || provider.connectionState === 'not_required') && (

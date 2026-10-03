@@ -47,9 +47,9 @@ describe('ProviderPanel', () => {
     expect(screen.getByRole('button', { name: 'Reconnect' })).toBeInTheDocument();
   });
 
-  it('offers Disconnect and a new-cart control when connected', () => {
+  it('offers a new-cart control when connected and leaves disconnect off the row', () => {
     renderPanel([provider({ connectionState: 'connected' })]);
-    expect(screen.getByRole('button', { name: 'Disconnect' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Disconnect' })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Start a new cart' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Save credentials' })).not.toBeInTheDocument();
     expectCredentialsStayOffTheRow();
