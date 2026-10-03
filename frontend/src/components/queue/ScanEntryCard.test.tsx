@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MantineProvider } from '@mantine/core';
 import { ScanEntryCard } from './ScanEntryCard';
 import { formatExpiryDate } from './queueUtils';
@@ -47,6 +47,7 @@ describe('ScanEntryCard stock-out review', () => {
     const card = screen.getByRole('article', { name: 'Scan 123' });
     expect(card).toHaveClass('mantine-Card-root');
     expect(card).not.toHaveClass('scan-entry-row');
+    expect(within(card).getByText('Barcode: 123')).toBeInTheDocument();
   });
 
   it('orders instances oldest first and commits the specifically selected instance', async () => {
@@ -1248,6 +1249,9 @@ describe('ScanEntryCard stock-in confirmation', () => {
     const row = screen.getByRole('article', { name: 'Scan 123' });
     expect(row).toHaveClass('scan-entry-row');
     expect(row).not.toHaveClass('mantine-Card-root');
+    expect(screen.getByRole('heading', { name: 'Milk' })).toBeInTheDocument();
+    expect(screen.queryByText('Barcode: 123')).not.toBeInTheDocument();
+    expect(row).not.toHaveTextContent('123');
     expect(screen.getByRole('button', { name: 'Decrease unit count' })).toBeDisabled();
     expect(screen.getByRole('button', { name: 'Increase unit count' })).toBeEnabled();
     expect(screen.getByLabelText('Unit count')).toHaveValue('1');

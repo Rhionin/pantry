@@ -9,11 +9,11 @@ appear in inventory. This is the core add-to-pantry flow.
 - `stock-in-scan` scanning a known barcode in stock-in mode creates a pending
   scan card stamped `stock_in`.
 - `stock-in-card` the pending scan is a flat list row, not a bordered card. It
-  shows the product name, `Barcode: <code>`, a scanned timestamp, an inline
-  thumb-sized unit-count stepper (decrease, count, increase; at least 44px),
-  a small `Add expiration` text control that reveals the date only when opened,
-  and Approve/Remove buttons. A saved date is shown as compact `Expires …` text
-  with Change and Clear.
+  shows the product name, a scanned timestamp, an inline thumb-sized unit-count
+  stepper (decrease, count, increase; at least 44px), a small `Add expiration`
+  text control that reveals the date only when opened, and Approve/Remove
+  buttons. The barcode number is not shown on the row. A saved date is shown as
+  compact `Expires …` text with Change and Clear.
 - `stock-in-approve` approving the card commits it and removes it from the queue.
 - `stock-in-inventory` the approved unit appears on the Inventory route and in
   the inventory API.
@@ -42,8 +42,9 @@ Preconditions:
 - **Scan.** `scanBarcode(page, barcode)` fills `getByRole('textbox', { name:
   'Barcode scanner input' })` and presses Enter. A `getByRole('article', { name:
   'Scan <barcode>' })` row appears under the Stock in tab.
-- **Read the row.** The row contains `Barcode: <barcode>` and a heading with
-  the product name.
+- **Read the row.** The row contains a heading with the product name. The
+  barcode number is not shown on the row. The article's accessible name is still
+  `Scan <barcode>`.
 - **Approve.** `card.getByRole('button', { name: 'Approve', exact: true
   }).click()`. The row detaches from the queue (`waitFor({ state: 'detached' })`).
 - **Confirm inventory (API view).** `readInventory(page)` returns a row whose

@@ -59,6 +59,11 @@ const scanEntry = (overrides: Partial<ScanEntry>): ScanEntry => ({
 const jsonResponse = (body: unknown) =>
   new Response(JSON.stringify(body), { status: 200, headers: { 'Content-Type': 'application/json' } });
 
+const findScan = (barcode: string) => screen.findByRole('article', { name: `Scan ${barcode}` });
+
+const scansNamed = (cards: HTMLElement[], barcodes: string[]) =>
+  cards.filter((card) => barcodes.includes(card.getAttribute('aria-label')?.replace(/^Scan /, '') ?? ''));
+
 describe('ScanQueuePage', () => {
   beforeEach(() => {
     FakeEventSource.instances = [];
@@ -555,11 +560,12 @@ describe('ScanQueuePage', () => {
     // Verify clicking Stock_In tab changes the content
     stockInTab.click();
 
-    // Now stock_in entries should be visible
-    await screen.findByText('Barcode: 222');
+    // Now stock_in entries should be visible, without the barcode number.
+    await findScan('222');
     const cardsAfterSwitch = await screen.findAllByRole('article');
     expect(cardsAfterSwitch).toHaveLength(1);
-    expect(within(cardsAfterSwitch[0]).getByText('Barcode: 222')).toBeInTheDocument();
+    expect(cardsAfterSwitch[0]).toHaveAttribute('aria-label', 'Scan 222');
+    expect(within(cardsAfterSwitch[0]).queryByText('Barcode: 222')).not.toBeInTheDocument();
   });
 
   it('follows the seeded scanner mode on a fresh mount after a prior instance was switched to Stock_In_View', async () => {
@@ -589,10 +595,11 @@ describe('ScanQueuePage', () => {
     stockInTab.click();
 
     // Verify we're now showing stock_in entries
-    await screen.findByText('Barcode: 222');
+    await findScan('222');
     const cardsAfterSwitch = await screen.findAllByRole('article');
     expect(cardsAfterSwitch).toHaveLength(1);
-    expect(within(cardsAfterSwitch[0]).getByText('Barcode: 222')).toBeInTheDocument();
+    expect(cardsAfterSwitch[0]).toHaveAttribute('aria-label', 'Scan 222');
+    expect(within(cardsAfterSwitch[0]).queryByText('Barcode: 222')).not.toBeInTheDocument();
 
     unmount();
 
@@ -615,10 +622,11 @@ describe('ScanQueuePage', () => {
     // Verify clicking Stock_In tab still works on the fresh mount
     stockInTab2.click();
 
-    await screen.findByText('Barcode: 222');
+    await findScan('222');
     const cardsAfterSwitch2 = await screen.findAllByRole('article');
     expect(cardsAfterSwitch2).toHaveLength(1);
-    expect(within(cardsAfterSwitch2[0]).getByText('Barcode: 222')).toBeInTheDocument();
+    expect(cardsAfterSwitch2[0]).toHaveAttribute('aria-label', 'Scan 222');
+    expect(within(cardsAfterSwitch2[0]).queryByText('Barcode: 222')).not.toBeInTheDocument();
   });
 
   // Regression (FEAT-003): the backend defaults the scanner mode to stock_in,
@@ -660,9 +668,9 @@ describe('ScanQueuePage', () => {
     fireEvent.change(input, { target: { value: '0123456789012' } });
     fireEvent.keyDown(input, { key: 'Enter' });
 
-    // The scan is tagged stock_in and its card is visible without a manual
+    // The scan is tagged stock_in and its row is visible without a manual
     // tab switch (it would be hidden under the Stock-in tab pre-fix).
-    expect(await screen.findByText('Barcode: 0123456789012')).toBeInTheDocument();
+    expect(await findScan('0123456789012')).toBeInTheDocument();
     expect(scanPosts).toEqual([{ barcode: '0123456789012', direction: 'stock_in' }]);
   });
 
@@ -693,10 +701,11 @@ describe('ScanQueuePage', () => {
     stockInTab.click();
 
     // Verify only the stock_in entry is rendered
-    await screen.findByText('Barcode: 111');
+    await findScan('111');
     const cards = screen.getAllByRole('article');
     expect(cards).toHaveLength(1);
-    expect(within(cards[0]).getByText('Barcode: 111')).toBeInTheDocument();
+    expect(cards[0]).toHaveAttribute('aria-label', 'Scan 111');
+    expect(within(cards[0]).queryByText('Barcode: 111')).not.toBeInTheDocument();
   });
 
   it('Stock_Out_View renders direction === "stock_out" and direction === null entries, but not stock_in', async () => {
@@ -792,13 +801,13 @@ describe('ScanQueuePage', () => {
     stockInTab.click();
 
     // Wait for the stock_in entry to appear and verify stock_out/null entries disappear
-    await screen.findByText('Barcode: 111');
+    await findScan('111');
     expect(screen.queryByText('Barcode: 222')).not.toBeInTheDocument();
     expect(screen.queryByText('Barcode: 333')).not.toBeInTheDocument();
 
     cards = screen.getAllByRole('article');
     expect(cards).toHaveLength(1);
-    expect(within(cards[0]).getByText('Barcode: 111')).toBeInTheDocument();
+    expect(within(cards[0]).queryByText('Barcode: 111')).not.toBeInTheDocument();
   });
 
   describe('Selection clearing on tab switch', () => {
@@ -837,16 +846,9 @@ describe('ScanQueuePage', () => {
       stockInTab.click();
 
       // Verify Stock_In_View displays the stock_in entry
-      await screen.findByText('Barcode: 111');
+      await findScan('111');
       const cardsAfterSwitch = screen.getAllByRole('article');
-      const cardsInStockInView = cardsAfterSwitch.filter((card) => {
-        try {
-          within(card).getByText('Barcode: 111');
-          return true;
-        } catch {
-          return false;
-        }
-      });
+      const cardsInStockInView = scansNamed(cardsAfterSwitch, ['111']);
       expect(cardsInStockInView).toHaveLength(1);
 
       // Verify the stock_in entry is not selected (selection was cleared)
@@ -880,16 +882,9 @@ describe('ScanQueuePage', () => {
       stockInTab.click();
 
       // Verify Stock_In_View displays the stock_in entry
-      await screen.findByText('Barcode: 111');
+      await findScan('111');
       let cards = screen.getAllByRole('article');
-      const cardsInStockInView = cards.filter((card) => {
-        try {
-          within(card).getByText('Barcode: 111');
-          return true;
-        } catch {
-          return false;
-        }
-      });
+      const cardsInStockInView = scansNamed(cards, ['111']);
       expect(cardsInStockInView).toHaveLength(1);
 
       // Select the entry
@@ -966,16 +961,9 @@ describe('ScanQueuePage', () => {
       stockInTab.click();
 
       // Verify Stock_In_View is now active and shows stock_in entries
-      await screen.findByText('Barcode: 111');
+      await findScan('111');
       cards = screen.getAllByRole('article');
-      const inCards = cards.filter((card) => {
-        try {
-          within(card).getByText(/Barcode: (111|222)/);
-          return true;
-        } catch {
-          return false;
-        }
-      });
+      const inCards = scansNamed(cards, ['111', '222']);
       expect(inCards).toHaveLength(2);
 
       // Verify none of the entries are selected
@@ -1018,15 +1006,8 @@ describe('ScanQueuePage', () => {
       stockInTab.click();
 
       // Verify selection was cleared
-      await screen.findByText('Barcode: 111');
-      cards = screen.getAllByRole('article').filter((card) => {
-        try {
-          within(card).getByText('Barcode: 111');
-          return true;
-        } catch {
-          return false;
-        }
-      });
+      await findScan('111');
+      cards = scansNamed(screen.getAllByRole('article'), ['111']);
       checkbox = within(cards[0]).getByRole('checkbox');
       expect(checkbox).not.toBeChecked();
 
@@ -1100,15 +1081,8 @@ describe('ScanQueuePage', () => {
       stockInTab.click();
 
       // Verify stock_in entries are not selected (selection was cleared)
-      await screen.findByText('Barcode: 111');
-      cards = screen.getAllByRole('article').filter((card) => {
-        try {
-          within(card).getByText(/Barcode: (111|222)/);
-          return true;
-        } catch {
-          return false;
-        }
-      });
+      await findScan('111');
+      cards = scansNamed(screen.getAllByRole('article'), ['111', '222']);
       const inCheckbox1 = within(cards[0]).getByRole('checkbox');
       const inCheckbox2 = within(cards[1]).getByRole('checkbox');
       expect(inCheckbox1).not.toBeChecked();
@@ -1285,17 +1259,8 @@ describe('ScanQueuePage', () => {
       stockInTab.click();
 
       // Verify we're now showing only the stock_in entry
-      await screen.findByText('Barcode: 111');
-      cards = screen.getAllByRole('article');
-      // Filter to only entries showing stock_in content
-      cards = cards.filter((card) => {
-        try {
-          within(card).getByText('Barcode: 111');
-          return true;
-        } catch {
-          return false;
-        }
-      });
+      await findScan('111');
+      cards = scansNamed(screen.getAllByRole('article'), ['111']);
       expect(cards).toHaveLength(1);
 
       // The stock_in entry should NOT be selected (selection was cleared on tab switch)
@@ -1472,15 +1437,8 @@ describe('ScanQueuePage', () => {
       selectAllCheckbox = screen.getByRole('checkbox', { name: 'Select all eligible scans for batch approval' });
       
       // Wait for stock_in entry to appear and filter cards
-      await screen.findByText('Barcode: 111');
-      cards = screen.getAllByRole('article').filter((card) => {
-        try {
-          within(card).getByText('Barcode: 111');
-          return true;
-        } catch {
-          return false;
-        }
-      });
+      await findScan('111');
+      cards = scansNamed(screen.getAllByRole('article'), ['111']);
       expect(cards).toHaveLength(1);
 
       const stockInCheckbox = within(cards[0]).getByRole('checkbox');
