@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MantineProvider } from '@mantine/core';
 import { ScanEntryCard } from './ScanEntryCard';
+import { formatExpiryDate } from './queueUtils';
 import type { ItemInstanceWithStatus, ScanEntry } from '../../types';
 
 const entry: ScanEntry = {
@@ -1203,6 +1204,156 @@ describe('ScanEntryCard expiration date input', () => {
       );
       expect(expiryError).toBeInTheDocument();
     });
+  });
+});
+
+describe('ScanEntryCard stock-in confirmation', () => {
+  const stockIn: ScanEntry = { ...entry, direction: 'stock_in' };
+
+  const renderStockIn = (overrides: Partial<ScanEntry> = {}) => render(
+    <MantineProvider>
+      <ScanEntryCard
+        entry={{ ...stockIn, ...overrides }}
+        itemId="item-1"
+        selected={false}
+        onSelectedChange={vi.fn()}
+        onChanged={vi.fn()}
+      />
+    </MantineProvider>,
+  );
+
+  it('shows a thumb stepper and keeps the expiration field collapsed', () => {
+    vi.stubGlobal('fetch', vi.fn());
+    renderStockIn();
+
+    expect(screen.getByRole('button', { name: 'Decrease unit count' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Increase unit count' })).toBeEnabled();
+    expect(screen.getByLabelText('Unit count')).toHaveValue('1');
+    expect(screen.getByRole('button', { name: 'Add expiration' })).toBeInTheDocument();
+    expect(screen.queryByLabelText('Expiration date')).not.toBeInTheDocument();
+  });
+
+  it('patches the same unit count when the stepper or the field changes it', async () => {
+    const bodies: unknown[] = [];
+    vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL, request?: RequestInit) => {
+      const url = String(input);
+      if (url === '/api/scans/scan-1') {
+        bodies.push(JSON.parse(request?.body as string));
+        const unitCount = (bodies[bodies.length - 1] as { unitCount: number }).unitCount;
+        return Promise.resolve(jsonResponse({ ...stockIn, unitCount }));
+      }
+      throw new Error(`Unexpected ${request?.method ?? 'GET'} request: ${url}`);
+    }));
+
+    renderStockIn();
+    fireEvent.click(screen.getByRole('button', { name: 'Increase unit count' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Increase unit count' }));
+
+    await waitFor(() => {
+      expect(bodies).toEqual([{ unitCount: 2 }, { unitCount: 3 }]);
+    });
+
+    const input = screen.getByLabelText('Unit count');
+    fireEvent.change(input, { target: { value: '5' } });
+    fireEvent.blur(input);
+
+    await waitFor(() => {
+      expect(bodies).toContainEqual({ unitCount: 5 });
+    });
+  });
+
+  it('steps the count down without going below one', async () => {
+    const bodies: unknown[] = [];
+    vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL, request?: RequestInit) => {
+      const url = String(input);
+      if (url === '/api/scans/scan-1') {
+        bodies.push(JSON.parse(request?.body as string));
+        return Promise.resolve(jsonResponse({ ...stockIn, unitCount: 2 }));
+      }
+      throw new Error(`Unexpected ${request?.method ?? 'GET'} request: ${url}`);
+    }));
+
+    renderStockIn({ unitCount: 3 });
+    fireEvent.click(screen.getByRole('button', { name: 'Decrease unit count' }));
+
+    await waitFor(() => {
+      expect(bodies).toEqual([{ unitCount: 2 }]);
+    });
+
+    expect(screen.getByRole('button', { name: 'Decrease unit count' })).toBeEnabled();
+  });
+
+  it('reveals the expiration field from Add expiration and saves it', async () => {
+    vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL, request?: RequestInit) => {
+      const url = String(input);
+      if (url === '/api/scans/scan-1') {
+        expect(request?.method).toBe('PATCH');
+        expect(JSON.parse(request?.body as string)).toEqual({ expiresAt: '2026-06-01T00:00:00.000Z' });
+        return Promise.resolve(jsonResponse({ ...stockIn, expiresAt: '2026-06-01T00:00:00.000Z' }));
+      }
+      throw new Error(`Unexpected ${request?.method ?? 'GET'} request: ${url}`);
+    }));
+
+    renderStockIn();
+    fireEvent.click(screen.getByRole('button', { name: 'Add expiration' }));
+    const input = screen.getByLabelText('Expiration date');
+    expect(input).toHaveValue('');
+    fireEvent.change(input, { target: { value: '2026-06-01' } });
+    fireEvent.blur(input);
+
+    await waitFor(() => {
+      expect(screen.getByText(`Expires ${formatExpiryDate('2026-06-01T00:00:00.000Z')}`)).toBeInTheDocument();
+    });
+    expect(screen.queryByLabelText('Expiration date')).not.toBeInTheDocument();
+  });
+
+  it('shows an existing expiration compactly and can change or clear it', async () => {
+    const bodies: unknown[] = [];
+    vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL, request?: RequestInit) => {
+      const url = String(input);
+      if (url === '/api/scans/scan-1') {
+        bodies.push(JSON.parse(request?.body as string));
+        return Promise.resolve(jsonResponse({ ...stockIn, expiresAt: null }));
+      }
+      throw new Error(`Unexpected ${request?.method ?? 'GET'} request: ${url}`);
+    }));
+
+    renderStockIn({ expiresAt: '2026-05-15T00:00:00Z' });
+    expect(screen.getByText(`Expires ${formatExpiryDate('2026-05-15T00:00:00.000Z')}`)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Add expiration' })).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Expiration date')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Change expiration' }));
+    const input = screen.getByLabelText('Expiration date') as HTMLInputElement;
+    expect(input).toHaveValue('2026-05-15');
+    fireEvent.change(input, { target: { value: '2026-07-04' } });
+    fireEvent.blur(input);
+
+    await waitFor(() => {
+      expect(screen.getByText(`Expires ${formatExpiryDate('2026-07-04T00:00:00.000Z')}`)).toBeInTheDocument();
+    });
+    expect(bodies[0]).toEqual({ expiresAt: '2026-07-04T00:00:00.000Z' });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Clear expiration' }));
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Add expiration' })).toBeInTheDocument();
+    });
+    expect(bodies[1]).toEqual({ expiresAt: '0001-01-01T00:00:00.000Z' });
+    expect(screen.queryByLabelText('Expiration date')).not.toBeInTheDocument();
+  });
+
+  it('cancels an opened expiration field without saving', () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    renderStockIn();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Add expiration' }));
+    expect(screen.getByLabelText('Expiration date')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel expiration' }));
+
+    expect(screen.queryByLabelText('Expiration date')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Add expiration' })).toBeInTheDocument();
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });
 

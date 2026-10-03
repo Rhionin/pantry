@@ -8,7 +8,7 @@
 // later-expiring one in inventory. Run through scripts/pantry-verify.sh:
 //   scripts/pantry-verify.sh drive scripts/drive-stock-out.mjs stock-out
 import {
-  openBrowser, createKnownProduct, scanBarcode, setScannerMode, captureProof, readInventory, assert,
+  openBrowser, createKnownProduct, scanBarcode, setScanExpiration, setScannerMode, captureProof, readInventory, assert,
 } from './harness.mjs';
 
 const BARCODE = '910000000003';
@@ -18,14 +18,12 @@ const UNIT = 'box';
 const EARLY_EXPIRY = '2030-01-10'; // rendered "Expires Jan 10, 2030"
 const LATE_EXPIRY = '2030-12-20'; // rendered "Expires Dec 20, 2030"
 
-// Stock in one instance with a specific expiry: scan in stock_in mode, set the
-// card's Expiration date, commit it on blur (Tab), then approve.
+// Stock in one instance with a specific expiry: scan in stock_in mode, open
+// Add expiration, commit the date, then approve.
 async function stockInInstance(page, expiry) {
   const card = await scanBarcode(page, BARCODE);
   await card.getByText(`Barcode: ${BARCODE}`).waitFor({ state: 'visible' });
-  const expiryInput = card.getByLabel('Expiration date');
-  await expiryInput.fill(expiry);
-  await expiryInput.press('Tab'); // onBlur PATCH persists the date before approve
+  await setScanExpiration(page, card, expiry);
   await card.getByRole('button', { name: 'Approve', exact: true }).click();
   await card.waitFor({ state: 'detached', timeout: 15_000 });
 }

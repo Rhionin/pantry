@@ -7,7 +7,7 @@
 //
 //   scripts/pantry-verify.sh drive scripts/drive-brand-deals.mjs brand-deals
 import {
-  openBrowser, createKnownProduct, scanBarcode, captureProof, assert, API_URL,
+  openBrowser, createKnownProduct, scanBarcode, setScanExpiration, captureProof, assert, API_URL,
 } from './harness.mjs';
 
 const GV = {
@@ -24,9 +24,7 @@ const TARGET = 4;
 async function stockIn(page, barcode) {
   const card = await scanBarcode(page, barcode);
   await card.getByText(`Barcode: ${barcode}`).waitFor({ state: 'visible' });
-  const expiryInput = card.getByLabel('Expiration date');
-  await expiryInput.fill('2032-06-01');
-  await expiryInput.press('Tab');
+  await setScanExpiration(page, card, '2032-06-01');
   await card.getByRole('button', { name: 'Approve', exact: true }).click();
   await card.waitFor({ state: 'detached', timeout: 15_000 });
 }

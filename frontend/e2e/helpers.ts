@@ -94,8 +94,9 @@ export const setScannerMode = async (
  * Direction is not set here: it is stamped from the scanner mode at scan time,
  * so the caller scans in the correct mode (use setScannerMode for stock_out).
  *
- * When expirationDate is provided, it is typed into the card's `Expiration
- * date` input and committed on blur. The field patches on blur via
+ * When expirationDate is provided, the stock-in card's collapsed expiration
+ * control is opened (`Add expiration`), the date is typed into `Expiration
+ * date`, and it is committed on blur. The field patches on blur via
  * `PATCH /api/scans/:id`, and approving commits the entry to inventory through
  * a separate request, so we must WAIT for that PATCH to persist before
  * approving. Otherwise a slow runner can commit the instance before its date
@@ -108,6 +109,10 @@ export const commitSelectedScan = async (
   expirationDate?: string,
 ): Promise<void> => {
   if (expirationDate !== undefined) {
+    const addExpiration = scanCard.getByRole('button', { name: 'Add expiration' })
+    if (await addExpiration.isVisible()) {
+      await addExpiration.click()
+    }
     const expiry = scanCard.getByLabel('Expiration date')
     await expiry.fill(expirationDate)
     // The date field persists on blur via PATCH /api/scans/:id, and approving
@@ -129,9 +134,9 @@ export const commitSelectedScan = async (
     )
     await expiry.blur()
     await patchResponse
-    // The persisted value is echoed back on re-render; confirm the observable
-    // state has settled before we approve.
-    await expect(expiry).toHaveValue(expirationDate)
+    // The stock-in confirmation folds the field into "Expires …" once the
+    // PATCH lands. Wait for that summary so approval cannot race the save.
+    await expect(scanCard.getByText(/^Expires /)).toBeVisible()
   }
   await scanCard.getByRole('button', { name: 'Approve', exact: true }).click()
   await expect(scanCard).toHaveCount(0)
