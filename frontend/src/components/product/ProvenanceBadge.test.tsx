@@ -53,6 +53,20 @@ describe('ProvenanceBadge', () => {
     expect(badge).toHaveTextContent('Open Pet Food Facts');
   });
 
+  it('renders a quiet source label that is not a control', () => {
+    render(
+      <MantineProvider>
+        <ProvenanceBadge externalSource="openfoodfacts" quiet />
+      </MantineProvider>,
+    );
+
+    const label = screen.getByLabelText('Product data from Open Food Facts');
+    expect(label).toHaveTextContent('Open Food Facts');
+    expect(label.closest('.mantine-Badge-root')).toBeNull();
+    expect(screen.queryByRole('button')).not.toBeInTheDocument();
+    expect(screen.queryByRole('link')).not.toBeInTheDocument();
+  });
+
   it('renders nothing when externalSource is absent', () => {
     const { container } = render(
       <ProvenanceBadge />

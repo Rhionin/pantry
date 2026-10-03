@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import fc from 'fast-check';
 import type { InventoryItem } from '../../types';
-import { mergeInventoryEvent } from './inventoryUtils';
+import { mergeInventoryEvent, visibleCategory } from './inventoryUtils';
 
 const inventoryItem = (id: string, overrides: Partial<InventoryItem> = {}): InventoryItem => ({
   item: {
@@ -17,6 +17,21 @@ const inventoryItem = (id: string, overrides: Partial<InventoryItem> = {}): Inve
   expiredCount: 0,
   needsAttention: false,
   ...overrides,
+});
+
+describe('visibleCategory', () => {
+  it('keeps a real category and drops missing values', () => {
+    expect(visibleCategory('Pastas, Past')).toBe('Pastas, Past');
+    expect(visibleCategory('  Milks  ')).toBe('Milks');
+    expect(visibleCategory('')).toBeNull();
+    expect(visibleCategory('   ')).toBeNull();
+    expect(visibleCategory('undefined')).toBeNull();
+    expect(visibleCategory('UNDEFINED')).toBeNull();
+    expect(visibleCategory('null')).toBeNull();
+    expect(visibleCategory(' Null ')).toBeNull();
+    expect(visibleCategory(undefined)).toBeNull();
+    expect(visibleCategory(null)).toBeNull();
+  });
 });
 
 describe('mergeInventoryEvent', () => {

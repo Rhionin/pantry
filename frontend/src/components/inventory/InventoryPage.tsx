@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { trackEventSource } from '../../telemetry/client';
 import { Alert, Loader, SimpleGrid, Stack, Text, TextInput, Title } from '@mantine/core';
 import { getInventoryList } from '../../api/client';
@@ -16,21 +16,33 @@ interface InventorySectionProps {
   items: InventoryItem[];
   selectedItemId: string | null;
   onSelect: (itemId: string) => void;
+  renderExpanded: (item: InventoryItem) => ReactNode;
 }
 
-const InventorySection = ({ heading, items, selectedItemId, onSelect }: InventorySectionProps) => (
+const InventorySection = ({
+  heading,
+  items,
+  selectedItemId,
+  onSelect,
+  renderExpanded,
+}: InventorySectionProps) => (
   <Stack component="section" aria-label={heading} gap="xs">
     <Title order={2} size="h4">{heading}</Title>
-    <SimpleGrid cols={{ base: 1, xs: 2, sm: 3, md: 4 }} spacing="xs">
-      {items.map((inventoryItem) => (
-        <ItemRow
-          key={inventoryItem.item.id}
-          inventoryItem={inventoryItem}
-          selected={selectedItemId === inventoryItem.item.id}
-          controlsId={`inventory-item-${inventoryItem.item.id}`}
-          onSelect={() => onSelect(inventoryItem.item.id)}
-        />
-      ))}
+    <SimpleGrid cols={{ base: 1, xs: 2, sm: 3, md: 4 }} spacing="xs" style={{ alignItems: 'start' }}>
+      {items.map((inventoryItem) => {
+        const selected = selectedItemId === inventoryItem.item.id;
+        return (
+          <ItemRow
+            key={inventoryItem.item.id}
+            inventoryItem={inventoryItem}
+            selected={selected}
+            controlsId={`inventory-item-${inventoryItem.item.id}`}
+            onSelect={() => onSelect(inventoryItem.item.id)}
+          >
+            {selected ? renderExpanded(inventoryItem) : null}
+          </ItemRow>
+        );
+      })}
     </SimpleGrid>
   </Stack>
 );
@@ -74,11 +86,29 @@ export const InventoryPage = () => {
   );
   const needsAttentionItems = filteredItems.filter((item) => item.needsAttention);
   const otherItems = filteredItems.filter((item) => !item.needsAttention);
-  const selectedItem = inventoryItems.find((item) => item.item.id === selectedItemId);
 
   const selectItem = (itemId: string) => {
     setSelectedItemId((current) => current === itemId ? null : itemId);
   };
+
+  const renderExpanded = (inventoryItem: InventoryItem) => (
+    <Stack gap="sm">
+      <ItemInstanceList
+        itemId={inventoryItem.item.id}
+        productName={inventoryItem.item.product.name}
+        onInventoryChanged={() => void loadInventory()}
+      />
+      <SuggestionPanel
+        itemId={inventoryItem.item.id}
+        productName={inventoryItem.item.product.name}
+        onTargetQuantitySaved={() => void loadInventory()}
+      />
+      <ProductEditor
+        productId={inventoryItem.item.productId}
+        onSaved={() => void loadInventory()}
+      />
+    </Stack>
+  );
 
   return (
     <Stack gap="sm">
@@ -109,6 +139,7 @@ export const InventoryPage = () => {
             items={needsAttentionItems}
             selectedItemId={selectedItemId}
             onSelect={selectItem}
+            renderExpanded={renderExpanded}
           />
         </Alert>
       )}
@@ -118,25 +149,8 @@ export const InventoryPage = () => {
           items={otherItems}
           selectedItemId={selectedItemId}
           onSelect={selectItem}
+          renderExpanded={renderExpanded}
         />
-      )}
-      {selectedItem !== undefined && (
-        <Stack gap="sm">
-          <ItemInstanceList
-            itemId={selectedItem.item.id}
-            productName={selectedItem.item.product.name}
-            onInventoryChanged={() => void loadInventory()}
-          />
-          <SuggestionPanel
-            itemId={selectedItem.item.id}
-            productName={selectedItem.item.product.name}
-            onTargetQuantitySaved={() => void loadInventory()}
-          />
-          <ProductEditor
-            productId={selectedItem.item.productId}
-            onSaved={() => void loadInventory()}
-          />
-        </Stack>
       )}
       <WipeInventoryDialog
         onWiped={() => {
