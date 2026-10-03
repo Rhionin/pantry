@@ -93,7 +93,10 @@ func TestPublicProxyIsOptIn(t *testing.T) {
 		"{$ACME_EMAIL}",
 		"import auth.caddy",
 		"path /api/telemetry /api/telemetry/client",
+		"path /brand/logo.png /terms /privacy",
 		"path /api/events",
+		"Do not add other API paths to this matcher.",
+		"This is not an API exception.",
 		"reverse_proxy pantry:8080",
 		"flush_interval -1",
 		"route {",
@@ -106,13 +109,38 @@ func TestPublicProxyIsOptIn(t *testing.T) {
 			t.Fatalf("Caddyfile missing %q", want)
 		}
 	}
-	telemetryAt := strings.Index(text, "path /api/telemetry /api/telemetry/client")
 	authAt := strings.Index(text, "import auth.caddy")
-	if telemetryAt < 0 || authAt < 0 || telemetryAt > authAt {
-		t.Fatal("telemetry path exception must be configured before basic auth is imported")
+	if authAt < 0 {
+		t.Fatal("Caddyfile must import auth.caddy")
+	}
+	// Only these exact paths are reachable before basic auth. Anything else,
+	// including /favicon.ico, /health, and the rest of /brand, stays in the
+	// password handle.
+	publicMatchers := pathMatchers(text[:authAt])
+	wantPublic := []string{
+		"path /api/telemetry /api/telemetry/client",
+		"path /brand/logo.png /terms /privacy",
+	}
+	if strings.Join(publicMatchers, "\n") != strings.Join(wantPublic, "\n") {
+		t.Fatalf("public path matchers = %#v, want %#v", publicMatchers, wantPublic)
+	}
+	for _, matcher := range publicMatchers {
+		if strings.Contains(matcher, "*") {
+			t.Fatalf("public matcher %q is a prefix", matcher)
+		}
+	}
+	telemetryMatcher := publicMatchers[0]
+	for _, legal := range []string{"/brand/", "/terms", "/privacy"} {
+		if strings.Contains(telemetryMatcher, legal) {
+			t.Fatalf("telemetry matcher must not include %s", legal)
+		}
+	}
+	authedMatchers := pathMatchers(text[authAt:])
+	if strings.Join(authedMatchers, "\n") != "path /api/events" {
+		t.Fatalf("path matchers after basic auth = %#v, want only /api/events", authedMatchers)
 	}
 	beforeAuth := text[:authAt]
-	for _, closed := range []string{"/api/inventory", "/api/scans", "/api/events", "/health"} {
+	for _, closed := range []string{"/api/inventory", "/api/scans", "/api/events", "/health", "/favicon.ico"} {
 		if strings.Contains(beforeAuth, closed) {
 			t.Fatalf("path %s is outside basic auth", closed)
 		}
@@ -211,6 +239,27 @@ func TestPublicProxyIsOptIn(t *testing.T) {
 	if !strings.Contains(text, "Do not publish port 8080") {
 		t.Fatal("Caddyfile must keep the warning that port 8080 is not the hairpin workaround")
 	}
+}
+
+// pathMatchers returns every Caddy `path` matcher, in source order.
+// Comment lines are skipped so a note about a path is not treated as a route.
+func pathMatchers(text string) []string {
+	var got []string
+	for _, line := range strings.Split(text, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		const marker = " path "
+		if i := strings.Index(line, marker); i >= 0 {
+			got = append(got, strings.TrimSpace(line[i+1:]))
+			continue
+		}
+		if strings.HasPrefix(line, "path ") {
+			got = append(got, line)
+		}
+	}
+	return got
 }
 
 func hasExactPort(ports []string, want string) bool {

@@ -42,7 +42,7 @@ After `git pull` on the Pi, from `deploy/`:
 sudo ./setup.sh
 ```
 
-That one command is the whole update. It copies `deploy/` to `/opt/pantry`, starts the containers from the compose file you just pulled (including the public HTTPS proxy when `PUBLIC_HOST` is set and `/opt/pantry/auth.caddy` is already there), restarts Caddy so the current `Caddyfile` is what is serving, applies the LAN firewall for the published Pantry port, and republishes `pantry.local` when Avahi is installed. That Caddyfile leaves `GET /api/telemetry` and `POST /api/telemetry/client` public. Run it again any time. Existing `.env` values stay, an existing `auth.caddy` is not regenerated, and a site that is already on the public internet stays there. LAN `http://<pi-ip>:8080` stays up. The public name still hangs on home Wi-Fi until the router hairpins or you use the LAN address; see [Home Wi-Fi hangs on the public name](#home-wi-fi-hangs-on-the-public-name).
+That one command is the whole update. It copies `deploy/` to `/opt/pantry`, starts the containers from the compose file you just pulled (including the public HTTPS proxy when `PUBLIC_HOST` is set and `/opt/pantry/auth.caddy` is already there), restarts Caddy so the current `Caddyfile` is what is serving, applies the LAN firewall for the published Pantry port, and republishes `pantry.local` when Avahi is installed. That Caddyfile leaves `GET /api/telemetry`, `POST /api/telemetry/client`, `GET /brand/logo.png`, `GET /terms`, and `GET /privacy` public. Run it again any time. Existing `.env` values stay, an existing `auth.caddy` is not regenerated, and a site that is already on the public internet stays there. LAN `http://<pi-ip>:8080` stays up. The public name still hangs on home Wi-Fi until the router hairpins or you use the LAN address; see [Home Wi-Fi hangs on the public name](#home-wi-fi-hangs-on-the-public-name).
 
 `sudo ./setup.sh firewall-off` removes the port rule until the next setup. To leave it off, set `PANTRY_LAN_FIREWALL=off` in `/opt/pantry/.env` and run `sudo ./setup.sh` again.
 
@@ -133,7 +133,7 @@ sudo ./setup.sh status
 
 This puts the Pantry UI on a hostname you already own, with HTTPS, using the same Docker Compose stack. The recommended name is a subdomain (`pantry.rhionin.com`) so the bare domain can stay unused.
 
-The public site asks for one shared password before it serves the UI, the API, and the live scan stream. That stops scanners and other bots that do not have the password. It is not separate accounts, and anyone who has the password can change the pantry. Two paths stay open without that password: `GET /api/telemetry` and `POST /api/telemetry/client`. The snapshot is counters and durations only — no barcodes, product names, or user ids — so an agent can `curl` it. The home-network address `http://<pi-ip>:8080` does not ask for the password, so do not forward port 8080 on the router.
+The public site asks for one shared password before it serves the UI, the API, and the live scan stream. That stops scanners and other bots that do not have the password. It is not separate accounts, and anyone who has the password can change the pantry. These exact paths stay open without that password: `GET /api/telemetry`, `POST /api/telemetry/client`, `GET /brand/logo.png`, `GET /terms`, and `GET /privacy`. The snapshot is counters and durations only — no barcodes, product names, or user ids — so an agent can `curl` it. The brand mark and the two legal pages are public because a grocery login stores those URLs. The home-network address `http://<pi-ip>:8080` does not ask for the password, so do not forward port 8080 on the router.
 
 The path below is Caddy in the `public` Compose profile, a Let's Encrypt certificate, and an A record at Squarespace. It needs a public IPv4 address and the ability to forward TCP ports 80 and 443. If your ISP uses CGNAT, skip to [When port forwarding cannot work](#when-port-forwarding-cannot-work).
 
@@ -241,7 +241,15 @@ The timing snapshot does not use the password. From the same phone:
 curl -fsS https://pantry.rhionin.com/api/telemetry
 ```
 
-Expect JSON with a `pageLoad` object. A `401` on `/health` without a password is still correct. `/api/telemetry` and `/api/telemetry/client` are the only paths Caddy serves without the password. The `sudo ./setup.sh` above is what puts that Caddyfile in front of the site.
+Expect JSON with a `pageLoad` object. A `401` on `/health` without a password is still correct. Caddy also serves these exact paths without the password:
+
+```bash
+curl -fsS -D - -o /dev/null https://pantry.rhionin.com/brand/logo.png
+curl -fsS -D - -o /dev/null https://pantry.rhionin.com/terms
+curl -fsS -D - -o /dev/null https://pantry.rhionin.com/privacy
+```
+
+Expect `200` with `image/png` for the mark and `text/html` for the two pages. `/favicon.ico`, `/health`, and every other path still require the password. The `sudo ./setup.sh` above is what puts that Caddyfile in front of the site. An image update does not reload it.
 
 To change the password, edit `BASIC_AUTH_PASSWORD`, remove `/opt/pantry/auth.caddy`, and run `sudo ./setup.sh` again. Leaving `auth.caddy` in place keeps the current hash, so a routine setup does not regenerate it or ask you to type the password again. Browsers that saved the old password will ask again after the hash changes.
 
@@ -323,7 +331,7 @@ sudo docker compose --profile public logs --tail=80 caddy
 | Browser warning, certificate name mismatch | `PUBLIC_HOST` and the Squarespace host are not the same name. They must match exactly. |
 | `https://` works at home but not on cellular | The phone is still using the LAN address, or the forward is wrong. Test on cellular. |
 | `https://` hangs on home Wi-Fi and loads on cellular | The router is not hairpinning. Pantry is reachable at `http://<pi-ip>:8080` and, when Avahi is installed, `http://pantry.local:8080`. See [Home Wi-Fi hangs on the public name](#home-wi-fi-hangs-on-the-public-name). |
-| Browser or curl gets `401` | The shared password is missing or does not match `.env`. A request with no password is supposed to be rejected, except `GET /api/telemetry` and `POST /api/telemetry/client`, which are public. Edit `BASIC_AUTH_PASSWORD`, remove `/opt/pantry/auth.caddy`, and run `sudo ./setup.sh`. |
+| Browser or curl gets `401` | The shared password is missing or does not match `.env`. A request with no password is supposed to be rejected, except `GET /api/telemetry`, `POST /api/telemetry/client`, `GET /brand/logo.png`, `GET /terms`, and `GET /privacy`, which are public. Edit `BASIC_AUTH_PASSWORD`, remove `/opt/pantry/auth.caddy`, and run `sudo ./setup.sh`. |
 | UI loads, but the scan queue never updates live | `/api/events` is being buffered. `deploy/Caddyfile` must keep `flush_interval -1` on that path. Run `sudo ./setup.sh` after pulling a fresh `Caddyfile`. |
 
 ### When port forwarding cannot work
@@ -338,7 +346,7 @@ Two free options, neither of which is wired into this repo. Pick one; do not run
 
 Forwarding 80 and 443 to a computer in the house is a different risk from a VPN or a tunnel. The Pi is on your LAN. Anyone who gets past the shared password is on a process that can read the pantry database, change inventory, and, if you connected Kroger, use the refresh token stored in that database. A bug or a guessed password is not confined to a cloud VM. A tunnel or Tailscale does not put a listening port on the home router; the router path does.
 
-The shared password is one secret for the whole household. Caddy applies it to every path on the public hostname except `GET /api/telemetry` and `POST /api/telemetry/client`. Those two are public so the timing snapshot can be read without credentials. The snapshot has no barcodes, product names, or user ids. Inventory, scans, shopping, static files, `/health`, and `/api/events` stay behind the password. There is no lockout and no rate limit in this Caddy build, so the password needs to be long (12 to 72 characters, and longer is better). The LAN address `http://<pi-ip>:8080` never asks for it. That is deliberate. Do not publish that port.
+The shared password is one secret for the whole household. Caddy applies it to every path on the public hostname except `GET /api/telemetry`, `POST /api/telemetry/client`, `GET /brand/logo.png`, `GET /terms`, and `GET /privacy`. The telemetry paths are public so the timing snapshot can be read without credentials. The snapshot has no barcodes, product names, or user ids. The brand mark and the legal pages are public because a grocery developer app fetches those exact URLs. Inventory, scans, shopping, other static files, `/health`, and `/api/events` stay behind the password. There is no lockout and no rate limit in this Caddy build, so the password needs to be long (12 to 72 characters, and longer is better). The LAN address `http://<pi-ip>:8080` never asks for it. That is deliberate. Do not publish that port.
 
 Kroger client secrets and refresh tokens are stored in `pantry.db` as plain text. The HTTP API does not return them. A copy of the database (a backup, or the Docker volume) does. Treat `pantry.db` like a password file. The app has no login of its own: if Caddy is stopped or mis-mounted and something else forwards port 8080, every route is open, including wiping inventory (the body must contain `WIPE INVENTORY`) and saving a Kroger client secret.
 

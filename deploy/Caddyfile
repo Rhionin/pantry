@@ -13,7 +13,7 @@
 	admin off
 }
 
-# Same browser headers on the public timing paths and on the password-protected site.
+# Same browser headers on the public paths and on the password-protected site.
 (security_headers) {
 	header {
 		Strict-Transport-Security "max-age=31536000; includeSubDomains"
@@ -40,8 +40,22 @@
 		}
 	}
 
+	# Exact URLs a grocery developer app stores permanently: the brand mark,
+	# terms of use, and privacy policy. path is exact, so /brand/logo.png
+	# does not open /brand/ and /terms does not open /terms/anything.
+	# This is not an API exception. Do not add /api paths here, and do not
+	# replace these three with a prefix.
+	@public path /brand/logo.png /terms /privacy
+	handle @public {
+		route {
+			import security_headers
+			encode gzip
+			reverse_proxy pantry:8080
+		}
+	}
+
 	# Everything else asks for the shared password. basic_auth lives in this
-	# handle so the telemetry handle above is the only public exception.
+	# handle so the telemetry and public handles above are the only exceptions.
 	handle {
 		route {
 			import auth.caddy

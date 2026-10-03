@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 
+	"github.com/Rhionin/pantry/internal/brand"
 	"github.com/Rhionin/pantry/internal/cart"
 	"github.com/Rhionin/pantry/internal/cart/appcred"
 	"github.com/Rhionin/pantry/internal/cart/connection"
@@ -137,6 +138,9 @@ func NewHandler(
 	root.Handle("/api/", apiMux)
 	root.Handle("/health", apiMux)
 	root.Handle("/health/", apiMux)
+	// Exact public URLs. Registered before the SPA catch-all so /terms and
+	// /privacy are these pages, not the app shell.
+	brand.Register(root)
 	root.Handle("/", webui.NewHandler())
 
 	return observeHTTP(reg, secureHeaders(root)), scanQueue

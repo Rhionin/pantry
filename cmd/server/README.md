@@ -56,7 +56,7 @@ For Raspberry Pi deployment with a USB barcode scanner:
 3. The container will automatically reconnect if the scanner is unplugged
    and replugged
 
-Public HTTPS, for a hostname you own, is an optional step on top of that LAN install. See `deploy/README.md` (Public Internet access). The public site asks for one shared password. The timing snapshot is the exception: `https://<your-host>/api/telemetry` is readable without that password.
+Public HTTPS, for a hostname you own, is an optional step on top of that LAN install. See `deploy/README.md` (Public Internet access). The public site asks for one shared password. A few exact paths stay open: the timing snapshot at `https://<your-host>/api/telemetry`, plus `https://<your-host>/brand/logo.png`, `https://<your-host>/terms`, and `https://<your-host>/privacy`.
 
 On the same LAN as the Pi, that public hostname hangs when the router does not hairpin traffic aimed at its own WAN address. Cellular data is outside that path, so the same URL loads there. From home Wi-Fi, open `http://<pi-ip>:8080` (or `http://pantry.local:8080` after setup publishes it). That LAN listener has no password. Details and the Gryphon steps are in `deploy/README.md`.
 
@@ -106,7 +106,9 @@ curl -s https://pantry.rhionin.com/api/telemetry
 ```
 
 `POST /api/telemetry/client` is public on that hostname as well, so the page
-can report timings. Every other path still asks for the shared password. The
+can report timings. `GET /brand/logo.png`, `GET /terms`, and `GET /privacy`
+are public too, because a grocery developer app stores those URLs and fetches
+them with no password. Every other path still asks for the shared password. The
 LAN listener on `:8080` is unchanged: it has no password. The footer link
 Diagnostics renders `pageLoad` for someone at the screen. On a Pi that is
 already public, `sudo ./setup.sh` is what loads the Caddyfile exception.
