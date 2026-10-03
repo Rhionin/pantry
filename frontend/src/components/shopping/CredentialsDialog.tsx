@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Button, Group, Modal, NativeSelect, PasswordInput, Stack, Text, TextInput } from '@mantine/core';
+import { Button, Divider, Group, Modal, NativeSelect, PasswordInput, Stack, Text, TextInput } from '@mantine/core';
 import { clearProviderCredentials, saveProviderCredentials } from '../../api/client';
 import type { ProviderInfo } from '../../types';
 
@@ -8,23 +8,53 @@ export interface CredentialsDialogProps {
   opened: boolean;
   onClose: () => void;
   onChanged: () => void;
+  onDisconnect?: () => void;
+  disconnecting?: boolean;
+  disconnectError?: string;
 }
 
-export const CredentialsDialog = ({ provider, opened, onClose, onChanged }: CredentialsDialogProps) => {
+export const CredentialsDialog = ({
+  provider,
+  opened,
+  onClose,
+  onChanged,
+  onDisconnect,
+  disconnecting = false,
+  disconnectError = '',
+}: CredentialsDialogProps) => {
   const saved = provider?.credentials;
   return (
     <Modal
       opened={opened && provider !== null}
       onClose={onClose}
-      title={provider === null ? 'Credentials' : `${provider.displayName} credentials`}
+      title={provider === null ? 'Connection' : `${provider.displayName} connection`}
       size="sm"
     >
       {opened && provider !== null && (
-        <CredentialForm
-          key={`${provider.id}:${saved?.source ?? ''}:${saved?.clientId ?? ''}:${saved?.redirectUri ?? ''}:${saved?.modality ?? ''}:${saved?.secretSet ? '1' : '0'}`}
-          provider={provider}
-          onChanged={onChanged}
-        />
+        <Stack gap="sm">
+          <CredentialForm
+            key={`${provider.id}:${saved?.source ?? ''}:${saved?.clientId ?? ''}:${saved?.redirectUri ?? ''}:${saved?.modality ?? ''}:${saved?.secretSet ? '1' : '0'}`}
+            provider={provider}
+            onChanged={onChanged}
+          />
+          {onDisconnect !== undefined && (
+            <Stack gap="xs">
+              <Divider />
+              <Button
+                size="xs"
+                type="button"
+                variant="default"
+                loading={disconnecting}
+                onClick={onDisconnect}
+              >
+                {`Disconnect ${provider.displayName}`}
+              </Button>
+              {disconnectError !== '' && (
+                <Text c="red" size="sm" role="alert">{disconnectError}</Text>
+              )}
+            </Stack>
+          )}
+        </Stack>
       )}
     </Modal>
   );

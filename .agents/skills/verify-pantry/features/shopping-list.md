@@ -25,10 +25,12 @@ inventory changes only when the bought item is later stocked in.
 - Open `Shopping List` (`/shopping`) to view entries, add an item, mark
   purchased, or remove. With a store connected, `Add to <store> cart` and
   `Start a new cart` stay on the page.
-- Change store credentials from the header menu: `Menu`, then `Edit Kroger
-  credentials`. Saving and `Clear saved credentials` stay in that dialog.
-  `Disconnect Kroger` is in that same menu, and only while Kroger is connected.
-  The same menu reaches `Diagnostics` and the build id.
+- Change the store connection from the header menu: `Menu`, then `Manage
+  Kroger connection`. That dialog edits credentials (`Save credentials`,
+  `Clear saved credentials`) and, only while Kroger is connected, offers
+  `Disconnect Kroger`. The form does not replace the shopping page. The same
+  menu reaches `Diagnostics`. The build id is in the menu's `Build` section,
+  not in the action list.
 - Set a target quantity from `Inventory` (`/inventory`): open a product's `View
   instances`, then use its `Target quantity` panel.
 
@@ -70,12 +72,12 @@ the materialized derived row purchased directly and confirms inventory stays at
 `1 bag`.
 
 Credential fields (`Client ID`, `Client secret`, `Redirect URI`, `Modality`,
-`Save credentials`) are absent until `Menu` → `Edit Kroger credentials`.
+`Save credentials`) are absent until `Menu` → `Manage Kroger connection`.
 `scripts/drive-shopping-connected.mjs` proves that phone layout with Kroger
 already connected, then saves a modality change from the dialog. `Disconnect
-Kroger` is in the header menu, not on the shopping page. When Kroger is not
-connected yet, the same credentials item opens the dialog; the form does not
-replace the shopping page.
+Kroger` is in that same dialog, only while connected, not on the shopping page.
+When Kroger is not connected yet, the same menu item opens the dialog so
+credentials can still be edited; the form does not replace the shopping page.
 
 ## Gotchas
 
@@ -98,6 +100,7 @@ replace the shopping page.
   inventory will not be selectable for a manual add.
 - Store credential fields are not rendered on the shopping page. Open
   `getByRole('button', { name: 'Menu' })`, then
-  `getByRole('menuitem', { name: 'Edit Kroger credentials' })`. A saved secret
+  `getByRole('menuitem', { name: 'Manage Kroger connection' })`. A saved secret
   still shows `A client secret is saved and is not shown.` and `Clear saved
-  credentials` inside that dialog.
+  credentials` inside that dialog. While connected, the dialog also shows
+  `Disconnect Kroger`.

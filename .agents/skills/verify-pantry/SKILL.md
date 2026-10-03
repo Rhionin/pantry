@@ -18,7 +18,8 @@ that external lookup and seeds products locally instead.
 
 **Primary surface: the web UI.** Three routes cover everything a user does:
 `/` (Scan Queue), `/inventory` (Inventory), `/shopping` (Shopping List). The
-header menu opens `/diagnostics` for page-load timings and shows the build id.
+header menu opens `/diagnostics` for page-load timings, manages the Kroger
+connection, and shows the build id under a Build heading.
 There is also a headless
 HID/stdin scanner path and the raw HTTP API; those are secondary and noted in
 the feature map, but proofs drive the web UI unless a feature has no UI entry

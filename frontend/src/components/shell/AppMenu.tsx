@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Burger, Menu, Text } from '@mantine/core';
+import { Burger, Menu } from '@mantine/core';
 import { useNavigate } from 'react-router-dom';
 import { disconnectProvider, listProviders } from '../../api/client';
 import type { ProviderInfo } from '../../types';
@@ -51,6 +51,7 @@ export const AppMenu = ({ onCredentialsChanged }: AppMenuProps) => {
       await disconnectProvider(provider.id);
       await reload();
       onCredentialsChanged();
+      setEditingId(null);
       setOpened(false);
     } catch (requestError) {
       setDisconnectError(requestError instanceof Error ? requestError.message : 'Unable to disconnect.');
@@ -69,7 +70,6 @@ export const AppMenu = ({ onCredentialsChanged }: AppMenuProps) => {
         onChange={(next) => {
           setOpened(next);
           if (next) {
-            setDisconnectError('');
             void reload();
           }
         }}
@@ -83,23 +83,16 @@ export const AppMenu = ({ onCredentialsChanged }: AppMenuProps) => {
         </Menu.Target>
         <Menu.Dropdown>
           {editable.map((provider) => (
-            <Menu.Item key={provider.id} onClick={() => setEditingId(provider.id)}>
-              {`Edit ${provider.displayName} credentials`}
-            </Menu.Item>
-          ))}
-          {editable.filter(canDisconnect).map((provider) => (
             <Menu.Item
-              key={`${provider.id}-disconnect`}
-              closeMenuOnClick={false}
-              disabled={disconnectingId === provider.id}
-              onClick={() => void disconnect(provider)}
+              key={provider.id}
+              onClick={() => {
+                setDisconnectError('');
+                setEditingId(provider.id);
+              }}
             >
-              {`Disconnect ${provider.displayName}`}
+              {`Manage ${provider.displayName} connection`}
             </Menu.Item>
           ))}
-          {disconnectError !== '' && (
-            <Text c="red" size="sm" px="sm" py={4} role="alert">{disconnectError}</Text>
-          )}
           {!loaded && editable.length === 0 && (
             <Menu.Item disabled>Loading store settings</Menu.Item>
           )}
@@ -107,18 +100,32 @@ export const AppMenu = ({ onCredentialsChanged }: AppMenuProps) => {
             <Menu.Item disabled>{loadError}</Menu.Item>
           )}
           <Menu.Item onClick={() => navigate('/diagnostics')}>Diagnostics</Menu.Item>
-          <div className="app-menu-build">
-            <BuildStamp />
+          <div className="app-menu-about">
+            <Menu.Divider />
+            <Menu.Label className="app-menu-about-label">Build</Menu.Label>
+            <div className="app-menu-build">
+              <BuildStamp />
+            </div>
           </div>
         </Menu.Dropdown>
       </Menu>
       <CredentialsDialog
         provider={editing}
         opened={editing !== null}
-        onClose={() => setEditingId(null)}
+        onClose={() => {
+          setEditingId(null);
+          setDisconnectError('');
+        }}
         onChanged={() => {
           void reload().then(() => onCredentialsChanged());
         }}
+        onDisconnect={editing !== null && canDisconnect(editing)
+          ? () => {
+              if (editing !== null) void disconnect(editing);
+            }
+          : undefined}
+        disconnecting={editing !== null && disconnectingId === editing.id}
+        disconnectError={disconnectError}
       />
     </>
   );
