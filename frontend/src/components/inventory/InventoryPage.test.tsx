@@ -101,6 +101,35 @@ describe('InventoryPage', () => {
     expect(fetchMock).toHaveBeenCalledWith('/api/inventory', expect.any(Object));
   });
 
+  it('hides a missing category and keeps the source label out of the controls', async () => {
+    const pineapple = inventoryItem('pineapple', 'Crushed Pineapple', 'undefined', false);
+    pineapple.item.product.externalSource = 'openfoodfacts';
+    const fetchMock = vi.fn(() => Promise.resolve(jsonResponse([
+      pineapple,
+      inventoryItem('milk', 'Evaporated milk', '', false),
+      inventoryItem('pasta', 'Lasagna', 'Pastas', false),
+    ])));
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<MantineProvider><InventoryPage /></MantineProvider>);
+
+    await screen.findByText('Crushed Pineapple');
+    expect(screen.queryByText(/^undefined$/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/^null$/i)).not.toBeInTheDocument();
+    expect(screen.getByText('Pastas')).toBeInTheDocument();
+
+    const articleNamed = (name: string) => screen.getAllByRole('article').find((article) =>
+      within(article).queryByRole('heading', { name }) !== null,
+    );
+    const pineappleArticle = articleNamed('Crushed Pineapple');
+    const milkArticle = articleNamed('Evaporated milk');
+    expect(pineappleArticle).toBeDefined();
+    expect(milkArticle).toBeDefined();
+    const source = within(pineappleArticle as HTMLElement).getByText('Open Food Facts');
+    expect(source.closest('a, button, .mantine-Badge-root')).toBeNull();
+    expect(within(milkArticle as HTMLElement).queryByText('Open Food Facts')).not.toBeInTheDocument();
+  });
+
   it('fetches instances only after an item is selected', async () => {
     const fetchMock = vi.fn((input: RequestInfo | URL) => {
       const url = String(input);
@@ -122,7 +151,8 @@ describe('InventoryPage', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'View instances' }));
 
-    await screen.findByRole('heading', { name: 'Sourdough instances' });
+    const article = screen.getByRole('article');
+    await within(article).findByRole('heading', { name: 'Sourdough instances' });
     await waitFor(() => expect(fetchMock).toHaveBeenCalledWith(
       '/api/inventory/bread/instances',
       expect.any(Object),

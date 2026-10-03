@@ -69,7 +69,7 @@ export const ItemInstanceList = ({
   return (
     <Stack id={`inventory-item-${itemId}`} component="section" aria-labelledby={`instances-${itemId}`} gap="xs">
       <Group justify="space-between">
-        <Title id={`instances-${itemId}`} order={3} size="h5">{productName} instances</Title>
+        <Title id={`instances-${itemId}`} order={4} size="sm">{productName} instances</Title>
         <Button size="xs" onClick={() => setAddModalOpened(true)}>Add instance</Button>
       </Group>
       {loading && <Loader aria-label="Loading item instances" />}
