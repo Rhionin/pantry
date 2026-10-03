@@ -21,9 +21,9 @@ const KR = {
 const UNIT = 'can';
 const TARGET = 4;
 
-async function stockIn(page, barcode) {
+async function stockIn(page, { barcode, name }) {
   const card = await scanBarcode(page, barcode);
-  await card.getByText(`Barcode: ${barcode}`).waitFor({ state: 'visible' });
+  await card.getByRole('heading', { name, exact: true }).waitFor({ state: 'visible' });
   await setScanExpiration(page, card, '2032-06-01');
   await card.getByRole('button', { name: 'Approve', exact: true }).click();
   await card.waitFor({ state: 'detached', timeout: 15_000 });
@@ -56,8 +56,8 @@ try {
 
   await page.goto('/');
   await page.getByText('Mode: stock_in').waitFor({ state: 'visible', timeout: 10_000 });
-  await stockIn(page, GV.barcode);
-  await stockIn(page, KR.barcode);
+  await stockIn(page, GV);
+  await stockIn(page, KR);
   await setTarget(page, GV.name);
   await setTarget(page, KR.name);
 

@@ -1210,27 +1210,99 @@ describe('ScanEntryCard expiration date input', () => {
 describe('ScanEntryCard stock-in confirmation', () => {
   const stockIn: ScanEntry = { ...entry, direction: 'stock_in' };
 
-  const renderStockIn = (overrides: Partial<ScanEntry> = {}) => render(
+  const renderStockIn = (overrides: Partial<ScanEntry> = {}, onChanged = vi.fn()) => render(
     <MantineProvider>
       <ScanEntryCard
         entry={{ ...stockIn, ...overrides }}
         itemId="item-1"
         selected={false}
         onSelectedChange={vi.fn()}
-        onChanged={vi.fn()}
+        onChanged={onChanged}
       />
     </MantineProvider>,
   );
 
-  it('shows a thumb stepper and keeps the expiration field collapsed', () => {
+  const savedExpiry = (iso: string) => `Exp ${formatExpiryDate(iso)}`;
+
+  it('shows the name, a thumb stepper, Approve, and Remove with the expiration field collapsed', () => {
     vi.stubGlobal('fetch', vi.fn());
     renderStockIn();
 
+    expect(screen.getByRole('heading', { name: 'Milk' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Decrease unit count' })).toBeDisabled();
     expect(screen.getByRole('button', { name: 'Increase unit count' })).toBeEnabled();
     expect(screen.getByLabelText('Unit count')).toHaveValue('1');
+    expect(screen.getByRole('button', { name: 'Approve' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Remove' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Add expiration' })).toBeInTheDocument();
     expect(screen.queryByLabelText('Expiration date')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/Product data from/)).not.toBeInTheDocument();
+  });
+
+  it('labels a product from Open Food Facts', () => {
+    vi.stubGlobal('fetch', vi.fn());
+    renderStockIn({
+      product: { id: 'product-1', name: 'Milk', category: 'Dairy', unitOfMeasure: 'carton', externalSource: 'openfoodfacts' },
+    });
+
+    expect(screen.getByLabelText('Product data from Open Food Facts')).toHaveTextContent('Open Food Facts');
+  });
+
+  it('approves the scan with no instance choice', async () => {
+    const fetchMock = vi.fn((input: RequestInfo | URL, request?: RequestInit) => {
+      const url = String(input);
+      if (url === '/api/scans/scan-1/commit') return Promise.resolve(jsonResponse({ ...stockIn, status: 'committed' }));
+      throw new Error(`Unexpected ${request?.method ?? 'GET'} request: ${url}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const onChanged = vi.fn();
+    renderStockIn({}, onChanged);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Approve' }));
+
+    await waitFor(() => expect(onChanged).toHaveBeenCalled());
+    const [, request] = fetchMock.mock.calls[0];
+    expect(request?.method).toBe('POST');
+    expect(JSON.parse(request?.body as string)).toEqual({});
+  });
+
+  it('shows an approve failure without leaving the row', async () => {
+    vi.stubGlobal('fetch', vi.fn(() => Promise.reject(new Error('Network error'))));
+    renderStockIn();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Approve' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Network error');
+    expect(screen.getByRole('button', { name: 'Approve' })).toBeEnabled();
+  });
+
+  it('removes the scan by cancelling it', async () => {
+    const bodies: unknown[] = [];
+    vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL, request?: RequestInit) => {
+      const url = String(input);
+      if (url === '/api/scans/scan-1') {
+        bodies.push(JSON.parse(request?.body as string));
+        return Promise.resolve(jsonResponse({ ...stockIn, status: 'cancelled' }));
+      }
+      throw new Error(`Unexpected ${request?.method ?? 'GET'} request: ${url}`);
+    }));
+    const onChanged = vi.fn();
+    renderStockIn({}, onChanged);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Remove' }));
+
+    await waitFor(() => expect(onChanged).toHaveBeenCalled());
+    expect(bodies).toEqual([{ status: 'cancelled' }]);
+  });
+
+  it('shows a remove failure and keeps the scan', async () => {
+    vi.stubGlobal('fetch', vi.fn(() => Promise.reject({ statusCode: 500 })));
+    renderStockIn();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Remove' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Unable to remove scan.');
+    expect(screen.getByRole('article', { name: 'Scan 123' })).toBeInTheDocument();
   });
 
   it('patches the same unit count when the stepper or the field changes it', async () => {
@@ -1283,6 +1355,16 @@ describe('ScanEntryCard stock-in confirmation', () => {
     expect(screen.getByRole('button', { name: 'Decrease unit count' })).toBeEnabled();
   });
 
+  it('keeps the confirmed count when a stepper save fails', async () => {
+    vi.stubGlobal('fetch', vi.fn(() => Promise.reject(new Error('Network error'))));
+    renderStockIn();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Increase unit count' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Unable to update unit count.');
+    expect(screen.getByLabelText('Unit count')).toHaveValue('1');
+  });
+
   it('reveals the expiration field from Add expiration and saves it', async () => {
     vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL, request?: RequestInit) => {
       const url = String(input);
@@ -1297,17 +1379,62 @@ describe('ScanEntryCard stock-in confirmation', () => {
     renderStockIn();
     fireEvent.click(screen.getByRole('button', { name: 'Add expiration' }));
     const input = screen.getByLabelText('Expiration date');
+    expect(input).toHaveFocus();
     expect(input).toHaveValue('');
+    expect(screen.queryByRole('button', { name: 'Clear expiration' })).not.toBeInTheDocument();
     fireEvent.change(input, { target: { value: '2026-06-01' } });
     fireEvent.blur(input);
 
-    await waitFor(() => {
-      expect(screen.getByText(`Expires ${formatExpiryDate('2026-06-01T00:00:00.000Z')}`)).toBeInTheDocument();
-    });
+    expect(await screen.findByRole('button', { name: savedExpiry('2026-06-01T00:00:00.000Z') })).toBeInTheDocument();
     expect(screen.queryByLabelText('Expiration date')).not.toBeInTheDocument();
   });
 
-  it('shows an existing expiration compactly and can change or clear it', async () => {
+  it('shows a saved expiration as compact text that opens the editor', () => {
+    vi.stubGlobal('fetch', vi.fn());
+    renderStockIn({ expiresAt: '2026-05-15T00:00:00Z' });
+
+    const summary = screen.getByRole('button', { name: savedExpiry('2026-05-15T00:00:00.000Z') });
+    expect(summary).toHaveAccessibleDescription('Change expiration');
+    expect(screen.queryByRole('button', { name: 'Add expiration' })).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Expiration date')).not.toBeInTheDocument();
+
+    fireEvent.click(summary);
+
+    const input = screen.getByLabelText('Expiration date');
+    expect(input).toHaveValue('2026-05-15');
+    expect(input).toHaveFocus();
+  });
+
+  it('keeps the editor open while focus moves to Clear and Cancel, and saves once focus leaves it', async () => {
+    const bodies: unknown[] = [];
+    vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL, request?: RequestInit) => {
+      const url = String(input);
+      if (url === '/api/scans/scan-1') {
+        bodies.push(JSON.parse(request?.body as string));
+        return Promise.resolve(jsonResponse({ ...stockIn, expiresAt: '2026-07-04T00:00:00.000Z' }));
+      }
+      throw new Error(`Unexpected ${request?.method ?? 'GET'} request: ${url}`);
+    }));
+    renderStockIn({ expiresAt: '2026-05-15T00:00:00Z' });
+
+    fireEvent.click(screen.getByRole('button', { name: savedExpiry('2026-05-15T00:00:00.000Z') }));
+    const input = screen.getByLabelText('Expiration date');
+    const clear = screen.getByRole('button', { name: 'Clear expiration' });
+    const cancel = screen.getByRole('button', { name: 'Cancel expiration' });
+    fireEvent.change(input, { target: { value: '2026-07-04' } });
+    fireEvent.blur(input, { relatedTarget: clear });
+    fireEvent.blur(clear, { relatedTarget: cancel });
+
+    expect(screen.getByLabelText('Expiration date')).toHaveValue('2026-07-04');
+    expect(bodies).toEqual([]);
+
+    fireEvent.blur(cancel, { relatedTarget: screen.getByRole('button', { name: 'Approve' }) });
+
+    expect(await screen.findByRole('button', { name: savedExpiry('2026-07-04T00:00:00.000Z') })).toBeInTheDocument();
+    expect(bodies).toEqual([{ expiresAt: '2026-07-04T00:00:00.000Z' }]);
+  });
+
+  it('clears a saved expiration from the editor and returns focus to Add expiration', async () => {
     const bodies: unknown[] = [];
     vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL, request?: RequestInit) => {
       const url = String(input);
@@ -1317,43 +1444,41 @@ describe('ScanEntryCard stock-in confirmation', () => {
       }
       throw new Error(`Unexpected ${request?.method ?? 'GET'} request: ${url}`);
     }));
-
     renderStockIn({ expiresAt: '2026-05-15T00:00:00Z' });
-    expect(screen.getByText(`Expires ${formatExpiryDate('2026-05-15T00:00:00.000Z')}`)).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Add expiration' })).not.toBeInTheDocument();
-    expect(screen.queryByLabelText('Expiration date')).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Change expiration' }));
-    const input = screen.getByLabelText('Expiration date') as HTMLInputElement;
-    expect(input).toHaveValue('2026-05-15');
-    fireEvent.change(input, { target: { value: '2026-07-04' } });
-    fireEvent.blur(input);
-
-    await waitFor(() => {
-      expect(screen.getByText(`Expires ${formatExpiryDate('2026-07-04T00:00:00.000Z')}`)).toBeInTheDocument();
-    });
-    expect(bodies[0]).toEqual({ expiresAt: '2026-07-04T00:00:00.000Z' });
-
+    fireEvent.click(screen.getByRole('button', { name: savedExpiry('2026-05-15T00:00:00.000Z') }));
     fireEvent.click(screen.getByRole('button', { name: 'Clear expiration' }));
-    await waitFor(() => {
-      expect(screen.getByRole('button', { name: 'Add expiration' })).toBeInTheDocument();
-    });
-    expect(bodies[1]).toEqual({ expiresAt: '0001-01-01T00:00:00.000Z' });
+
+    expect(await screen.findByRole('button', { name: 'Add expiration' })).toHaveFocus();
+    expect(bodies).toEqual([{ expiresAt: '0001-01-01T00:00:00.000Z' }]);
     expect(screen.queryByLabelText('Expiration date')).not.toBeInTheDocument();
   });
 
-  it('cancels an opened expiration field without saving', () => {
+  it('cancels an opened expiration field without saving and returns focus to its control', () => {
     const fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);
-    renderStockIn();
+    renderStockIn({ expiresAt: '2026-05-15T00:00:00Z' });
 
-    fireEvent.click(screen.getByRole('button', { name: 'Add expiration' }));
-    expect(screen.getByLabelText('Expiration date')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: savedExpiry('2026-05-15T00:00:00.000Z') }));
+    fireEvent.change(screen.getByLabelText('Expiration date'), { target: { value: '2026-09-09' } });
     fireEvent.click(screen.getByRole('button', { name: 'Cancel expiration' }));
 
     expect(screen.queryByLabelText('Expiration date')).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Add expiration' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: savedExpiry('2026-05-15T00:00:00.000Z') })).toHaveFocus();
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('keeps the editor open on the saved date when saving fails', async () => {
+    vi.stubGlobal('fetch', vi.fn(() => Promise.reject(new Error('Network error'))));
+    renderStockIn();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Add expiration' }));
+    const input = screen.getByLabelText('Expiration date');
+    fireEvent.change(input, { target: { value: '2026-06-01' } });
+    fireEvent.blur(input);
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Unable to update expiration date.');
+    expect(screen.getByLabelText('Expiration date')).toHaveValue('');
   });
 });
 

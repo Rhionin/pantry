@@ -274,108 +274,218 @@ code {
   min-width: 0;
 }
 
+/* Stock-in confirmation: one row whose height is the 44px stepper target.
+   The name column stacks the product name over the expiration control, so
+   the control costs no height while closed. The row has no gap because the
+   stepper buttons carry their own whitespace; that width goes to the name. */
+.scan-entry-row {
+  display: flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 2px 2px 2px 6px;
+}
+
+.scan-entry-row > .scan-entry-check {
+  flex: none;
+  width: auto;
+  margin-right: 6px;
+}
+
+.scan-entry-row-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+.scan-entry-row-name .mantine-Title-root {
+  max-width: 100%;
+  font-size: 0.92rem;
+  line-height: 1.25;
+}
+
+/* The provenance badge shares the expiration line when both fit and drops
+   under it on a phone, so the expiration control never moves. */
+.scan-entry-row-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  column-gap: 6px;
+  max-width: 100%;
+}
+
+.scan-entry-row-meta .mantine-Badge-root {
+  max-width: 100%;
+}
+
+.scan-entry-row-expiry {
+  box-sizing: border-box;
+  max-width: 100%;
+  min-height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--mantine-color-dimmed);
+  font: inherit;
+  font-size: var(--mantine-font-size-xs);
+  line-height: 24px;
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+button.scan-entry-row-expiry {
+  cursor: pointer;
+}
+
+/* A saved date is a value, not a prompt: full contrast, with a dotted
+   underline as the only hint that tapping it edits or clears the date. */
+.scan-entry-row-expiry--set {
+  color: var(--mantine-color-text);
+  text-decoration: underline dotted var(--mantine-color-dimmed);
+  text-underline-offset: 3px;
+}
+
 .scan-entry-stepper {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
   flex: none;
-}
-
-.scan-entry-stepper-value {
-  width: 4.5rem;
-  flex: none;
-  --input-height: 48px;
 }
 
 .scan-entry-stepper-btn {
   box-sizing: border-box;
-  width: 48px;
-  height: 48px;
-  min-width: 48px;
-  min-height: 48px;
+  width: 44px;
+  height: 44px;
   padding: 0;
   margin: 0;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  font-size: 1.75rem;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--mantine-color-text);
+  font-family: inherit;
+  font-size: 1.4rem;
   font-weight: 500;
   line-height: 1;
-  font-family: inherit;
-  color: var(--mantine-color-text);
-  background-color: var(--mantine-color-body);
-  border: 1px solid var(--mantine-color-default-border);
-  border-radius: var(--mantine-radius-md);
   cursor: pointer;
   touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
 }
 
-.scan-entry-stepper-btn:hover:not(:disabled) {
+.scan-entry-stepper-btn:active:not(:disabled) {
   background-color: var(--mantine-color-default-hover);
 }
 
 .scan-entry-stepper-btn:disabled {
-  opacity: 0.45;
+  opacity: 0.35;
   cursor: not-allowed;
 }
 
 .scan-entry-stepper-btn:focus-visible {
   outline: 2px solid var(--mantine-primary-color-filled);
-  outline-offset: 2px;
+  outline-offset: -2px;
 }
 
+.scan-entry-stepper-value {
+  flex: none;
+}
+
+/* Two digits wide until the count needs more, so the name keeps that width.
+   16px is the smallest size iOS Safari focuses without zooming the page. */
 .scan-entry-stepper .mantine-Input-input {
-  min-height: 48px;
-  height: 48px;
-  text-align: center;
-  font-size: 1.25rem;
-  font-weight: 650;
-  padding-inline: 0;
-}
-
-.scan-entry-expiry-slot {
-  flex: 1 0 100%;
-}
-
-.scan-entry-expiry-editor {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.scan-entry-expiry-summary {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0 12px;
-  color: var(--mantine-color-dimmed);
-  font-size: var(--mantine-font-size-sm);
-}
-
-.scan-entry-add-expiry,
-.scan-entry-expiry-action {
-  box-sizing: border-box;
+  width: calc(max(2, var(--unit-count-digits, 2)) * 1ch + 8px);
+  height: 44px;
   min-height: 44px;
-  padding: 0 2px;
+  padding: 0;
+  border-radius: 4px;
+  text-align: center;
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.scan-entry-stepper .mantine-Input-input:focus {
+  box-shadow: inset 0 -2px 0 var(--mantine-primary-color-filled);
+}
+
+.scan-entry-row-approve {
+  flex: none;
+  padding-inline: 8px;
+}
+
+.scan-entry-row-remove {
+  flex: none;
+  width: 32px;
+  min-width: 32px;
+  height: 44px;
+  min-height: 44px;
+  margin-left: 4px;
+  color: var(--mantine-color-dimmed);
+  --cb-icon-size: 16px;
+}
+
+/* Opened on request only; it closes back into the name column on save.
+   The left inset lines the date field up under the product name. */
+.scan-entry-row-editor {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 8px 6px 28px;
+}
+
+.scan-entry-row-editor .scan-entry-expiry {
+  width: 9.5rem;
+}
+
+.scan-entry-row-editor .mantine-Input-input {
+  font-size: 16px;
+}
+
+.scan-entry-row-link {
+  box-sizing: border-box;
+  min-height: 36px;
+  padding: 0 6px;
   border: 0;
+  border-radius: 4px;
   background: transparent;
   color: var(--mantine-color-dimmed);
   font-family: inherit;
   font-size: var(--mantine-font-size-sm);
-  font-weight: 400;
   line-height: 1.2;
   cursor: pointer;
 }
 
-.scan-entry-add-expiry:hover,
-.scan-entry-expiry-action:hover {
-  color: var(--mantine-color-text);
+@media (hover: hover) {
+  .scan-entry-stepper-btn:hover:not(:disabled) {
+    background-color: var(--mantine-color-default-hover);
+  }
+
+  button.scan-entry-row-expiry:hover,
+  .scan-entry-row-link:hover {
+    color: var(--mantine-color-text);
+  }
+
+  .scan-entry-row-remove:hover {
+    color: var(--mantine-color-red-filled);
+  }
 }
 
-.scan-entry-add-expiry:focus-visible,
-.scan-entry-expiry-action:focus-visible {
+.scan-entry-row-expiry:focus-visible {
   outline: 2px solid var(--mantine-primary-color-filled);
-  outline-offset: 2px;
+  outline-offset: 1px;
+}
+
+.scan-entry-row-link:focus-visible {
+  outline: 2px solid var(--mantine-primary-color-filled);
+  outline-offset: -2px;
+}
+
+.scan-entry-row-alerts {
+  padding: 0 6px 6px;
 }
 
 .scan-entry-extra {

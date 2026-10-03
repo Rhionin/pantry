@@ -134,9 +134,9 @@ export const commitSelectedScan = async (
     )
     await expiry.blur()
     await patchResponse
-    // The stock-in confirmation folds the field into "Expires …" once the
+    // The stock-in confirmation folds the field into "Exp …" once the
     // PATCH lands. Wait for that summary so approval cannot race the save.
-    await expect(scanCard.getByText(/^Expires /)).toBeVisible()
+    await expect(scanCard.getByText(/^Exp /)).toBeVisible()
   }
   await scanCard.getByRole('button', { name: 'Approve', exact: true }).click()
   await expect(scanCard).toHaveCount(0)

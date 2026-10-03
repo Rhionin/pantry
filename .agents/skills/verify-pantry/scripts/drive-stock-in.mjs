@@ -23,7 +23,6 @@ try {
   await page.getByText('Mode: stock_in').waitFor({ state: 'visible', timeout: 10_000 });
 
   const card = await scanBarcode(page, BARCODE);
-  await card.getByText(`Barcode: ${BARCODE}`).waitFor({ state: 'visible' });
   await card.getByRole('heading', { name: PRODUCT }).waitFor({ state: 'visible' });
 
   // Approve the single pending scan via its per-card Approve button.

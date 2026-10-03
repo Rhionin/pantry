@@ -8,11 +8,12 @@ appear in inventory. This is the core add-to-pantry flow.
 
 - `stock-in-scan` scanning a known barcode in stock-in mode creates a pending
   scan card stamped `stock_in`.
-- `stock-in-card` the card shows the product name, `Barcode: <code>`, a scanned
-  timestamp, a thumb-sized unit-count stepper (decrease, count, increase), an
-  `Add expiration` control that expands the expiration date only when opened,
-  and Approve/Remove buttons. A saved date is shown as compact `Expires …` text
-  with Change and Clear.
+- `stock-in-card` the card is one row: the product name, a thumb-sized
+  unit-count stepper (decrease, count, increase), Approve, and Remove. Under the
+  name, a short `Add expiration` control opens the date field only when asked.
+  A saved date reads `Exp <date>` (for example `Exp May 28, 2030`) and reopens
+  the field with Clear and Cancel. An Open Food Facts product keeps its
+  provenance label under the name. The barcode and scan time are not shown.
 - `stock-in-approve` approving the card commits it and removes it from the queue.
 - `stock-in-inventory` the approved unit appears on the Inventory route and in
   the inventory API.
@@ -41,8 +42,9 @@ Preconditions:
 - **Scan.** `scanBarcode(page, barcode)` fills `getByRole('textbox', { name:
   'Barcode scanner input' })` and presses Enter. A `getByRole('article', { name:
   'Scan <barcode>' })` card appears under the Stock in tab.
-- **Read the card.** The card contains `Barcode: <barcode>` and a heading with
-  the product name.
+- **Read the card.** The card is named `Scan <barcode>` and contains a heading
+  with the product name. `getByRole('textbox', { name: 'Unit count', exact:
+  true })` reads `1`.
 - **Approve.** `card.getByRole('button', { name: 'Approve', exact: true
   }).click()`. The card detaches from the queue (`waitFor({ state: 'detached' })`).
 - **Confirm inventory (API view).** `readInventory(page)` returns a row whose
@@ -69,3 +71,8 @@ Preconditions:
   Wait for the card to appear or detach, not a fixed delay.
 - The card's direction is stamped from the current scanner mode at scan time.
   A `stock_in` scan only appears under the Stock in tab.
+- `getByLabel('Unit count')` also matches the `Decrease unit count` and
+  `Increase unit count` buttons. Use `getByRole('textbox', { name: 'Unit count',
+  exact: true })` for the field.
+- A saved date is a button named by its text (`Exp May 28, 2030`). `Change
+  expiration` is its description, not its name.

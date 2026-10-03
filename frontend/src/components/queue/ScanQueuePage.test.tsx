@@ -537,7 +537,7 @@ describe('ScanQueuePage', () => {
 
     // The visible tab follows the seeded scanner mode (stock_out). Wait for
     // the seeded view to settle before asserting the active tab.
-    await screen.findByText('Barcode: 111');
+    await screen.findByRole('article', { name: 'Scan 111' });
 
     // Find tabs by their ID attributes to ensure we get the correct tab elements
     const stockOutTab = screen.getByRole('tab', { name: 'Stock out' });
@@ -550,16 +550,16 @@ describe('ScanQueuePage', () => {
     // Verify the grid shows only stock_out entries (direction === 'stock_out' or null)
     const cards = screen.getAllByRole('article');
     expect(cards).toHaveLength(1);
-    expect(within(cards[0]).getByText('Barcode: 111')).toBeInTheDocument();
+    expect(cards[0]).toHaveAccessibleName('Scan 111');
 
     // Verify clicking Stock_In tab changes the content
     stockInTab.click();
 
     // Now stock_in entries should be visible
-    await screen.findByText('Barcode: 222');
+    await screen.findByRole('article', { name: 'Scan 222' });
     const cardsAfterSwitch = await screen.findAllByRole('article');
     expect(cardsAfterSwitch).toHaveLength(1);
-    expect(within(cardsAfterSwitch[0]).getByText('Barcode: 222')).toBeInTheDocument();
+    expect(cardsAfterSwitch[0]).toHaveAccessibleName('Scan 222');
   });
 
   it('follows the seeded scanner mode on a fresh mount after a prior instance was switched to Stock_In_View', async () => {
@@ -584,15 +584,15 @@ describe('ScanQueuePage', () => {
 
     // First mount: let the seeded stock_out view settle, then switch to
     // Stock_In_View.
-    await screen.findByText('Barcode: 111');
+    await screen.findByRole('article', { name: 'Scan 111' });
     const stockInTab = screen.getByRole('tab', { name: 'Stock in' });
     stockInTab.click();
 
     // Verify we're now showing stock_in entries
-    await screen.findByText('Barcode: 222');
+    await screen.findByRole('article', { name: 'Scan 222' });
     const cardsAfterSwitch = await screen.findAllByRole('article');
     expect(cardsAfterSwitch).toHaveLength(1);
-    expect(within(cardsAfterSwitch[0]).getByText('Barcode: 222')).toBeInTheDocument();
+    expect(cardsAfterSwitch[0]).toHaveAccessibleName('Scan 222');
 
     unmount();
 
@@ -603,7 +603,7 @@ describe('ScanQueuePage', () => {
     // Let the seeded stock_out view settle before asserting the active tab.
     const cards2 = await screen.findAllByRole('article');
     expect(cards2).toHaveLength(1);
-    expect(within(cards2[0]).getByText('Barcode: 111')).toBeInTheDocument();
+    expect(cards2[0]).toHaveAccessibleName('Scan 111');
 
     const stockOutTab2 = screen.getByRole('tab', { name: 'Stock out' });
     const stockInTab2 = screen.getByRole('tab', { name: 'Stock in' });
@@ -615,10 +615,10 @@ describe('ScanQueuePage', () => {
     // Verify clicking Stock_In tab still works on the fresh mount
     stockInTab2.click();
 
-    await screen.findByText('Barcode: 222');
+    await screen.findByRole('article', { name: 'Scan 222' });
     const cardsAfterSwitch2 = await screen.findAllByRole('article');
     expect(cardsAfterSwitch2).toHaveLength(1);
-    expect(within(cardsAfterSwitch2[0]).getByText('Barcode: 222')).toBeInTheDocument();
+    expect(cardsAfterSwitch2[0]).toHaveAccessibleName('Scan 222');
   });
 
   // Regression (FEAT-003): the backend defaults the scanner mode to stock_in,
@@ -662,7 +662,7 @@ describe('ScanQueuePage', () => {
 
     // The scan is tagged stock_in and its card is visible without a manual
     // tab switch (it would be hidden under the Stock-in tab pre-fix).
-    expect(await screen.findByText('Barcode: 0123456789012')).toBeInTheDocument();
+    expect(await screen.findByRole('article', { name: 'Scan 0123456789012' })).toBeInTheDocument();
     expect(scanPosts).toEqual([{ barcode: '0123456789012', direction: 'stock_in' }]);
   });
 
@@ -688,15 +688,15 @@ describe('ScanQueuePage', () => {
     render(<MantineProvider><ScanQueuePage /></MantineProvider>);
 
     // Let the seeded stock_out view settle, then switch to Stock_In_View.
-    await screen.findByText('Barcode: 222');
+    await screen.findByRole('article', { name: 'Scan 222' });
     const stockInTab = screen.getByRole('tab', { name: 'Stock in' });
     stockInTab.click();
 
     // Verify only the stock_in entry is rendered
-    await screen.findByText('Barcode: 111');
+    await screen.findByRole('article', { name: 'Scan 111' });
     const cards = screen.getAllByRole('article');
     expect(cards).toHaveLength(1);
-    expect(within(cards[0]).getByText('Barcode: 111')).toBeInTheDocument();
+    expect(cards[0]).toHaveAccessibleName('Scan 111');
   });
 
   it('Stock_Out_View renders direction === "stock_out" and direction === null entries, but not stock_in', async () => {
@@ -756,8 +756,8 @@ describe('ScanQueuePage', () => {
     expect(within(cards[1]).getByText('Barcode: 444')).toBeInTheDocument();
 
     // Verify stock_in entries are NOT in the document
-    expect(screen.queryByText('Barcode: 111')).not.toBeInTheDocument();
-    expect(screen.queryByText('Barcode: 222')).not.toBeInTheDocument();
+    expect(screen.queryByRole('article', { name: 'Scan 111' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('article', { name: 'Scan 222' })).not.toBeInTheDocument();
   });
 
   it('switching from Stock_Out_View to Stock_In_View renders only stock_in entries', async () => {
@@ -784,21 +784,21 @@ describe('ScanQueuePage', () => {
     // Initially Stock_Out_View should be active and showing stock_out and null-direction entries
     let cards = await screen.findAllByRole('article');
     expect(cards).toHaveLength(2);
-    expect(within(cards[0]).getByText('Barcode: 222')).toBeInTheDocument();
-    expect(within(cards[1]).getByText('Barcode: 333')).toBeInTheDocument();
+    expect(cards[0]).toHaveAccessibleName('Scan 222');
+    expect(cards[1]).toHaveAccessibleName('Scan 333');
 
     // Switch to Stock_In_View
     const stockInTab = screen.getByRole('tab', { name: 'Stock in' });
     stockInTab.click();
 
     // Wait for the stock_in entry to appear and verify stock_out/null entries disappear
-    await screen.findByText('Barcode: 111');
-    expect(screen.queryByText('Barcode: 222')).not.toBeInTheDocument();
-    expect(screen.queryByText('Barcode: 333')).not.toBeInTheDocument();
+    await screen.findByRole('article', { name: 'Scan 111' });
+    expect(screen.queryByRole('article', { name: 'Scan 222' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('article', { name: 'Scan 333' })).not.toBeInTheDocument();
 
     cards = screen.getAllByRole('article');
     expect(cards).toHaveLength(1);
-    expect(within(cards[0]).getByText('Barcode: 111')).toBeInTheDocument();
+    expect(cards[0]).toHaveAccessibleName('Scan 111');
   });
 
   describe('Selection clearing on tab switch', () => {
@@ -825,7 +825,7 @@ describe('ScanQueuePage', () => {
       // Start in Stock_Out_View with 1 eligible entry
       const cards = await screen.findAllByRole('article');
       expect(cards).toHaveLength(1);
-      expect(within(cards[0]).getByText('Barcode: 222')).toBeInTheDocument();
+      expect(cards[0]).toHaveAccessibleName('Scan 222');
 
       // Select the entry
       const checkbox = within(cards[0]).getByRole('checkbox');
@@ -837,16 +837,7 @@ describe('ScanQueuePage', () => {
       stockInTab.click();
 
       // Verify Stock_In_View displays the stock_in entry
-      await screen.findByText('Barcode: 111');
-      const cardsAfterSwitch = screen.getAllByRole('article');
-      const cardsInStockInView = cardsAfterSwitch.filter((card) => {
-        try {
-          within(card).getByText('Barcode: 111');
-          return true;
-        } catch {
-          return false;
-        }
-      });
+      const cardsInStockInView = await screen.findAllByRole('article', { name: 'Scan 111' });
       expect(cardsInStockInView).toHaveLength(1);
 
       // Verify the stock_in entry is not selected (selection was cleared)
@@ -875,21 +866,12 @@ describe('ScanQueuePage', () => {
       render(<MantineProvider><ScanQueuePage /></MantineProvider>);
 
       // Let the seeded stock_out view settle, then switch to Stock_In_View.
-      await screen.findByText('Barcode: 222');
+      await screen.findByRole('article', { name: 'Scan 222' });
       const stockInTab = screen.getByRole('tab', { name: 'Stock in' });
       stockInTab.click();
 
       // Verify Stock_In_View displays the stock_in entry
-      await screen.findByText('Barcode: 111');
-      let cards = screen.getAllByRole('article');
-      const cardsInStockInView = cards.filter((card) => {
-        try {
-          within(card).getByText('Barcode: 111');
-          return true;
-        } catch {
-          return false;
-        }
-      });
+      const cardsInStockInView = await screen.findAllByRole('article', { name: 'Scan 111' });
       expect(cardsInStockInView).toHaveLength(1);
 
       // Select the entry
@@ -902,16 +884,7 @@ describe('ScanQueuePage', () => {
       stockOutTab.click();
 
       // Verify Stock_Out_View displays the stock_out entry
-      await screen.findByText('Barcode: 222');
-      cards = screen.getAllByRole('article');
-      const cardsInStockOutView = cards.filter((card) => {
-        try {
-          within(card).getByText('Barcode: 222');
-          return true;
-        } catch {
-          return false;
-        }
-      });
+      const cardsInStockOutView = await screen.findAllByRole('article', { name: 'Scan 222' });
       expect(cardsInStockOutView).toHaveLength(1);
 
       // Verify the stock_out entry is not selected (selection was cleared)
@@ -942,15 +915,7 @@ describe('ScanQueuePage', () => {
       render(<MantineProvider><ScanQueuePage /></MantineProvider>);
 
       // Start in Stock_Out_View with 2 eligible entries
-      let cards = await screen.findAllByRole('article');
-      const outCards = cards.filter((card) => {
-        try {
-          within(card).getByText(/Barcode: (333|444)/);
-          return true;
-        } catch {
-          return false;
-        }
-      });
+      const outCards = await screen.findAllByRole('article', { name: /^Scan (333|444)$/ });
       expect(outCards).toHaveLength(2);
 
       // Select both entries
@@ -966,16 +931,7 @@ describe('ScanQueuePage', () => {
       stockInTab.click();
 
       // Verify Stock_In_View is now active and shows stock_in entries
-      await screen.findByText('Barcode: 111');
-      cards = screen.getAllByRole('article');
-      const inCards = cards.filter((card) => {
-        try {
-          within(card).getByText(/Barcode: (111|222)/);
-          return true;
-        } catch {
-          return false;
-        }
-      });
+      const inCards = await screen.findAllByRole('article', { name: /^Scan (111|222)$/ });
       expect(inCards).toHaveLength(2);
 
       // Verify none of the entries are selected
@@ -1018,15 +974,7 @@ describe('ScanQueuePage', () => {
       stockInTab.click();
 
       // Verify selection was cleared
-      await screen.findByText('Barcode: 111');
-      cards = screen.getAllByRole('article').filter((card) => {
-        try {
-          within(card).getByText('Barcode: 111');
-          return true;
-        } catch {
-          return false;
-        }
-      });
+      cards = await screen.findAllByRole('article', { name: 'Scan 111' });
       checkbox = within(cards[0]).getByRole('checkbox');
       expect(checkbox).not.toBeChecked();
 
@@ -1039,15 +987,7 @@ describe('ScanQueuePage', () => {
       stockOutTab.click();
 
       // Verify selection was cleared again
-      await screen.findByText('Barcode: 222');
-      cards = screen.getAllByRole('article').filter((card) => {
-        try {
-          within(card).getByText('Barcode: 222');
-          return true;
-        } catch {
-          return false;
-        }
-      });
+      cards = await screen.findAllByRole('article', { name: 'Scan 222' });
       checkbox = within(cards[0]).getByRole('checkbox');
       expect(checkbox).not.toBeChecked();
     });
@@ -1075,21 +1015,14 @@ describe('ScanQueuePage', () => {
       render(<MantineProvider><ScanQueuePage /></MantineProvider>);
 
       // Start in Stock_Out_View
-      await screen.findByText('Barcode: 333');
+      await screen.findByRole('article', { name: 'Scan 333' });
 
       // Use Select_All_Control to select all eligible entries in Stock_Out_View
       const selectAllCheckbox = screen.getByRole('checkbox', { name: 'Select all eligible scans for batch approval' });
       selectAllCheckbox.click();
 
       // Verify all eligible entries are selected
-      let cards = screen.getAllByRole('article').filter((card) => {
-        try {
-          within(card).getByText(/Barcode: (333|444)/);
-          return true;
-        } catch {
-          return false;
-        }
-      });
+      let cards = screen.getAllByRole('article', { name: /^Scan (333|444)$/ });
       const checkbox1 = within(cards[0]).getByRole('checkbox');
       const checkbox2 = within(cards[1]).getByRole('checkbox');
       expect(checkbox1).toBeChecked();
@@ -1100,15 +1033,7 @@ describe('ScanQueuePage', () => {
       stockInTab.click();
 
       // Verify stock_in entries are not selected (selection was cleared)
-      await screen.findByText('Barcode: 111');
-      cards = screen.getAllByRole('article').filter((card) => {
-        try {
-          within(card).getByText(/Barcode: (111|222)/);
-          return true;
-        } catch {
-          return false;
-        }
-      });
+      cards = await screen.findAllByRole('article', { name: /^Scan (111|222)$/ });
       const inCheckbox1 = within(cards[0]).getByRole('checkbox');
       const inCheckbox2 = within(cards[1]).getByRole('checkbox');
       expect(inCheckbox1).not.toBeChecked();
@@ -1269,8 +1194,8 @@ describe('ScanQueuePage', () => {
       // Start in Stock_Out_View with 2 eligible entries
       let cards = await screen.findAllByRole('article');
       expect(cards).toHaveLength(2); // stock-out-1 and stock-out-2
-      expect(within(cards[0]).getByText('Barcode: 222')).toBeInTheDocument();
-      expect(within(cards[1]).getByText('Barcode: 333')).toBeInTheDocument();
+      expect(cards[0]).toHaveAccessibleName('Scan 222');
+      expect(cards[1]).toHaveAccessibleName('Scan 333');
 
       // Use Select_All_Control in Stock_Out_View - should select only the 2 visible entries
       const selectAllCheckbox = screen.getByRole('checkbox', { name: 'Select all eligible scans for batch approval' });
@@ -1285,17 +1210,7 @@ describe('ScanQueuePage', () => {
       stockInTab.click();
 
       // Verify we're now showing only the stock_in entry
-      await screen.findByText('Barcode: 111');
-      cards = screen.getAllByRole('article');
-      // Filter to only entries showing stock_in content
-      cards = cards.filter((card) => {
-        try {
-          within(card).getByText('Barcode: 111');
-          return true;
-        } catch {
-          return false;
-        }
-      });
+      cards = await screen.findAllByRole('article', { name: 'Scan 111' });
       expect(cards).toHaveLength(1);
 
       // The stock_in entry should NOT be selected (selection was cleared on tab switch)
@@ -1419,49 +1334,14 @@ describe('ScanQueuePage', () => {
       
       // In Stock_Out_View, only the stock_out entry and undirected are shown
       // but only stock_out is eligible (undirected is not eligible because direction === null)
-      let cards = screen.getAllByRole('article');
-      // Filter to entries in Stock_Out_View (showing barcodes 222 and 333)
-      cards = cards.filter((card) => {
-        try {
-          within(card).getByText(/Barcode: (222|333)/);
-          return true;
-        } catch {
-          return false;
-        }
-      });
+      let cards = screen.getAllByRole('article', { name: /^Scan (222|333)$/ });
       expect(cards).toHaveLength(2);
 
       // Use Select_All_Control - should only select the stock_out entry
       selectAllCheckbox.click();
 
-      // Find the cards again after click
-      cards = screen.getAllByRole('article').filter((card) => {
-        try {
-          within(card).getByText(/Barcode: (222|333)/);
-          return true;
-        } catch {
-          return false;
-        }
-      });
-
-      // The first card should be the stock_out entry (222), second is undirected (333)
-      let stockOutCheckbox: HTMLElement | null = null;
-      let undirectedCheckbox: HTMLElement | null = null;
-      for (const card of cards) {
-        try {
-          within(card).getByText('Barcode: 222');
-          stockOutCheckbox = within(card).getByRole('checkbox');
-        } catch {
-          // not this card
-        }
-        try {
-          within(card).getByText('Barcode: 333');
-          undirectedCheckbox = within(card).getByRole('checkbox');
-        } catch {
-          // not this card
-        }
-      }
-
+      const stockOutCheckbox = within(screen.getByRole('article', { name: 'Scan 222' })).getByRole('checkbox');
+      const undirectedCheckbox = within(screen.getByRole('article', { name: 'Scan 333' })).getByRole('checkbox');
       expect(stockOutCheckbox).toBeChecked(); // eligible in this view
       expect(undirectedCheckbox).not.toBeChecked(); // ineligible (direction === null)
 
@@ -1472,15 +1352,7 @@ describe('ScanQueuePage', () => {
       selectAllCheckbox = screen.getByRole('checkbox', { name: 'Select all eligible scans for batch approval' });
       
       // Wait for stock_in entry to appear and filter cards
-      await screen.findByText('Barcode: 111');
-      cards = screen.getAllByRole('article').filter((card) => {
-        try {
-          within(card).getByText('Barcode: 111');
-          return true;
-        } catch {
-          return false;
-        }
-      });
+      cards = await screen.findAllByRole('article', { name: 'Scan 111' });
       expect(cards).toHaveLength(1);
 
       const stockInCheckbox = within(cards[0]).getByRole('checkbox');

@@ -22,7 +22,7 @@ const LATE_EXPIRY = '2030-12-20'; // rendered "Expires Dec 20, 2030"
 // Add expiration, commit the date, then approve.
 async function stockInInstance(page, expiry) {
   const card = await scanBarcode(page, BARCODE);
-  await card.getByText(`Barcode: ${BARCODE}`).waitFor({ state: 'visible' });
+  await card.getByRole('heading', { name: PRODUCT }).waitFor({ state: 'visible' });
   await setScanExpiration(page, card, expiry);
   await card.getByRole('button', { name: 'Approve', exact: true }).click();
   await card.waitFor({ state: 'detached', timeout: 15_000 });
