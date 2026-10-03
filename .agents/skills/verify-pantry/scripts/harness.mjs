@@ -59,6 +59,27 @@ export async function createKnownProduct(page, { barcode, name, category, unitOf
   return product;
 }
 
+// Open the stock-in card's collapsed expiration control, fill a date, and wait
+// until the blur PATCH lands. The confirmation keeps the date field hidden
+// until "Add expiration" is used, then folds a saved date into "Expires …".
+export async function setScanExpiration(page, card, expirationDate) {
+  const addExpiration = card.getByRole('button', { name: 'Add expiration' });
+  if (await addExpiration.isVisible()) {
+    await addExpiration.click();
+  }
+  const expiry = card.getByLabel('Expiration date');
+  await expiry.fill(expirationDate);
+  const patchResponse = page.waitForResponse((response) => {
+    const path = new URL(response.url()).pathname;
+    return /\/api\/scans\/[^/]+$/.test(path)
+      && response.request().method() === 'PATCH'
+      && response.ok();
+  });
+  await expiry.blur();
+  await patchResponse;
+  await card.getByText(/^Expires /).waitFor({ state: 'visible', timeout: 10_000 });
+}
+
 // Type a barcode into the HID scanner input and press Enter, the way a physical
 // scanner does. Returns the scan card locator for that barcode.
 export async function scanBarcode(page, barcode) {

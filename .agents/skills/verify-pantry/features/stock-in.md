@@ -9,7 +9,10 @@ appear in inventory. This is the core add-to-pantry flow.
 - `stock-in-scan` scanning a known barcode in stock-in mode creates a pending
   scan card stamped `stock_in`.
 - `stock-in-card` the card shows the product name, `Barcode: <code>`, a scanned
-  timestamp, editable unit count and expiration date, and Approve/Remove buttons.
+  timestamp, a thumb-sized unit-count stepper (decrease, count, increase), an
+  `Add expiration` control that expands the expiration date only when opened,
+  and Approve/Remove buttons. A saved date is shown as compact `Expires …` text
+  with Change and Clear.
 - `stock-in-approve` approving the card commits it and removes it from the queue.
 - `stock-in-inventory` the approved unit appears on the Inventory route and in
   the inventory API.
