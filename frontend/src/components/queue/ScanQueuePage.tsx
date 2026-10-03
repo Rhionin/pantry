@@ -10,28 +10,11 @@ import { BatchReviewPanel } from './BatchReviewPanel';
 import { ProcessingScanCard } from './ProcessingScanCard';
 import { ScanEntryCard } from './ScanEntryCard';
 import { addProcessingNotice, entryMatchesView, formatReviewCount, getEntriesForView, isBatchEligible, mergeScanEvent, pruneSelection, removeProcessingNotice, settleProcessingNotice, sortScansNewestFirst, toggleSelectAll } from './queueUtils';
+import { scannerModeFromEventData } from './scannerModeEvent';
 
 const DEFAULT_USER_ID = 'user-1';
 
 export type QueueView = 'stock_in' | 'stock_out';
-
-// The server publishes scanner_mode as a JSON string ("stock_in"), which is
-// what encoding a ScanDirection produces. Older callers and tests also send
-// an object with a mode field. Both name the same direction.
-export function scannerModeFromEventData(data: string): QueueView | null {
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(data);
-  } catch {
-    return null;
-  }
-  if (parsed === 'stock_in' || parsed === 'stock_out') return parsed;
-  if (parsed !== null && typeof parsed === 'object' && 'mode' in parsed) {
-    const mode = (parsed as { mode?: unknown }).mode;
-    if (mode === 'stock_in' || mode === 'stock_out') return mode;
-  }
-  return null;
-}
 
 export interface ScanQueuePageProps {
   userId?: string;
