@@ -46,7 +46,14 @@ type ScanListener struct {
 	}
 	Open OpenFunc
 
-	// ModePublisher receives mode change events. Optional.
+	// Mode is the shared direction the next product barcode is stamped with.
+	// When set, control barcodes and product scans update this value instead of
+	// a private mode, so an HTTP mode switch and a headless control barcode
+	// agree on what the next scan does. Nil keeps the private mode.
+	Mode ModeControl
+
+	// ModePublisher receives mode change events when Mode is nil. A shared Mode
+	// publishes its own changes. Optional.
 	ModePublisher interface {
 		PublishScannerModeEvent(mode scan.ScanDirection)
 	}
@@ -241,14 +248,35 @@ func (l *ScanListener) handleLine(ctx context.Context, barcode string, mode *mod
 	}
 
 	if newMode, isControl := classify(barcode, l.StockInBarcode, l.StockOutBarcode); isControl {
-		mode.set(newMode)
-		if l.ModePublisher != nil {
-			l.ModePublisher.PublishScannerModeEvent(newMode)
+		if l.Mode != nil {
+			l.Mode.Set(newMode)
+		} else {
+			mode.set(newMode)
+			if l.ModePublisher != nil {
+				l.ModePublisher.PublishScannerModeEvent(newMode)
+			}
 		}
+		l.status.setMode(newMode)
 		return // no scan entry for a control barcode
 	}
 
-	l.createEntry(ctx, barcode, mode.get())
+	direction := mode.get()
+	if l.Mode != nil {
+		// Get applies an idle return to scan-out before this barcode is stamped.
+		direction = l.Mode.Get()
+		l.Mode.NoteScan()
+	}
+	l.status.setMode(direction)
+	l.createEntry(ctx, barcode, direction)
+}
+
+// SetStatusMode records the direction reported by GET /health. The shared mode
+// calls it when the direction changes from either capture path.
+func (l *ScanListener) SetStatusMode(d scan.ScanDirection) {
+	if l == nil || l.status == nil {
+		return
+	}
+	l.status.setMode(d)
 }
 
 func (l *ScanListener) createEntry(ctx context.Context, barcode string, direction scan.ScanDirection) {
