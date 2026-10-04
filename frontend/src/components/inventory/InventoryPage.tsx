@@ -76,7 +76,7 @@ export const InventoryPage = () => {
   }, []);
 
   useEffect(() => {
-    void Promise.resolve().then(loadInventory);
+    void Promise.resolve().then(() => loadInventory());
   }, [loadInventory]);
 
   useEffect(() => {
