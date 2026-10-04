@@ -96,13 +96,18 @@ try {
   await page.getByRole('button', { name: 'Keep Great Value Cut Green Beans' }).waitFor({ state: 'visible' });
   await captureProof(page, 'sale-offer', { acceptedDeal: KR.name, line: GV.name });
 
+  const brandSaved = page.waitForResponse((res) => (
+    res.url().includes('/api/shopping-list/preferences') && res.request().method() === 'PUT' && res.ok()
+  ));
   await page.getByLabel('Preferred brand for cut green beans').selectOption({ label: KR.name });
-  await page.getByText(/Kroger Cut Green Beans is on sale at/).waitFor({ state: 'hidden', timeout: 10_000 });
+  await brandSaved;
   const preferenceSaved = page.waitForResponse((res) => (
     res.url().includes('/api/shopping-list/preferences') && res.request().method() === 'PUT' && res.ok()
   ));
   await page.locator('label').filter({ hasText: 'Always buy this brand of cut green beans' }).click();
   await preferenceSaved;
+  // Locking the brand hides the sale. The staged line itself moves on the next fill.
+  await page.getByText(/Kroger Cut Green Beans is on sale at/).waitFor({ state: 'hidden', timeout: 10_000 });
   const filled = page.waitForResponse((res) => (
     res.url().includes('/api/shopping-list/fill') && res.request().method() === 'POST' && res.ok()
   ));
