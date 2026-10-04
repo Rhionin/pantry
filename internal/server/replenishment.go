@@ -24,6 +24,10 @@ type shoppingListReader interface {
 	ListUnpurchased(ctx context.Context, userID string) ([]shopping.ShoppingListItem, error)
 	ListPreferences(ctx context.Context, userID string) ([]shopping.Preference, error)
 	ListDeals(ctx context.Context, userID string) ([]shopping.Deal, error)
+}
+
+type shoppingPlanWriter interface {
+	shoppingListReader
 	SavePlannedLines(ctx context.Context, userID string, lines []shopping.PlannedLine, members []shopping.ShelfMember) error
 }
 
@@ -32,7 +36,8 @@ type pantryLister interface {
 	ListItemInstances(ctx context.Context, itemID string) ([]inventory.ItemInstance, error)
 }
 
-func loadShoppingProvision(ctx context.Context, userID string, pantry pantryLister, list shoppingListReader, supplySvc *supply.Service, now time.Time) (shoppingProvision, error) {
+// loadShoppingSnapshot reads the staged cart. It does not recompute the supply plan.
+func loadShoppingSnapshot(ctx context.Context, userID string, pantry pantryLister, list shoppingListReader) (shoppingProvision, error) {
 	items, err := pantry.ListItems(ctx, userID)
 	if err != nil {
 		return shoppingProvision{}, err
@@ -49,16 +54,6 @@ func loadShoppingProvision(ctx context.Context, userID string, pantry pantryList
 	if err != nil {
 		return shoppingProvision{}, err
 	}
-	needs := replenishmentNeeds(items, counts)
-	if supplySvc != nil {
-		planned, err := supplySvc.Plan(ctx, now)
-		if err != nil {
-			return shoppingProvision{}, err
-		}
-		if err := list.SavePlannedLines(ctx, userID, plannedLines(planned, items), shelfMembers(items)); err != nil {
-			return shoppingProvision{}, err
-		}
-	}
 	rows, err := list.ListUnpurchased(ctx, userID)
 	if err != nil {
 		return shoppingProvision{}, err
@@ -67,10 +62,35 @@ func loadShoppingProvision(ctx context.Context, userID string, pantry pantryList
 		Items:  items,
 		Counts: counts,
 		Rows:   rows,
-		Needs:  needs,
+		Needs:  replenishmentNeeds(items, counts),
 		Deals:  deals,
 		Prefs:  prefs,
 	}, nil
+}
+
+// stageShoppingPlan snapshots the current supply plan into the staged cart.
+// A later read or send uses those rows, including quantities the owner changed.
+func stageShoppingPlan(ctx context.Context, userID string, pantry pantryLister, list shoppingPlanWriter, supplySvc *supply.Service, now time.Time) (shoppingProvision, error) {
+	snap, err := loadShoppingSnapshot(ctx, userID, pantry, list)
+	if err != nil {
+		return shoppingProvision{}, err
+	}
+	if supplySvc == nil {
+		return snap, nil
+	}
+	planned, err := supplySvc.Plan(ctx, now)
+	if err != nil {
+		return shoppingProvision{}, err
+	}
+	if err := list.SavePlannedLines(ctx, userID, plannedLines(planned, snap.Items), shelfMembers(snap.Items)); err != nil {
+		return shoppingProvision{}, err
+	}
+	rows, err := list.ListUnpurchased(ctx, userID)
+	if err != nil {
+		return shoppingProvision{}, err
+	}
+	snap.Rows = rows
+	return snap, nil
 }
 
 func plannedLines(lines []supply.Line, items []inventory.Item) []shopping.PlannedLine {

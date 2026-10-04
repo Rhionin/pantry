@@ -54,8 +54,20 @@ try {
   await outCard.getByRole('button', { name: 'Approve', exact: true }).click();
   await outCard.waitFor({ state: 'detached', timeout: 15_000 });
 
-  // The list replaces the one bag that was used.
+  // The list replaces the one bag that was used, once the owner fills the cart.
   await page.getByRole('link', { name: 'Shopping List' }).click();
+  await page.getByRole('button', { name: 'Fill the cart' }).waitFor({ state: 'visible', timeout: 10_000 });
+  const send = page.getByRole('button', { name: 'Send to Kroger' });
+  await send.waitFor({ state: 'visible' });
+  assert(await send.isDisabled(), 'Send to Kroger is enabled before anything is staged');
+  await page.getByText('Nothing is staged. Fill the cart before sending it to Kroger.').waitFor({ state: 'visible' });
+  await captureProof(page, 'shopping-stage-empty', {
+    feature: 'shopping-list',
+    staged: false,
+    send: 'disabled',
+  });
+
+  await page.getByRole('button', { name: 'Fill the cart' }).click();
   const derivedRow = page
     .getByRole('row')
     .filter({ hasText: PRODUCT })
@@ -63,6 +75,13 @@ try {
   await derivedRow.getByText(`1 ${UNIT}`, { exact: true }).waitFor({ state: 'visible', timeout: 10_000 });
   await derivedRow.getByText('replacing 1 you used').waitFor({ state: 'visible' });
   await derivedRow.getByText('Derived', { exact: true }).waitFor({ state: 'visible' });
+  assert(await send.isEnabled(), 'Send to Kroger stays disabled after the cart is filled');
+  await captureProof(page, 'shopping-stage-filled', {
+    feature: 'shopping-list',
+    staged: true,
+    send: 'Send to Kroger',
+    note: 'replacing 1 you used',
+  });
   await captureProof(page, 'shopping-derived', {
     feature: 'shopping-list',
     barcode: BARCODE,
@@ -82,7 +101,13 @@ try {
   await derivedRow.getByRole('button', { name: `Mark ${PRODUCT} purchased` }).click();
   await derivedRow.waitFor({ state: 'detached', timeout: 15_000 });
   // The purchased gap stays hidden until the quantity changes; list is now empty.
-  await page.getByText('Your shopping list is empty.').waitFor({ state: 'visible', timeout: 10_000 });
+  await page.getByText('Nothing is staged. Fill the cart before sending it to Kroger.').waitFor({ state: 'visible', timeout: 10_000 });
+  assert(await send.isDisabled(), 'Send to Kroger stays enabled after the staged line is gone');
+  await captureProof(page, 'shopping-send-disabled', {
+    feature: 'shopping-list',
+    staged: false,
+    send: 'disabled',
+  });
 
   // Capture proof on the Shopping List page so the ARIA snapshot shows the
   // resulting (emptied) list state.

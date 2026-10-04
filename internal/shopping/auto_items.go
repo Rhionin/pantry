@@ -26,11 +26,11 @@ type ShelfMember struct {
 	GroupKey string
 }
 
-// SavePlannedLines writes the supply snapshot.
-// In one transaction it upserts every non-manual line and deletes auto rows
-// whose item is not emitted. Manual rows are neither deleted nor resized.
-// A saved brand preference redirects which equivalent item is purchased.
-// Buy and Note stay the plan's. Running it twice yields the same rows.
+// SavePlannedLines writes one supply snapshot into the staged cart.
+// Untouched auto rows are refreshed. A line the owner changed (touched) stays,
+// including when a brand preference would otherwise pick a different item in
+// the same group. Auto rows the owner removed stay removed. Manual rows are
+// neither deleted nor resized. Buy and Note stay the plan's.
 func (s *Store) SavePlannedLines(ctx context.Context, userID string, lines []PlannedLine, members []ShelfMember) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -57,17 +57,54 @@ func (s *Store) SavePlannedLines(ctx context.Context, userID string, lines []Pla
 		membersOf[member.GroupKey][member.ItemID] = struct{}{}
 	}
 
+	touched, err := listTouchedAutoItems(ctx, tx, userID)
+	if err != nil {
+		return err
+	}
+	skipped, err := listSkippedItems(ctx, tx, userID)
+	if err != nil {
+		return err
+	}
+	groupOf := map[string]string{}
+	for _, member := range members {
+		if member.GroupKey == "" {
+			continue
+		}
+		groupOf[member.ItemID] = member.GroupKey
+	}
+	touchedGroups := map[string]struct{}{}
+	for itemID := range touched {
+		if key := groupOf[itemID]; key != "" {
+			touchedGroups[key] = struct{}{}
+		}
+	}
+
 	keep := map[string]struct{}{}
 	for _, line := range lines {
 		if line.Manual || line.Quantity < 1 || line.ItemID == "" {
 			continue
 		}
 		itemID := line.ItemID
-		if line.GroupKey != "" {
-			if preferred := prefItem[line.GroupKey]; preferred != "" {
-				if _, ok := membersOf[line.GroupKey][preferred]; ok {
+		key := line.GroupKey
+		if key == "" {
+			key = groupOf[itemID]
+		}
+		if key != "" {
+			if preferred := prefItem[key]; preferred != "" {
+				if _, ok := membersOf[key][preferred]; ok {
 					itemID = preferred
 				}
+			}
+		}
+		if groupSkipped(skipped, key, itemID, membersOf) {
+			continue
+		}
+		if _, held := touched[itemID]; held {
+			continue
+		}
+		if key != "" {
+			if _, held := touchedGroups[key]; held {
+				continue
 			}
 		}
 		if err := upsertAutoLine(ctx, tx, userID, itemID, line.Quantity, line.Note); err != nil {
@@ -169,9 +206,68 @@ func upsertAutoLine(ctx context.Context, tx *sql.Tx, userID, itemID string, quan
 	return nil
 }
 
+func listTouchedAutoItems(ctx context.Context, tx *sql.Tx, userID string) (map[string]struct{}, error) {
+	rows, err := tx.QueryContext(ctx, `
+		SELECT item_id FROM shopping_list_items
+		WHERE user_id = ? AND source = 'auto' AND touched = 1 AND purchased_at IS NULL`,
+		userID)
+	if err != nil {
+		return nil, fmt.Errorf("could not load shopping list edits: %w", err)
+	}
+	defer rows.Close()
+	touched := map[string]struct{}{}
+	for rows.Next() {
+		var itemID string
+		if err := rows.Scan(&itemID); err != nil {
+			return nil, fmt.Errorf("could not read shopping list edit: %w", err)
+		}
+		touched[itemID] = struct{}{}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("could not read shopping list edits: %w", err)
+	}
+	return touched, nil
+}
+
+func listSkippedItems(ctx context.Context, tx *sql.Tx, userID string) (map[string]struct{}, error) {
+	rows, err := tx.QueryContext(ctx, `
+		SELECT item_id FROM staged_cart_skips WHERE user_id = ?`, userID)
+	if err != nil {
+		return nil, fmt.Errorf("could not load removed shopping list items: %w", err)
+	}
+	defer rows.Close()
+	skipped := map[string]struct{}{}
+	for rows.Next() {
+		var itemID string
+		if err := rows.Scan(&itemID); err != nil {
+			return nil, fmt.Errorf("could not read removed shopping list item: %w", err)
+		}
+		skipped[itemID] = struct{}{}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("could not read removed shopping list items: %w", err)
+	}
+	return skipped, nil
+}
+
+func groupSkipped(skipped map[string]struct{}, key, itemID string, membersOf map[string]map[string]struct{}) bool {
+	if _, ok := skipped[itemID]; ok {
+		return true
+	}
+	if key == "" {
+		return false
+	}
+	for member := range membersOf[key] {
+		if _, ok := skipped[member]; ok {
+			return true
+		}
+	}
+	return false
+}
+
 func deleteUnplannedAuto(ctx context.Context, tx *sql.Tx, userID string, keep map[string]struct{}) error {
 	rows, err := tx.QueryContext(ctx, `
-		SELECT id, item_id FROM shopping_list_items
+		SELECT id, item_id, touched FROM shopping_list_items
 		WHERE user_id = ? AND source = 'auto'`, userID)
 	if err != nil {
 		return fmt.Errorf("could not load derived shopping list items: %w", err)
@@ -180,8 +276,12 @@ func deleteUnplannedAuto(ctx context.Context, tx *sql.Tx, userID string, keep ma
 	var drop []string
 	for rows.Next() {
 		var id, itemID string
-		if err := rows.Scan(&id, &itemID); err != nil {
+		var touched int
+		if err := rows.Scan(&id, &itemID, &touched); err != nil {
 			return fmt.Errorf("could not read derived shopping list item: %w", err)
+		}
+		if touched != 0 {
+			continue
 		}
 		if _, ok := keep[itemID]; ok {
 			continue

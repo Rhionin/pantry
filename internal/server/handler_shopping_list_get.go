@@ -3,22 +3,19 @@ package server
 import (
 	"context"
 	"sort"
-	"time"
 
 	"github.com/Rhionin/pantry/internal/cart"
 	"github.com/Rhionin/pantry/internal/inventory"
 	"github.com/Rhionin/pantry/internal/shopping"
-	"github.com/Rhionin/pantry/internal/supply"
 )
 
 // ShoppingListGetHandler handles GET /api/shopping-list.
-// It asks the supply service for lines, writes that snapshot, and returns it.
+// It returns the staged cart. Filling the cart is what snapshots the supply plan.
 type ShoppingListGetHandler struct {
 	ShoppingList shoppingListReader
 	Pantry       pantryLister
 	Ledger       *cart.Ledger
 	Registry     *cart.Registry
-	Supply       *supply.Service
 	// GetAdjustment is separate so tests can satisfy shoppingListReader
 	// without pulling adjustment methods onto every list reader.
 	Adjustments interface {
@@ -29,12 +26,17 @@ type ShoppingListGetHandler struct {
 func (h *ShoppingListGetHandler) Handle(req Request[struct{}, struct{}]) ([]ShoppingListEntryResponse, error) {
 	const userID = "user-1"
 
-	provision, err := loadShoppingProvision(req.Context, userID, h.Pantry, h.ShoppingList, h.Supply, time.Now())
+	provision, err := loadShoppingSnapshot(req.Context, userID, h.Pantry, h.ShoppingList)
 	if err != nil {
 		return nil, InternalError(err)
 	}
+	return presentShoppingList(req, provision, h.Ledger, h.Registry, h.Adjustments)
+}
 
-	providerID := targetProviderID(req, h.Registry)
+func presentShoppingList(req Request[struct{}, struct{}], provision shoppingProvision, ledgerStore *cart.Ledger, registry *cart.Registry, adjustments interface {
+	GetAdjustment(ctx context.Context, entryID string, providerID string) (*shopping.Adjustment, error)
+}) ([]ShoppingListEntryResponse, error) {
+	providerID := targetProviderID(req, registry)
 	itemByID := make(map[string]inventory.Item, len(provision.Items))
 	for _, item := range provision.Items {
 		itemByID[item.ID] = item
@@ -50,9 +52,10 @@ func (h *ShoppingListGetHandler) Handle(req Request[struct{}, struct{}]) ([]Shop
 		return rows[i].ItemID < rows[j].ItemID
 	})
 
+	var err error
 	ledger := map[string]cart.LedgerEntry{}
-	if h.Ledger != nil && providerID != "" {
-		ledger, err = h.Ledger.ListForProvider(req.Context, cart.ProviderID(providerID))
+	if ledgerStore != nil && providerID != "" {
+		ledger, err = ledgerStore.ListForProvider(req.Context, cart.ProviderID(providerID))
 		if err != nil {
 			return nil, InternalError(err)
 		}
@@ -69,8 +72,8 @@ func (h *ShoppingListGetHandler) Handle(req Request[struct{}, struct{}]) ([]Shop
 		}
 		provisionQty := computed
 		var adjustment *int
-		if providerID != "" && row.ID != "" && h.Adjustments != nil {
-			adj, adjErr := h.Adjustments.GetAdjustment(req.Context, row.ID, providerID)
+		if providerID != "" && row.ID != "" && adjustments != nil {
+			adj, adjErr := adjustments.GetAdjustment(req.Context, row.ID, providerID)
 			if adjErr != nil {
 				return nil, InternalError(adjErr)
 			}

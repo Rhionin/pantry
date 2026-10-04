@@ -172,6 +172,7 @@ func wipeHousehold(ctx context.Context, db *sql.DB) error {
 	statements := []string{
 		`DELETE FROM shopping_list_entry_adjustments
 		 WHERE entry_id IN (SELECT id FROM shopping_list_items WHERE user_id = ?)`,
+		`DELETE FROM staged_cart_skips WHERE user_id = ?`,
 		`DELETE FROM shopping_list_items WHERE user_id = ?`,
 		`DELETE FROM consumption_events WHERE item_id IN (SELECT id FROM items WHERE user_id = ?)`,
 		`DELETE FROM item_instances WHERE item_id IN (SELECT id FROM items WHERE user_id = ?)`,

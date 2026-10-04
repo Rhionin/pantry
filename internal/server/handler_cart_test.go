@@ -290,13 +290,18 @@ func TestCartHTTP(t *testing.T) {
 			},
 			httpExchange: httpExchange{
 				method:         "POST",
+				path:           "/api/shopping-list/fill",
+				expectedStatus: http.StatusOK,
+			},
+			afterRequest: exchanges(httpExchange{
+				method:         "POST",
 				path:           "/api/shopping-list/export",
 				body:           `{"provider":"test-none-server_push"}`,
 				expectedStatus: http.StatusOK,
 				assertions: []assertion{
 					{path: "$.exported", value: float64(2)},
 				},
-			},
+			}),
 		},
 		{
 			name: "saving credentials does not echo the client secret",
@@ -390,25 +395,36 @@ func TestCartHTTP(t *testing.T) {
 			},
 			httpExchange: httpExchange{
 				method:         "POST",
-				path:           "/api/shopping-list/export",
-				body:           `{"provider":"test-none-server_push","useItemIds":{"item-swap-gv":"item-swap-kr"}}`,
+				path:           "/api/shopping-list/fill",
 				expectedStatus: http.StatusOK,
 				assertions: []assertion{
-					{path: "$.exported", value: float64(1)},
-					{path: "$.entries[0].itemId", value: "item-swap-kr"},
-					{path: "$.entries[0].outcome", value: "confirmed"},
-					{path: "$.items[0].itemId", value: "item-swap-kr"},
+					{path: "$[0].itemId", value: "item-swap-gv"},
+					{path: "$[0].quantity", value: float64(2)},
 				},
 			},
-			afterRequest: exchanges(httpExchange{
-				method:         "GET",
-				path:           "/api/providers/test-none-server_push/ledger",
-				expectedStatus: http.StatusOK,
-				assertions: []assertion{
-					{path: "$.entries[0].itemId", value: "item-swap-kr"},
-					{path: "$.entries[0].requested", value: float64(2)},
+			afterRequest: exchanges(
+				httpExchange{
+					method:         "POST",
+					path:           "/api/shopping-list/export",
+					body:           `{"provider":"test-none-server_push","useItemIds":{"item-swap-gv":"item-swap-kr"}}`,
+					expectedStatus: http.StatusOK,
+					assertions: []assertion{
+						{path: "$.exported", value: float64(1)},
+						{path: "$.entries[0].itemId", value: "item-swap-kr"},
+						{path: "$.entries[0].outcome", value: "confirmed"},
+						{path: "$.items[0].itemId", value: "item-swap-kr"},
+					},
 				},
-			}),
+				httpExchange{
+					method:         "GET",
+					path:           "/api/providers/test-none-server_push/ledger",
+					expectedStatus: http.StatusOK,
+					assertions: []assertion{
+						{path: "$.entries[0].itemId", value: "item-swap-kr"},
+						{path: "$.entries[0].requested", value: float64(2)},
+					},
+				},
+			),
 		},
 	}
 

@@ -1,7 +1,7 @@
 // drive-brand-deals.mjs — proves brand preference and sale offers on the shopping list.
 //
 // Two store brands of the same product share one replenishment line. Noting a
-// sale on the other brand offers it beside Export to cart. Export stays
+// sale on the other brand offers it beside Send to Kroger. Send stays
 // available the whole time. Saving "always this brand" keeps that brand on the
 // line and drops the sale offer.
 //
@@ -74,10 +74,11 @@ try {
   await setSupplyQuantity(page, GV.name, PAR);
 
   await page.getByRole('link', { name: 'Shopping List' }).click();
+  await page.getByRole('button', { name: 'Fill the cart' }).click();
   const line = page.getByRole('row').filter({ hasText: GV.name });
   await line.getByText(`2 ${UNIT}`, { exact: true }).waitFor({ state: 'visible', timeout: 10_000 });
   await line.getByText('Derived', { exact: true }).waitFor({ state: 'visible' });
-  await page.getByRole('button', { name: 'Export to cart' }).waitFor({ state: 'visible' });
+  await page.getByRole('button', { name: 'Send to Kroger' }).waitFor({ state: 'visible' });
   assert(
     await page.getByText('Derived', { exact: true }).count() === 1,
     'store brands share one derived line',
@@ -88,7 +89,7 @@ try {
   await page.getByRole('button', { name: 'Note sale' }).click();
   await page.getByText(/Kroger Cut Green Beans is on sale at \$0\.79/).waitFor({ state: 'visible', timeout: 10_000 });
   await page.getByText(/This list buys Great Value Cut Green Beans/).waitFor({ state: 'visible' });
-  await page.getByRole('button', { name: 'Export to cart' }).click();
+  await page.getByRole('button', { name: 'Send to Kroger' }).click();
   await page.getByText('Nothing was sent. Connect a store to add these items to a cart.').waitFor({ state: 'visible', timeout: 10_000 });
 
   await page.getByRole('button', { name: 'Take the deal on Kroger Cut Green Beans' }).click();
@@ -102,6 +103,11 @@ try {
   ));
   await page.locator('label').filter({ hasText: 'Always buy this brand of cut green beans' }).click();
   await preferenceSaved;
+  const filled = page.waitForResponse((res) => (
+    res.url().includes('/api/shopping-list/fill') && res.request().method() === 'POST' && res.ok()
+  ));
+  await page.getByRole('button', { name: 'Fill the cart' }).click();
+  await filled;
 
   const list = await page.request.get(`${API_URL}/api/shopping-list`);
   const entries = await list.json();

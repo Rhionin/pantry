@@ -351,7 +351,6 @@ func newAPIMux(
 	engine.SetShoppingList(*shoppingList)
 	engine.SetPantry(*pantry)
 	engine.SetConsumptionLog(*consumptionLog)
-	engine.SetSupply(supplySvc)
 	if catalog != nil {
 		engine.SetCatalog(*catalog)
 	}
@@ -361,7 +360,14 @@ func newAPIMux(
 		Pantry:       pantry,
 		Ledger:       ledger,
 		Registry:     registry,
+		Adjustments:  shoppingList,
+	}
+	shoppingListFillHandler := &ShoppingListFillHandler{
+		ShoppingList: shoppingList,
+		Pantry:       pantry,
 		Supply:       supplySvc,
+		Ledger:       ledger,
+		Registry:     registry,
 		Adjustments:  shoppingList,
 	}
 	shoppingListItemCreateHandler := &ShoppingListItemCreateHandler{
@@ -377,7 +383,6 @@ func newAPIMux(
 	shoppingListExportHandler := &ShoppingListExportHandler{
 		ShoppingList: shoppingList,
 		Pantry:       pantry,
-		Supply:       supplySvc,
 		Provisioner:  engine,
 		Ledger:       ledger,
 		Registry:     registry,
@@ -390,7 +395,6 @@ func newAPIMux(
 	shoppingConsiderationsHandler := &ShoppingListConsiderationsHandler{
 		ShoppingList: shoppingList,
 		Pantry:       pantry,
-		Supply:       supplySvc,
 		Retailer:     retailer,
 	}
 	shoppingPreferencePutHandler := &ShoppingPreferencePutHandler{
@@ -410,6 +414,7 @@ func newAPIMux(
 	}
 
 	apiMux.HandleFunc("GET /api/shopping-list", HandleJSON(shoppingListGetHandler.Handle))
+	apiMux.HandleFunc("POST /api/shopping-list/fill", HandleJSON(shoppingListFillHandler.Handle))
 	apiMux.HandleFunc("GET /api/shopping-list/considerations", HandleJSON(shoppingConsiderationsHandler.Handle))
 	apiMux.HandleFunc("POST /api/shopping-list/items", HandleJSON(shoppingListItemCreateHandler.Handle))
 	apiMux.HandleFunc("DELETE /api/shopping-list/items/{id}", HandleJSON(shoppingListItemDeleteHandler.Handle))

@@ -68,8 +68,8 @@ func TestShoppingListGet(t *testing.T) {
 				setSupplyQuantity(env.T, env.DB, "prod-corn", 2)
 			},
 			httpExchange: httpExchange{
-				method:         "GET",
-				path:           "/api/shopping-list",
+				method:         "POST",
+				path:           "/api/shopping-list/fill",
 				expectedStatus: http.StatusOK,
 				assertions: []assertion{
 					{path: "$[0].itemId", value: "item-corn"},
@@ -101,8 +101,8 @@ func TestShoppingListGet(t *testing.T) {
 				setSupplyQuantity(env.T, env.DB, "prod-kr-target", 4)
 			},
 			httpExchange: httpExchange{
-				method:         "GET",
-				path:           "/api/shopping-list",
+				method:         "POST",
+				path:           "/api/shopping-list/fill",
 				expectedStatus: http.StatusOK,
 				assertions: []assertion{
 					{path: "$[0].itemId", value: "item-kr-target"},
@@ -141,8 +141,8 @@ func TestShoppingListGet(t *testing.T) {
 				setSupplyQuantity(env.T, env.DB, "prod-kroger-nat", 4)
 			},
 			httpExchange: httpExchange{
-				method:         "GET",
-				path:           "/api/shopping-list",
+				method:         "POST",
+				path:           "/api/shopping-list/fill",
 				expectedStatus: http.StatusOK,
 				assertions: []assertion{
 					{path: "$[0].itemId", value: "item-delmonte"},

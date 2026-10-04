@@ -28,6 +28,7 @@ test('inventory gap is derived, purchased, and leaves inventory unchanged', asyn
   await commitSelectedScan(page, await scanBarcode(page, barcode))
 
   await page.getByRole('link', { name: 'Shopping List' }).click()
+  await page.getByRole('button', { name: 'Fill the cart' }).click()
 
   const derivedRow = page
     .getByRole('row')
@@ -41,7 +42,8 @@ test('inventory gap is derived, purchased, and leaves inventory unchanged', asyn
   // until the quantity changes) and must NOT change on-hand inventory.
   await derivedRow.getByRole('button', { name: `Mark ${productName} purchased` }).click()
   await expect(derivedRow).toHaveCount(0)
-  await expect(page.getByText('Your shopping list is empty.')).toBeVisible()
+  await expect(page.getByText('Nothing is staged. Fill the cart before sending it to Kroger.')).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Send to Kroger' })).toBeDisabled()
 
   // A purchase records intent; on-hand inventory is unchanged (still 1 bag).
   await page.getByRole('link', { name: 'Inventory' }).click()

@@ -31,8 +31,8 @@ func TestShoppingBrandChoice(t *testing.T) {
 				},
 			},
 			afterRequest: exchanges(httpExchange{
-				method:         "GET",
-				path:           "/api/shopping-list",
+				method:         "POST",
+				path:           "/api/shopping-list/fill",
 				expectedStatus: http.StatusOK,
 				assertions: []assertion{
 					{path: "$[0].itemId", value: "item-kr"},
@@ -57,6 +57,11 @@ func TestShoppingBrandChoice(t *testing.T) {
 				},
 			},
 			afterRequest: exchanges(
+				httpExchange{
+					method:         "POST",
+					path:           "/api/shopping-list/fill",
+					expectedStatus: http.StatusOK,
+				},
 				httpExchange{
 					method:         "GET",
 					path:           "/api/shopping-list/considerations",
@@ -108,6 +113,11 @@ func TestShoppingBrandChoice(t *testing.T) {
 			},
 			afterRequest: exchanges(
 				httpExchange{
+					method:         "POST",
+					path:           "/api/shopping-list/fill",
+					expectedStatus: http.StatusOK,
+				},
+				httpExchange{
 					method:         "PUT",
 					path:           "/api/shopping-list/deals",
 					body:           `{"itemId":"item-gv","priceCents":50,"label":"Sale"}`,
@@ -134,13 +144,18 @@ func TestShoppingBrandChoice(t *testing.T) {
 			},
 			httpExchange: httpExchange{
 				method:         "POST",
+				path:           "/api/shopping-list/fill",
+				expectedStatus: http.StatusOK,
+			},
+			afterRequest: exchanges(httpExchange{
+				method:         "POST",
 				path:           "/api/shopping-list/export",
 				body:           `{"useItemIds":{"item-gv":"item-corn"}}`,
 				expectedStatus: http.StatusUnprocessableEntity,
 				assertions: []assertion{
 					{path: "$.error", value: "Choose a brand of the same product"},
 				},
-			},
+			}),
 		},
 		{
 			name: "brand-only name cannot be saved as a preference",
@@ -182,6 +197,11 @@ func TestShoppingBrandChoice(t *testing.T) {
 				expectedStatus: http.StatusOK,
 			},
 			afterRequest: exchanges(
+				httpExchange{
+					method:         "POST",
+					path:           "/api/shopping-list/fill",
+					expectedStatus: http.StatusOK,
+				},
 				httpExchange{
 					method:         "DELETE",
 					path:           "/api/shopping-list/deals/item-kr",

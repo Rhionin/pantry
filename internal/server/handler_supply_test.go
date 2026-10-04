@@ -22,8 +22,8 @@ func TestSupplyPolicy(t *testing.T) {
 				insertConsumptionEvent(env.T, env.DB, "ce-open", "item-open-used", now.Add(-2*24*time.Hour))
 			},
 			httpExchange: httpExchange{
-				method:         "GET",
-				path:           "/api/shopping-list",
+				method:         "POST",
+				path:           "/api/shopping-list/fill",
 				expectedStatus: http.StatusOK,
 				assertions: []assertion{
 					{path: "$[0].itemId", value: "item-open-manual"},
@@ -50,8 +50,8 @@ func TestSupplyPolicy(t *testing.T) {
 				insertConsumptionEvent(env.T, env.DB, "ce-day29-window", "item-day29-window", now.Add(-1*24*time.Hour))
 			},
 			httpExchange: httpExchange{
-				method:         "GET",
-				path:           "/api/shopping-list",
+				method:         "POST",
+				path:           "/api/shopping-list/fill",
 				expectedStatus: http.StatusOK,
 				assertions: []assertion{
 					{path: "$[0].itemId", value: "item-day29"},
@@ -81,8 +81,8 @@ func TestSupplyPolicy(t *testing.T) {
 				insertConsumptionEvent(env.T, env.DB, "ce-manual-other", "item-manual-other", now.Add(-1*24*time.Hour))
 			},
 			httpExchange: httpExchange{
-				method:         "GET",
-				path:           "/api/shopping-list",
+				method:         "POST",
+				path:           "/api/shopping-list/fill",
 				expectedStatus: http.StatusOK,
 				assertions: []assertion{
 					{path: "$[0].itemId", value: "item-manual-keep"},
@@ -105,8 +105,8 @@ func TestSupplyPolicy(t *testing.T) {
 				insertConsumptionEvent(env.T, env.DB, "ce-one-gap", "item-one-gap", started.Add(20*24*time.Hour))
 			},
 			httpExchange: httpExchange{
-				method:         "GET",
-				path:           "/api/shopping-list",
+				method:         "POST",
+				path:           "/api/shopping-list/fill",
 				expectedStatus: http.StatusOK,
 				assertions: []assertion{
 					{path: "$[0].itemId", value: "item-one-gap"},
@@ -131,8 +131,8 @@ func TestSupplyPolicy(t *testing.T) {
 				}
 			},
 			httpExchange: httpExchange{
-				method:         "GET",
-				path:           "/api/shopping-list",
+				method:         "POST",
+				path:           "/api/shopping-list/fill",
 				expectedStatus: http.StatusOK,
 				assertions: []assertion{
 					{path: "$[0].quantity", value: float64(6)},
@@ -153,8 +153,8 @@ func TestSupplyPolicy(t *testing.T) {
 				}
 			},
 			httpExchange: httpExchange{
-				method:         "GET",
-				path:           "/api/shopping-list",
+				method:         "POST",
+				path:           "/api/shopping-list/fill",
 				expectedStatus: http.StatusOK,
 				assertions: []assertion{
 					{path: "$[0].itemId", value: "item-steady"},
@@ -234,8 +234,8 @@ func TestSupplyPolicy(t *testing.T) {
 				},
 			},
 			afterRequest: exchanges(httpExchange{
-				method:         "GET",
-				path:           "/api/shopping-list",
+				method:         "POST",
+				path:           "/api/shopping-list/fill",
 				expectedStatus: http.StatusOK,
 				assertions: []assertion{
 					{path: "$[0].itemId", value: "item-fixed"},
@@ -258,8 +258,8 @@ func TestSupplyPolicy(t *testing.T) {
 				expectedStatus: http.StatusOK,
 			},
 			afterRequest: exchanges(httpExchange{
-				method:         "GET",
-				path:           "/api/shopping-list",
+				method:         "POST",
+				path:           "/api/shopping-list/fill",
 				expectedStatus: http.StatusOK,
 				assertions: []assertion{
 					{path: "$[0].note", value: "replacing 1 you used"},
@@ -286,8 +286,8 @@ func TestSupplyPolicy(t *testing.T) {
 				},
 			},
 			afterRequest: exchanges(httpExchange{
-				method:         "GET",
-				path:           "/api/shopping-list",
+				method:         "POST",
+				path:           "/api/shopping-list/fill",
 				expectedStatus: http.StatusOK,
 				assertions: []assertion{
 					{path: "$[0].note", value: "replacing 1 you used"},
@@ -408,8 +408,8 @@ func TestSupplyPolicy(t *testing.T) {
 				},
 			},
 			afterRequest: exchanges(httpExchange{
-				method:         "GET",
-				path:           "/api/shopping-list",
+				method:         "POST",
+				path:           "/api/shopping-list/fill",
 				expectedStatus: http.StatusOK,
 				assertions: []assertion{
 					{path: "$[0].itemId", value: "item-months"},

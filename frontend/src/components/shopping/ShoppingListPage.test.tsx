@@ -96,6 +96,7 @@ describe('ShoppingListPage', () => {
       const url = String(input);
       if (url === '/api/providers') return Promise.resolve(jsonResponse([]));
       if (url === '/api/shopping-list' && init?.method === undefined) return Promise.resolve(jsonResponse(entries));
+      if (url === '/api/shopping-list/fill') return Promise.resolve(jsonResponse(entries));
       if (url === '/api/inventory') return Promise.resolve(jsonResponse([inventoryItem('pasta', 'Pasta', null)]));
       if (url === '/api/shopping-list/items') {
         expect(init?.method).toBe('POST');
@@ -116,7 +117,11 @@ describe('ShoppingListPage', () => {
     vi.stubGlobal('fetch', fetchMock);
     renderPage();
 
-    await screen.findByText('Your shopping list is empty.');
+    expect(await screen.findByText('Nothing is staged. Fill the cart before sending it to Kroger.')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Send to Kroger' })).toBeDisabled();
+    expect(screen.queryByLabelText('Pantry item')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Fill the cart' }));
+    await screen.findByLabelText('Pantry item');
     fireEvent.change(screen.getByLabelText('Pantry item'), { target: { value: 'pasta' } });
     fireEvent.change(screen.getByLabelText('Quantity'), { target: { value: '4' } });
     fireEvent.click(screen.getByRole('button', { name: 'Add to shopping list' }));
@@ -162,9 +167,9 @@ describe('ShoppingListPage', () => {
     expect(screen.queryByRole('button', { name: 'Save credentials' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Disconnect' })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Start a new cart' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Add to Kroger cart' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Send to Kroger' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /setup/i })).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'Add to Kroger cart' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Send to Kroger' }));
 
     expect(await screen.findByText('Kroger is not connected')).toBeInTheDocument();
     expect(screen.queryByText(/sent to your cart/)).not.toBeInTheDocument();
@@ -215,12 +220,12 @@ describe('ShoppingListPage', () => {
 
     expect(await screen.findByText(/Kroger Cut Green Beans is on sale at \$0\.79/)).toBeInTheDocument();
     expect(screen.getByText(/Live store prices aren't connected/)).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'Export to cart' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Send to Kroger' }));
     await screen.findByText('1 item sent to your cart.');
     expect(exportBodies[0]).toBeUndefined();
 
     fireEvent.click(screen.getByRole('button', { name: 'Take the deal on Kroger Cut Green Beans' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Export to cart' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Send to Kroger' }));
     await waitFor(() => expect(exportBodies).toHaveLength(2));
     expect(exportBodies[1]).toBe(JSON.stringify({ useItemIds: { gv: 'kr' } }));
     expect(screen.getByRole('button', { name: 'Keep Great Value Cut Green Beans' })).toBeInTheDocument();

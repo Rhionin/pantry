@@ -17,6 +17,7 @@ import {
   addShoppingListItem,
   clearBrandPreference,
   clearItemDeal,
+  fillShoppingCart,
   getInventoryList,
   getShoppingConsiderations,
   getShoppingList,
@@ -69,6 +70,8 @@ export const ShoppingListPage = () => {
   const [salePrice, setSalePrice] = useState<number | string>('');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [filling, setFilling] = useState(false);
+  const [decisionsOpen, setDecisionsOpen] = useState(false);
   const [error, setError] = useState('');
 
   const refresh = useCallback(async () => {
@@ -162,10 +165,25 @@ export const ShoppingListPage = () => {
     return undefined;
   }, [notes, saleItemId]);
   const offers = notes.considerations.filter((note) => note.offer !== null);
+  const showDecisions = decisionsOpen || entries.length > 0;
   const manualQuantity = typeof quantity === 'number' ? quantity : Number(quantity);
   const manualQuantityIsValid = quantity !== '' && Number.isInteger(manualQuantity) && manualQuantity >= 1;
   const salePriceNumber = typeof salePrice === 'number' ? salePrice : Number(salePrice);
   const salePriceIsValid = salePrice !== '' && Number.isInteger(salePriceNumber) && salePriceNumber >= 0;
+
+  const fillCart = async () => {
+    setFilling(true);
+    setError('');
+    try {
+      await fillShoppingCart();
+      setDecisionsOpen(true);
+      await refresh();
+    } catch (requestError) {
+      setError(requestErrorMessage(requestError, 'Unable to fill the cart.'));
+    } finally {
+      setFilling(false);
+    }
+  };
 
   const addManualItem = async () => {
     if (selectedItemId === '' || !manualQuantityIsValid) return;
@@ -250,15 +268,21 @@ export const ShoppingListPage = () => {
     <Stack gap="sm">
       <Group justify="space-between" align="flex-start">
         <Title order={1} size="h3">Shopping list</Title>
-        <ProvisionButton
-          provider={targetProvider}
-          entries={entries}
-          useItemIds={acceptedDeals}
-          onFinished={() => void loadShoppingList()}
-        />
+        <Group gap="xs">
+          <Button loading={filling} disabled={loading} onClick={() => void fillCart()}>
+            Fill the cart
+          </Button>
+          <ProvisionButton
+            provider={targetProvider}
+            entries={entries}
+            useItemIds={acceptedDeals}
+            explainEmpty={!loading}
+            onFinished={() => void loadShoppingList()}
+          />
+        </Group>
       </Group>
       <ProviderPanel providers={providers} onChanged={() => void loadShoppingList()} />
-      {!loading && notes.considerations.length > 0 && (
+      {!loading && showDecisions && notes.considerations.length > 0 && (
         <Alert variant="light" color="teal" title={offers.length > 0 ? 'A sale to consider' : 'Brand notes'}>
           <Stack gap="xs">
             {offers.map((note) => {
@@ -275,7 +299,7 @@ export const ShoppingListPage = () => {
                 </Group>
               );
             })}
-            <Text size="xs" c="dimmed">Export to cart sends the usual brand until you take a deal.</Text>
+            <Text size="xs" c="dimmed">Send to Kroger sends the usual brand until you take a deal.</Text>
             {notes.retailerDetail !== '' && <Text size="xs" c="dimmed">{notes.retailerDetail}</Text>}
             <Group align="end" gap="xs" wrap="wrap">
               <NativeSelect
@@ -310,7 +334,7 @@ export const ShoppingListPage = () => {
           </Stack>
         </Alert>
       )}
-      <Stack component="form" gap="xs" onSubmit={(event) => {
+      {showDecisions && <Stack component="form" gap="xs" onSubmit={(event) => {
         event.preventDefault();
         void addManualItem();
       }}>
@@ -348,17 +372,14 @@ export const ShoppingListPage = () => {
             Add to shopping list
           </Button>
         </Group>
-      </Stack>
+      </Stack>}
       {loading && <Loader aria-label="Loading shopping list" />}
       {error !== '' && (
         <Alert color="red" py="xs">
           {error}
         </Alert>
       )}
-      {!loading && error === '' && entries.length === 0 && (
-        <Text c="dimmed">Your shopping list is empty.</Text>
-      )}
-      {!loading && entries.length > 0 && (
+      {!loading && showDecisions && entries.length > 0 && (
         <div className="shopping-entries-scroll">
           <Table className="shopping-entries" aria-label="Shopping list entries">
             <Table.Thead>

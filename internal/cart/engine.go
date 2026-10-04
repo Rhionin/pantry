@@ -12,7 +12,6 @@ import (
 	"github.com/Rhionin/pantry/internal/product"
 	"github.com/Rhionin/pantry/internal/shopping"
 	"github.com/Rhionin/pantry/internal/suggestion"
-	"github.com/Rhionin/pantry/internal/supply"
 )
 
 // ReplenishmentMode identifies the shopping list calculation mode.
@@ -41,7 +40,6 @@ type Engine struct {
 	pantry         inventory.Pantry
 	consumptionLog suggestion.ConsumptionLog
 	catalog        product.Catalog
-	supply         *supply.Service
 }
 
 // NewEngine creates a new provisioning engine.
@@ -72,11 +70,6 @@ func (e *Engine) SetConsumptionLog(consumptionLog suggestion.ConsumptionLog) {
 // SetCatalog sets the product catalog.
 func (e *Engine) SetCatalog(catalog product.Catalog) {
 	e.catalog = catalog
-}
-
-// SetSupply sets the supply plan used to decide shopping lines.
-func (e *Engine) SetSupply(svc *supply.Service) {
-	e.supply = svc
 }
 
 // Provision performs the complete provisioning operation for one provider.
@@ -351,10 +344,10 @@ func (e *Engine) Provision(ctx context.Context, userID string, providerID Provid
 	}, nil
 }
 
-// getComputedEntries gets shopping list entries with ledger-net quantities.
-// The supply plan decides each line. Manual rows keep the quantity the owner
-// recorded. An adjustment, when one is stored for this provider, replaces
-// that quantity for this operation only.
+// getComputedEntries reads the staged cart with ledger-net quantities.
+// It does not recompute the supply plan, so a quantity the owner changed
+// is the quantity sent. An adjustment, when one is stored for this provider,
+// replaces that quantity for this operation only.
 func (e *Engine) getComputedEntries(ctx context.Context, providerID ProviderID, userID string) ([]ResolvedItem, error) {
 	pantryItems, err := e.pantry.ListItems(ctx, userID)
 	if err != nil {
@@ -363,15 +356,6 @@ func (e *Engine) getComputedEntries(ctx context.Context, providerID ProviderID, 
 	ledger, err := e.ledger.ListForProvider(ctx, providerID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list ledger: %w", err)
-	}
-	if e.supply != nil {
-		planned, err := e.supply.Plan(ctx, time.Now())
-		if err != nil {
-			return nil, fmt.Errorf("failed to plan supply: %w", err)
-		}
-		if err := e.shoppingList.SavePlannedLines(ctx, userID, enginePlannedLines(planned, pantryItems), engineShelfMembers(pantryItems)); err != nil {
-			return nil, fmt.Errorf("failed to save derived shopping list items: %w", err)
-		}
 	}
 	active, err := e.shoppingList.ListUnpurchased(ctx, userID)
 	if err != nil {
@@ -437,49 +421,6 @@ func (e *Engine) getComputedEntries(ctx context.Context, providerID ProviderID, 
 		})
 	}
 	return result, nil
-}
-
-func enginePlannedLines(lines []supply.Line, items []inventory.Item) []shopping.PlannedLine {
-	byProduct := make(map[string]inventory.Item, len(items))
-	for _, item := range items {
-		byProduct[item.ProductID] = item
-	}
-	out := make([]shopping.PlannedLine, 0, len(lines))
-	for _, line := range lines {
-		item, ok := byProduct[string(line.Product)]
-		if !ok {
-			continue
-		}
-		name, unit := "", ""
-		if item.Product != nil {
-			name = item.Product.Name
-			unit = item.Product.UnitOfMeasure
-		}
-		key, _ := shopping.NeedKey(name, unit)
-		out = append(out, shopping.PlannedLine{
-			ProductID: string(line.Product),
-			ItemID:    item.ID,
-			GroupKey:  key,
-			Quantity:  int(line.Buy),
-			Note:      line.Note,
-			Manual:    line.Source == supply.SourceManual,
-		})
-	}
-	return out
-}
-
-func engineShelfMembers(items []inventory.Item) []shopping.ShelfMember {
-	members := make([]shopping.ShelfMember, 0, len(items))
-	for _, item := range items {
-		name, unit := "", ""
-		if item.Product != nil {
-			name = item.Product.Name
-			unit = item.Product.UnitOfMeasure
-		}
-		key, _ := shopping.NeedKey(name, unit)
-		members = append(members, shopping.ShelfMember{ItemID: item.ID, GroupKey: key})
-	}
-	return members
 }
 
 type exportSwapContextKey struct{}

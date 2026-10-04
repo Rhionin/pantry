@@ -271,6 +271,10 @@ export function getShoppingList(provider?: string): Promise<ShoppingListEntry[]>
   return apiFetch(`/api/shopping-list${toQueryString({ provider })}`);
 }
 
+export function fillShoppingCart(): Promise<ShoppingListEntry[]> {
+  return apiFetch('/api/shopping-list/fill', { method: 'POST' });
+}
+
 export function addShoppingListItem(itemId: string, quantity: number): Promise<ShoppingListEntry> {
   return apiFetch('/api/shopping-list/items', {
     method: 'POST',

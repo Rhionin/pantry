@@ -4,11 +4,8 @@ import (
 	"context"
 	"strings"
 
-	"time"
-
 	"github.com/Rhionin/pantry/internal/inventory"
 	"github.com/Rhionin/pantry/internal/shopping"
-	"github.com/Rhionin/pantry/internal/supply"
 )
 
 // ShoppingListConsiderationsHandler handles GET /api/shopping-list/considerations.
@@ -16,7 +13,6 @@ import (
 type ShoppingListConsiderationsHandler struct {
 	ShoppingList shoppingListReader
 	Pantry       pantryLister
-	Supply       *supply.Service
 	Retailer     shopping.RetailerDealConfig
 }
 
@@ -58,7 +54,7 @@ type considerationsResponse struct {
 func (h *ShoppingListConsiderationsHandler) Handle(req Request[struct{}, struct{}]) (*considerationsResponse, error) {
 	const userID = "user-1"
 
-	provision, err := loadShoppingProvision(req.Context, userID, h.Pantry, h.ShoppingList, h.Supply, time.Now())
+	provision, err := loadShoppingSnapshot(req.Context, userID, h.Pantry, h.ShoppingList)
 	if err != nil {
 		return nil, InternalError(err)
 	}

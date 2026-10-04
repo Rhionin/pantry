@@ -7,6 +7,50 @@ import (
 	"github.com/Rhionin/pantry/internal/shopping"
 )
 
+func TestSavePlannedLinesKeepsTouchedLinesAndSkipsRemoved(t *testing.T) {
+	deps := newTestStore(t)
+	ctx := context.Background()
+	itemID := createTestItem(t, deps, ctx, "user-1", "kept-product", "Kept Product")
+	lines := []shopping.PlannedLine{{ItemID: itemID, Quantity: 2, Note: "replacing 2 you used"}}
+	if err := deps.shopping.SavePlannedLines(ctx, "user-1", lines, nil); err != nil {
+		t.Fatalf("SavePlannedLines: %v", err)
+	}
+	active, err := deps.shopping.ListUnpurchased(ctx, "user-1")
+	if err != nil {
+		t.Fatalf("ListUnpurchased: %v", err)
+	}
+	if len(active) != 1 {
+		t.Fatalf("rows: %#v", active)
+	}
+	if err := deps.shopping.SetAdjustment(ctx, active[0].ID, "kroger", 9); err != nil {
+		t.Fatalf("SetAdjustment: %v", err)
+	}
+	changed := []shopping.PlannedLine{{ItemID: itemID, Quantity: 4, Note: "replacing 4 you used"}}
+	if err := deps.shopping.SavePlannedLines(ctx, "user-1", changed, nil); err != nil {
+		t.Fatalf("SavePlannedLines refill: %v", err)
+	}
+	active, err = deps.shopping.ListUnpurchased(ctx, "user-1")
+	if err != nil {
+		t.Fatalf("ListUnpurchased after refill: %v", err)
+	}
+	if len(active) != 1 || active[0].Quantity != 2 || active[0].Note != "replacing 2 you used" {
+		t.Fatalf("touched line changed: %#v", active)
+	}
+	if err := deps.shopping.RemoveItem(ctx, active[0].ID); err != nil {
+		t.Fatalf("RemoveItem: %v", err)
+	}
+	if err := deps.shopping.SavePlannedLines(ctx, "user-1", changed, nil); err != nil {
+		t.Fatalf("SavePlannedLines after remove: %v", err)
+	}
+	active, err = deps.shopping.ListUnpurchased(ctx, "user-1")
+	if err != nil {
+		t.Fatalf("ListUnpurchased after remove: %v", err)
+	}
+	if len(active) != 0 {
+		t.Fatalf("removed line returned: %#v", active)
+	}
+}
+
 func TestSavePlannedLinesSnapshotsAutoRowsAndLeavesManuals(t *testing.T) {
 	deps := newTestStore(t)
 	ctx := context.Background()

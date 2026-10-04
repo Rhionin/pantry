@@ -55,11 +55,12 @@ try {
   assert(await page.getByLabel('Modality').count() === 0, 'Modality is on the shopping page');
   assert(await page.getByRole('button', { name: 'Save credentials' }).count() === 0, 'Save credentials is on the shopping page');
   assert(await page.getByText('A client secret is saved and is not shown.').count() === 0, 'saved-secret note is on the shopping page');
-  assert(await page.getByRole('button', { name: 'Add to Kroger cart' }).isVisible(), 'Add to Kroger cart is missing');
+  assert(await page.getByRole('button', { name: 'Fill the cart' }).isVisible(), 'Fill the cart is missing');
+  assert(await page.getByRole('button', { name: 'Send to Kroger' }).isVisible(), 'Send to Kroger is missing');
+  assert(await page.getByText('Nothing is staged. Fill the cart before sending it to Kroger.').isVisible(), 'empty stage explanation is missing');
   assert(await page.getByRole('button', { name: 'Disconnect' }).count() === 0, 'Disconnect is still on the shopping page');
   assert(await page.getByRole('button', { name: 'Start a new cart' }).isVisible(), 'Start a new cart is missing');
-  assert(await page.getByRole('button', { name: 'Add to shopping list' }).isVisible(), 'Add to shopping list is missing');
-  assert(await page.getByText('Your shopping list is empty.').isVisible(), 'empty shopping list is missing');
+  assert(await page.getByRole('button', { name: 'Add to shopping list' }).count() === 0, 'manual add is on the page before the cart is filled');
 
   await captureProof(page, 'shopping-connected-phone', {
     connectionState: 'connected',
@@ -133,7 +134,7 @@ try {
   await disconnected;
   await page.getByText('Disconnected', { exact: true }).waitFor({ state: 'visible' });
   await page.getByRole('button', { name: 'Connect' }).waitFor({ state: 'visible' });
-  assert(await page.getByRole('button', { name: 'Add to Kroger cart' }).isVisible(), 'Add to Kroger cart left after disconnect');
+  assert(await page.getByRole('button', { name: 'Send to Kroger' }).isVisible(), 'Send to Kroger left after disconnect');
   assert(await page.getByRole('button', { name: 'Disconnect Kroger' }).count() === 0, 'Disconnect returned to the shopping page');
   await page.getByRole('button', { name: 'Menu' }).click();
   await page.getByRole('menuitem', { name: 'Manage Kroger connection' }).click();

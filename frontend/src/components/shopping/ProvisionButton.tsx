@@ -8,6 +8,7 @@ export interface ProvisionButtonProps {
   provider: ProviderInfo | null;
   entries: ShoppingListEntry[];
   useItemIds?: Record<string, string>;
+  explainEmpty?: boolean;
   onFinished: () => void;
 }
 
@@ -26,15 +27,14 @@ const canProvision = (provider: ProviderInfo | null, entries: ShoppingListEntry[
   return storeIsReady(provider);
 };
 
-export const ProvisionButton = ({ provider, entries, useItemIds, onFinished }: ProvisionButtonProps) => {
+export const ProvisionButton = ({ provider, entries, useItemIds, explainEmpty = false, onFinished }: ProvisionButtonProps) => {
   const [inFlight, setInFlight] = useState(false);
   const [report, setReport] = useState<ProvisionReport | null>(null);
   const [error, setError] = useState('');
 
+  const staged = entries.some((entry) => provisionQuantity(entry) >= 1);
   const enabled = canProvision(provider, entries, inFlight);
-  const label = provider !== null && provider.credentialsConfigured
-    ? `Add to ${provider.displayName} cart`
-    : 'Export to cart';
+  const label = 'Send to Kroger';
 
   const provision = async () => {
     setInFlight(true);
@@ -73,6 +73,9 @@ export const ProvisionButton = ({ provider, entries, useItemIds, onFinished }: P
       <Button loading={inFlight} disabled={!enabled} onClick={() => void provision()}>
         {label}
       </Button>
+      {explainEmpty && !staged && (
+        <Text size="sm">Nothing is staged. Fill the cart before sending it to Kroger.</Text>
+      )}
       {provider !== null && !provider.credentialsConfigured && (
         <Text size="sm" c="dimmed">{provider.displayName} is unconfigured.</Text>
       )}

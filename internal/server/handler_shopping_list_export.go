@@ -3,24 +3,21 @@ package server
 import (
 	"errors"
 	"fmt"
-	"time"
 
 	"github.com/Rhionin/pantry/internal/cart"
 	"github.com/Rhionin/pantry/internal/cart/connection"
 	"github.com/Rhionin/pantry/internal/shopping"
-	"github.com/Rhionin/pantry/internal/supply"
 )
 
 // ShoppingListExportHandler handles POST /api/shopping-list/export.
-// It submits the replenishment list, including store-brand pooling and any
-// saved brand preference. useItemIds swaps a line for another brand of the
-// same product when the shopper accepts a sale. The swap is this export only.
-// With no configured provider the call still returns the planned lines and
-// confirms nothing.
+// It sends the staged cart. It does not recompute the supply plan, so a
+// quantity the owner changed is the quantity that is sent. useItemIds swaps
+// a line for another brand of the same product when the shopper accepts a
+// sale. The swap is this export only. With no configured provider the call
+// still returns the staged lines and confirms nothing.
 type ShoppingListExportHandler struct {
 	ShoppingList shoppingListReader
 	Pantry       pantryLister
-	Supply       *supply.Service
 	Provisioner  cart.Provisioner
 	Ledger       *cart.Ledger
 	Registry     *cart.Registry
@@ -65,7 +62,7 @@ type HandoffResponse struct {
 func (h *ShoppingListExportHandler) Handle(req Request[shoppingListExportRequest, struct{}]) (*shoppingListExportResponse, error) {
 	const userID = "user-1"
 
-	provision, err := loadShoppingProvision(req.Context, userID, h.Pantry, h.ShoppingList, h.Supply, time.Now())
+	provision, err := loadShoppingSnapshot(req.Context, userID, h.Pantry, h.ShoppingList)
 	if err != nil {
 		return nil, InternalError(err)
 	}

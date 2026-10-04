@@ -34,27 +34,34 @@ const renderButton = (props: Partial<ComponentProps<typeof ProvisionButton>> = {
     <ProvisionButton
       provider={props.provider === undefined ? provider() : props.provider}
       entries={props.entries ?? [entry()]}
+      explainEmpty={props.explainEmpty}
       onFinished={props.onFinished ?? (() => undefined)}
     />
   </MantineProvider>,
 );
 
 describe('ProvisionButton', () => {
+  it('explains a disabled send when nothing is staged', () => {
+    renderButton({ entries: [], explainEmpty: true });
+    expect(screen.getByRole('button', { name: 'Send to Kroger' })).toBeDisabled();
+    expect(screen.getByText('Nothing is staged. Fill the cart before sending it to Kroger.')).toBeInTheDocument();
+  });
+
   it('is enabled for a connected configured provider with something to buy', () => {
     renderButton();
-    expect(screen.getByRole('button', { name: 'Add to Kroger cart' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Send to Kroger' })).toBeEnabled();
   });
 
   it('stays disabled when the provider is disconnected or the list is empty of quantity', () => {
     const { rerender } = renderButton({ provider: provider({ connectionState: 'disconnected' }) });
-    expect(screen.getByRole('button', { name: 'Add to Kroger cart' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Send to Kroger' })).toBeDisabled();
 
     rerender(
       <MantineProvider>
         <ProvisionButton provider={provider({ credentialsConfigured: false })} entries={[entry()]} onFinished={() => undefined} />
       </MantineProvider>,
     );
-    expect(screen.getByRole('button', { name: 'Export to cart' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Send to Kroger' })).toBeEnabled();
     expect(screen.getByText('Kroger is unconfigured.')).toBeInTheDocument();
 
     rerender(
@@ -62,7 +69,7 @@ describe('ProvisionButton', () => {
         <ProvisionButton provider={provider()} entries={[entry({ quantity: 0 })]} onFinished={() => undefined} />
       </MantineProvider>,
     );
-    expect(screen.getByRole('button', { name: 'Add to Kroger cart' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Send to Kroger' })).toBeDisabled();
   });
 
   it('shows the confirmed count when nothing failed', async () => {
@@ -72,7 +79,7 @@ describe('ProvisionButton', () => {
       entries: [],
     }), { status: 200, headers: { 'Content-Type': 'application/json' } }))));
     renderButton();
-    fireEvent.click(screen.getByRole('button', { name: 'Add to Kroger cart' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Send to Kroger' }));
     expect(await screen.findByText('2 items sent to your cart.')).toBeInTheDocument();
   });
 
@@ -81,7 +88,7 @@ describe('ProvisionButton', () => {
       error: 'Kroger is not connected',
     }), { status: 409, statusText: 'Conflict', headers: { 'Content-Type': 'application/json' } }))));
     renderButton();
-    fireEvent.click(screen.getByRole('button', { name: 'Add to Kroger cart' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Send to Kroger' }));
     expect(await screen.findByText('Kroger is not connected')).toBeInTheDocument();
     expect(screen.queryByText(/sent to your cart/)).not.toBeInTheDocument();
   });
@@ -96,7 +103,7 @@ describe('ProvisionButton', () => {
       entries: [{ entryId: 'sli-oats', itemId: 'oats', name: 'Oats', quantity: 1, outcome: 'unknown' }],
     }), { status: 200, headers: { 'Content-Type': 'application/json' } }))));
     renderButton();
-    fireEvent.click(screen.getByRole('button', { name: 'Add to Kroger cart' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Send to Kroger' }));
     expect(await screen.findByText(/and 2 more/)).toBeInTheDocument();
     expect(screen.getByText(/These items remain on your shopping list/)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'It reached Kroger' })).toBeInTheDocument();
