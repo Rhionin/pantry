@@ -63,6 +63,14 @@ try {
   await derivedRow.getByText(`1 ${UNIT}`, { exact: true }).waitFor({ state: 'visible', timeout: 10_000 });
   await derivedRow.getByText('replacing 1 you used').waitFor({ state: 'visible' });
   await derivedRow.getByText('Derived', { exact: true }).waitFor({ state: 'visible' });
+  await captureProof(page, 'shopping-derived', {
+    feature: 'shopping-list',
+    barcode: BARCODE,
+    product: PRODUCT,
+    derivedQuantity: `1 ${UNIT}`,
+    note: 'replacing 1 you used',
+    source: 'Derived',
+  });
 
   // Inventory count before the purchase, to prove the purchase does not change it.
   let inventory = await readInventory(page);
