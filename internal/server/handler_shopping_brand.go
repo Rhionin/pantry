@@ -11,17 +11,9 @@ import (
 // ShoppingListConsiderationsHandler handles GET /api/shopping-list/considerations.
 // Offers are optional. Export stays available without accepting any of them.
 type ShoppingListConsiderationsHandler struct {
-	ShoppingList interface {
-		ListManualItems(ctx context.Context, userID string) ([]shopping.ShoppingListItem, error)
-		ListPreferences(ctx context.Context, userID string) ([]shopping.Preference, error)
-		ListDeals(ctx context.Context, userID string) ([]shopping.Deal, error)
-		SyncDerivedItems(ctx context.Context, userID string, derived []shopping.DerivedEntry) ([]shopping.ShoppingListItem, error)
-	}
-	Pantry interface {
-		ListItems(ctx context.Context, userID string) ([]inventory.Item, error)
-		ListItemInstances(ctx context.Context, itemID string) ([]inventory.ItemInstance, error)
-	}
-	Retailer shopping.RetailerDealConfig
+	ShoppingList shoppingListReader
+	Pantry       pantryLister
+	Retailer     shopping.RetailerDealConfig
 }
 
 type brandMemberResponse struct {
@@ -62,12 +54,7 @@ type considerationsResponse struct {
 func (h *ShoppingListConsiderationsHandler) Handle(req Request[struct{}, struct{}]) (*considerationsResponse, error) {
 	const userID = "user-1"
 
-	provision, err := loadShoppingProvision(req.Context, userID, h.Pantry, h.ShoppingList)
-	if err != nil {
-		return nil, InternalError(err)
-	}
-	// Sync so a purchased gap that the list hides is not offered as a deal.
-	autoItems, err := h.ShoppingList.SyncDerivedItems(req.Context, userID, provision.Derived)
+	provision, err := loadShoppingSnapshot(req.Context, userID, h.Pantry, h.ShoppingList)
 	if err != nil {
 		return nil, InternalError(err)
 	}
@@ -79,7 +66,10 @@ func (h *ShoppingListConsiderationsHandler) Handle(req Request[struct{}, struct{
 	live, liveErr := h.Retailer.LiveDeals(req.Context, userID, itemIDs)
 	deals := shopping.CombineDeals(provision.Deals, live, liveErr)
 
-	lineIDs := visibleLineIDs(provision.Merged, provision.Manual, autoItems)
+	lineIDs := make([]string, 0, len(provision.Rows))
+	for _, row := range provision.Rows {
+		lineIDs = append(lineIDs, row.ItemID)
+	}
 	notes := shopping.ConsiderationsForLines(lineIDs, provision.Needs, deals, provision.Prefs)
 	status, detail := h.Retailer.Status()
 	return &considerationsResponse{
@@ -87,28 +77,6 @@ func (h *ShoppingListConsiderationsHandler) Handle(req Request[struct{}, struct{
 		RetailerDetail: detail,
 		Considerations: considerationsToResponse(notes),
 	}, nil
-}
-
-func visibleLineIDs(merged []shopping.ManualEntry, manual, auto []shopping.ShoppingListItem) []string {
-	manualByItem := make(map[string]struct{}, len(manual))
-	for _, item := range manual {
-		manualByItem[item.ItemID] = struct{}{}
-	}
-	autoByItem := make(map[string]struct{}, len(auto))
-	for _, item := range auto {
-		autoByItem[item.ItemID] = struct{}{}
-	}
-	ids := make([]string, 0, len(merged))
-	for _, entry := range merged {
-		if _, ok := manualByItem[entry.ItemID]; ok {
-			ids = append(ids, entry.ItemID)
-			continue
-		}
-		if _, ok := autoByItem[entry.ItemID]; ok {
-			ids = append(ids, entry.ItemID)
-		}
-	}
-	return ids
 }
 
 func considerationsToResponse(notes []shopping.Consideration) []considerationResponse {

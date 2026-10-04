@@ -13,6 +13,7 @@ import (
 	"github.com/Rhionin/pantry/internal/buildinfo"
 	"github.com/Rhionin/pantry/internal/cart"
 	"github.com/Rhionin/pantry/internal/product"
+	"github.com/Rhionin/pantry/internal/supply"
 	"github.com/go-json-experiment/json"
 	"pgregory.net/rapid"
 )
@@ -105,13 +106,12 @@ func isRegisteredGetPath(path string) bool {
 	case "/api/products", "/api/products/lookup", "/api/scans", "/api/scans/history",
 		"/api/inventory", "/api/shopping-list", "/api/events", "/api/build",
 		"/api/scanner/config", "/api/telemetry",
-		"/api/contributions", "/api/settings/contribution":
+		"/api/contributions", "/api/settings/contribution", "/api/settings/supply":
 		return true
 	}
-	// Wildcard GET routes: /api/suggestions/{itemId},
-	// /api/inventory/{itemId}/instances, /api/products/{id},
-	// /api/products/{id}/contributions.
-	if regexp.MustCompile(`^/api/suggestions/[^/]+$`).MatchString(path) {
+	// Wildcard GET routes: /api/inventory/{itemId}/instances, /api/products/{id},
+	// /api/products/{id}/contributions, /api/products/{id}/supply-override.
+	if regexp.MustCompile(`^/api/products/[^/]+/supply-override$`).MatchString(path) {
 		return true
 	}
 	if regexp.MustCompile(`^/api/inventory/[^/]+/instances$`).MatchString(path) {
@@ -263,7 +263,10 @@ func generateRegisteredRequest(t *rapid.T) registeredRequest {
 			return registeredRequest{http.MethodGet, "/api/shopping-list", ""}
 		},
 		func(t *rapid.T) registeredRequest {
-			return registeredRequest{http.MethodGet, "/api/suggestions/" + id.Draw(t, "suggestionId"), ""}
+			return registeredRequest{http.MethodGet, "/api/settings/supply", ""}
+		},
+		func(t *rapid.T) registeredRequest {
+			return registeredRequest{http.MethodGet, "/api/products/" + id.Draw(t, "supplyOverrideId") + "/supply-override", ""}
 		},
 		func(t *rapid.T) registeredRequest {
 			return registeredRequest{http.MethodGet, "/api/inventory/" + id.Draw(t, "itemId") + "/instances", ""}
@@ -278,7 +281,7 @@ func generateRegisteredRequest(t *rapid.T) registeredRequest {
 			return registeredRequest{http.MethodDelete, "/api/inventory/instances/" + id.Draw(t, "instanceId"), ""}
 		},
 		func(t *rapid.T) registeredRequest {
-			return registeredRequest{http.MethodPost, "/api/inventory/wipe", `{"confirmation":"` + inventoryWipeConfirmation + `"}`}
+			return registeredRequest{http.MethodPost, "/api/inventory/wipe", `{"confirmation":"` + supply.WipePhrase + `"}`}
 		},
 		func(t *rapid.T) registeredRequest {
 			return registeredRequest{http.MethodDelete, "/api/shopping-list/items/" + id.Draw(t, "shoppingItemId"), ""}

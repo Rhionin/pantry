@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"testing"
+	"time"
 
 	"github.com/Rhionin/pantry/internal/cart"
 	"github.com/Rhionin/pantry/internal/cart/carttest"
@@ -175,7 +176,6 @@ func TestCartHTTP(t *testing.T) {
 					{path: "$[0].computedQuantity", value: float64(2)},
 					{path: "$[0].adjustment", value: float64(4)},
 					{path: "$[0].provider", value: "kroger"},
-					{path: "$[0].replenishmentMode", value: "target"},
 				},
 			}),
 		},
@@ -263,9 +263,9 @@ func TestCartHTTP(t *testing.T) {
 				createItemViaStockIn(env.T, env.DB, env.ProductStore, "user-1", "prod-pool-gv", "Great Value Cut Green Beans", "item-pool-gv")
 				createItemViaStockIn(env.T, env.DB, env.ProductStore, "user-1", "prod-pool-kr", "Kroger Cut Green Beans", "item-pool-kr")
 				createItemViaStockIn(env.T, env.DB, env.ProductStore, "user-1", "prod-pool-corn", "Kroger Whole Kernel Corn", "item-pool-corn")
-				setTargetQuantity(env.T, env.DB, "item-pool-gv", 4)
-				setTargetQuantity(env.T, env.DB, "item-pool-kr", 4)
-				setTargetQuantity(env.T, env.DB, "item-pool-corn", 2)
+				beginUsing(env.T, env.DB, time.Now())
+				setSupplyQuantity(env.T, env.DB, "prod-pool-gv", 4)
+				setSupplyQuantity(env.T, env.DB, "prod-pool-corn", 2)
 				ctx := context.Background()
 				if err := env.ProductStore.UpsertBarcodeMapping(ctx, "000111111117", "prod-pool-gv", "global", ""); err != nil {
 					env.T.Fatalf("barcode beans: %v", err)
@@ -290,13 +290,18 @@ func TestCartHTTP(t *testing.T) {
 			},
 			httpExchange: httpExchange{
 				method:         "POST",
+				path:           "/api/shopping-list/fill",
+				expectedStatus: http.StatusOK,
+			},
+			afterRequest: exchanges(httpExchange{
+				method:         "POST",
 				path:           "/api/shopping-list/export",
 				body:           `{"provider":"test-none-server_push"}`,
 				expectedStatus: http.StatusOK,
 				assertions: []assertion{
 					{path: "$.exported", value: float64(2)},
 				},
-			},
+			}),
 		},
 		{
 			name: "saving credentials does not echo the client secret",
@@ -369,8 +374,8 @@ func TestCartHTTP(t *testing.T) {
 			setup: func(env testEnv) {
 				createItemViaStockIn(env.T, env.DB, env.ProductStore, "user-1", "prod-swap-gv", "Great Value Cut Green Beans", "item-swap-gv")
 				createItemViaStockIn(env.T, env.DB, env.ProductStore, "user-1", "prod-swap-kr", "Kroger Cut Green Beans", "item-swap-kr")
-				setTargetQuantity(env.T, env.DB, "item-swap-gv", 4)
-				setTargetQuantity(env.T, env.DB, "item-swap-kr", 4)
+				beginUsing(env.T, env.DB, time.Now())
+				setSupplyQuantity(env.T, env.DB, "prod-swap-gv", 4)
 				if err := env.ProductStore.UpsertBarcodeMapping(context.Background(), "000333333331", "prod-swap-kr", "global", ""); err != nil {
 					env.T.Fatalf("barcode: %v", err)
 				}
@@ -390,25 +395,36 @@ func TestCartHTTP(t *testing.T) {
 			},
 			httpExchange: httpExchange{
 				method:         "POST",
-				path:           "/api/shopping-list/export",
-				body:           `{"provider":"test-none-server_push","useItemIds":{"item-swap-gv":"item-swap-kr"}}`,
+				path:           "/api/shopping-list/fill",
 				expectedStatus: http.StatusOK,
 				assertions: []assertion{
-					{path: "$.exported", value: float64(1)},
-					{path: "$.entries[0].itemId", value: "item-swap-kr"},
-					{path: "$.entries[0].outcome", value: "confirmed"},
-					{path: "$.items[0].itemId", value: "item-swap-kr"},
+					{path: "$[0].itemId", value: "item-swap-gv"},
+					{path: "$[0].quantity", value: float64(2)},
 				},
 			},
-			afterRequest: exchanges(httpExchange{
-				method:         "GET",
-				path:           "/api/providers/test-none-server_push/ledger",
-				expectedStatus: http.StatusOK,
-				assertions: []assertion{
-					{path: "$.entries[0].itemId", value: "item-swap-kr"},
-					{path: "$.entries[0].requested", value: float64(2)},
+			afterRequest: exchanges(
+				httpExchange{
+					method:         "POST",
+					path:           "/api/shopping-list/export",
+					body:           `{"provider":"test-none-server_push","useItemIds":{"item-swap-gv":"item-swap-kr"}}`,
+					expectedStatus: http.StatusOK,
+					assertions: []assertion{
+						{path: "$.exported", value: float64(1)},
+						{path: "$.entries[0].itemId", value: "item-swap-kr"},
+						{path: "$.entries[0].outcome", value: "confirmed"},
+						{path: "$.items[0].itemId", value: "item-swap-kr"},
+					},
 				},
-			}),
+				httpExchange{
+					method:         "GET",
+					path:           "/api/providers/test-none-server_push/ledger",
+					expectedStatus: http.StatusOK,
+					assertions: []assertion{
+						{path: "$.entries[0].itemId", value: "item-swap-kr"},
+						{path: "$.entries[0].requested", value: float64(2)},
+					},
+				},
+			),
 		},
 	}
 

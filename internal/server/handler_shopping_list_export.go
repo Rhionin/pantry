@@ -1,36 +1,27 @@
 package server
 
 import (
-	"context"
 	"errors"
 	"fmt"
 
 	"github.com/Rhionin/pantry/internal/cart"
 	"github.com/Rhionin/pantry/internal/cart/connection"
-	"github.com/Rhionin/pantry/internal/inventory"
 	"github.com/Rhionin/pantry/internal/shopping"
 )
 
 // ShoppingListExportHandler handles POST /api/shopping-list/export.
-// It submits the replenishment list, including store-brand pooling and any
-// saved brand preference. useItemIds swaps a line for another brand of the
-// same product when the shopper accepts a sale. The swap is this export only.
-// With no configured provider the call still returns the planned lines and
-// confirms nothing.
+// It sends the staged cart. It does not recompute the supply plan, so a
+// quantity the owner changed is the quantity that is sent. useItemIds swaps
+// a line for another brand of the same product when the shopper accepts a
+// sale. The swap is this export only. With no configured provider the call
+// still returns the staged lines and confirms nothing.
 type ShoppingListExportHandler struct {
-	ShoppingList interface {
-		ListManualItems(ctx context.Context, userID string) ([]shopping.ShoppingListItem, error)
-		ListPreferences(ctx context.Context, userID string) ([]shopping.Preference, error)
-		ListDeals(ctx context.Context, userID string) ([]shopping.Deal, error)
-	}
-	Pantry interface {
-		ListItems(ctx context.Context, userID string) ([]inventory.Item, error)
-		ListItemInstances(ctx context.Context, itemID string) ([]inventory.ItemInstance, error)
-	}
-	Provisioner cart.Provisioner
-	Ledger      *cart.Ledger
-	Registry    *cart.Registry
-	Connections *connection.Directory
+	ShoppingList shoppingListReader
+	Pantry       pantryLister
+	Provisioner  cart.Provisioner
+	Ledger       *cart.Ledger
+	Registry     *cart.Registry
+	Connections  *connection.Directory
 }
 
 type shoppingListExportRequest struct {
@@ -71,7 +62,7 @@ type HandoffResponse struct {
 func (h *ShoppingListExportHandler) Handle(req Request[shoppingListExportRequest, struct{}]) (*shoppingListExportResponse, error) {
 	const userID = "user-1"
 
-	provision, err := loadShoppingProvision(req.Context, userID, h.Pantry, h.ShoppingList)
+	provision, err := loadShoppingSnapshot(req.Context, userID, h.Pantry, h.ShoppingList)
 	if err != nil {
 		return nil, InternalError(err)
 	}
@@ -186,9 +177,9 @@ func (h *ShoppingListExportHandler) Handle(req Request[shoppingListExportRequest
 // planExportLines applies one-export brand swaps to the merged list.
 // swaps maps the line's item id to the brand that should be bought.
 func planExportLines(provision shoppingProvision, useItemIDs map[string]string) ([]exportedItemResponse, map[string]string, error) {
-	planned := make([]exportedItemResponse, 0, len(provision.Merged))
+	planned := make([]exportedItemResponse, 0, len(provision.Rows))
 	swaps := map[string]string{}
-	for _, entry := range provision.Merged {
+	for _, entry := range provision.Rows {
 		itemID, err := shopping.SubstituteBrand(entry.ItemID, useItemIDs[entry.ItemID], provision.Needs)
 		if err != nil {
 			if errors.Is(err, shopping.ErrDifferentProduct) {

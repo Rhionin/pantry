@@ -13,7 +13,7 @@ const { browser, page } = await openBrowser();
 let failed = false;
 try {
   await page.goto('/shopping');
-  await page.getByRole('heading', { name: 'Shopping list' }).waitFor({ state: 'visible', timeout: 10_000 });
+  await page.getByRole('heading', { name: 'Shopping plan' }).waitFor({ state: 'visible', timeout: 10_000 });
   assert(await page.getByRole('form', { name: 'Kroger credentials' }).count() === 0, 'credentials form takes over the shopping page');
   await page.getByRole('button', { name: 'Menu' }).click();
   await page.getByRole('menuitem', { name: 'Manage Kroger connection' }).click();
@@ -32,9 +32,9 @@ try {
   await page.getByRole('button', { name: 'Connect' }).waitFor({ state: 'visible' });
   const secretField = form.getByLabel('Client secret');
   assert(await secretField.inputValue() === '', 'the secret field is empty after save');
-  const addToCart = page.getByRole('button', { name: 'Add to Kroger cart' });
+  const addToCart = page.getByRole('button', { name: 'Send to Kroger' });
   await addToCart.waitFor({ state: 'visible' });
-  assert(await addToCart.isDisabled(), 'Add to Kroger cart stays disabled until Kroger is connected');
+  assert(await addToCart.isDisabled(), 'Send to Kroger stays disabled until Kroger is connected');
 
   const saved = await page.request.get(`${API_URL}/api/providers`);
   const savedBody = await saved.text();

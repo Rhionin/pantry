@@ -17,6 +17,7 @@ import {
   addShoppingListItem,
   clearBrandPreference,
   clearItemDeal,
+  fillShoppingCart,
   getInventoryList,
   getShoppingConsiderations,
   getShoppingList,
@@ -25,10 +26,9 @@ import {
   removeShoppingListItem,
   saveBrandPreference,
   saveItemDeal,
-  setReplenishmentMode,
   setShoppingListAdjustment,
 } from '../../api/client';
-import type { InventoryItem, ProviderInfo, ReplenishmentMode, ShoppingConsideration, ShoppingConsiderations, ShoppingListEntry } from '../../types';
+import type { InventoryItem, ProviderInfo, ShoppingConsideration, ShoppingConsiderations, ShoppingListEntry } from '../../types';
 import { useCredentialsRevision } from '../../credentialsRefresh';
 import { ProviderPanel } from './ProviderPanel';
 import { ProvisionButton } from './ProvisionButton';
@@ -70,6 +70,8 @@ export const ShoppingListPage = () => {
   const [salePrice, setSalePrice] = useState<number | string>('');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [filling, setFilling] = useState(false);
+  const [decisionsOpen, setDecisionsOpen] = useState(false);
   const [error, setError] = useState('');
 
   const refresh = useCallback(async () => {
@@ -112,16 +114,6 @@ export const ShoppingListPage = () => {
   }, [credentialsRevision, loadShoppingList]);
 
   const targetProvider = providers.find((row) => row.credentialsConfigured) ?? providers[0] ?? null;
-
-  const changeMode = async (entry: ShoppingListEntry, mode: ReplenishmentMode) => {
-    setError('');
-    try {
-      await setReplenishmentMode(entry.itemId, mode);
-      await loadShoppingList();
-    } catch (requestError) {
-      setError(requestErrorMessage(requestError, 'Unable to change the replenishment mode.'));
-    }
-  };
 
   const changeAdjustment = async (entry: ShoppingListEntry, value: number | string) => {
     if (entry.id === '' || targetProvider === null) return;
@@ -173,10 +165,26 @@ export const ShoppingListPage = () => {
     return undefined;
   }, [notes, saleItemId]);
   const offers = notes.considerations.filter((note) => note.offer !== null);
+  const showDecisions = decisionsOpen || entries.length > 0;
+  const listAction = entries.length > 0 ? 'Update the list' : 'Build the list';
   const manualQuantity = typeof quantity === 'number' ? quantity : Number(quantity);
   const manualQuantityIsValid = quantity !== '' && Number.isInteger(manualQuantity) && manualQuantity >= 1;
   const salePriceNumber = typeof salePrice === 'number' ? salePrice : Number(salePrice);
   const salePriceIsValid = salePrice !== '' && Number.isInteger(salePriceNumber) && salePriceNumber >= 0;
+
+  const fillCart = async () => {
+    setFilling(true);
+    setError('');
+    try {
+      await fillShoppingCart();
+      setDecisionsOpen(true);
+      await refresh();
+    } catch (requestError) {
+      setError(requestErrorMessage(requestError, 'Unable to build the list.'));
+    } finally {
+      setFilling(false);
+    }
+  };
 
   const addManualItem = async () => {
     if (selectedItemId === '' || !manualQuantityIsValid) return;
@@ -259,17 +267,28 @@ export const ShoppingListPage = () => {
 
   return (
     <Stack gap="sm">
-      <Group justify="space-between" align="flex-start">
-        <Title order={1} size="h3">Shopping list</Title>
-        <ProvisionButton
-          provider={targetProvider}
-          entries={entries}
-          useItemIds={acceptedDeals}
-          onFinished={() => void loadShoppingList()}
-        />
-      </Group>
+      <div className="shopping-toolbar">
+        <Title order={1} size="h3" className="shopping-toolbar-title">Shopping plan</Title>
+        <div className="shopping-toolbar-actions">
+          <Button
+            className="shopping-fill"
+            loading={filling}
+            disabled={loading}
+            onClick={() => void fillCart()}
+          >
+            {listAction}
+          </Button>
+          <ProvisionButton
+            provider={targetProvider}
+            entries={entries}
+            useItemIds={acceptedDeals}
+            explainEmpty={!loading}
+            onFinished={() => void loadShoppingList()}
+          />
+        </div>
+      </div>
       <ProviderPanel providers={providers} onChanged={() => void loadShoppingList()} />
-      {!loading && notes.considerations.length > 0 && (
+      {!loading && showDecisions && notes.considerations.length > 0 && (
         <Alert variant="light" color="teal" title={offers.length > 0 ? 'A sale to consider' : 'Brand notes'}>
           <Stack gap="xs">
             {offers.map((note) => {
@@ -286,7 +305,7 @@ export const ShoppingListPage = () => {
                 </Group>
               );
             })}
-            <Text size="xs" c="dimmed">Export to cart sends the usual brand until you take a deal.</Text>
+            <Text size="xs" c="dimmed">Send to Kroger sends the usual brand until you take a deal.</Text>
             {notes.retailerDetail !== '' && <Text size="xs" c="dimmed">{notes.retailerDetail}</Text>}
             <Group align="end" gap="xs" wrap="wrap">
               <NativeSelect
@@ -321,7 +340,7 @@ export const ShoppingListPage = () => {
           </Stack>
         </Alert>
       )}
-      <Stack component="form" gap="xs" onSubmit={(event) => {
+      {showDecisions && <Stack component="form" gap="xs" onSubmit={(event) => {
         event.preventDefault();
         void addManualItem();
       }}>
@@ -359,19 +378,16 @@ export const ShoppingListPage = () => {
             Add to shopping list
           </Button>
         </Group>
-      </Stack>
-      {loading && <Loader aria-label="Loading shopping list" />}
+      </Stack>}
+      {loading && <Loader aria-label="Loading shopping plan" />}
       {error !== '' && (
         <Alert color="red" py="xs">
           {error}
         </Alert>
       )}
-      {!loading && error === '' && entries.length === 0 && (
-        <Text c="dimmed">Your shopping list is empty.</Text>
-      )}
-      {!loading && entries.length > 0 && (
+      {!loading && showDecisions && entries.length > 0 && (
         <div className="shopping-entries-scroll">
-          <Table className="shopping-entries" aria-label="Shopping list entries">
+          <Table className="shopping-entries" aria-label="Shopping plan entries">
             <Table.Thead>
               <Table.Tr>
                 <Table.Th>Item</Table.Th>
@@ -385,14 +401,15 @@ export const ShoppingListPage = () => {
                 const inventoryItem = inventoryByItemId.get(entry.itemId);
                 const productName = inventoryItem?.item.product.name ?? `Item ${entry.itemId}`;
                 const unit = inventoryItem?.item.product.unitOfMeasure ?? 'units';
-                const needsTarget = entry.source === 'manual' && inventoryItem?.item.targetQuantity === null;
                 const note = notesByLine.get(entry.itemId);
                 return (
                   <Table.Tr key={entry.id === '' ? `auto-${entry.itemId}` : entry.id}>
                     <Table.Td>
                       <Stack gap={2}>
                         <Text fw={600}>{productName}</Text>
-                        {needsTarget && <Text size="sm" c="dimmed">Set a target quantity for automatic restocking.</Text>}
+                        {entry.note !== undefined && entry.note !== '' && (
+                          <Text size="sm" c="dimmed">{entry.note}</Text>
+                        )}
                         {note && (
                           <Group gap="xs" align="end" wrap="wrap">
                             <NativeSelect
@@ -429,18 +446,6 @@ export const ShoppingListPage = () => {
                         {entry.adjustment !== undefined && entry.computedQuantity !== undefined && (
                           <Text size="sm" c="dimmed">Computed {entry.computedQuantity} {unit}</Text>
                         )}
-                        {entry.replenishmentMode && (
-                          <NativeSelect
-                            size="xs"
-                            aria-label={`Replenishment mode for ${productName}`}
-                            value={entry.replenishmentMode}
-                            data={[
-                              { value: 'target', label: 'Restock to target' },
-                              { value: 'replenish', label: 'Replace what was used' },
-                            ]}
-                            onChange={(event) => void changeMode(entry, event.currentTarget.value as ReplenishmentMode)}
-                          />
-                        )}
                         {entry.id !== '' && targetProvider !== null && (
                           <NumberInput
                             size="xs"
@@ -457,9 +462,7 @@ export const ShoppingListPage = () => {
                         )}
                         {entry.basis && (
                           <Text size="xs" c="dimmed">
-                            {entry.replenishmentMode === 'replenish'
-                              ? `${entry.basis.consumedUnits} used, ${entry.basis.requested} already requested`
-                              : `${entry.basis.instanceCount} on hand${entry.basis.targetQuantity !== undefined ? `, target ${entry.basis.targetQuantity}` : ''}`}
+                            {`${entry.basis.instanceCount} on hand`}
                           </Text>
                         )}
                       </Stack>

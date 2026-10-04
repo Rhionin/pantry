@@ -60,6 +60,27 @@ func (r *Queue) CommitStockIn(ctx context.Context, scanEntry *ScanEntry) error {
 		}
 	}
 
+	// Opening records the units already on the shelf and stops. The scan
+	// still has to leave the queue, so the entry is committed either way.
+	// A later restock also resets the provider ledger and records one stock-in.
+	trackRestock, err := r.trackRestock(ctx, tx)
+	if err != nil {
+		return err
+	}
+	if trackRestock && r.Ledger != nil {
+		if err := r.Ledger.ResetForItemTx(ctx, tx, itemID, scanEntry.ScannedAt); err != nil {
+			return fmt.Errorf("reset ledger: %w", err)
+		}
+	}
+	if trackRestock && r.Supply != nil {
+		if _, err := tx.ExecContext(ctx, `
+			INSERT INTO stock_in_events (product_id, at) VALUES (?, ?)`,
+			*scanEntry.ProductID, scanEntry.ScannedAt,
+		); err != nil {
+			return fmt.Errorf("record stock-in: %w", err)
+		}
+	}
+
 	_, err = tx.ExecContext(ctx, `
 		UPDATE scan_entries 
 		SET status = ?, committed_at = CURRENT_TIMESTAMP 
@@ -69,19 +90,6 @@ func (r *Queue) CommitStockIn(ctx context.Context, scanEntry *ScanEntry) error {
 	)
 	if err != nil {
 		return fmt.Errorf("update scan entry: %w", err)
-	}
-
-	// Reset the ledger for this item if a Ledger is configured.
-	// This happens inside the transaction so a crash after tx.Commit()
-	// would leave instances on the shelf and a ledger still claiming
-	// units are outstanding.
-	if r.Ledger != nil {
-		// Reset every provider's row for this item inside the stock-in
-		// transaction. A crash after commit must not leave units on the shelf
-		// while the ledger still claims they are outstanding.
-		if err := r.Ledger.ResetForItemTx(ctx, tx, itemID, scanEntry.ScannedAt); err != nil {
-			return fmt.Errorf("reset ledger: %w", err)
-		}
 	}
 
 	if err := tx.Commit(); err != nil {
@@ -109,6 +117,21 @@ func (r *Queue) CommitStockIn(ctx context.Context, scanEntry *ScanEntry) error {
 	}
 
 	return nil
+}
+
+// trackRestock reports whether this stock-in is a later restock rather than
+// the opening snapshot. A queue with no supply service keeps the previous
+// stock-in path (instances and ledger reset) and does not write stock_in_events,
+// so tests that build a queue by hand stay snapshots of units.
+func (r *Queue) trackRestock(ctx context.Context, tx *sql.Tx) (bool, error) {
+	if r.Supply == nil {
+		return true, nil
+	}
+	opening, err := r.Supply.OpeningTx(ctx, tx)
+	if err != nil {
+		return false, fmt.Errorf("could not read supply settings: %w", err)
+	}
+	return !opening, nil
 }
 
 // findOrCreateItem retrieves the item ID for a user+product combination,

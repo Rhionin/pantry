@@ -3,81 +3,12 @@ package server
 import (
 	"context"
 	"database/sql"
-	"net/http"
 	"testing"
 	"time"
 
 	"github.com/Rhionin/pantry/internal/product"
 	"github.com/Rhionin/pantry/internal/scan"
 )
-
-func TestSuggestionGet(t *testing.T) {
-	now := time.Now()
-
-	tests := []handlerTestCase{
-		{
-			name: "data insufficient with 0 events",
-			setup: func(env testEnv) {
-				createItemViaStockIn(env.T, env.DB, env.ProductStore, "user-sug-1", "prod-sug-1", "Milk", "item-sug-1")
-			},
-			httpExchange: httpExchange{
-				method:         "GET",
-				path:           "/api/suggestions/item-sug-1",
-				expectedStatus: http.StatusOK,
-				assertions: []assertion{
-					{path: "$.dataInsufficient", value: true},
-					{path: "$.itemId", value: "item-sug-1"},
-				},
-			},
-		},
-		{
-			name: "data insufficient with 2 events",
-			setup: func(env testEnv) {
-				createItemViaStockIn(env.T, env.DB, env.ProductStore, "user-sug-2", "prod-sug-2", "Butter", "item-sug-2")
-				insertConsumptionEvent(env.T, env.DB, "ce-2a", "item-sug-2", now.Add(-14*24*time.Hour))
-				insertConsumptionEvent(env.T, env.DB, "ce-2b", "item-sug-2", now.Add(-7*24*time.Hour))
-			},
-			httpExchange: httpExchange{
-				method:         "GET",
-				path:           "/api/suggestions/item-sug-2",
-				expectedStatus: http.StatusOK,
-				assertions: []assertion{
-					{path: "$.dataInsufficient", value: true},
-				},
-			},
-		},
-		{
-			// 3 events 7 days apart → median interval 7 days → ceil(14/7)+1 = 3
-			name: "returns numeric suggestion with 3 events",
-			setup: func(env testEnv) {
-				createItemViaStockIn(env.T, env.DB, env.ProductStore, "user-sug-3", "prod-sug-3", "Eggs", "item-sug-3")
-				insertConsumptionEvent(env.T, env.DB, "ce-3a", "item-sug-3", now.Add(-14*24*time.Hour))
-				insertConsumptionEvent(env.T, env.DB, "ce-3b", "item-sug-3", now.Add(-7*24*time.Hour))
-				insertConsumptionEvent(env.T, env.DB, "ce-3c", "item-sug-3", now)
-			},
-			httpExchange: httpExchange{
-				method:         "GET",
-				path:           "/api/suggestions/item-sug-3",
-				expectedStatus: http.StatusOK,
-				assertions: []assertion{
-					{path: "$.dataInsufficient", value: false},
-					{path: "$.suggestedQuantity", value: float64(3)},
-					{path: "$.itemId", value: "item-sug-3"},
-				},
-			},
-		},
-		{
-			name: "404 for nonexistent item",
-			httpExchange: httpExchange{
-				method:         "GET",
-				path:           "/api/suggestions/does-not-exist",
-				expectedStatus: http.StatusNotFound,
-			},
-		},
-	}
-
-	runHandlerTests(t, tests)
-}
 
 // createItemViaStockIn creates a product and inserts an item row with the given
 // deterministic itemID, then seeds one committed stock-in so the item exists in inventory.

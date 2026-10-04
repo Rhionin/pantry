@@ -11,7 +11,8 @@ type ShoppingListEntryResponse struct {
 	ID                string             `json:"id"`
 	ItemID            string             `json:"itemId"`
 	Quantity          int                `json:"quantity"`
-	Source            string             `json:"source"`      // "auto" or "manual"
+	Source            string             `json:"source"` // "auto" or "manual"
+	Note              string             `json:"note"`
 	PurchasedAt       *string            `json:"purchasedAt"` // ISO 8601 or null
 	ReplenishmentMode string             `json:"replenishmentMode,omitempty"`
 	Provider          string             `json:"provider,omitempty"`

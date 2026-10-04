@@ -159,6 +159,79 @@
   }
 }
 
+/* Build and Send share one row with the title. The Kroger hint and any
+   notices sit on later rows so they do not change the buttons' width or
+   vertical alignment. */
+.shopping-toolbar {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 12rem 12rem;
+  grid-template-areas:
+    "title fill send"
+    "hint hint hint";
+  align-items: center;
+  column-gap: 0.5rem;
+  row-gap: 0.35rem;
+}
+
+.shopping-toolbar:has(.provision-notices) {
+  grid-template-areas:
+    "title fill send"
+    "hint hint hint"
+    "notices notices notices";
+}
+
+.shopping-toolbar-title {
+  grid-area: title;
+  margin: 0;
+}
+
+.shopping-toolbar-actions,
+.provision-control {
+  display: contents;
+}
+
+.shopping-toolbar .shopping-fill,
+.shopping-toolbar .shopping-send {
+  width: 100%;
+}
+
+.shopping-toolbar .shopping-fill {
+  grid-area: fill;
+}
+
+.shopping-toolbar .shopping-send {
+  grid-area: send;
+}
+
+.shopping-toolbar .shopping-send-hint {
+  grid-area: hint;
+  justify-self: end;
+  margin: 0;
+  text-align: right;
+}
+
+.shopping-toolbar .provision-notices {
+  grid-area: notices;
+}
+
+@media (max-width: 47.99em) {
+  .shopping-toolbar {
+    grid-template-columns: 1fr 1fr;
+    grid-template-areas:
+      "title title"
+      "fill send"
+      "hint hint";
+  }
+
+  .shopping-toolbar:has(.provision-notices) {
+    grid-template-areas:
+      "title title"
+      "fill send"
+      "hint hint"
+      "notices notices";
+  }
+}
+
 .shopping-entries-scroll {
   overflow-x: auto;
 }

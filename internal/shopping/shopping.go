@@ -21,6 +21,7 @@ type ShoppingListItem struct {
 	ItemID      string
 	Quantity    int
 	Source      string // "manual" or "auto"
+	Note        string
 	PurchasedAt *time.Time
 	CreatedAt   time.Time
 }
@@ -38,12 +39,26 @@ func NewStore(db *sql.DB) *Store {
 // AddManualItem inserts a new manual shopping list item for the given user and item.
 func (s *Store) AddManualItem(ctx context.Context, userID, itemID string, quantity int) (*ShoppingListItem, error) {
 	id := uuid.NewString()
-	_, err := s.db.ExecContext(ctx,
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to add shopping list item: %w", err)
+	}
+	defer tx.Rollback()
+	// A hand-added line is a correction. It may name an item the owner had removed.
+	if _, err := tx.ExecContext(ctx,
+		`DELETE FROM staged_cart_skips WHERE user_id = ? AND item_id = ?`,
+		userID, itemID,
+	); err != nil {
+		return nil, fmt.Errorf("failed to add shopping list item: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx,
 		`INSERT INTO shopping_list_items (id, user_id, item_id, quantity, source)
 		 VALUES (?, ?, ?, ?, 'manual')`,
 		id, userID, itemID, quantity,
-	)
-	if err != nil {
+	); err != nil {
+		return nil, fmt.Errorf("failed to add shopping list item: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
 		return nil, fmt.Errorf("failed to add shopping list item: %w", err)
 	}
 	return s.getByID(ctx, id)
@@ -52,10 +67,28 @@ func (s *Store) AddManualItem(ctx context.Context, userID, itemID string, quanti
 // RemoveItem deletes the shopping list item with the given ID.
 // Returns ErrItemNotFound if no such item exists.
 func (s *Store) RemoveItem(ctx context.Context, id string) error {
-	res, err := s.db.ExecContext(ctx,
-		`DELETE FROM shopping_list_items WHERE id = ?`,
-		id,
-	)
+	item, err := s.getByID(ctx, id)
+	if err != nil {
+		return fmt.Errorf("failed to remove shopping list item: %w", err)
+	}
+	if item == nil {
+		return ErrItemNotFound
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("failed to remove shopping list item: %w", err)
+	}
+	defer tx.Rollback()
+	if item.Source == "auto" {
+		if _, err := tx.ExecContext(ctx,
+			`INSERT INTO staged_cart_skips (user_id, item_id) VALUES (?, ?)
+			 ON CONFLICT(user_id, item_id) DO NOTHING`,
+			item.UserID, item.ItemID,
+		); err != nil {
+			return fmt.Errorf("failed to remove shopping list item: %w", err)
+		}
+	}
+	res, err := tx.ExecContext(ctx, `DELETE FROM shopping_list_items WHERE id = ?`, id)
 	if err != nil {
 		return fmt.Errorf("failed to remove shopping list item: %w", err)
 	}
@@ -65,6 +98,9 @@ func (s *Store) RemoveItem(ctx context.Context, id string) error {
 	}
 	if n == 0 {
 		return ErrItemNotFound
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("failed to remove shopping list item: %w", err)
 	}
 	return nil
 }
@@ -94,7 +130,7 @@ func (s *Store) MarkPurchased(ctx context.Context, id string) error {
 // ordered by created_at ascending.
 func (s *Store) ListManualItems(ctx context.Context, userID string) ([]ShoppingListItem, error) {
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT id, user_id, item_id, quantity, source, purchased_at, created_at
+		`SELECT id, user_id, item_id, quantity, source, purchased_at, created_at, note
 		 FROM shopping_list_items
 		 WHERE user_id = ? AND source = 'manual' AND purchased_at IS NULL
 		 ORDER BY created_at ASC`,
@@ -124,7 +160,7 @@ func (s *Store) ListManualItems(ctx context.Context, userID string) ([]ShoppingL
 // manual row when both exist.
 func (s *Store) ListUnpurchased(ctx context.Context, userID string) ([]ShoppingListItem, error) {
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT id, user_id, item_id, quantity, source, purchased_at, created_at
+		`SELECT id, user_id, item_id, quantity, source, purchased_at, created_at, note
 		 FROM shopping_list_items
 		 WHERE user_id = ? AND purchased_at IS NULL
 		 ORDER BY created_at ASC`,
@@ -158,7 +194,7 @@ func (s *Store) GetItemByID(ctx context.Context, id string) (*ShoppingListItem, 
 // getByID retrieves a single shopping list item by its ID.
 func (s *Store) getByID(ctx context.Context, id string) (*ShoppingListItem, error) {
 	row := s.db.QueryRowContext(ctx,
-		`SELECT id, user_id, item_id, quantity, source, purchased_at, created_at
+		`SELECT id, user_id, item_id, quantity, source, purchased_at, created_at, note
 		 FROM shopping_list_items WHERE id = ?`,
 		id,
 	)
@@ -190,6 +226,7 @@ func scanShoppingListItem(row scanner) (*ShoppingListItem, error) {
 		&item.Source,
 		&purchasedAt,
 		&item.CreatedAt,
+		&item.Note,
 	)
 	if err != nil {
 		return nil, err
@@ -221,6 +258,11 @@ func (s *Store) SetAdjustment(ctx context.Context, entryID, providerID string, q
 		 VALUES (?, ?, ?)
 		 ON CONFLICT(entry_id, provider_id) DO UPDATE SET quantity = ?`,
 		entryID, providerID, quantity, quantity)
+	if err != nil {
+		return err
+	}
+	// The quantity the owner typed is a decision. The next fill leaves this line.
+	_, err = s.db.ExecContext(ctx, `UPDATE shopping_list_items SET touched = 1 WHERE id = ?`, entryID)
 	return err
 }
 

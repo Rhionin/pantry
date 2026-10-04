@@ -17,8 +17,11 @@ echo "Running tests with coverage..."
 echo "Coverage threshold: ${COVERAGE_THRESHOLD}%"
 echo ""
 
-# Run tests with coverage across all packages
-go test -cover -coverpkg=./... -coverprofile=coverage.out ./...
+# Third-party Go under frontend/node_modules (flatted ships a Go port) is not
+# pantry code. Leaving it in ./... drops the baseline whenever node_modules exists.
+mapfile -t PKGS < <(go list ./... | grep -v '/node_modules/')
+COVERPKG=$(IFS=,; echo "${PKGS[*]}")
+go test -cover -coverpkg="${COVERPKG}" -coverprofile=coverage.out "${PKGS[@]}"
 
 if [ $? -ne 0 ]; then
     echo -e "${RED}Tests failed${NC}"

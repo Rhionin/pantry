@@ -3,6 +3,7 @@ package server
 import (
 	"net/http"
 	"testing"
+	"time"
 )
 
 func TestShoppingBrandChoice(t *testing.T) {
@@ -10,9 +11,8 @@ func TestShoppingBrandChoice(t *testing.T) {
 		createItemViaStockIn(env.T, env.DB, env.ProductStore, "user-1", "prod-gv", "Great Value Cut Green Beans", "item-gv")
 		createItemViaStockIn(env.T, env.DB, env.ProductStore, "user-1", "prod-kr", "Kroger Cut Green Beans", "item-kr")
 		createItemViaStockIn(env.T, env.DB, env.ProductStore, "user-1", "prod-wf", "Western Family Cut Green Beans", "item-wf")
-		setTargetQuantity(env.T, env.DB, "item-gv", 4)
-		setTargetQuantity(env.T, env.DB, "item-kr", 4)
-		setTargetQuantity(env.T, env.DB, "item-wf", 4)
+		beginUsing(env.T, env.DB, time.Now())
+		setSupplyQuantity(env.T, env.DB, "prod-gv", 4)
 	}
 
 	tests := []handlerTestCase{
@@ -31,8 +31,8 @@ func TestShoppingBrandChoice(t *testing.T) {
 				},
 			},
 			afterRequest: exchanges(httpExchange{
-				method:         "GET",
-				path:           "/api/shopping-list",
+				method:         "POST",
+				path:           "/api/shopping-list/fill",
 				expectedStatus: http.StatusOK,
 				assertions: []assertion{
 					{path: "$[0].itemId", value: "item-kr"},
@@ -57,6 +57,11 @@ func TestShoppingBrandChoice(t *testing.T) {
 				},
 			},
 			afterRequest: exchanges(
+				httpExchange{
+					method:         "POST",
+					path:           "/api/shopping-list/fill",
+					expectedStatus: http.StatusOK,
+				},
 				httpExchange{
 					method:         "GET",
 					path:           "/api/shopping-list/considerations",
@@ -108,6 +113,11 @@ func TestShoppingBrandChoice(t *testing.T) {
 			},
 			afterRequest: exchanges(
 				httpExchange{
+					method:         "POST",
+					path:           "/api/shopping-list/fill",
+					expectedStatus: http.StatusOK,
+				},
+				httpExchange{
 					method:         "PUT",
 					path:           "/api/shopping-list/deals",
 					body:           `{"itemId":"item-gv","priceCents":50,"label":"Sale"}`,
@@ -131,9 +141,13 @@ func TestShoppingBrandChoice(t *testing.T) {
 			setup: func(env testEnv) {
 				beans(env)
 				createItemViaStockIn(env.T, env.DB, env.ProductStore, "user-1", "prod-corn", "Kroger Whole Kernel Corn", "item-corn")
-				setTargetQuantity(env.T, env.DB, "item-corn", 2)
 			},
 			httpExchange: httpExchange{
+				method:         "POST",
+				path:           "/api/shopping-list/fill",
+				expectedStatus: http.StatusOK,
+			},
+			afterRequest: exchanges(httpExchange{
 				method:         "POST",
 				path:           "/api/shopping-list/export",
 				body:           `{"useItemIds":{"item-gv":"item-corn"}}`,
@@ -141,7 +155,7 @@ func TestShoppingBrandChoice(t *testing.T) {
 				assertions: []assertion{
 					{path: "$.error", value: "Choose a brand of the same product"},
 				},
-			},
+			}),
 		},
 		{
 			name: "brand-only name cannot be saved as a preference",
@@ -183,6 +197,11 @@ func TestShoppingBrandChoice(t *testing.T) {
 				expectedStatus: http.StatusOK,
 			},
 			afterRequest: exchanges(
+				httpExchange{
+					method:         "POST",
+					path:           "/api/shopping-list/fill",
+					expectedStatus: http.StatusOK,
+				},
 				httpExchange{
 					method:         "DELETE",
 					path:           "/api/shopping-list/deals/item-kr",

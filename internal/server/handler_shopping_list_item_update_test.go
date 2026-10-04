@@ -36,7 +36,6 @@ func TestShoppingListItemUpdate(t *testing.T) {
 			name: "marks derived item purchased without changing inventory",
 			setup: func(env testEnv) {
 				createItemViaStockIn(env.T, env.DB, env.ProductStore, "user-1", "prod-slu-auto", "Rice", "item-slu-auto")
-				setTargetQuantity(env.T, env.DB, "item-slu-auto", 3)
 				if _, err := env.DB.ExecContext(context.Background(),
 					`INSERT INTO shopping_list_items (id, user_id, item_id, quantity, source) VALUES (?, ?, ?, ?, 'auto')`,
 					"sli-upd-auto", "user-1", "item-slu-auto", 2,

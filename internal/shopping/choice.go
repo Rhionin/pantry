@@ -44,47 +44,9 @@ type Consideration struct {
 }
 
 // NeedKey is the shared-need identity used by brand preferences: the generic
-// product name plus the normalized unit. ok is false when the name is only a
-// brand, matching CollapseEquivalentNeeds.
+// product name plus the normalized unit. ok is false when the name is only a brand.
 func NeedKey(name, unit string) (string, bool) {
 	return equivalenceKey(name, unit)
-}
-
-// ApplyPreferences points each derived line at the saved brand for that need
-// when the brand is still in the group. Target and on-hand counts stay the
-// group's figures, so the quantity does not change — only which product is bought.
-func ApplyPreferences(inputs []DeriveInput, items []ReplenishmentItem, prefs []Preference) []DeriveInput {
-	if len(prefs) == 0 || len(inputs) == 0 {
-		return inputs
-	}
-	byID := indexItems(items)
-	prefByNeed := indexPreferences(prefs)
-	out := make([]DeriveInput, len(inputs))
-	copy(out, inputs)
-	for i, input := range out {
-		item, ok := byID[input.ItemID]
-		if !ok {
-			continue
-		}
-		key, groupable := equivalenceKey(item.Name, item.UnitOfMeasure)
-		if !groupable {
-			continue
-		}
-		pref, ok := prefByNeed[key]
-		if !ok || pref.ItemID == "" || pref.ItemID == input.ItemID {
-			continue
-		}
-		preferred, ok := byID[pref.ItemID]
-		if !ok {
-			continue
-		}
-		prefKey, prefOK := equivalenceKey(preferred.Name, preferred.UnitOfMeasure)
-		if !prefOK || prefKey != key {
-			continue
-		}
-		out[i].ItemID = pref.ItemID
-	}
-	return out
 }
 
 // ConsiderationsForLines builds optional brand notes for the lines that will

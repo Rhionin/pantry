@@ -5,6 +5,7 @@ import { ScanQueuePage } from './components/queue/ScanQueuePage';
 import { InventoryPage } from './components/inventory/InventoryPage';
 import { ShoppingListPage } from './components/shopping/ShoppingListPage';
 import { DiagnosticsPage } from './components/diagnostics/DiagnosticsPage';
+import { SettingsPage } from './components/settings/SettingsPage';
 import { AppMenu } from './components/shell/AppMenu';
 import { CredentialsRevisionContext } from './credentialsRefresh';
 import { reportRoute } from './telemetry/client';
@@ -52,6 +53,7 @@ function App() {
               <Route path="/inventory" element={<InventoryPage />} />
               <Route path="/shopping" element={<ShoppingListPage />} />
               <Route path="/diagnostics" element={<DiagnosticsPage />} />
+              <Route path="/settings" element={<SettingsPage />} />
             </Routes>
           </AppShell.Main>
         </AppShell>

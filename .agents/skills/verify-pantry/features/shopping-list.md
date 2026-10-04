@@ -1,17 +1,17 @@
 # Shopping list
 
-The shopping list tells a user what to buy. Entries are either derived
-automatically from a product's target quantity versus its current stock, or added
-manually. A user can add an item, see its source, mark it purchased, or remove
-it. Marking a derived shortfall purchased does not change inventory on its own;
-inventory changes only when the bought item is later stocked in.
+The shopping list tells a user what to buy. Before the opening scan is marked
+complete, only rows the user added by hand appear. After that, the list replaces
+what was used until a steady rate qualifies. A user can add an item, see its
+source and note, mark it purchased, or remove it. Marking a derived row purchased
+does not change inventory on its own.
 
 ## Sub-features
 
-- `shopping-target` setting a target quantity on an inventory item (via `Get
-  suggestion` then `Save manual target`) enables automatic restock derivation.
-- `shopping-derived` when stock drops below the target, a `Derived` entry appears
-  with the shortfall quantity.
+- `shopping-opening` the Inventory page shows `Opening inventory` until `This
+  scan is complete`. That moment is the only start date.
+- `shopping-derived` after the start, using a unit adds a `Derived` entry whose
+  note is `replacing N you used`.
 - `shopping-manual-add` a user adds a `Manual` entry by choosing a pantry item
   and quantity in the `Add an item` form.
 - `shopping-purchase` `Mark <product> purchased` removes the entry from the list
@@ -22,17 +22,22 @@ inventory changes only when the bought item is later stocked in.
 
 ## How to get to it (user POV)
 
-- Open `Shopping List` (`/shopping`) to view entries, add an item, mark
-  purchased, or remove. With a store connected, `Add to <store> cart` and
-  `Start a new cart` stay on the page.
+- Open `Shopping List` (`/shopping`). The page title is `Shopping plan`.
+  `Build the list` snapshots the supply plan and opens quantity, sale, and
+  brand decisions. Once a line exists the same button reads `Update the list`.
+  `Send to Kroger` sends only that staged plan. It stays disabled, with
+  `Build the list before sending it to Kroger.`, until a line is staged. A
+  short line under Send says `Adds these items to your Kroger cart.`
+  `Start a new cart` still only resets the sent-item ledger, and its helper
+  says `This only forgets what was already sent.`
 - Change the store connection from the header menu: `Menu`, then `Manage
   Kroger connection`. That dialog edits credentials (`Save credentials`,
   `Clear saved credentials`) and, only while Kroger is connected, offers
   `Disconnect Kroger`. The form does not replace the shopping page. The same
   menu reaches `Diagnostics`. The build id is in the menu's `Build` section,
   not in the action list.
-- Set a target quantity from `Inventory` (`/inventory`): open a product's `View
-  instances`, then use its `Target quantity` panel.
+- Mark the opening scan complete from `Inventory` (`/inventory`). The banner is
+  the only place that start date is set.
 
 ## Driving it with Playwright
 
@@ -43,22 +48,17 @@ Preconditions:
   [stock-in](./stock-in.md) recipe) so a shortfall can be derived after
   consumption.
 
-- **Set a target quantity.** On `Inventory`, open the product and its instances,
-  then in the target panel click `getByRole('button', { name: 'Get suggestion'
-  })`. With little history the panel offers manual entry: fill
-  `getByLabel('Manual target quantity')` with the target (for example `2`) and
-  click `getByRole('button', { name: 'Save manual target' })`. Expect
-  `getByText('Target quantity set to 2.')`.
-- **Create a shortfall.** Stock out one unit (see [stock-out](./stock-out.md)) so
-  current stock falls below the target.
-- **See the derived entry.** Open `Shopping List`. In the `Shopping list entries`
-  table, the product's row shows the shortfall quantity (for example `1 <unit>`)
-  and a `Derived` source badge. The backend materializes derived entries
-  (`shopping.SyncDerivedItems`), so this row carries a real id and exposes the
-  `Mark <product> purchased` / `Remove <product>` actions.
+- **Finish the opening scan.** On `Inventory`, click `getByRole('button', {
+  name: 'This scan is complete' })`. The `Opening inventory` alert disappears.
+- **Use one unit.** Stock out one unit (see [stock-out](./stock-out.md)).
+- **See the derived entry.** Open `Shopping List` and click `Build the list`.
+  In the `Shopping plan entries` table, the product's row shows `1 <unit>`,
+  the note `replacing 1 you used`, and a `Derived` source badge. The row has
+  a real id and exposes `Mark <product> purchased` / `Remove <product>`. The
+  button then reads `Update the list`.
 - **Mark purchased.** Click `getByRole('button', { name: 'Mark <product>
   purchased' })` on the derived row. The row leaves the list; an emptied list
-  shows `Your shopping list is empty.` (A `Manual` entry added through the `Add
+  shows `Build the list before sending it to Kroger.` (A `Manual` entry added through the `Add
   an item` form — `Pantry item` select + `Quantity` + `Add to shopping list` —
   behaves the same way.)
 - **Confirm inventory is unchanged by purchase.** `readInventory(page)` shows the
@@ -81,15 +81,10 @@ credentials can still be edited; the form does not replace the shopping page.
 
 ## Gotchas
 
-- A derived entry only appears after a target quantity is set AND current stock is
-  below it. Setting the target alone, with stock at or above target, derives
-  nothing.
-- The API-backed list the page shows materializes derived entries
-  (`shopping.SyncDerivedItems`), so a `Derived` row carries a real id and DOES
-  render `Mark <product> purchased` / `Remove <product>` buttons — you can mark
-  the derived shortfall purchased directly. The empty-id/no-action-buttons case
-  applies only to the frontend-only pure fallback (`deriveShoppingListEntries`),
-  not the list the page renders. The buttons carry the product name in their
+- Before `This scan is complete`, the shopping list shows only rows added by
+  hand. Opening scans are not use and do not start a rate.
+- A `Derived` row carries a real id and renders `Mark <product> purchased` /
+  `Remove <product>`. The buttons carry the product name in their
   accessible label, so target the exact `Mark <product> purchased` string.
 - Marking a shortfall purchased dismisses it; the purchased gap stays hidden
   until the on-hand quantity changes, so the row does not immediately reappear.

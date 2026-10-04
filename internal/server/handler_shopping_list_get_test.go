@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"net/http"
 	"testing"
+	"time"
 )
 
 func TestShoppingListGet(t *testing.T) {
@@ -38,9 +39,8 @@ func TestShoppingListGet(t *testing.T) {
 			},
 		},
 		{
-			name: "returns derived entry when item is below target quantity",
+			name: "a stored target does not create a shopping line",
 			setup: func(env testEnv) {
-				// createItemViaStockIn creates one instance; setting target=3 → gap of 2
 				createItemViaStockIn(env.T, env.DB, env.ProductStore, "user-1", "prod-sl-2", "Eggs", "item-sl-2")
 				setTargetQuantity(env.T, env.DB, "item-sl-2", 3)
 			},
@@ -49,37 +49,33 @@ func TestShoppingListGet(t *testing.T) {
 				path:           "/api/shopping-list",
 				expectedStatus: http.StatusOK,
 				assertions: []assertion{
-					{path: "$[0].itemId", value: "item-sl-2"},
-					{path: "$[0].quantity", value: float64(2)},
-					{path: "$[0].source", value: "auto"},
-					{path: "$[1]", absent: true},
+					{path: "$", value: []interface{}{}},
 				},
 			},
 		},
 		{
 			name: "store brands of the same product share one replenishment line",
 			setup: func(env testEnv) {
-				// One can of each brand is already in stock. Each target is a
-				// full supply of 4, so buying each brand separately would ask
-				// for 3+3+3. The shared need is 4-3=1, plus corn on its own.
+				// One can of each brand is already in stock. A quantity of 4 on
+				// Great Value is one shared supply, so the group buys 4-3=1.
+				// Corn is a different product and buys 2-1=1.
 				createItemViaStockIn(env.T, env.DB, env.ProductStore, "user-1", "prod-gv", "Great Value Cut Green Beans", "item-gv")
 				createItemViaStockIn(env.T, env.DB, env.ProductStore, "user-1", "prod-kr", "Kroger Cut Green Beans", "item-kr")
 				createItemViaStockIn(env.T, env.DB, env.ProductStore, "user-1", "prod-wf", "Western Family Cut Green Beans", "item-wf")
 				createItemViaStockIn(env.T, env.DB, env.ProductStore, "user-1", "prod-corn", "Kroger Whole Kernel Corn", "item-corn")
-				setTargetQuantity(env.T, env.DB, "item-gv", 4)
-				setTargetQuantity(env.T, env.DB, "item-kr", 4)
-				setTargetQuantity(env.T, env.DB, "item-wf", 4)
-				setTargetQuantity(env.T, env.DB, "item-corn", 2)
+				beginUsing(env.T, env.DB, time.Now())
+				setSupplyQuantity(env.T, env.DB, "prod-gv", 4)
+				setSupplyQuantity(env.T, env.DB, "prod-corn", 2)
 			},
 			httpExchange: httpExchange{
-				method:         "GET",
-				path:           "/api/shopping-list",
+				method:         "POST",
+				path:           "/api/shopping-list/fill",
 				expectedStatus: http.StatusOK,
 				assertions: []assertion{
-					{path: "$[0].itemId", value: "item-gv"},
+					{path: "$[0].itemId", value: "item-corn"},
 					{path: "$[0].quantity", value: float64(1)},
 					{path: "$[0].source", value: "auto"},
-					{path: "$[1].itemId", value: "item-corn"},
+					{path: "$[1].itemId", value: "item-gv"},
 					{path: "$[1].quantity", value: float64(1)},
 					{path: "$[1].source", value: "auto"},
 					{path: "$[2]", absent: true},
@@ -101,11 +97,12 @@ func TestShoppingListGet(t *testing.T) {
 			setup: func(env testEnv) {
 				createItemViaStockIn(env.T, env.DB, env.ProductStore, "user-1", "prod-gv-notarget", "Great Value Cut Green Beans", "item-gv-notarget")
 				createItemViaStockIn(env.T, env.DB, env.ProductStore, "user-1", "prod-kr-target", "Kroger Cut Green Beans", "item-kr-target")
-				setTargetQuantity(env.T, env.DB, "item-kr-target", 4)
+				beginUsing(env.T, env.DB, time.Now())
+				setSupplyQuantity(env.T, env.DB, "prod-kr-target", 4)
 			},
 			httpExchange: httpExchange{
-				method:         "GET",
-				path:           "/api/shopping-list",
+				method:         "POST",
+				path:           "/api/shopping-list/fill",
 				expectedStatus: http.StatusOK,
 				assertions: []assertion{
 					{path: "$[0].itemId", value: "item-kr-target"},
@@ -120,8 +117,6 @@ func TestShoppingListGet(t *testing.T) {
 			setup: func(env testEnv) {
 				createItemViaStockIn(env.T, env.DB, env.ProductStore, "user-1", "prod-gv-manual", "Great Value Cut Green Beans", "item-gv-manual")
 				createItemViaStockIn(env.T, env.DB, env.ProductStore, "user-1", "prod-kr-manual", "Kroger Cut Green Beans", "item-kr-manual")
-				setTargetQuantity(env.T, env.DB, "item-gv-manual", 4)
-				setTargetQuantity(env.T, env.DB, "item-kr-manual", 4)
 				insertManualShoppingItem(env.T, env.DB, "sli-beans", "user-1", "item-kr-manual", 5)
 			},
 			httpExchange: httpExchange{
@@ -141,12 +136,13 @@ func TestShoppingListGet(t *testing.T) {
 			setup: func(env testEnv) {
 				createItemViaStockIn(env.T, env.DB, env.ProductStore, "user-1", "prod-delmonte", "Del Monte Cut Green Beans", "item-delmonte")
 				createItemViaStockIn(env.T, env.DB, env.ProductStore, "user-1", "prod-kroger-nat", "Kroger Cut Green Beans", "item-kroger-nat")
-				setTargetQuantity(env.T, env.DB, "item-delmonte", 4)
-				setTargetQuantity(env.T, env.DB, "item-kroger-nat", 4)
+				beginUsing(env.T, env.DB, time.Now())
+				setSupplyQuantity(env.T, env.DB, "prod-delmonte", 4)
+				setSupplyQuantity(env.T, env.DB, "prod-kroger-nat", 4)
 			},
 			httpExchange: httpExchange{
-				method:         "GET",
-				path:           "/api/shopping-list",
+				method:         "POST",
+				path:           "/api/shopping-list/fill",
 				expectedStatus: http.StatusOK,
 				assertions: []assertion{
 					{path: "$[0].itemId", value: "item-delmonte"},
@@ -180,5 +176,37 @@ func setTargetQuantity(t *testing.T, db *sql.DB, itemID string, qty int) {
 		`UPDATE items SET target_quantity = ? WHERE id = ?`, qty, itemID,
 	); err != nil {
 		t.Fatalf("setTargetQuantity: %v", err)
+	}
+}
+
+func beginUsing(t *testing.T, db *sql.DB, started time.Time) {
+	t.Helper()
+	if _, err := db.ExecContext(context.Background(),
+		`INSERT INTO app_settings (key, value) VALUES ('onboarding_started_at', ?)
+		 ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
+		started.UTC().Format(time.RFC3339),
+	); err != nil {
+		t.Fatalf("beginUsing: %v", err)
+	}
+}
+
+func setSupplyQuantity(t *testing.T, db *sql.DB, productID string, qty int) {
+	t.Helper()
+	if _, err := db.ExecContext(context.Background(),
+		`INSERT INTO supply_overrides (product_id, quantity) VALUES (?, ?)
+		 ON CONFLICT(product_id) DO UPDATE SET quantity = excluded.quantity, window_months = NULL`,
+		productID, qty,
+	); err != nil {
+		t.Fatalf("setSupplyQuantity: %v", err)
+	}
+}
+
+func insertStockIn(t *testing.T, db *sql.DB, productID string, at time.Time) {
+	t.Helper()
+	if _, err := db.ExecContext(context.Background(),
+		`INSERT INTO stock_in_events (product_id, at) VALUES (?, ?)`,
+		productID, at.UTC(),
+	); err != nil {
+		t.Fatalf("insertStockIn: %v", err)
 	}
 }

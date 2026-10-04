@@ -23,13 +23,14 @@ evidence, and cleanup mechanics.
 
 ## Driving conventions
 
-- The web UI is the primary surface. Its three routes are `Scan Queue` (`/`),
+- The web UI is the primary surface. Its routes are `Scan Queue` (`/`),
   `Inventory` (`/inventory`), and `Shopping List` (`/shopping`), reachable from
   the header links. The header menu's `Diagnostics` item opens `/diagnostics`
-  for page-load timings from `GET /api/telemetry`. The same menu's `Manage
-  Kroger connection` item edits credentials and, while connected, disconnects.
-  The build id is in that menu's `Build` section. Diagnostics is outside the
-  scan, inventory, and shopping flows.
+  for page-load timings from `GET /api/telemetry`. `Settings` sits immediately
+  above the `Build` label and opens `/settings` for the supply length and wipe.
+  The same menu's `Manage Kroger connection` item edits credentials and, while
+  connected, disconnects. The build id is in that menu's `Build` section.
+  Diagnostics and Settings are outside the scan, inventory, and shopping flows.
   Drive it with `scripts/drive-diagnostics.mjs`.
 - Prefer ARIA roles and accessible names over CSS selectors or DOM position.
   Scanning is the core action: fill the `Barcode scanner input` textbox and press
@@ -86,8 +87,8 @@ behavior, then uses exactly these four H2 sections in order:
 - [Stock out oldest-first](./stock-out.md) — switch to stock-out mode, scan a
   stocked product, and confirm the earliest-expiring instance is consumed. Proven
   end to end by `scripts/drive-stock-out.mjs`.
-- [Shopping list](./shopping-list.md) — derive a restock gap from a target
-  quantity, or add an item manually, then mark it purchased. Proven end to end by
+- [Shopping list](./shopping-list.md) — mark the opening scan complete, then
+  replace what was used, or add an item manually, then mark it purchased. Proven end to end by
   `scripts/drive-shopping-list.mjs`. Shared store brands, a noted sale, and a
   locked brand preference are proven by `scripts/drive-brand-deals.mjs`.
   `scripts/drive-shopping-connected.mjs` proves the connected phone page keeps

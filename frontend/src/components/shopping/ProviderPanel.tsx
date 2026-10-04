@@ -45,7 +45,7 @@ export const ProviderPanel = ({ providers, onChanged }: ProviderPanelProps) => {
       await resetProviderLedger(provider.id);
       onChanged();
     } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : 'Unable to start a new cart.');
+      setError(requestError instanceof Error ? requestError.message : 'Unable to forget what was already sent.');
     } finally {
       setPending('');
     }
@@ -102,14 +102,17 @@ const ProviderRow = ({
             </Button>
           )}
           {provider.credentialsConfigured && (provider.connectionState === 'connected' || provider.connectionState === 'not_required') && (
-            <Button
-              size="xs"
-              variant="light"
-              loading={pending === `${provider.id}-ledger`}
-              onClick={onResetLedger}
-            >
-              Start a new cart
-            </Button>
+            <Stack gap={2} align="flex-end">
+              <Button
+                size="xs"
+                variant="light"
+                loading={pending === `${provider.id}-ledger`}
+                onClick={onResetLedger}
+              >
+                Start a new cart
+              </Button>
+              <Text size="xs" c="dimmed">This only forgets what was already sent.</Text>
+            </Stack>
           )}
         </Group>
         {provider.connectionState === 'reauth_required' && (

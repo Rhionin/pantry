@@ -10,6 +10,7 @@ import (
 
 	"github.com/Rhionin/pantry/internal/inventory"
 	"github.com/Rhionin/pantry/internal/product"
+	"github.com/Rhionin/pantry/internal/supply"
 	"github.com/google/uuid"
 )
 
@@ -99,6 +100,10 @@ type Queue struct {
 	Pantry interface {
 		GetInventoryItem(ctx context.Context, itemID string, now time.Time, warningDays int) (*inventory.InventoryItem, error)
 	}
+
+	// Supply distinguishes an opening snapshot from a later restock.
+	// Nil only in tests that construct a queue directly; the server always sets it.
+	Supply *supply.Service
 }
 
 // NewQueue creates a new Queue with the given database connection.

@@ -20,10 +20,10 @@ import type {
   ScanStatus,
   ProvisionReport,
   ProviderInfo,
-  ReplenishmentMode,
   ShoppingConsiderations,
   ShoppingListEntry,
-  TargetQuantitySuggestion,
+  SupplyOverride,
+  SupplySettings,
 } from '../types';
 
 const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? '';
@@ -229,7 +229,7 @@ export function removeItemInstance(instanceId: string): Promise<void> {
 }
 
 // Exact phrase POST /api/inventory/wipe requires. Kept in sync with
-// inventoryWipeConfirmation in internal/server/handler_inventory_wipe.go.
+// supply.WipePhrase.
 export const WIPE_INVENTORY_CONFIRMATION = 'WIPE INVENTORY';
 
 export function wipeInventory(confirmation: string): Promise<void> {
@@ -239,24 +239,29 @@ export function wipeInventory(confirmation: string): Promise<void> {
   });
 }
 
-// --- Suggestions and target quantity ---
-
-export function getSuggestion(itemId: string): Promise<TargetQuantitySuggestion> {
-  return apiFetch(`/api/suggestions/${itemId}`);
+export function getSupplySettings(): Promise<SupplySettings> {
+  return apiFetch('/api/settings/supply');
 }
 
-interface SetTargetQuantityResponse {
-  itemId: string;
-  targetQuantity: number;
+export function setSupplyMonths(months: number): Promise<SupplySettings> {
+  return apiFetch('/api/settings/supply', {
+    method: 'PUT',
+    body: JSON.stringify({ months }),
+  });
 }
 
-export function setTargetQuantity(
-  itemId: string,
-  targetQuantity: number,
-): Promise<SetTargetQuantityResponse> {
-  return apiFetch(`/api/items/${itemId}/target-quantity`, {
-    method: 'POST',
-    body: JSON.stringify({ targetQuantity }),
+export function completeOnboarding(): Promise<{ startedAt: string }> {
+  return apiFetch('/api/onboarding/complete', { method: 'POST' });
+}
+
+export function getSupplyOverride(productId: string): Promise<SupplyOverride> {
+  return apiFetch(`/api/products/${productId}/supply-override`);
+}
+
+export function setSupplyOverride(productId: string, override: SupplyOverride): Promise<SupplyOverride> {
+  return apiFetch(`/api/products/${productId}/supply-override`, {
+    method: 'PUT',
+    body: JSON.stringify(override),
   });
 }
 
@@ -264,6 +269,10 @@ export function setTargetQuantity(
 
 export function getShoppingList(provider?: string): Promise<ShoppingListEntry[]> {
   return apiFetch(`/api/shopping-list${toQueryString({ provider })}`);
+}
+
+export function fillShoppingCart(): Promise<ShoppingListEntry[]> {
+  return apiFetch('/api/shopping-list/fill', { method: 'POST' });
 }
 
 export function addShoppingListItem(itemId: string, quantity: number): Promise<ShoppingListEntry> {
@@ -322,13 +331,6 @@ export function disconnectProvider(providerId: string): Promise<void> {
 
 export function resetProviderLedger(providerId: string): Promise<void> {
   return apiFetch(`/api/providers/${providerId}/ledger/reset`, { method: 'POST' });
-}
-
-export function setReplenishmentMode(itemId: string, mode: ReplenishmentMode): Promise<{ mode: ReplenishmentMode }> {
-  return apiFetch(`/api/items/${itemId}/replenishment-mode`, {
-    method: 'POST',
-    body: JSON.stringify({ mode }),
-  });
 }
 
 export function setShoppingListAdjustment(entryId: string, provider: string, adjustment: number): Promise<{ adjustment: number }> {

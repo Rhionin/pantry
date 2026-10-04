@@ -344,58 +344,27 @@ func (e *Engine) Provision(ctx context.Context, userID string, providerID Provid
 	}, nil
 }
 
-// getComputedEntries gets shopping list entries with ledger-net quantities.
-// Manual rows keep the quantity the owner recorded, net of the ledger.
-// Derived rows use the replenishment mode. An adjustment, when one is stored
-// for this provider, replaces that quantity for this operation only.
+// getComputedEntries reads the staged cart with ledger-net quantities.
+// It does not recompute the supply plan, so a quantity the owner changed
+// is the quantity sent. An adjustment, when one is stored for this provider,
+// replaces that quantity for this operation only.
 func (e *Engine) getComputedEntries(ctx context.Context, providerID ProviderID, userID string) ([]ResolvedItem, error) {
 	pantryItems, err := e.pantry.ListItems(ctx, userID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list pantry items: %w", err)
 	}
-	manualItems, err := e.shoppingList.ListManualItems(ctx, userID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to list manual items: %w", err)
-	}
 	ledger, err := e.ledger.ListForProvider(ctx, providerID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list ledger: %w", err)
 	}
-	pantryInstances, err := e.pantry.List(ctx)
+	active, err := e.shoppingList.ListUnpurchased(ctx, userID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to list pantry: %w", err)
-	}
-	instancesByItem := make(map[string]int)
-	for _, inst := range pantryInstances {
-		instancesByItem[inst.ItemID]++
-	}
-
-	itemIDs := make([]string, 0, len(pantryItems)+len(manualItems))
-	seen := make(map[string]struct{}, len(pantryItems))
-	for _, item := range pantryItems {
-		seen[item.ID] = struct{}{}
-		itemIDs = append(itemIDs, item.ID)
-	}
-	for _, item := range manualItems {
-		if _, ok := seen[item.ItemID]; ok {
-			continue
-		}
-		itemIDs = append(itemIDs, item.ItemID)
-	}
-	consumedAt, err := e.consumptionLog.ListConsumedAtByItems(ctx, itemIDs)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get consumption: %w", err)
+		return nil, err
 	}
 
 	itemNames := make(map[string]string, len(pantryItems))
-	itemUnits := make(map[string]string, len(pantryItems))
 	itemProductIDs := make(map[string]string, len(pantryItems))
-	manualIDs := make(map[string]struct{}, len(manualItems))
-	for _, item := range manualItems {
-		manualIDs[item.ItemID] = struct{}{}
-	}
 	needs := make([]shopping.ReplenishmentItem, 0, len(pantryItems))
-	replenishQty := make(map[string]int)
 	for _, item := range pantryItems {
 		itemProductIDs[item.ID] = item.ProductID
 		name := "Unknown"
@@ -407,129 +376,21 @@ func (e *Engine) getComputedEntries(ctx context.Context, providerID ProviderID, 
 			unit = item.Product.UnitOfMeasure
 		}
 		itemNames[item.ID] = name
-		itemUnits[item.ID] = unit
-
-		mode := shopping.ReplenishmentMode(item.ReplenishmentMode)
-		if mode == "" {
-			mode = shopping.TargetMode
-		}
-		_, hasLedger := ledger[item.ID]
-		consumed := consumedSince(consumedAt[item.ID], ledger[item.ID].Boundary, hasLedger)
-		need := shopping.ReplenishmentItem{
+		needs = append(needs, shopping.ReplenishmentItem{
 			ItemID:        item.ID,
 			Name:          name,
 			UnitOfMeasure: unit,
-			CurrentCount:  instancesByItem[item.ID],
-		}
-		if mode == shopping.ReplenishMode {
-			replenishQty[item.ID] = shopping.ComputeQuantity(
-				consumed,
-				ledger[item.ID].Requested,
-				item.TargetQuantity,
-				instancesByItem[item.ID],
-				mode,
-			)
-		} else if item.TargetQuantity != nil {
-			need.HasTarget = true
-			need.TargetQuantity = *item.TargetQuantity
-		}
-		needs = append(needs, need)
-	}
-	prefs, err := e.shoppingList.ListPreferences(ctx, userID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to list brand preferences: %w", err)
-	}
-	derivedEntries := shopping.DeriveShoppingList(shopping.ApplyPreferences(shopping.CollapseEquivalentNeeds(needs, manualIDs), needs, prefs))
-	for i := range derivedEntries {
-		qty := derivedEntries[i].Quantity - ledger[derivedEntries[i].ItemID].Requested
-		if qty < 0 {
-			qty = 0
-		}
-		derivedEntries[i].Quantity = qty
-	}
-	pooled := make(map[string]struct{}, len(derivedEntries))
-	for _, entry := range derivedEntries {
-		if entry.Quantity < 1 {
-			continue
-		}
-		pooled[entry.ItemID] = struct{}{}
-		for id := range itemNames {
-			if shopping.SameNeed(itemNames[entry.ItemID], itemUnits[entry.ItemID], itemNames[id], itemUnits[id]) {
-				pooled[id] = struct{}{}
-			}
-		}
-	}
-	for id, qty := range replenishQty {
-		if qty < 1 {
-			continue
-		}
-		if _, ok := pooled[id]; ok {
-			continue
-		}
-		derivedEntries = append(derivedEntries, shopping.DerivedEntry{
-			ItemID:   id,
-			Quantity: qty,
-			Source:   "auto",
 		})
-	}
-	positive := derivedEntries[:0]
-	for _, entry := range derivedEntries {
-		if entry.Quantity > 0 {
-			positive = append(positive, entry)
-		}
-	}
-	derivedEntries = positive
-
-	manualEntries := make([]shopping.ManualEntry, 0, len(manualItems))
-	for _, item := range manualItems {
-		qty := item.Quantity - ledger[item.ItemID].Requested
-		if qty < 0 {
-			qty = 0
-		}
-		if qty > 0 {
-			manualEntries = append(manualEntries, shopping.ManualEntry{
-				ItemID:   item.ItemID,
-				Quantity: qty,
-			})
-		}
-	}
-
-	merged := shopping.MergeEntries(derivedEntries, manualEntries)
-
-	autoDerived := make([]shopping.DerivedEntry, 0)
-	for _, entry := range derivedEntries {
-		if _, isManual := manualIDs[entry.ItemID]; isManual {
-			continue
-		}
-		autoDerived = append(autoDerived, entry)
-	}
-	if _, err := e.shoppingList.SyncDerivedItems(ctx, userID, autoDerived); err != nil {
-		return nil, fmt.Errorf("failed to save derived shopping list items: %w", err)
-	}
-	active, err := e.shoppingList.ListUnpurchased(ctx, userID)
-	if err != nil {
-		return nil, err
-	}
-	entryIDByItemID := make(map[string]string, len(active))
-	for _, item := range active {
-		if item.Source == "manual" {
-			entryIDByItemID[item.ItemID] = item.ID
-			continue
-		}
-		if _, ok := entryIDByItemID[item.ItemID]; !ok {
-			entryIDByItemID[item.ItemID] = item.ID
-		}
 	}
 
 	swaps := exportSubstitutions(ctx)
 	var result []ResolvedItem
-	for _, entry := range merged {
-		entryID, hasEntry := entryIDByItemID[entry.ItemID]
-		if !hasEntry {
-			continue
+	for _, entry := range active {
+		qty := entry.Quantity - ledger[entry.ItemID].Requested
+		if qty < 0 {
+			qty = 0
 		}
-		qty := entry.Quantity
-		adjustment, err := e.shoppingList.GetAdjustment(ctx, entryID, string(providerID))
+		adjustment, err := e.shoppingList.GetAdjustment(ctx, entry.ID, string(providerID))
 		if err != nil {
 			return nil, fmt.Errorf("failed to read adjustment: %w", err)
 		}
@@ -552,7 +413,7 @@ func (e *Engine) getComputedEntries(ctx context.Context, providerID ProviderID, 
 			name = "Unknown"
 		}
 		result = append(result, ResolvedItem{
-			EntryID:   entryID,
+			EntryID:   entry.ID,
 			ItemID:    itemID,
 			ProductID: itemProductIDs[itemID],
 			Name:      name,
@@ -596,21 +457,6 @@ func (e *Engine) exchangeRefresh(ctx context.Context, provider Provider) func(re
 		}
 		return tokenSet.AccessToken, tokenSet.RefreshToken, tokenSet.ExpiresIn, nil
 	}
-}
-
-// consumedSince counts events after boundary. A missing ledger row counts
-// every event, because that boundary precedes the whole history.
-func consumedSince(times []time.Time, boundary time.Time, hasBoundary bool) int {
-	if !hasBoundary {
-		return len(times)
-	}
-	count := 0
-	for _, at := range times {
-		if at.After(boundary) {
-			count++
-		}
-	}
-	return count
 }
 
 // resolveIdentities resolves identities for each entry.

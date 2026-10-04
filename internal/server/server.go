@@ -18,6 +18,7 @@ import (
 	"github.com/Rhionin/pantry/internal/scanlistener"
 	"github.com/Rhionin/pantry/internal/shopping"
 	"github.com/Rhionin/pantry/internal/suggestion"
+	"github.com/Rhionin/pantry/internal/supply"
 	"github.com/Rhionin/pantry/internal/telemetry"
 	"github.com/Rhionin/pantry/internal/webui"
 )
@@ -282,10 +283,13 @@ func newAPIMux(
 	apiMux.HandleFunc("GET /api/settings/contribution", HandleJSON(settingsGetHandler.Handle))
 	apiMux.HandleFunc("PUT /api/settings/contribution", HandleJSON(settingsPutHandler.Handle))
 
+	supplySvc := supply.Open(db)
+
 	// Scan queue handlers
 	scanQueue := scan.NewQueue(db)
 	scanQueue.Broadcaster = broadcaster
 	scanQueue.Ledger = providerLedgerReset{ledger: ledger, registry: registry}
+	scanQueue.Supply = supplySvc
 	scanCreateHandler := &ScanCreateHandler{
 		Queue:         scanQueue,
 		LookupService: lookupService,
@@ -313,25 +317,29 @@ func newAPIMux(
 	inventoryInstancesListHandler := &InventoryInstancesListHandler{Pantry: pantry}
 	inventoryInstanceCreateHandler := &InventoryInstanceCreateHandler{Pantry: pantry}
 	inventoryInstanceDeleteHandler := &InventoryInstanceDeleteHandler{Pantry: pantry}
-	inventoryWipeHandler := &InventoryWipeHandler{Pantry: pantry}
+	inventoryWipeHandler := &InventoryWipeHandler{Supply: supplySvc}
+	supplySettingsGetHandler := &SupplySettingsGetHandler{Supply: supplySvc}
+	supplySettingsPutHandler := &SupplySettingsPutHandler{Supply: supplySvc}
+	supplyOverrideGetHandler := &SupplyOverrideGetHandler{Supply: supplySvc}
+	supplyOverridePutHandler := &SupplyOverridePutHandler{Supply: supplySvc}
+	onboardingCompleteHandler := &OnboardingCompleteHandler{Supply: supplySvc}
 
 	apiMux.HandleFunc("GET /api/inventory", HandleJSON(inventoryListHandler.Handle))
 	apiMux.HandleFunc("GET /api/inventory/{itemId}/instances", HandleJSON(inventoryInstancesListHandler.Handle))
 	apiMux.HandleFunc("POST /api/inventory/{itemId}/instances", HandleJSON(inventoryInstanceCreateHandler.Handle))
 	apiMux.HandleFunc("DELETE /api/inventory/instances/{instanceId}", HandleJSON(inventoryInstanceDeleteHandler.Handle))
 	apiMux.HandleFunc("POST /api/inventory/wipe", HandleJSON(inventoryWipeHandler.Handle))
+	apiMux.HandleFunc("GET /api/settings/supply", HandleJSON(supplySettingsGetHandler.Handle))
+	apiMux.HandleFunc("PUT /api/settings/supply", HandleJSON(supplySettingsPutHandler.Handle))
+	apiMux.HandleFunc("GET /api/products/{id}/supply-override", HandleJSON(supplyOverrideGetHandler.Handle))
+	apiMux.HandleFunc("PUT /api/products/{id}/supply-override", HandleJSON(supplyOverridePutHandler.Handle))
+	apiMux.HandleFunc("POST /api/onboarding/complete", HandleJSON(onboardingCompleteHandler.Handle))
 
-	// Suggestion and target-quantity handlers
+	// Target quantity remains a stored field. It does not decide a shopping line.
 	consumptionLog := suggestion.NewConsumptionLog(db)
-	suggestionGetHandler := &SuggestionGetHandler{
-		ConsumptionLog: consumptionLog,
-		Pantry:         pantry,
-	}
 	setTargetQuantityHandler := &SetTargetQuantityHandler{
 		Pantry: pantry,
 	}
-
-	apiMux.HandleFunc("GET /api/suggestions/{itemId}", HandleJSON(suggestionGetHandler.Handle))
 	apiMux.HandleFunc("POST /api/items/{itemId}/target-quantity", HandleJSON(setTargetQuantityHandler.Handle))
 
 	// Shopping list handlers
@@ -348,11 +356,19 @@ func newAPIMux(
 	}
 
 	shoppingListGetHandler := &ShoppingListGetHandler{
-		ShoppingList:   shoppingList,
-		Pantry:         pantry,
-		Ledger:         ledger,
-		Registry:       registry,
-		ConsumptionLog: consumptionLog,
+		ShoppingList: shoppingList,
+		Pantry:       pantry,
+		Ledger:       ledger,
+		Registry:     registry,
+		Adjustments:  shoppingList,
+	}
+	shoppingListFillHandler := &ShoppingListFillHandler{
+		ShoppingList: shoppingList,
+		Pantry:       pantry,
+		Supply:       supplySvc,
+		Ledger:       ledger,
+		Registry:     registry,
+		Adjustments:  shoppingList,
 	}
 	shoppingListItemCreateHandler := &ShoppingListItemCreateHandler{
 		ShoppingList: shoppingList,
@@ -398,6 +414,7 @@ func newAPIMux(
 	}
 
 	apiMux.HandleFunc("GET /api/shopping-list", HandleJSON(shoppingListGetHandler.Handle))
+	apiMux.HandleFunc("POST /api/shopping-list/fill", HandleJSON(shoppingListFillHandler.Handle))
 	apiMux.HandleFunc("GET /api/shopping-list/considerations", HandleJSON(shoppingConsiderationsHandler.Handle))
 	apiMux.HandleFunc("POST /api/shopping-list/items", HandleJSON(shoppingListItemCreateHandler.Handle))
 	apiMux.HandleFunc("DELETE /api/shopping-list/items/{id}", HandleJSON(shoppingListItemDeleteHandler.Handle))

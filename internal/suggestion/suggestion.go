@@ -1,4 +1,4 @@
-// Package suggestion provides consumption event tracking and target quantity suggestion functionality.
+// Package suggestion records consumption events. How many units to buy is decided by the supply plan.
 package suggestion
 
 import (
@@ -18,16 +18,6 @@ type ConsumptionEvent struct {
 	ItemID      string    `json:"itemId"`
 	ConsumedAt  time.Time `json:"consumedAt"`
 	ScanEntryID *string   `json:"scanEntryId"` // optional: links back to the scan entry that caused the consumption
-}
-
-// TargetQuantitySuggestion holds a suggested target instance count for an item,
-// along with the reasoning and a flag for insufficient data.
-type TargetQuantitySuggestion struct {
-	ItemID                string `json:"itemId"`
-	SuggestedQuantity     int    `json:"suggestedQuantity"`
-	Reasoning             string `json:"reasoning"`
-	ConsumptionEventCount int    `json:"consumptionEventCount"`
-	DataInsufficient      bool   `json:"dataInsufficient"`
 }
 
 // ConsumptionLog provides database operations for consumption events.

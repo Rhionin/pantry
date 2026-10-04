@@ -4,9 +4,10 @@ import { WIPE_INVENTORY_CONFIRMATION, wipeInventory } from '../../api/client';
 
 export interface WipeInventoryDialogProps {
   onWiped: () => void;
+  phrase?: string;
 }
 
-export const WipeInventoryDialog = ({ onWiped }: WipeInventoryDialogProps) => {
+export const WipeInventoryDialog = ({ onWiped, phrase = WIPE_INVENTORY_CONFIRMATION }: WipeInventoryDialogProps) => {
   const [opened, setOpened] = useState(false);
   const [confirmation, setConfirmation] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -20,7 +21,7 @@ export const WipeInventoryDialog = ({ onWiped }: WipeInventoryDialogProps) => {
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (confirmation !== WIPE_INVENTORY_CONFIRMATION) {
+    if (confirmation !== phrase) {
       return;
     }
 
@@ -44,7 +45,15 @@ export const WipeInventoryDialog = ({ onWiped }: WipeInventoryDialogProps) => {
           Wipe inventory
         </Button>
       </Group>
-      <Modal opened={opened} onClose={close} title="Wipe inventory">
+      <Modal
+        opened={opened}
+        onClose={close}
+        title="Wipe inventory"
+        // fade-down starts at opacity 0, so the first paint is ghosted text on the page.
+        // A zero duration shows the finished scrim and card immediately.
+        transitionProps={{ duration: 0 }}
+        overlayProps={{ color: '#000', backgroundOpacity: 0.6 }}
+      >
         <form onSubmit={(event) => void handleSubmit(event)}>
           <Stack gap="sm">
             <Text size="sm">
@@ -54,7 +63,7 @@ export const WipeInventoryDialog = ({ onWiped }: WipeInventoryDialogProps) => {
             </Text>
             <Text size="sm">This cannot be undone.</Text>
             <TextInput
-              label={`Type ${WIPE_INVENTORY_CONFIRMATION} to confirm`}
+              label={`Type ${phrase} to confirm`}
               autoComplete="off"
               value={confirmation}
               onChange={(event) => setConfirmation(event.currentTarget.value)}
@@ -71,7 +80,7 @@ export const WipeInventoryDialog = ({ onWiped }: WipeInventoryDialogProps) => {
                 color="red"
                 type="submit"
                 loading={submitting}
-                disabled={confirmation !== WIPE_INVENTORY_CONFIRMATION}
+                disabled={confirmation !== phrase}
               >
                 Confirm wipe
               </Button>

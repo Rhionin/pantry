@@ -7,56 +7,133 @@ import (
 	"github.com/Rhionin/pantry/internal/shopping"
 )
 
-func TestSyncDerivedItemsPreservesPurchaseUntilInventoryChanges(t *testing.T) {
+func TestSavePlannedLinesKeepsTouchedLinesAndSkipsRemoved(t *testing.T) {
 	deps := newTestStore(t)
 	ctx := context.Background()
-	itemID := createTestItem(t, deps, ctx, "user-1", "auto-product", "Auto Product")
-	gap := []shopping.DerivedEntry{{ItemID: itemID, Quantity: 2, Source: "auto"}}
-
-	active, err := deps.shopping.SyncDerivedItems(ctx, "user-1", gap)
+	itemID := createTestItem(t, deps, ctx, "user-1", "kept-product", "Kept Product")
+	lines := []shopping.PlannedLine{{ItemID: itemID, Quantity: 2, Note: "replacing 2 you used"}}
+	if err := deps.shopping.SavePlannedLines(ctx, "user-1", lines, nil); err != nil {
+		t.Fatalf("SavePlannedLines: %v", err)
+	}
+	active, err := deps.shopping.ListUnpurchased(ctx, "user-1")
 	if err != nil {
-		t.Fatalf("SyncDerivedItems: %v", err)
+		t.Fatalf("ListUnpurchased: %v", err)
 	}
-	if len(active) != 1 || active[0].ID == "" {
-		t.Fatalf("active derived items: expected one item with an ID, got %#v", active)
+	if len(active) != 1 {
+		t.Fatalf("rows: %#v", active)
 	}
-	purchasedID := active[0].ID
-	active, err = deps.shopping.SyncDerivedItems(ctx, "user-1", gap)
+	if err := deps.shopping.SetAdjustment(ctx, active[0].ID, "kroger", 9); err != nil {
+		t.Fatalf("SetAdjustment: %v", err)
+	}
+	changed := []shopping.PlannedLine{{ItemID: itemID, Quantity: 4, Note: "replacing 4 you used"}}
+	if err := deps.shopping.SavePlannedLines(ctx, "user-1", changed, nil); err != nil {
+		t.Fatalf("SavePlannedLines refill: %v", err)
+	}
+	active, err = deps.shopping.ListUnpurchased(ctx, "user-1")
 	if err != nil {
-		t.Fatalf("SyncDerivedItems refresh: %v", err)
+		t.Fatalf("ListUnpurchased after refill: %v", err)
 	}
-	if len(active) != 1 || active[0].ID != purchasedID {
-		t.Fatalf("refreshed derived items: expected existing item %q, got %#v", purchasedID, active)
+	if len(active) != 1 || active[0].Quantity != 2 || active[0].Note != "replacing 2 you used" {
+		t.Fatalf("touched line changed: %#v", active)
 	}
-	if err := deps.shopping.MarkPurchased(ctx, purchasedID); err != nil {
-		t.Fatalf("MarkPurchased: %v", err)
+	if err := deps.shopping.RemoveItem(ctx, active[0].ID); err != nil {
+		t.Fatalf("RemoveItem: %v", err)
 	}
-
-	active, err = deps.shopping.SyncDerivedItems(ctx, "user-1", gap)
+	if err := deps.shopping.SavePlannedLines(ctx, "user-1", changed, nil); err != nil {
+		t.Fatalf("SavePlannedLines after remove: %v", err)
+	}
+	active, err = deps.shopping.ListUnpurchased(ctx, "user-1")
 	if err != nil {
-		t.Fatalf("SyncDerivedItems after purchase: %v", err)
+		t.Fatalf("ListUnpurchased after remove: %v", err)
 	}
 	if len(active) != 0 {
-		t.Fatalf("active derived items after purchase: want none, got %#v", active)
+		t.Fatalf("removed line returned: %#v", active)
+	}
+}
+
+func TestSavePlannedLinesSnapshotsAutoRowsAndLeavesManuals(t *testing.T) {
+	deps := newTestStore(t)
+	ctx := context.Background()
+	autoID := createTestItem(t, deps, ctx, "user-1", "auto-product", "Auto Product")
+	manualID := createTestItem(t, deps, ctx, "user-1", "manual-product", "Manual Product")
+	if _, err := deps.shopping.AddManualItem(ctx, "user-1", manualID, 5); err != nil {
+		t.Fatalf("AddManualItem: %v", err)
 	}
 
-	changedGap := []shopping.DerivedEntry{{ItemID: itemID, Quantity: 3, Source: "auto"}}
-	active, err = deps.shopping.SyncDerivedItems(ctx, "user-1", changedGap)
-	if err != nil {
-		t.Fatalf("SyncDerivedItems after gap change: %v", err)
+	lines := []shopping.PlannedLine{
+		{ItemID: autoID, Quantity: 2, Note: "replacing 2 you used"},
+		{ItemID: manualID, Quantity: 9, Note: "ignored", Manual: true},
 	}
-	if len(active) != 1 || active[0].ID == purchasedID {
-		t.Fatalf("active derived items after gap change: expected a new item, got %#v", active)
+	if err := deps.shopping.SavePlannedLines(ctx, "user-1", lines, nil); err != nil {
+		t.Fatalf("SavePlannedLines: %v", err)
+	}
+	active, err := deps.shopping.ListUnpurchased(ctx, "user-1")
+	if err != nil {
+		t.Fatalf("ListUnpurchased: %v", err)
+	}
+	if len(active) != 2 {
+		t.Fatalf("rows: got %#v", active)
+	}
+	var autoRow, manualRow shopping.ShoppingListItem
+	for _, row := range active {
+		switch row.ItemID {
+		case autoID:
+			autoRow = row
+		case manualID:
+			manualRow = row
+		}
+	}
+	if autoRow.Quantity != 2 || autoRow.Note != "replacing 2 you used" || autoRow.ID == "" {
+		t.Fatalf("auto row: %#v", autoRow)
+	}
+	if manualRow.Quantity != 5 || manualRow.Source != "manual" {
+		t.Fatalf("manual row was resized: %#v", manualRow)
 	}
 
-	if _, err := deps.shopping.SyncDerivedItems(ctx, "user-1", nil); err != nil {
-		t.Fatalf("SyncDerivedItems at target: %v", err)
+	if err := deps.shopping.MarkPurchased(ctx, autoRow.ID); err != nil {
+		t.Fatalf("MarkPurchased: %v", err)
 	}
-	active, err = deps.shopping.SyncDerivedItems(ctx, "user-1", gap)
+	if err := deps.shopping.SavePlannedLines(ctx, "user-1", lines, nil); err != nil {
+		t.Fatalf("SavePlannedLines refresh: %v", err)
+	}
+	active, err = deps.shopping.ListUnpurchased(ctx, "user-1")
 	if err != nil {
-		t.Fatalf("SyncDerivedItems after inventory change: %v", err)
+		t.Fatalf("ListUnpurchased after purchase: %v", err)
 	}
-	if len(active) != 1 || active[0].ID == purchasedID {
-		t.Fatalf("active derived items after inventory change: expected a new item, got %#v", active)
+	if len(active) != 1 || active[0].ItemID != manualID {
+		t.Fatalf("unchanged plan should keep the purchase hidden, got %#v", active)
+	}
+
+	changed := []shopping.PlannedLine{{ItemID: autoID, Quantity: 3, Note: "replacing 3 you used"}}
+	if err := deps.shopping.SavePlannedLines(ctx, "user-1", changed, nil); err != nil {
+		t.Fatalf("SavePlannedLines changed: %v", err)
+	}
+	active, err = deps.shopping.ListUnpurchased(ctx, "user-1")
+	if err != nil {
+		t.Fatalf("ListUnpurchased after change: %v", err)
+	}
+	found := false
+	for _, row := range active {
+		if row.ItemID != autoID {
+			continue
+		}
+		found = true
+		if row.ID != autoRow.ID || row.Quantity != 3 || row.PurchasedAt != nil {
+			t.Fatalf("changed plan should refresh the same row, got %#v", row)
+		}
+	}
+	if !found {
+		t.Fatalf("auto row missing after change: %#v", active)
+	}
+
+	if err := deps.shopping.SavePlannedLines(ctx, "user-1", nil, nil); err != nil {
+		t.Fatalf("SavePlannedLines empty: %v", err)
+	}
+	active, err = deps.shopping.ListUnpurchased(ctx, "user-1")
+	if err != nil {
+		t.Fatalf("ListUnpurchased after clear: %v", err)
+	}
+	if len(active) != 1 || active[0].ItemID != manualID || active[0].Quantity != 5 {
+		t.Fatalf("clearing auto rows should leave the manual, got %#v", active)
 	}
 }
