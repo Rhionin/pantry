@@ -16,7 +16,9 @@ test('HID scan can be reviewed and committed as stock-in', async ({ page, reques
   await expect(page.getByText('Mode: stock_in')).toBeVisible()
 
   const scanCard = await scanBarcode(page, barcode)
-  await expect(scanCard.getByText(`Barcode: ${barcode}`)).toBeVisible()
+  await expect(scanCard.getByRole('heading', { name: productName })).toBeVisible()
+  await expect(scanCard.getByText(`Barcode: ${barcode}`)).toHaveCount(0)
+  await expect(scanCard.getByText(barcode, { exact: true })).toHaveCount(0)
   await expect(scanCard.getByText(/^Scanned:/)).toBeVisible()
 
   await commitSelectedScan(page, scanCard, '2030-06-15')

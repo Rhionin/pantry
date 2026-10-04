@@ -35,8 +35,8 @@ Preconditions:
   (for example `2030-01-10` and `2030-12-20`).
 
 - **Stock two instances.** For each of two expiration dates: scan in stock-in
-  mode, set the card's `getByLabel('Expiration date')`, and approve. Inventory
-  `instanceCount` for the product is `2`.
+  mode, open `Add expiration`, set `getByLabel('Expiration date')`, and approve.
+  Inventory `instanceCount` for the product is `2`.
 - **Switch to stock out.** Scan the `STOCK_OUT` control barcode via
   `setScannerMode(page, 'stock_out')` and wait for the `Mode: stock_out` banner.
   New scans now carry `stock_out`. The Stock in/Stock out Tabs only change the

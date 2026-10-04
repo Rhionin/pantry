@@ -9,7 +9,7 @@
 // on-hand inventory unchanged. Run through scripts/pantry-verify.sh:
 //   scripts/pantry-verify.sh drive scripts/drive-shopping-list.mjs shopping-list
 import {
-  openBrowser, createKnownProduct, scanBarcode, setScannerMode, captureProof, readInventory, assert,
+  openBrowser, createKnownProduct, scanBarcode, setScanExpiration, setScannerMode, captureProof, readInventory, assert,
 } from './harness.mjs';
 
 const BARCODE = '910000000004';
@@ -19,10 +19,8 @@ const TARGET = 2;
 
 async function stockInUnit(page, expiry) {
   const card = await scanBarcode(page, BARCODE);
-  await card.getByText(`Barcode: ${BARCODE}`).waitFor({ state: 'visible' });
-  const expiryInput = card.getByLabel('Expiration date');
-  await expiryInput.fill(expiry);
-  await expiryInput.press('Tab');
+  await card.getByRole('heading', { name: PRODUCT }).waitFor({ state: 'visible' });
+  await setScanExpiration(page, card, expiry);
   await card.getByRole('button', { name: 'Approve', exact: true }).click();
   await card.waitFor({ state: 'detached', timeout: 15_000 });
 }
