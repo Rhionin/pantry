@@ -56,18 +56,18 @@ try {
 
   // The list replaces the one bag that was used, once the owner fills the cart.
   await page.getByRole('link', { name: 'Shopping List' }).click();
-  await page.getByRole('button', { name: 'Fill the cart' }).waitFor({ state: 'visible', timeout: 10_000 });
+  await page.getByRole('button', { name: 'Build the list' }).waitFor({ state: 'visible', timeout: 10_000 });
   const send = page.getByRole('button', { name: 'Send to Kroger' });
   await send.waitFor({ state: 'visible' });
   assert(await send.isDisabled(), 'Send to Kroger is enabled before anything is staged');
-  await page.getByText('Nothing is staged. Fill the cart before sending it to Kroger.').waitFor({ state: 'visible' });
+  await page.getByText('Build the list before sending it to Kroger.').waitFor({ state: 'visible' });
   await captureProof(page, 'shopping-stage-empty', {
     feature: 'shopping-list',
     staged: false,
     send: 'disabled',
   });
 
-  await page.getByRole('button', { name: 'Fill the cart' }).click();
+  await page.getByRole('button', { name: 'Build the list' }).click();
   const derivedRow = page
     .getByRole('row')
     .filter({ hasText: PRODUCT })
@@ -101,7 +101,7 @@ try {
   await derivedRow.getByRole('button', { name: `Mark ${PRODUCT} purchased` }).click();
   await derivedRow.waitFor({ state: 'detached', timeout: 15_000 });
   // The purchased gap stays hidden until the quantity changes; list is now empty.
-  await page.getByText('Nothing is staged. Fill the cart before sending it to Kroger.').waitFor({ state: 'visible', timeout: 10_000 });
+  await page.getByText('Build the list before sending it to Kroger.').waitFor({ state: 'visible', timeout: 10_000 });
   assert(await send.isDisabled(), 'Send to Kroger stays enabled after the staged line is gone');
   await captureProof(page, 'shopping-send-disabled', {
     feature: 'shopping-list',

@@ -166,6 +166,7 @@ export const ShoppingListPage = () => {
   }, [notes, saleItemId]);
   const offers = notes.considerations.filter((note) => note.offer !== null);
   const showDecisions = decisionsOpen || entries.length > 0;
+  const listAction = entries.length > 0 ? 'Update the list' : 'Build the list';
   const manualQuantity = typeof quantity === 'number' ? quantity : Number(quantity);
   const manualQuantityIsValid = quantity !== '' && Number.isInteger(manualQuantity) && manualQuantity >= 1;
   const salePriceNumber = typeof salePrice === 'number' ? salePrice : Number(salePrice);
@@ -179,7 +180,7 @@ export const ShoppingListPage = () => {
       setDecisionsOpen(true);
       await refresh();
     } catch (requestError) {
-      setError(requestErrorMessage(requestError, 'Unable to fill the cart.'));
+      setError(requestErrorMessage(requestError, 'Unable to build the list.'));
     } finally {
       setFilling(false);
     }
@@ -267,7 +268,7 @@ export const ShoppingListPage = () => {
   return (
     <Stack gap="sm">
       <div className="shopping-toolbar">
-        <Title order={1} size="h3" className="shopping-toolbar-title">Shopping list</Title>
+        <Title order={1} size="h3" className="shopping-toolbar-title">Shopping plan</Title>
         <div className="shopping-toolbar-actions">
           <Button
             className="shopping-fill"
@@ -275,7 +276,7 @@ export const ShoppingListPage = () => {
             disabled={loading}
             onClick={() => void fillCart()}
           >
-            Fill the cart
+            {listAction}
           </Button>
           <ProvisionButton
             provider={targetProvider}
@@ -378,7 +379,7 @@ export const ShoppingListPage = () => {
           </Button>
         </Group>
       </Stack>}
-      {loading && <Loader aria-label="Loading shopping list" />}
+      {loading && <Loader aria-label="Loading shopping plan" />}
       {error !== '' && (
         <Alert color="red" py="xs">
           {error}
@@ -386,7 +387,7 @@ export const ShoppingListPage = () => {
       )}
       {!loading && showDecisions && entries.length > 0 && (
         <div className="shopping-entries-scroll">
-          <Table className="shopping-entries" aria-label="Shopping list entries">
+          <Table className="shopping-entries" aria-label="Shopping plan entries">
             <Table.Thead>
               <Table.Tr>
                 <Table.Th>Item</Table.Th>

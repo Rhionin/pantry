@@ -13,7 +13,7 @@ const { browser, page } = await openBrowser();
 let failed = false;
 try {
   await page.goto('/shopping');
-  await page.getByRole('heading', { name: 'Shopping list' }).waitFor({ state: 'visible', timeout: 10_000 });
+  await page.getByRole('heading', { name: 'Shopping plan' }).waitFor({ state: 'visible', timeout: 10_000 });
   assert(await page.getByRole('form', { name: 'Kroger credentials' }).count() === 0, 'credentials form takes over the shopping page');
   await page.getByRole('button', { name: 'Menu' }).click();
   await page.getByRole('menuitem', { name: 'Manage Kroger connection' }).click();

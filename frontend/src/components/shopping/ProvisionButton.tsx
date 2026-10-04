@@ -47,7 +47,7 @@ export const ProvisionButton = ({ provider, entries, useItemIds, explainEmpty = 
       onFinished();
     } catch (requestError) {
       setReport(null);
-      setError(requestError instanceof Error ? requestError.message : 'The shopping list could not be provisioned.');
+      setError(requestError instanceof Error ? requestError.message : 'These items could not be sent to Kroger.');
     } finally {
       setInFlight(false);
     }
@@ -80,25 +80,26 @@ export const ProvisionButton = ({ provider, entries, useItemIds, explainEmpty = 
       <Button className="shopping-send" loading={inFlight} disabled={!enabled} onClick={() => void provision()}>
         {label}
       </Button>
+      <Text className="shopping-send-hint" size="sm" c="dimmed">Adds these items to your Kroger cart.</Text>
       {hasNotices && (
         <Stack className="provision-notices" gap={4}>
           {showEmpty && (
-            <Text size="sm">Nothing is staged. Fill the cart before sending it to Kroger.</Text>
+            <Text size="sm">Build the list before sending it to Kroger.</Text>
           )}
           {showUnconfigured && provider !== null && (
             <Text size="sm" c="dimmed">{provider.displayName} is unconfigured.</Text>
           )}
           {error !== '' && <Text c="red" size="sm">{error}</Text>}
           {showQuiet && (
-            <Text size="sm">Nothing was sent. Connect a store to add these items to a cart.</Text>
+            <Text size="sm">Nothing was sent. Connect a store before sending these items to Kroger.</Text>
           )}
           {showSent && report !== null && (
-            <Text size="sm">{report.exported} item{report.exported === 1 ? '' : 's'} sent to your cart.</Text>
+            <Text size="sm">{report.exported} item{report.exported === 1 ? '' : 's'} sent to Kroger.</Text>
           )}
           {showFailed && (
             <Text size="sm" c="red">
               Could not add: {failed.shown.join(', ')}
-              {failed.overflow > 0 ? `, and ${failed.overflow} more` : ''}. These items remain on your shopping list.
+              {failed.overflow > 0 ? `, and ${failed.overflow} more` : ''}. These items remain on the list.
             </Text>
           )}
           {showUnknown && report !== null && (
@@ -114,7 +115,7 @@ export const ProvisionButton = ({ provider, entries, useItemIds, explainEmpty = 
                   <Group key={entry.entryId} gap="xs">
                     <Text size="sm">{entry.name}</Text>
                     <Button size="xs" variant="light" onClick={() => void resolve(entry.entryId, true)}>
-                      It reached {provider?.displayName ?? 'the cart'}
+                      It reached {provider?.displayName ?? 'Kroger'}
                     </Button>
                     <Button size="xs" variant="default" onClick={() => void resolve(entry.entryId, false)}>
                       It did not

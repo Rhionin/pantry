@@ -74,7 +74,7 @@ try {
   await setSupplyQuantity(page, GV.name, PAR);
 
   await page.getByRole('link', { name: 'Shopping List' }).click();
-  await page.getByRole('button', { name: 'Fill the cart' }).click();
+  await page.getByRole('button', { name: 'Build the list' }).click();
   const line = page.getByRole('row').filter({ hasText: GV.name });
   await line.getByText(`2 ${UNIT}`, { exact: true }).waitFor({ state: 'visible', timeout: 10_000 });
   await line.getByText('Derived', { exact: true }).waitFor({ state: 'visible' });
@@ -90,7 +90,7 @@ try {
   await page.getByText(/Kroger Cut Green Beans is on sale at \$0\.79/).waitFor({ state: 'visible', timeout: 10_000 });
   await page.getByText(/This list buys Great Value Cut Green Beans/).waitFor({ state: 'visible' });
   await page.getByRole('button', { name: 'Send to Kroger' }).click();
-  await page.getByText('Nothing was sent. Connect a store to add these items to a cart.').waitFor({ state: 'visible', timeout: 10_000 });
+  await page.getByText('Nothing was sent. Connect a store before sending these items to Kroger.').waitFor({ state: 'visible', timeout: 10_000 });
 
   await page.getByRole('button', { name: 'Take the deal on Kroger Cut Green Beans' }).click();
   await page.getByRole('button', { name: 'Keep Great Value Cut Green Beans' }).waitFor({ state: 'visible' });
@@ -111,7 +111,7 @@ try {
   const filled = page.waitForResponse((res) => (
     res.url().includes('/api/shopping-list/fill') && res.request().method() === 'POST' && res.ok()
   ));
-  await page.getByRole('button', { name: 'Fill the cart' }).click();
+  await page.getByRole('button', { name: 'Update the list' }).click();
   await filled;
 
   const list = await page.request.get(`${API_URL}/api/shopping-list`);

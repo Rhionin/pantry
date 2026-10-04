@@ -22,11 +22,14 @@ does not change inventory on its own.
 
 ## How to get to it (user POV)
 
-- Open `Shopping List` (`/shopping`). `Fill the cart` snapshots the supply
-  plan into the staged cart and opens quantity, sale, and brand decisions.
-  `Send to Kroger` sends only that staged cart. It stays disabled, with
-  `Nothing is staged. Fill the cart before sending it to Kroger.`, until a
-  line is staged. `Start a new cart` still only resets the sent-item ledger.
+- Open `Shopping List` (`/shopping`). The page title is `Shopping plan`.
+  `Build the list` snapshots the supply plan and opens quantity, sale, and
+  brand decisions. Once a line exists the same button reads `Update the list`.
+  `Send to Kroger` sends only that staged plan. It stays disabled, with
+  `Build the list before sending it to Kroger.`, until a line is staged. A
+  short line under Send says `Adds these items to your Kroger cart.`
+  `Start a new cart` still only resets the sent-item ledger, and its helper
+  says `This only forgets what was already sent.`
 - Change the store connection from the header menu: `Menu`, then `Manage
   Kroger connection`. That dialog edits credentials (`Save credentials`,
   `Clear saved credentials`) and, only while Kroger is connected, offers
@@ -48,13 +51,14 @@ Preconditions:
 - **Finish the opening scan.** On `Inventory`, click `getByRole('button', {
   name: 'This scan is complete' })`. The `Opening inventory` alert disappears.
 - **Use one unit.** Stock out one unit (see [stock-out](./stock-out.md)).
-- **See the derived entry.** Open `Shopping List` and click `Fill the cart`.
-  In the `Shopping list entries` table, the product's row shows `1 <unit>`,
+- **See the derived entry.** Open `Shopping List` and click `Build the list`.
+  In the `Shopping plan entries` table, the product's row shows `1 <unit>`,
   the note `replacing 1 you used`, and a `Derived` source badge. The row has
-  a real id and exposes `Mark <product> purchased` / `Remove <product>`.
+  a real id and exposes `Mark <product> purchased` / `Remove <product>`. The
+  button then reads `Update the list`.
 - **Mark purchased.** Click `getByRole('button', { name: 'Mark <product>
   purchased' })` on the derived row. The row leaves the list; an emptied list
-  shows `Nothing is staged. Fill the cart before sending it to Kroger.` (A `Manual` entry added through the `Add
+  shows `Build the list before sending it to Kroger.` (A `Manual` entry added through the `Add
   an item` form — `Pantry item` select + `Quantity` + `Add to shopping list` —
   behaves the same way.)
 - **Confirm inventory is unchanged by purchase.** `readInventory(page)` shows the

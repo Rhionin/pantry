@@ -1,7 +1,7 @@
-// drive-shopping-buttons.mjs — checks the Fill / Send pair lines up.
+// drive-shopping-buttons.mjs — checks Build / Send line up, then the built plan.
 //
 // Desktop: the two buttons share a width and sit on the title's center line.
-// Phone: the same pair is equal width, and Send stays disabled until Fill.
+// Phone: the same pair is equal width, and Send stays disabled until the list is built.
 //
 //   scripts/pantry-verify.sh drive scripts/drive-shopping-buttons.mjs shopping-buttons
 import { mkdirSync } from 'node:fs';
@@ -15,10 +15,10 @@ const UNIT = 'can';
 const PHONE = { width: 390, height: 844 };
 const DESKTOP = { width: 1280, height: 720 };
 
-async function boxes(page) {
-  const fill = page.getByRole('button', { name: 'Fill the cart' });
+async function boxes(page, actionName) {
+  const fill = page.getByRole('button', { name: actionName });
   const send = page.getByRole('button', { name: 'Send to Kroger' });
-  const title = page.getByRole('heading', { name: 'Shopping list', exact: true });
+  const title = page.getByRole('heading', { name: 'Shopping plan', exact: true });
   await fill.waitFor({ state: 'visible' });
   await send.waitFor({ state: 'visible' });
   const [fillBox, sendBox, titleBox] = await Promise.all([
@@ -51,31 +51,34 @@ try {
   mkdirSync('/opt/cursor/artifacts', { recursive: true });
 
   await page.goto('/shopping');
-  await page.getByRole('heading', { name: 'Shopping list' }).waitFor({ state: 'visible', timeout: 10_000 });
-  let row = await boxes(page);
-  assert(await row.send.isDisabled(), 'Send is enabled on an empty desktop cart');
+  await page.getByRole('heading', { name: 'Shopping plan' }).waitFor({ state: 'visible', timeout: 10_000 });
+  await page.getByText('Adds these items to your Kroger cart.').waitFor({ state: 'visible' });
+  let row = await boxes(page, 'Build the list');
+  assert(await row.send.isDisabled(), 'Send is enabled on an empty desktop plan');
   assertPair('desktop', row.fillBox, row.sendBox);
   const titleMid = row.titleBox.y + row.titleBox.height / 2;
   const buttonMid = row.fillBox.y + row.fillBox.height / 2;
   assert(Math.abs(titleMid - buttonMid) < 4, `desktop title mid ${titleMid} button mid ${buttonMid}`);
-  await captureProof(page, 'shopping-buttons-desktop', {
+  await page.getByText('Build the list before sending it to Kroger.').waitFor({ state: 'visible' });
+  await captureProof(page, 'shopping-plan-desktop-empty', {
     fillWidth: row.fillBox.width,
     sendWidth: row.sendBox.width,
     alignedWithTitle: true,
+    action: 'Build the list',
   });
-  await page.screenshot({ path: '/opt/cursor/artifacts/shopping-buttons-desktop.png' });
+  await page.screenshot({ path: '/opt/cursor/artifacts/shopping-plan-desktop-empty.png' });
 
   await page.setViewportSize(PHONE);
-  row = await boxes(page);
-  assert(await row.send.isDisabled(), 'Send is enabled on an empty phone cart');
+  row = await boxes(page, 'Build the list');
+  assert(await row.send.isDisabled(), 'Send is enabled on an empty phone plan');
   assertPair('phone empty', row.fillBox, row.sendBox);
   const toolbar = await page.locator('.shopping-toolbar').boundingBox();
   assert(toolbar !== null, 'toolbar is missing');
   assert(Math.abs(row.fillBox.x - toolbar.x) < 2, 'phone buttons do not share the title row left edge');
   assert(Math.abs((row.sendBox.x + row.sendBox.width) - (toolbar.x + toolbar.width)) < 2, 'phone buttons do not share the title row right edge');
-  await page.getByText('Nothing is staged. Fill the cart before sending it to Kroger.').waitFor({ state: 'visible' });
-  await captureProof(page, 'shopping-buttons-phone-empty', { send: 'disabled' });
-  await page.screenshot({ path: '/opt/cursor/artifacts/shopping-buttons-phone-empty.png' });
+  await page.getByText('Build the list before sending it to Kroger.').waitFor({ state: 'visible' });
+  await captureProof(page, 'shopping-plan-phone-empty', { send: 'disabled', action: 'Build the list' });
+  await page.screenshot({ path: '/opt/cursor/artifacts/shopping-plan-phone-empty.png' });
 
   await page.setViewportSize(DESKTOP);
   await createKnownProduct(page, {
@@ -96,17 +99,28 @@ try {
   await outCard.waitFor({ state: 'detached', timeout: 15_000 });
 
   await page.getByRole('link', { name: 'Shopping List' }).click();
-  await page.getByRole('button', { name: 'Fill the cart' }).click();
+  await page.getByRole('button', { name: 'Build the list' }).click();
   const derived = page.getByRole('row').filter({ hasText: PRODUCT }).filter({ has: page.getByText('Derived', { exact: true }) });
   await derived.getByText(`1 ${UNIT}`, { exact: true }).waitFor({ state: 'visible', timeout: 10_000 });
+  await page.getByRole('button', { name: 'Update the list' }).waitFor({ state: 'visible' });
+  await page.getByText('Build the list before sending it to Kroger.').waitFor({ state: 'hidden' });
+
+  row = await boxes(page, 'Update the list');
+  assert(await row.send.isEnabled(), 'Send stays disabled after the list is built');
+  assertPair('desktop built', row.fillBox, row.sendBox);
+  const builtTitleMid = row.titleBox.y + row.titleBox.height / 2;
+  const builtButtonMid = row.fillBox.y + row.fillBox.height / 2;
+  assert(Math.abs(builtTitleMid - builtButtonMid) < 4, `built title mid ${builtTitleMid} button mid ${builtButtonMid}`);
+  await captureProof(page, 'shopping-plan-desktop-built', { send: 'enabled', product: PRODUCT, action: 'Update the list' });
+  await page.screenshot({ path: '/opt/cursor/artifacts/shopping-plan-desktop-built.png' });
 
   await page.setViewportSize(PHONE);
-  row = await boxes(page);
-  assert(await row.send.isEnabled(), 'Send stays disabled after Fill the cart');
-  assertPair('phone filled', row.fillBox, row.sendBox);
-  await captureProof(page, 'shopping-buttons-phone-filled', { send: 'enabled', product: PRODUCT });
-  await page.screenshot({ path: '/opt/cursor/artifacts/shopping-buttons-phone-filled.png' });
-  console.log('PASS: shopping buttons — equal widths, aligned with the title on desktop and with each other on a phone');
+  row = await boxes(page, 'Update the list');
+  assert(await row.send.isEnabled(), 'Send stays disabled on the phone after the list is built');
+  assertPair('phone built', row.fillBox, row.sendBox);
+  await captureProof(page, 'shopping-plan-phone-built', { send: 'enabled', product: PRODUCT, action: 'Update the list' });
+  await page.screenshot({ path: '/opt/cursor/artifacts/shopping-plan-phone-built.png' });
+  console.log('PASS: shopping plan — Build, then Update, with Send aligned on desktop and phone');
 } catch (error) {
   failed = true;
   console.error(error);

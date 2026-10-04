@@ -46,7 +46,7 @@ try {
   seedConnected('kroger');
 
   await page.goto('/shopping');
-  await page.getByRole('heading', { name: 'Shopping list' }).waitFor({ state: 'visible' });
+  await page.getByRole('heading', { name: 'Shopping plan' }).waitFor({ state: 'visible' });
   await page.getByText('Connected', { exact: true }).waitFor({ state: 'visible' });
 
   assert(await page.getByLabel('Client ID').count() === 0, 'Client ID is on the shopping page');
@@ -55,11 +55,13 @@ try {
   assert(await page.getByLabel('Modality').count() === 0, 'Modality is on the shopping page');
   assert(await page.getByRole('button', { name: 'Save credentials' }).count() === 0, 'Save credentials is on the shopping page');
   assert(await page.getByText('A client secret is saved and is not shown.').count() === 0, 'saved-secret note is on the shopping page');
-  assert(await page.getByRole('button', { name: 'Fill the cart' }).isVisible(), 'Fill the cart is missing');
+  assert(await page.getByRole('button', { name: 'Build the list' }).isVisible(), 'Build the list is missing');
   assert(await page.getByRole('button', { name: 'Send to Kroger' }).isVisible(), 'Send to Kroger is missing');
-  assert(await page.getByText('Nothing is staged. Fill the cart before sending it to Kroger.').isVisible(), 'empty stage explanation is missing');
+  assert(await page.getByText('Adds these items to your Kroger cart.').isVisible(), 'Kroger cart line is missing');
+  assert(await page.getByText('Build the list before sending it to Kroger.').isVisible(), 'empty plan explanation is missing');
   assert(await page.getByRole('button', { name: 'Disconnect' }).count() === 0, 'Disconnect is still on the shopping page');
   assert(await page.getByRole('button', { name: 'Start a new cart' }).isVisible(), 'Start a new cart is missing');
+  assert(await page.getByText('This only forgets what was already sent.').isVisible(), 'new-cart helper is missing');
   assert(await page.getByRole('button', { name: 'Add to shopping list' }).count() === 0, 'manual add is on the page before the cart is filled');
 
   await captureProof(page, 'shopping-connected-phone', {
@@ -89,7 +91,7 @@ try {
   await connectionItem.click();
   const connectionDialog = page.getByRole('dialog', { name: 'Kroger connection' });
   await connectionDialog.waitFor({ state: 'visible' });
-  assert(await page.getByRole('heading', { name: 'Shopping list' }).isVisible(), 'connection dialog replaced the shopping page');
+  assert(await page.getByRole('heading', { name: 'Shopping plan' }).isVisible(), 'connection dialog replaced the shopping page');
   assert(await connectionDialog.getByRole('button', { name: 'Disconnect Kroger' }).isVisible(), 'Disconnect is missing while connected');
   const clientId = page.getByLabel('Client ID');
   await clientId.waitFor({ state: 'visible' });
@@ -140,7 +142,7 @@ try {
   await page.getByRole('menuitem', { name: 'Manage Kroger connection' }).click();
   await page.getByRole('dialog', { name: 'Kroger connection' }).waitFor({ state: 'visible' });
   await page.getByLabel('Client ID').waitFor({ state: 'visible' });
-  assert(await page.getByRole('heading', { name: 'Shopping list' }).isVisible(), 'credentials took over the shopping page');
+  assert(await page.getByRole('heading', { name: 'Shopping plan' }).isVisible(), 'credentials took over the shopping page');
   assert(await page.getByRole('button', { name: 'Disconnect Kroger' }).count() === 0, 'Disconnect stayed available after it ran');
 } catch (error) {
   failed = true;

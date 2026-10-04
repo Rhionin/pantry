@@ -71,7 +71,9 @@ describe('ShoppingListPage', () => {
     vi.stubGlobal('fetch', fetchMock);
     renderPage();
 
-    const table = await screen.findByRole('table', { name: 'Shopping list entries' });
+    const table = await screen.findByRole('table', { name: 'Shopping plan entries' });
+    expect(screen.getByRole('heading', { name: 'Shopping plan' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Update the list' })).toBeInTheDocument();
     expect(within(table).getByText('Brown Rice')).toBeInTheDocument();
     expect(within(table).getByText('2 boxes')).toBeInTheDocument();
     expect(within(table).getByText('Derived')).toBeInTheDocument();
@@ -82,7 +84,7 @@ describe('ShoppingListPage', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Mark Green Tea purchased' }));
 
     await waitFor(() => expect(
-      within(screen.getByRole('table', { name: 'Shopping list entries' })).queryByText('Green Tea'),
+      within(screen.getByRole('table', { name: 'Shopping plan entries' })).queryByText('Green Tea'),
     ).not.toBeInTheDocument());
     expect(fetchMock).toHaveBeenCalledWith(
       '/api/shopping-list/items/manual-1',
@@ -117,16 +119,19 @@ describe('ShoppingListPage', () => {
     vi.stubGlobal('fetch', fetchMock);
     renderPage();
 
-    expect(await screen.findByText('Nothing is staged. Fill the cart before sending it to Kroger.')).toBeInTheDocument();
+    expect(await screen.findByText('Build the list before sending it to Kroger.')).toBeInTheDocument();
+    expect(screen.getByText('Adds these items to your Kroger cart.')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Build the list' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Send to Kroger' })).toBeDisabled();
     expect(screen.queryByLabelText('Pantry item')).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'Fill the cart' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Build the list' }));
     await screen.findByLabelText('Pantry item');
     fireEvent.change(screen.getByLabelText('Pantry item'), { target: { value: 'pasta' } });
     fireEvent.change(screen.getByLabelText('Quantity'), { target: { value: '4' } });
     fireEvent.click(screen.getByRole('button', { name: 'Add to shopping list' }));
 
     expect(await screen.findByText('4 boxes')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Update the list' })).toBeInTheDocument();
   });
 
   it('shows failed cart items in a notification and keeps them in the list', async () => {
@@ -159,7 +164,7 @@ describe('ShoppingListPage', () => {
     vi.stubGlobal('fetch', fetchMock);
     renderPage();
 
-    const table = await screen.findByRole('table', { name: 'Shopping list entries' });
+    const table = await screen.findByRole('table', { name: 'Shopping plan entries' });
     expect(within(table).getByText('Green Tea')).toBeInTheDocument();
     expect(screen.queryByLabelText('Client ID')).not.toBeInTheDocument();
     expect(screen.queryByLabelText('Client secret')).not.toBeInTheDocument();
@@ -172,7 +177,7 @@ describe('ShoppingListPage', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Send to Kroger' }));
 
     expect(await screen.findByText('Kroger is not connected')).toBeInTheDocument();
-    expect(screen.queryByText(/sent to your cart/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/sent to Kroger/)).not.toBeInTheDocument();
     expect(within(table).getByText('Green Tea')).toBeInTheDocument();
   });
 
@@ -221,7 +226,7 @@ describe('ShoppingListPage', () => {
     expect(await screen.findByText(/Kroger Cut Green Beans is on sale at \$0\.79/)).toBeInTheDocument();
     expect(screen.getByText(/Live store prices aren't connected/)).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Send to Kroger' }));
-    await screen.findByText('1 item sent to your cart.');
+    await screen.findByText('1 item sent to Kroger.');
     expect(exportBodies[0]).toBeUndefined();
 
     fireEvent.click(screen.getByRole('button', { name: 'Take the deal on Kroger Cut Green Beans' }));

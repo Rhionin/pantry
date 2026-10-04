@@ -159,21 +159,25 @@
   }
 }
 
-/* The two cart actions share one row with the title. Notices sit underneath
-   so they do not change the buttons' width or vertical alignment. */
+/* Build and Send share one row with the title. The Kroger hint and any
+   notices sit on later rows so they do not change the buttons' width or
+   vertical alignment. */
 .shopping-toolbar {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 12rem 12rem;
-  grid-template-areas: "title fill send";
+  grid-template-areas:
+    "title fill send"
+    "hint hint hint";
   align-items: center;
   column-gap: 0.5rem;
+  row-gap: 0.35rem;
 }
 
 .shopping-toolbar:has(.provision-notices) {
   grid-template-areas:
     "title fill send"
+    "hint hint hint"
     "notices notices notices";
-  row-gap: 0.5rem;
 }
 
 .shopping-toolbar-title {
@@ -199,6 +203,13 @@
   grid-area: send;
 }
 
+.shopping-toolbar .shopping-send-hint {
+  grid-area: hint;
+  justify-self: end;
+  margin: 0;
+  text-align: right;
+}
+
 .shopping-toolbar .provision-notices {
   grid-area: notices;
 }
@@ -208,13 +219,15 @@
     grid-template-columns: 1fr 1fr;
     grid-template-areas:
       "title title"
-      "fill send";
+      "fill send"
+      "hint hint";
   }
 
   .shopping-toolbar:has(.provision-notices) {
     grid-template-areas:
       "title title"
       "fill send"
+      "hint hint"
       "notices notices";
   }
 }

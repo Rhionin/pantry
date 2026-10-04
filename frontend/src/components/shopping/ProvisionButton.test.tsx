@@ -44,7 +44,8 @@ describe('ProvisionButton', () => {
   it('explains a disabled send when nothing is staged', () => {
     renderButton({ entries: [], explainEmpty: true });
     expect(screen.getByRole('button', { name: 'Send to Kroger' })).toBeDisabled();
-    expect(screen.getByText('Nothing is staged. Fill the cart before sending it to Kroger.')).toBeInTheDocument();
+    expect(screen.getByText('Adds these items to your Kroger cart.')).toBeInTheDocument();
+    expect(screen.getByText('Build the list before sending it to Kroger.')).toBeInTheDocument();
   });
 
   it('is enabled for a connected configured provider with something to buy', () => {
@@ -80,7 +81,7 @@ describe('ProvisionButton', () => {
     }), { status: 200, headers: { 'Content-Type': 'application/json' } }))));
     renderButton();
     fireEvent.click(screen.getByRole('button', { name: 'Send to Kroger' }));
-    expect(await screen.findByText('2 items sent to your cart.')).toBeInTheDocument();
+    expect(await screen.findByText('2 items sent to Kroger.')).toBeInTheDocument();
   });
 
   it('shows an error with no confirmed count when the operation fails', async () => {
@@ -90,7 +91,7 @@ describe('ProvisionButton', () => {
     renderButton();
     fireEvent.click(screen.getByRole('button', { name: 'Send to Kroger' }));
     expect(await screen.findByText('Kroger is not connected')).toBeInTheDocument();
-    expect(screen.queryByText(/sent to your cart/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/sent to Kroger/)).not.toBeInTheDocument();
   });
 
   it('caps failed names and offers both resolutions for an unknown item', async () => {
@@ -105,9 +106,9 @@ describe('ProvisionButton', () => {
     renderButton();
     fireEvent.click(screen.getByRole('button', { name: 'Send to Kroger' }));
     expect(await screen.findByText(/and 2 more/)).toBeInTheDocument();
-    expect(screen.getByText(/These items remain on your shopping list/)).toBeInTheDocument();
+    expect(screen.getByText(/These items remain on the list/)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'It reached Kroger' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'It did not' })).toBeInTheDocument();
-    expect(screen.queryByText(/sent to your cart/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/sent to Kroger/)).not.toBeInTheDocument();
   });
 });
