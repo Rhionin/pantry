@@ -228,6 +228,10 @@ export function removeItemInstance(instanceId: string): Promise<void> {
   return apiFetch(`/api/inventory/instances/${instanceId}`, { method: 'DELETE' });
 }
 
+export function stockOutItem(itemId: string): Promise<void> {
+  return apiFetch(`/api/inventory/${itemId}/stock-out`, { method: 'POST', body: '{}' });
+}
+
 // Exact phrase POST /api/inventory/wipe requires. Kept in sync with
 // supply.WipePhrase.
 export const WIPE_INVENTORY_CONFIRMATION = 'WIPE INVENTORY';

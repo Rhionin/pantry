@@ -1,13 +1,15 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Alert, Badge, Button, Group, Loader, Paper, Stack, Text, Title } from '@mantine/core';
-import { listItemInstances } from '../../api/client';
+import { useCallback, useEffect, useId, useMemo, useState } from 'react';
+import { Alert, Badge, Button, Group, Loader, Paper, SimpleGrid, Stack, Text, TextInput, Title } from '@mantine/core';
+import { addItemInstance, listItemInstances, stockOutItem } from '../../api/client';
 import type { ExpiryStatus, ItemInstanceWithStatus } from '../../types';
 import { computeExpiryStatus } from '../../utils/expiry';
-import { AddInstanceModal } from './AddInstanceModal';
+import { expiryDateToISOString } from '../queue/queueUtils';
 
 export interface ItemInstanceListProps {
   itemId: string;
   productName: string;
+  onHand: number;
+  onHandChange: (delta: number) => void;
   onInventoryChanged: () => void;
 }
 
@@ -32,13 +34,18 @@ const expiryBadge = (status: ExpiryStatus) => {
 export const ItemInstanceList = ({
   itemId,
   productName,
+  onHand,
+  onHandChange,
   onInventoryChanged,
 }: ItemInstanceListProps) => {
+  const nothingOnHandId = useId();
   const [instances, setInstances] = useState<ItemInstanceWithStatus[]>([]);
   const [evaluatedAt, setEvaluatedAt] = useState(() => new Date());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [addModalOpened, setAddModalOpened] = useState(false);
+  const [pending, setPending] = useState<'in' | 'out' | null>(null);
+  const [expiryOpen, setExpiryOpen] = useState(false);
+  const [expiryDate, setExpiryDate] = useState('');
 
   const loadInstances = useCallback(async () => {
     setLoading(true);
@@ -66,12 +73,74 @@ export const ItemInstanceList = ({
     [evaluatedAt, instances],
   );
 
+  const stockIn = async () => {
+    setPending('in');
+    setError('');
+    try {
+      await addItemInstance(itemId, expiryDateToISOString(expiryDate));
+      onHandChange(1);
+      onInventoryChanged();
+      await loadInstances();
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : 'Unable to stock in.');
+    } finally {
+      setPending(null);
+    }
+  };
+
+  const stockOut = async () => {
+    setPending('out');
+    setError('');
+    try {
+      await stockOutItem(itemId);
+      onHandChange(-1);
+      onInventoryChanged();
+      await loadInstances();
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : 'Unable to stock out.');
+    } finally {
+      setPending(null);
+    }
+  };
+
+  const nothingOnHand = onHand === 0;
+
   return (
     <Stack id={`inventory-item-${itemId}`} component="section" aria-labelledby={`instances-${itemId}`} gap="xs">
-      <Group justify="space-between">
-        <Title id={`instances-${itemId}`} order={4} size="sm">{productName} instances</Title>
-        <Button size="xs" onClick={() => setAddModalOpened(true)}>Add instance</Button>
-      </Group>
+      <SimpleGrid cols={2} spacing="xs">
+        <Button size="xl" fullWidth loading={pending === 'in'} disabled={pending !== null} onClick={() => void stockIn()}>
+          Stock in
+        </Button>
+        <Button
+          size="xl"
+          fullWidth
+          variant="default"
+          loading={pending === 'out'}
+          disabled={nothingOnHand || pending !== null}
+          aria-describedby={nothingOnHand ? nothingOnHandId : undefined}
+          onClick={() => void stockOut()}
+        >
+          Stock out
+        </Button>
+      </SimpleGrid>
+      {expiryOpen ? (
+        <TextInput
+          size="xs"
+          type="date"
+          label="Expiration date"
+          description="Optional"
+          value={expiryDate}
+          onChange={(event) => setExpiryDate(event.currentTarget.value)}
+        />
+      ) : (
+        <Button variant="subtle" color="gray" size="compact-sm" px={4} onClick={() => setExpiryOpen(true)}>
+          Add expiration
+        </Button>
+      )}
+      {nothingOnHand && (
+        <Text id={nothingOnHandId} size="sm" c="dimmed">There is nothing on hand.</Text>
+      )}
+      <Title id={`instances-${itemId}`} order={4} size="sm">{productName} instances</Title>
       {loading && <Loader aria-label="Loading item instances" />}
       {error !== '' && (
         <Alert color="red" py="xs">
@@ -100,15 +169,6 @@ export const ItemInstanceList = ({
           ))}
         </Stack>
       )}
-      <AddInstanceModal
-        itemId={itemId}
-        opened={addModalOpened}
-        onClose={() => setAddModalOpened(false)}
-        onAdded={() => {
-          void loadInstances();
-          onInventoryChanged();
-        }}
-      />
     </Stack>
   );
 };

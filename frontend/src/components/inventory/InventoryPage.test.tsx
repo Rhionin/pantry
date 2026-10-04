@@ -212,6 +212,58 @@ describe('InventoryPage', () => {
     expect(eventSource.closed).toBe(true);
   });
 
+  it('changes the on-hand count from the expanded row without collapsing it', async () => {
+    let onHand = 0;
+    const oats = (): InventoryItem => ({
+      ...inventoryItem('oats', 'Rolled Oats', 'Grains', false),
+      instanceCount: onHand,
+    });
+    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      const method = init?.method ?? 'GET';
+      if (url === '/api/settings/supply') {
+        return Promise.resolve(jsonResponse({ months: 3, opening: false, wipePhrase: 'WIPE INVENTORY' }));
+      }
+      if (url === '/api/inventory' && method === 'GET') {
+        return Promise.resolve(jsonResponse([oats()]));
+      }
+      if (url === '/api/inventory/oats/instances' && method === 'GET') {
+        return Promise.resolve(jsonResponse([]));
+      }
+      if (url === '/api/inventory/oats/instances' && method === 'POST') {
+        onHand += 1;
+        return Promise.resolve(jsonResponse({ id: `inst-${onHand}`, itemId: 'oats' }, 201));
+      }
+      if (url === '/api/inventory/oats/stock-out' && method === 'POST') {
+        onHand = Math.max(0, onHand - 1);
+        return Promise.resolve(jsonResponse({}));
+      }
+      throw new Error(`Unexpected request: ${method} ${url}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<MantineProvider><InventoryPage /></MantineProvider>);
+    await screen.findByText('Rolled Oats');
+    expect(screen.getByText('0 unit')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'View instances' }));
+    const article = screen.getByRole('article');
+    expect(within(article).getByRole('button', { name: 'Stock out' })).toBeDisabled();
+    expect(within(article).getByText('There is nothing on hand.')).toBeInTheDocument();
+
+    fireEvent.click(within(article).getByRole('button', { name: 'Stock in' }));
+    await within(article).findByText('1 unit');
+    expect(within(article).getByRole('button', { name: 'Hide instances' })).toBeInTheDocument();
+    expect(within(article).getByRole('button', { name: 'Stock out' })).toBeEnabled();
+    expect(within(article).queryByText('There is nothing on hand.')).not.toBeInTheDocument();
+
+    fireEvent.click(within(article).getByRole('button', { name: 'Stock out' }));
+    await within(article).findByText('0 unit');
+    expect(within(article).getByRole('button', { name: 'Hide instances' })).toBeInTheDocument();
+    expect(within(article).getByRole('button', { name: 'Stock out' })).toBeDisabled();
+    expect(within(article).getByText('There is nothing on hand.')).toBeInTheDocument();
+  });
+
   it('shows the opening banner only while the first scan is unfinished', async () => {
     let opening = true;
     const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {

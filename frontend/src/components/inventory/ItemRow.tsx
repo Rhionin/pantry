@@ -23,7 +23,7 @@ export const ItemRow = memo(({
   const category = visibleCategory(item.product.category);
 
   return (
-    <Card component="article" withBorder padding="sm">
+    <Card component="article" withBorder padding="sm" style={selected ? { gridColumn: '1 / -1' } : undefined}>
       <Stack gap="xs">
         <Group gap="xs" wrap="nowrap" align="flex-start">
           <Avatar src={item.product.imageUrl} name={item.product.name} radius="sm" size="lg" />
