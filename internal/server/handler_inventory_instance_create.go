@@ -2,14 +2,16 @@ package server
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"github.com/Rhionin/pantry/internal/inventory"
+	"github.com/Rhionin/pantry/internal/scan"
 )
 
 type InventoryInstanceCreateHandler struct {
-	Pantry interface {
-		AddInstance(ctx context.Context, instance inventory.ItemInstance) (*inventory.ItemInstance, error)
+	Queue interface {
+		StockIn(ctx context.Context, itemID string, at time.Time, expiresAt *time.Time) (*inventory.ItemInstance, error)
 	}
 }
 
@@ -22,14 +24,11 @@ type inventoryInstanceCreateRequest struct {
 }
 
 func (h *InventoryInstanceCreateHandler) Handle(req Request[inventoryInstanceCreateRequest, inventoryInstanceCreatePathParams]) (Created, error) {
-	instance := inventory.ItemInstance{
-		ItemID:    req.PathParams.ItemID,
-		StockInAt: time.Now(),
-		ExpiresAt: req.Body.ExpiresAt,
-	}
-
-	created, err := h.Pantry.AddInstance(req.Context, instance)
+	created, err := h.Queue.StockIn(req.Context, req.PathParams.ItemID, time.Now(), req.Body.ExpiresAt)
 	if err != nil {
+		if errors.Is(err, scan.ErrItemNotFound) {
+			return Created{}, NotFound("item not found")
+		}
 		return Created{}, InternalError(err)
 	}
 

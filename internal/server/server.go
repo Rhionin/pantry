@@ -315,8 +315,9 @@ func newAPIMux(
 	scanQueue.Pantry = pantry
 	inventoryListHandler := &InventoryListHandler{Pantry: pantry}
 	inventoryInstancesListHandler := &InventoryInstancesListHandler{Pantry: pantry}
-	inventoryInstanceCreateHandler := &InventoryInstanceCreateHandler{Pantry: pantry}
-	inventoryInstanceDeleteHandler := &InventoryInstanceDeleteHandler{Pantry: pantry}
+	inventoryInstanceCreateHandler := &InventoryInstanceCreateHandler{Queue: scanQueue}
+	inventoryInstanceDeleteHandler := &InventoryInstanceDeleteHandler{Queue: scanQueue}
+	inventoryStockOutHandler := &InventoryStockOutHandler{Queue: scanQueue}
 	inventoryWipeHandler := &InventoryWipeHandler{Supply: supplySvc}
 	supplySettingsGetHandler := &SupplySettingsGetHandler{Supply: supplySvc}
 	supplySettingsPutHandler := &SupplySettingsPutHandler{Supply: supplySvc}
@@ -327,6 +328,7 @@ func newAPIMux(
 	apiMux.HandleFunc("GET /api/inventory", HandleJSON(inventoryListHandler.Handle))
 	apiMux.HandleFunc("GET /api/inventory/{itemId}/instances", HandleJSON(inventoryInstancesListHandler.Handle))
 	apiMux.HandleFunc("POST /api/inventory/{itemId}/instances", HandleJSON(inventoryInstanceCreateHandler.Handle))
+	apiMux.HandleFunc("POST /api/inventory/{itemId}/stock-out", HandleJSON(inventoryStockOutHandler.Handle))
 	apiMux.HandleFunc("DELETE /api/inventory/instances/{instanceId}", HandleJSON(inventoryInstanceDeleteHandler.Handle))
 	apiMux.HandleFunc("POST /api/inventory/wipe", HandleJSON(inventoryWipeHandler.Handle))
 	apiMux.HandleFunc("GET /api/settings/supply", HandleJSON(supplySettingsGetHandler.Handle))

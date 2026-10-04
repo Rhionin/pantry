@@ -54,8 +54,10 @@ export const InventoryPage = () => {
   const [error, setError] = useState('');
   const [opening, setOpening] = useState(false);
 
-  const loadInventory = useCallback(async () => {
-    setLoading(true);
+  const loadInventory = useCallback(async (quiet = false) => {
+    if (!quiet) {
+      setLoading(true);
+    }
     setError('');
     try {
       const [items, settings] = await Promise.all([
@@ -67,12 +69,14 @@ export const InventoryPage = () => {
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : 'Unable to load inventory.');
     } finally {
-      setLoading(false);
+      if (!quiet) {
+        setLoading(false);
+      }
     }
   }, []);
 
   useEffect(() => {
-    void Promise.resolve().then(loadInventory);
+    void Promise.resolve().then(() => loadInventory());
   }, [loadInventory]);
 
   useEffect(() => {
@@ -96,12 +100,22 @@ export const InventoryPage = () => {
     setSelectedItemId((current) => current === itemId ? null : itemId);
   };
 
+  const shiftOnHand = (itemId: string, delta: number) => {
+    setInventoryItems((current) => current.map((entry) => (
+      entry.item.id === itemId
+        ? { ...entry, instanceCount: Math.max(0, entry.instanceCount + delta) }
+        : entry
+    )));
+  };
+
   const renderExpanded = (inventoryItem: InventoryItem) => (
     <Stack gap="sm">
       <ItemInstanceList
         itemId={inventoryItem.item.id}
         productName={inventoryItem.item.product.name}
-        onInventoryChanged={() => void loadInventory()}
+        onHand={inventoryItem.instanceCount}
+        onHandChange={(delta) => shiftOnHand(inventoryItem.item.id, delta)}
+        onInventoryChanged={() => { void loadInventory(true); }}
       />
       <ProductEditor
         productId={inventoryItem.item.productId}
