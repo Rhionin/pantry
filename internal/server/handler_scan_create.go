@@ -31,6 +31,10 @@ type ScanCreateHandler struct {
 		PublishScanProcessingEvent(notice scan.ProcessingNotice)
 		PublishScanProcessingFailedEvent(failure scan.ProcessingFailure)
 	}
+	// Mode stamps a product barcode that did not name its own direction, and
+	// counts the barcode as scan traffic for the idle return to scan-out.
+	// Nil leaves an omitted direction unset and does not track idle time.
+	Mode *scannerMode
 }
 
 type createScanRequest struct {
@@ -47,6 +51,18 @@ func (h *ScanCreateHandler) Handle(req Request[createScanRequest, struct{}]) (Cr
 	}
 	if req.Body.UserID == "" {
 		return Created{}, BadRequest("userId is required")
+	}
+
+	// A product barcode with no direction takes the server's current mode, which
+	// is already scan-out when scan-in has been idle for 5 minutes. Naming a
+	// direction keeps that explicit choice. Either way the barcode is scan
+	// traffic, so it is the event that can postpone the idle return.
+	if h.Mode != nil {
+		if req.Body.Direction == nil {
+			current := h.Mode.Get()
+			req.Body.Direction = &current
+		}
+		h.Mode.NoteScan()
 	}
 
 	log.Printf("scan received: barcode=%q direction=%s user=%s", req.Body.Barcode, directionLabel(req.Body.Direction), req.Body.UserID)

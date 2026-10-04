@@ -44,7 +44,7 @@ func setupTestWithDB(t *testing.T) (http.Handler, testEnv) {
 	return setupTestWithContributor(t, nil)
 }
 
-func setupTestWithContributor(t *testing.T, contributor product.UpstreamContributor) (http.Handler, testEnv) {
+func setupTestWithContributor(t *testing.T, contributor product.UpstreamContributor, extra ...Option) (http.Handler, testEnv) {
 	t.Helper()
 	db := setupTestDB(t)
 
@@ -94,6 +94,7 @@ func setupTestWithContributor(t *testing.T, contributor product.UpstreamContribu
 	if contributor != nil {
 		opts = append(opts, WithContributor(contributor))
 	}
+	opts = append(opts, extra...)
 	handler, _ := NewHandler(productRepo, lookupService, refresher, db, opts...)
 
 	// Get the Open Food Facts fake for backward compatibility

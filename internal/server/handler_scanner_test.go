@@ -293,3 +293,135 @@ func TestScannerModeHandler_BroadcastsSSEEvent(t *testing.T) {
 		t.Fatal("timed out waiting for a scanner_mode event on the /api/events stream")
 	}
 }
+
+// clockedScanner starts a handler whose scan direction uses a clock the test
+// can move. The idle window begins at the returned instant.
+func clockedScanner(t *testing.T) (http.Handler, func(time.Duration)) {
+	t.Helper()
+	start := time.Date(2026, 10, 3, 12, 0, 0, 0, time.UTC)
+	now := start
+	mode := newScannerMode(nil)
+	mode.useClock(func() time.Time { return now })
+	handler, _ := setupTestWithContributor(t, nil, WithScannerMode(mode))
+	return handler, func(d time.Duration) { now = now.Add(d) }
+}
+
+func postScannerMode(t *testing.T, handler http.Handler, mode string) {
+	t.Helper()
+	req := httptest.NewRequest(http.MethodPost, "/api/scanner/mode", strings.NewReader(`{"mode":"`+mode+`"}`))
+	req.Header.Set("Content-Type", "application/json")
+	res := httptest.NewRecorder()
+	handler.ServeHTTP(res, req)
+	if res.Code != http.StatusOK {
+		t.Fatalf("POST /api/scanner/mode %s: status %d body %s", mode, res.Code, res.Body.String())
+	}
+}
+
+// postUntaggedScan creates a product scan that does not name a direction, so
+// the server stamps whatever mode the next scan is supposed to use.
+func postUntaggedScan(t *testing.T, handler http.Handler, barcode, userID string) string {
+	t.Helper()
+	body := `{"barcode":"` + barcode + `","userId":"` + userID + `"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/scans", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	res := httptest.NewRecorder()
+	handler.ServeHTTP(res, req)
+	if res.Code != http.StatusCreated {
+		t.Fatalf("POST /api/scans: status %d body %s", res.Code, res.Body.String())
+	}
+	var created struct {
+		Direction string `json:"direction"`
+	}
+	if err := json.Unmarshal(res.Body.Bytes(), &created); err != nil {
+		t.Fatalf("decode scan: %v (%s)", err, res.Body.String())
+	}
+	return created.Direction
+}
+
+// TestScannerMode_SwitchIsWhatTheNextScanUses verifies a mode write shows up
+// on the config read and is the direction stamped on the next product scan.
+func TestScannerMode_SwitchIsWhatTheNextScanUses(t *testing.T) {
+	handler, _ := clockedScanner(t)
+
+	if got := getCurrentMode(t, handler); got != "stock_in" {
+		t.Fatalf("initial mode = %q, want stock_in", got)
+	}
+
+	postScannerMode(t, handler, "stock_out")
+	if got := getCurrentMode(t, handler); got != "stock_out" {
+		t.Fatalf("mode after switch = %q, want stock_out", got)
+	}
+	if got := postUntaggedScan(t, handler, "111122223333", "user-mode-switch"); got != "stock_out" {
+		t.Fatalf("next scan direction = %q, want stock_out", got)
+	}
+
+	postScannerMode(t, handler, "stock_in")
+	if got := postUntaggedScan(t, handler, "444455556666", "user-mode-switch"); got != "stock_in" {
+		t.Fatalf("next scan direction = %q, want stock_in", got)
+	}
+}
+
+// TestScannerMode_IdleRevertsToStockOut proves the server, not a browser
+// timer, returns to scan-out after five minutes in scan-in with no product
+// scan, and that the scan after that return is stamped scan-out.
+func TestScannerMode_IdleRevertsToStockOut(t *testing.T) {
+	handler, advance := clockedScanner(t)
+
+	advance(scannerIdleTimeout - time.Second)
+	if got := getCurrentMode(t, handler); got != "stock_in" {
+		t.Fatalf("mode before idle elapsed = %q, want stock_in", got)
+	}
+
+	advance(time.Second)
+	// The scan is the first thing to observe the deadline. It must be stamped
+	// scan-out, and the mode read after it must agree.
+	if got := postUntaggedScan(t, handler, "777788889999", "user-idle"); got != "stock_out" {
+		t.Fatalf("scan after idle revert direction = %q, want stock_out", got)
+	}
+	if got := getCurrentMode(t, handler); got != "stock_out" {
+		t.Fatalf("mode after the scan = %q, want stock_out", got)
+	}
+}
+
+// TestScannerMode_ProductScanResetsIdleWindow verifies a product scan postpones
+// the return to scan-out, measured from that scan rather than from when
+// scan-in was selected.
+func TestScannerMode_ProductScanResetsIdleWindow(t *testing.T) {
+	handler, advance := clockedScanner(t)
+
+	advance(4 * time.Minute)
+	if got := postUntaggedScan(t, handler, "121212121212", "user-idle-reset"); got != "stock_in" {
+		t.Fatalf("scan inside the window direction = %q, want stock_in", got)
+	}
+
+	advance(4 * time.Minute)
+	if got := getCurrentMode(t, handler); got != "stock_in" {
+		t.Fatalf("mode 4m after a scan = %q, want stock_in", got)
+	}
+
+	advance(time.Minute)
+	if got := getCurrentMode(t, handler); got != "stock_out" {
+		t.Fatalf("mode 5m after the last scan = %q, want stock_out", got)
+	}
+}
+
+// TestScannerMode_NonScanActivityDoesNotResetIdle verifies that reading the
+// mode and selecting scan-in again are not scan traffic: five minutes from
+// the original entry still returns to scan-out.
+func TestScannerMode_NonScanActivityDoesNotResetIdle(t *testing.T) {
+	handler, advance := clockedScanner(t)
+
+	advance(4 * time.Minute)
+	if got := getCurrentMode(t, handler); got != "stock_in" {
+		t.Fatalf("mode while reading config = %q, want stock_in", got)
+	}
+	postScannerMode(t, handler, "stock_in")
+
+	advance(time.Minute)
+	if got := getCurrentMode(t, handler); got != "stock_out" {
+		t.Fatalf("mode after config read and repeated switch = %q, want stock_out", got)
+	}
+	if got := postUntaggedScan(t, handler, "131313131313", "user-idle-noscan"); got != "stock_out" {
+		t.Fatalf("next scan direction = %q, want stock_out", got)
+	}
+}
