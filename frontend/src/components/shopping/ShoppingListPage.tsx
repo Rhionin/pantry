@@ -266,10 +266,15 @@ export const ShoppingListPage = () => {
 
   return (
     <Stack gap="sm">
-      <Group justify="space-between" align="flex-start">
-        <Title order={1} size="h3">Shopping list</Title>
-        <Group gap="xs">
-          <Button loading={filling} disabled={loading} onClick={() => void fillCart()}>
+      <div className="shopping-toolbar">
+        <Title order={1} size="h3" className="shopping-toolbar-title">Shopping list</Title>
+        <div className="shopping-toolbar-actions">
+          <Button
+            className="shopping-fill"
+            loading={filling}
+            disabled={loading}
+            onClick={() => void fillCart()}
+          >
             Fill the cart
           </Button>
           <ProvisionButton
@@ -279,8 +284,8 @@ export const ShoppingListPage = () => {
             explainEmpty={!loading}
             onFinished={() => void loadShoppingList()}
           />
-        </Group>
-      </Group>
+        </div>
+      </div>
       <ProviderPanel providers={providers} onChanged={() => void loadShoppingList()} />
       {!loading && showDecisions && notes.considerations.length > 0 && (
         <Alert variant="light" color="teal" title={offers.length > 0 ? 'A sale to consider' : 'Brand notes'}>

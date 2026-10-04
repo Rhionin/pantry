@@ -159,6 +159,66 @@
   }
 }
 
+/* The two cart actions share one row with the title. Notices sit underneath
+   so they do not change the buttons' width or vertical alignment. */
+.shopping-toolbar {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 12rem 12rem;
+  grid-template-areas: "title fill send";
+  align-items: center;
+  column-gap: 0.5rem;
+}
+
+.shopping-toolbar:has(.provision-notices) {
+  grid-template-areas:
+    "title fill send"
+    "notices notices notices";
+  row-gap: 0.5rem;
+}
+
+.shopping-toolbar-title {
+  grid-area: title;
+  margin: 0;
+}
+
+.shopping-toolbar-actions,
+.provision-control {
+  display: contents;
+}
+
+.shopping-toolbar .shopping-fill,
+.shopping-toolbar .shopping-send {
+  width: 100%;
+}
+
+.shopping-toolbar .shopping-fill {
+  grid-area: fill;
+}
+
+.shopping-toolbar .shopping-send {
+  grid-area: send;
+}
+
+.shopping-toolbar .provision-notices {
+  grid-area: notices;
+}
+
+@media (max-width: 47.99em) {
+  .shopping-toolbar {
+    grid-template-columns: 1fr 1fr;
+    grid-template-areas:
+      "title title"
+      "fill send";
+  }
+
+  .shopping-toolbar:has(.provision-notices) {
+    grid-template-areas:
+      "title title"
+      "fill send"
+      "notices notices";
+  }
+}
+
 .shopping-entries-scroll {
   overflow-x: auto;
 }
