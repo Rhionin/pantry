@@ -45,7 +45,15 @@ export const WipeInventoryDialog = ({ onWiped, phrase = WIPE_INVENTORY_CONFIRMAT
           Wipe inventory
         </Button>
       </Group>
-      <Modal opened={opened} onClose={close} title="Wipe inventory">
+      <Modal
+        opened={opened}
+        onClose={close}
+        title="Wipe inventory"
+        // fade-down starts at opacity 0, so the first paint is ghosted text on the page.
+        // A zero duration shows the finished scrim and card immediately.
+        transitionProps={{ duration: 0 }}
+        overlayProps={{ color: '#000', backgroundOpacity: 0.6 }}
+      >
         <form onSubmit={(event) => void handleSubmit(event)}>
           <Stack gap="sm">
             <Text size="sm">
