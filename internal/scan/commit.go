@@ -3,11 +3,19 @@ package scan
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"time"
 
 	"github.com/Rhionin/pantry/internal/inventory"
 	"github.com/google/uuid"
+)
+
+var (
+	// ErrItemNotFound means the household has no item with that id.
+	ErrItemNotFound = errors.New("item not found")
+	// ErrNoneOnHand means a stock-out found no unit on the shelf.
+	ErrNoneOnHand = errors.New("nothing on hand")
 )
 
 // CommitStockIn commits a stock-in scan entry by creating N item instances
@@ -45,40 +53,10 @@ func (r *Queue) CommitStockIn(ctx context.Context, scanEntry *ScanEntry) error {
 		return fmt.Errorf("find/create item: %w", err)
 	}
 
-	for i := 0; i < scanEntry.UnitCount; i++ {
-		instanceID := uuid.NewString()
-		_, err := tx.ExecContext(ctx, `
-			INSERT INTO item_instances (id, item_id, stock_in_at, expires_at)
-			VALUES (?, ?, ?, ?)`,
-			instanceID,
-			itemID,
-			scanEntry.ScannedAt,
-			nullableTime(scanEntry.ExpiresAt),
-		)
-		if err != nil {
-			return fmt.Errorf("create instance %d: %w", i+1, err)
-		}
-	}
-
 	// Opening records the units already on the shelf and stops. The scan
 	// still has to leave the queue, so the entry is committed either way.
-	// A later restock also resets the provider ledger and records one stock-in.
-	trackRestock, err := r.trackRestock(ctx, tx)
-	if err != nil {
+	if _, err := r.recordStockInTx(ctx, tx, itemID, *scanEntry.ProductID, scanEntry.ScannedAt, scanEntry.ExpiresAt, scanEntry.UnitCount); err != nil {
 		return err
-	}
-	if trackRestock && r.Ledger != nil {
-		if err := r.Ledger.ResetForItemTx(ctx, tx, itemID, scanEntry.ScannedAt); err != nil {
-			return fmt.Errorf("reset ledger: %w", err)
-		}
-	}
-	if trackRestock && r.Supply != nil {
-		if _, err := tx.ExecContext(ctx, `
-			INSERT INTO stock_in_events (product_id, at) VALUES (?, ?)`,
-			*scanEntry.ProductID, scanEntry.ScannedAt,
-		); err != nil {
-			return fmt.Errorf("record stock-in: %w", err)
-		}
 	}
 
 	_, err = tx.ExecContext(ctx, `
@@ -119,10 +97,12 @@ func (r *Queue) CommitStockIn(ctx context.Context, scanEntry *ScanEntry) error {
 	return nil
 }
 
-// trackRestock reports whether this stock-in is a later restock rather than
-// the opening snapshot. A queue with no supply service keeps the previous
-// stock-in path (instances and ledger reset) and does not write stock_in_events,
-// so tests that build a queue by hand stay snapshots of units.
+// trackRestock reports whether a movement is past the opening snapshot.
+// During opening the units are already on the shelf, so there is no stock-in
+// event and no consumption row. A queue with no supply service reports true:
+// hand-built tests keep ledger reset on stock-in and still record usage on
+// stock-out. Those tests do not write stock_in_events, because that insert
+// also requires a supply service.
 func (r *Queue) trackRestock(ctx context.Context, tx *sql.Tx) (bool, error) {
 	if r.Supply == nil {
 		return true, nil
@@ -132,6 +112,235 @@ func (r *Queue) trackRestock(ctx context.Context, tx *sql.Tx) (bool, error) {
 		return false, fmt.Errorf("could not read supply settings: %w", err)
 	}
 	return !opening, nil
+}
+
+// recordStockInTx adds units on the shelf. Once opening is finished it also
+// resets the provider ledger and writes one stock-in event for the whole call.
+// Opening only records units that are already here.
+func (r *Queue) recordStockInTx(ctx context.Context, tx *sql.Tx, itemID, productID string, at time.Time, expiresAt *time.Time, units int) ([]string, error) {
+	ids := make([]string, 0, units)
+	for i := 0; i < units; i++ {
+		instanceID := uuid.NewString()
+		if _, err := tx.ExecContext(ctx, `
+			INSERT INTO item_instances (id, item_id, stock_in_at, expires_at)
+			VALUES (?, ?, ?, ?)`,
+			instanceID,
+			itemID,
+			at,
+			nullableTime(expiresAt),
+		); err != nil {
+			return nil, fmt.Errorf("create instance %d: %w", i+1, err)
+		}
+		ids = append(ids, instanceID)
+	}
+
+	trackRestock, err := r.trackRestock(ctx, tx)
+	if err != nil {
+		return nil, err
+	}
+	if trackRestock && r.Ledger != nil {
+		if err := r.Ledger.ResetForItemTx(ctx, tx, itemID, at); err != nil {
+			return nil, fmt.Errorf("reset ledger: %w", err)
+		}
+	}
+	if trackRestock && r.Supply != nil {
+		if _, err := tx.ExecContext(ctx, `
+			INSERT INTO stock_in_events (product_id, at) VALUES (?, ?)`,
+			productID, at,
+		); err != nil {
+			return nil, fmt.Errorf("record stock-in: %w", err)
+		}
+	}
+	return ids, nil
+}
+
+// recordStockOutTx removes one on-hand unit. A nil instanceID selects the
+// earliest expiration, with undated units last — the same unit a scan-out
+// commits. After opening, the removal is one consumption row. During opening
+// the unit was already here, so it is not usage.
+func (r *Queue) recordStockOutTx(ctx context.Context, tx *sql.Tx, itemID string, instanceID *string, at time.Time, scanEntryID *string) error {
+	var selected string
+	if instanceID != nil {
+		selected = *instanceID
+		var exists int
+		err := tx.QueryRowContext(ctx, `
+			SELECT 1 FROM item_instances
+			WHERE id = ? AND item_id = ? AND removed_at IS NULL`,
+			selected, itemID,
+		).Scan(&exists)
+		if err == sql.ErrNoRows {
+			return inventory.ErrInstanceNotFound
+		}
+		if err != nil {
+			return fmt.Errorf("verify instance: %w", err)
+		}
+	} else {
+		err := tx.QueryRowContext(ctx, `
+			SELECT id FROM item_instances
+			WHERE item_id = ? AND removed_at IS NULL
+			ORDER BY expires_at ASC NULLS LAST
+			LIMIT 1`,
+			itemID,
+		).Scan(&selected)
+		if err == sql.ErrNoRows {
+			return ErrNoneOnHand
+		}
+		if err != nil {
+			return fmt.Errorf("select instance: %w", err)
+		}
+	}
+
+	if _, err := tx.ExecContext(ctx, `
+		UPDATE item_instances
+		SET removed_at = CURRENT_TIMESTAMP, removal_reason = 'consumed'
+		WHERE id = ?`,
+		selected,
+	); err != nil {
+		return fmt.Errorf("remove instance: %w", err)
+	}
+
+	usage, err := r.trackRestock(ctx, tx)
+	if err != nil {
+		return err
+	}
+	if !usage {
+		return nil
+	}
+
+	if _, err := tx.ExecContext(ctx, `
+		INSERT INTO consumption_events (id, item_id, consumed_at, scan_entry_id)
+		VALUES (?, ?, ?, ?)`,
+		uuid.NewString(),
+		itemID,
+		at,
+		nullableString(scanEntryID),
+	); err != nil {
+		return fmt.Errorf("create consumption event: %w", err)
+	}
+	return nil
+}
+
+// StockIn adds one on-hand unit of an item the household already keeps.
+// The usage ledger matches a committed one-unit stock-in scan of that product.
+func (r *Queue) StockIn(ctx context.Context, itemID string, at time.Time, expiresAt *time.Time) (*inventory.ItemInstance, error) {
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, fmt.Errorf("begin transaction: %w", err)
+	}
+	defer tx.Rollback()
+
+	var productID string
+	err = tx.QueryRowContext(ctx, `SELECT product_id FROM items WHERE id = ?`, itemID).Scan(&productID)
+	if err == sql.ErrNoRows {
+		return nil, ErrItemNotFound
+	}
+	if err != nil {
+		return nil, fmt.Errorf("find item: %w", err)
+	}
+
+	ids, err := r.recordStockInTx(ctx, tx, itemID, productID, at, expiresAt, 1)
+	if err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("commit transaction: %w", err)
+	}
+
+	r.publishInventory(ctx, itemID)
+	return r.readInstance(ctx, ids[0])
+}
+
+// StockOut removes one on-hand unit of an item, choosing the same unit a
+// scan-out would. The usage ledger matches that committed scan.
+func (r *Queue) StockOut(ctx context.Context, itemID string, at time.Time) error {
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin transaction: %w", err)
+	}
+	defer tx.Rollback()
+
+	var exists int
+	err = tx.QueryRowContext(ctx, `SELECT 1 FROM items WHERE id = ?`, itemID).Scan(&exists)
+	if err == sql.ErrNoRows {
+		return ErrItemNotFound
+	}
+	if err != nil {
+		return fmt.Errorf("find item: %w", err)
+	}
+	if err := r.recordStockOutTx(ctx, tx, itemID, nil, at, nil); err != nil {
+		return err
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit transaction: %w", err)
+	}
+	r.publishInventory(ctx, itemID)
+	return nil
+}
+
+// StockOutInstance removes one specific on-hand unit. It is the same stock-out
+// as StockOut, including the usage ledger.
+func (r *Queue) StockOutInstance(ctx context.Context, instanceID string, at time.Time) error {
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin transaction: %w", err)
+	}
+	defer tx.Rollback()
+
+	var itemID string
+	err = tx.QueryRowContext(ctx, `
+		SELECT item_id FROM item_instances
+		WHERE id = ? AND removed_at IS NULL`,
+		instanceID,
+	).Scan(&itemID)
+	if err == sql.ErrNoRows {
+		return inventory.ErrInstanceNotFound
+	}
+	if err != nil {
+		return fmt.Errorf("find instance: %w", err)
+	}
+	if err := r.recordStockOutTx(ctx, tx, itemID, &instanceID, at, nil); err != nil {
+		return err
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit transaction: %w", err)
+	}
+	r.publishInventory(ctx, itemID)
+	return nil
+}
+
+func (r *Queue) publishInventory(ctx context.Context, itemID string) {
+	if r.Broadcaster == nil || r.Pantry == nil {
+		return
+	}
+	invItem, err := r.Pantry.GetInventoryItem(ctx, itemID, time.Now(), inventory.DefaultWarningDays)
+	if err != nil || invItem == nil {
+		return
+	}
+	r.Broadcaster.PublishInventoryEvent(*invItem)
+}
+
+func (r *Queue) readInstance(ctx context.Context, id string) (*inventory.ItemInstance, error) {
+	var inst inventory.ItemInstance
+	var expiresAt, removedAt sql.NullTime
+	var removalReason sql.NullString
+	err := r.db.QueryRowContext(ctx, `
+		SELECT id, item_id, stock_in_at, expires_at, removed_at, removal_reason, created_at
+		FROM item_instances WHERE id = ?`,
+		id,
+	).Scan(&inst.ID, &inst.ItemID, &inst.StockInAt, &expiresAt, &removedAt, &removalReason, &inst.CreatedAt)
+	if err != nil {
+		return nil, fmt.Errorf("read instance: %w", err)
+	}
+	if expiresAt.Valid {
+		inst.ExpiresAt = &expiresAt.Time
+	}
+	if removedAt.Valid {
+		inst.RemovedAt = &removedAt.Time
+	}
+	if removalReason.Valid {
+		inst.RemovalReason = &removalReason.String
+	}
+	return &inst, nil
 }
 
 // findOrCreateItem retrieves the item ID for a user+product combination,
@@ -176,7 +385,7 @@ func (r *Queue) findOrCreateItem(ctx context.Context, tx *sql.Tx, userID, produc
 // 1. Ensures an item exists for the user+product combination
 // 2. Selects the instance to remove (specific or use-oldest-first)
 // 3. Marks the instance as removed with removal_reason 'consumed'
-// 4. Creates a consumption event record
+// 4. Records one consumption row once opening is finished
 // 5. Marks the scan entry as committed
 //
 // All operations are performed within a transaction to ensure atomicity.
@@ -209,59 +418,19 @@ func (r *Queue) CommitStockOut(ctx context.Context, scanEntry *ScanEntry, instan
 		return fmt.Errorf("find item: %w", err)
 	}
 
-	var selectedInstanceID string
-	if instanceID != nil {
-		selectedInstanceID = *instanceID
-		var exists bool
-		err = tx.QueryRowContext(ctx, `
-			SELECT 1 FROM item_instances 
-			WHERE id = ? AND item_id = ? AND removed_at IS NULL`,
-			selectedInstanceID, itemID,
-		).Scan(&exists)
-		if err == sql.ErrNoRows {
-			return fmt.Errorf("instance %q not found or already removed", selectedInstanceID)
+	scanID := scanEntry.ID
+	if err := r.recordStockOutTx(ctx, tx, itemID, instanceID, scanEntry.ScannedAt, &scanID); err != nil {
+		if errors.Is(err, ErrNoneOnHand) {
+			return fmt.Errorf("no available instances for item %q: %w", itemID, err)
 		}
-		if err != nil {
-			return fmt.Errorf("verify instance: %w", err)
+		if errors.Is(err, inventory.ErrInstanceNotFound) {
+			missing := ""
+			if instanceID != nil {
+				missing = *instanceID
+			}
+			return fmt.Errorf("instance %q not found or already removed: %w", missing, err)
 		}
-	} else {
-		// Use oldest-first: prioritize instances closest to expiration
-		err = tx.QueryRowContext(ctx, `
-			SELECT id FROM item_instances
-			WHERE item_id = ? AND removed_at IS NULL
-			ORDER BY expires_at ASC NULLS LAST
-			LIMIT 1`,
-			itemID,
-		).Scan(&selectedInstanceID)
-		if err == sql.ErrNoRows {
-			return fmt.Errorf("no available instances for item %q", itemID)
-		}
-		if err != nil {
-			return fmt.Errorf("select instance: %w", err)
-		}
-	}
-
-	_, err = tx.ExecContext(ctx, `
-		UPDATE item_instances 
-		SET removed_at = CURRENT_TIMESTAMP, removal_reason = 'consumed'
-		WHERE id = ?`,
-		selectedInstanceID,
-	)
-	if err != nil {
-		return fmt.Errorf("remove instance: %w", err)
-	}
-
-	consumptionEventID := uuid.NewString()
-	_, err = tx.ExecContext(ctx, `
-		INSERT INTO consumption_events (id, item_id, consumed_at, scan_entry_id)
-		VALUES (?, ?, ?, ?)`,
-		consumptionEventID,
-		itemID,
-		scanEntry.ScannedAt,
-		scanEntry.ID,
-	)
-	if err != nil {
-		return fmt.Errorf("create consumption event: %w", err)
+		return err
 	}
 
 	_, err = tx.ExecContext(ctx, `

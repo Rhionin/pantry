@@ -3,13 +3,14 @@ package server
 import (
 	"context"
 	"errors"
+	"time"
 
 	"github.com/Rhionin/pantry/internal/inventory"
 )
 
 type InventoryInstanceDeleteHandler struct {
-	Pantry interface {
-		RemoveInstance(ctx context.Context, instanceID string, reason string) error
+	Queue interface {
+		StockOutInstance(ctx context.Context, instanceID string, at time.Time) error
 	}
 }
 
@@ -18,7 +19,7 @@ type inventoryInstanceDeletePathParams struct {
 }
 
 func (h *InventoryInstanceDeleteHandler) Handle(req Request[struct{}, inventoryInstanceDeletePathParams]) (struct{}, error) {
-	err := h.Pantry.RemoveInstance(req.Context, req.PathParams.InstanceID, "manual")
+	err := h.Queue.StockOutInstance(req.Context, req.PathParams.InstanceID, time.Now())
 	if err != nil {
 		if errors.Is(err, inventory.ErrInstanceNotFound) {
 			return struct{}{}, NotFound("item instance not found")
