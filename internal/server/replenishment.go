@@ -2,59 +2,29 @@ package server
 
 import (
 	"context"
+	"time"
 
 	"github.com/Rhionin/pantry/internal/inventory"
 	"github.com/Rhionin/pantry/internal/shopping"
+	"github.com/Rhionin/pantry/internal/supply"
 )
 
-// planReplenishment builds the shared needs and the auto lines for them.
-// A saved brand preference replaces the representative product on a line.
-// The gap quantity is unchanged.
-func planReplenishment(items []inventory.Item, counts map[string]int, manual []shopping.ShoppingListItem, prefs []shopping.Preference) ([]shopping.ReplenishmentItem, []shopping.DerivedEntry) {
-	manualIDs := make(map[string]struct{}, len(manual))
-	for _, item := range manual {
-		manualIDs[item.ItemID] = struct{}{}
-	}
-	needs := replenishmentNeeds(items, counts)
-	derived := shopping.DeriveShoppingList(shopping.ApplyPreferences(shopping.CollapseEquivalentNeeds(needs, manualIDs), needs, prefs))
-	return needs, derived
-}
-
-func replenishmentNeeds(items []inventory.Item, counts map[string]int) []shopping.ReplenishmentItem {
-	needs := make([]shopping.ReplenishmentItem, 0, len(items))
-	for _, item := range items {
-		need := shopping.ReplenishmentItem{
-			ItemID:       item.ID,
-			CurrentCount: counts[item.ID],
-		}
-		if item.Product != nil {
-			need.Name = item.Product.Name
-			need.UnitOfMeasure = item.Product.UnitOfMeasure
-		}
-		if item.TargetQuantity != nil {
-			need.HasTarget = true
-			need.TargetQuantity = *item.TargetQuantity
-		}
-		needs = append(needs, need)
-	}
-	return needs
-}
-
+// shoppingProvision is the list after the supply snapshot has been written.
 type shoppingProvision struct {
-	Items   []inventory.Item
-	Counts  map[string]int
-	Manual  []shopping.ShoppingListItem
-	Derived []shopping.DerivedEntry
-	Merged  []shopping.ManualEntry
-	Needs   []shopping.ReplenishmentItem
-	Deals   []shopping.Deal
-	Prefs   []shopping.Preference
+	Items  []inventory.Item
+	Counts map[string]int
+	Rows   []shopping.ShoppingListItem
+	Needs  []shopping.ReplenishmentItem
+	Deals  []shopping.Deal
+	Prefs  []shopping.Preference
 }
 
 type shoppingListReader interface {
 	ListManualItems(ctx context.Context, userID string) ([]shopping.ShoppingListItem, error)
+	ListUnpurchased(ctx context.Context, userID string) ([]shopping.ShoppingListItem, error)
 	ListPreferences(ctx context.Context, userID string) ([]shopping.Preference, error)
 	ListDeals(ctx context.Context, userID string) ([]shopping.Deal, error)
+	SavePlannedLines(ctx context.Context, userID string, lines []shopping.PlannedLine, members []shopping.ShelfMember) error
 }
 
 type pantryLister interface {
@@ -62,12 +32,8 @@ type pantryLister interface {
 	ListItemInstances(ctx context.Context, itemID string) ([]inventory.ItemInstance, error)
 }
 
-func loadShoppingProvision(ctx context.Context, userID string, pantry pantryLister, list shoppingListReader) (shoppingProvision, error) {
+func loadShoppingProvision(ctx context.Context, userID string, pantry pantryLister, list shoppingListReader, supplySvc *supply.Service, now time.Time) (shoppingProvision, error) {
 	items, err := pantry.ListItems(ctx, userID)
-	if err != nil {
-		return shoppingProvision{}, err
-	}
-	manual, err := list.ListManualItems(ctx, userID)
 	if err != nil {
 		return shoppingProvision{}, err
 	}
@@ -83,21 +49,84 @@ func loadShoppingProvision(ctx context.Context, userID string, pantry pantryList
 	if err != nil {
 		return shoppingProvision{}, err
 	}
-	needs, derived := planReplenishment(items, counts, manual, prefs)
-	manualEntries := make([]shopping.ManualEntry, len(manual))
-	for i, item := range manual {
-		manualEntries[i] = shopping.ManualEntry{ItemID: item.ItemID, Quantity: item.Quantity}
+	needs := replenishmentNeeds(items, counts)
+	if supplySvc != nil {
+		planned, err := supplySvc.Plan(ctx, now)
+		if err != nil {
+			return shoppingProvision{}, err
+		}
+		if err := list.SavePlannedLines(ctx, userID, plannedLines(planned, items), shelfMembers(items)); err != nil {
+			return shoppingProvision{}, err
+		}
+	}
+	rows, err := list.ListUnpurchased(ctx, userID)
+	if err != nil {
+		return shoppingProvision{}, err
 	}
 	return shoppingProvision{
-		Items:   items,
-		Counts:  counts,
-		Manual:  manual,
-		Derived: derived,
-		Merged:  shopping.MergeEntries(derived, manualEntries),
-		Needs:   needs,
-		Deals:   deals,
-		Prefs:   prefs,
+		Items:  items,
+		Counts: counts,
+		Rows:   rows,
+		Needs:  needs,
+		Deals:  deals,
+		Prefs:  prefs,
 	}, nil
+}
+
+func plannedLines(lines []supply.Line, items []inventory.Item) []shopping.PlannedLine {
+	byProduct := map[string]inventory.Item{}
+	for _, item := range items {
+		byProduct[item.ProductID] = item
+	}
+	out := make([]shopping.PlannedLine, 0, len(lines))
+	for _, line := range lines {
+		item, ok := byProduct[string(line.Product)]
+		if !ok {
+			continue
+		}
+		name, unit := productNameUnit(item)
+		key, _ := shopping.NeedKey(name, unit)
+		out = append(out, shopping.PlannedLine{
+			ProductID: string(line.Product),
+			ItemID:    item.ID,
+			GroupKey:  key,
+			Quantity:  int(line.Buy),
+			Note:      line.Note,
+			Manual:    line.Source == supply.SourceManual,
+		})
+	}
+	return out
+}
+
+func shelfMembers(items []inventory.Item) []shopping.ShelfMember {
+	members := make([]shopping.ShelfMember, 0, len(items))
+	for _, item := range items {
+		name, unit := productNameUnit(item)
+		key, _ := shopping.NeedKey(name, unit)
+		members = append(members, shopping.ShelfMember{ItemID: item.ID, GroupKey: key})
+	}
+	return members
+}
+
+func productNameUnit(item inventory.Item) (string, string) {
+	if item.Product == nil {
+		return "", ""
+	}
+	return item.Product.Name, item.Product.UnitOfMeasure
+}
+
+func replenishmentNeeds(items []inventory.Item, counts map[string]int) []shopping.ReplenishmentItem {
+	needs := make([]shopping.ReplenishmentItem, 0, len(items))
+	for _, item := range items {
+		name, unit := productNameUnit(item)
+		needs = append(needs, shopping.ReplenishmentItem{
+			ItemID:        item.ID,
+			Name:          name,
+			UnitOfMeasure: unit,
+			CurrentCount:  counts[item.ID],
+		})
+	}
+	return needs
 }
 
 func itemName(needs []shopping.ReplenishmentItem, itemID string) string {

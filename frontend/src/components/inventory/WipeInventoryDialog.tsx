@@ -4,9 +4,10 @@ import { WIPE_INVENTORY_CONFIRMATION, wipeInventory } from '../../api/client';
 
 export interface WipeInventoryDialogProps {
   onWiped: () => void;
+  phrase?: string;
 }
 
-export const WipeInventoryDialog = ({ onWiped }: WipeInventoryDialogProps) => {
+export const WipeInventoryDialog = ({ onWiped, phrase = WIPE_INVENTORY_CONFIRMATION }: WipeInventoryDialogProps) => {
   const [opened, setOpened] = useState(false);
   const [confirmation, setConfirmation] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -20,7 +21,7 @@ export const WipeInventoryDialog = ({ onWiped }: WipeInventoryDialogProps) => {
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (confirmation !== WIPE_INVENTORY_CONFIRMATION) {
+    if (confirmation !== phrase) {
       return;
     }
 
@@ -54,7 +55,7 @@ export const WipeInventoryDialog = ({ onWiped }: WipeInventoryDialogProps) => {
             </Text>
             <Text size="sm">This cannot be undone.</Text>
             <TextInput
-              label={`Type ${WIPE_INVENTORY_CONFIRMATION} to confirm`}
+              label={`Type ${phrase} to confirm`}
               autoComplete="off"
               value={confirmation}
               onChange={(event) => setConfirmation(event.currentTarget.value)}
@@ -71,7 +72,7 @@ export const WipeInventoryDialog = ({ onWiped }: WipeInventoryDialogProps) => {
                 color="red"
                 type="submit"
                 loading={submitting}
-                disabled={confirmation !== WIPE_INVENTORY_CONFIRMATION}
+                disabled={confirmation !== phrase}
               >
                 Confirm wipe
               </Button>

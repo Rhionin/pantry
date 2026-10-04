@@ -27,6 +27,15 @@ try {
 
   await page.getByRole('link', { name: 'Inventory' }).click();
   await page.getByRole('heading', { name: PRODUCT }).waitFor({ state: 'visible', timeout: 10_000 });
+  const banner = page.getByRole('alert', { name: 'Opening inventory' });
+  await banner.waitFor({ state: 'visible', timeout: 10_000 });
+  await page.getByRole('button', { name: 'This scan is complete' }).click();
+  await banner.waitFor({ state: 'hidden', timeout: 10_000 });
+
+  await page.getByRole('button', { name: 'Menu' }).click();
+  await page.getByRole('menuitem', { name: 'Settings' }).click();
+  await page.getByRole('heading', { name: 'Settings' }).waitFor({ state: 'visible', timeout: 10_000 });
+  await page.getByLabel('Months of supply').waitFor({ state: 'visible' });
 
   await page.getByRole('button', { name: 'Wipe inventory' }).click();
   const dialog = page.getByRole('dialog', { name: 'Wipe inventory' });
@@ -45,7 +54,9 @@ try {
 
   await phrase.fill('WIPE INVENTORY');
   await confirm.click();
+  await page.getByRole('link', { name: 'Inventory' }).click();
   await page.getByText('Your inventory is empty.').waitFor({ state: 'visible', timeout: 10_000 });
+  await page.getByRole('alert', { name: 'Opening inventory' }).waitFor({ state: 'visible', timeout: 10_000 });
 
   const inventory = await readInventory(page);
   assert(inventory.length === 0, `inventory empty after wipe (got ${inventory.length})`);

@@ -59,6 +59,9 @@ describe('AppMenu', () => {
     expect(screen.queryByRole('menuitem', { name: 'Edit Kroger credentials' })).not.toBeInTheDocument();
     expect(screen.queryByRole('menuitem', { name: 'Disconnect Kroger' })).not.toBeInTheDocument();
     expect(screen.getByRole('menuitem', { name: 'Diagnostics' })).toBeInTheDocument();
+    const settings = screen.getByRole('menuitem', { name: 'Settings' });
+    const build = screen.getByText('Build');
+    expect(settings.compareDocumentPosition(build) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(screen.queryByRole('button', { name: /setup/i })).not.toBeInTheDocument();
     const note = await screen.findByRole('note', { name: 'build abc123def456' });
     expect(note).toBeVisible();

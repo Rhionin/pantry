@@ -13,6 +13,7 @@ import (
 	"github.com/Rhionin/pantry/internal/app"
 	"github.com/Rhionin/pantry/internal/inventory"
 	"github.com/Rhionin/pantry/internal/product"
+	"github.com/Rhionin/pantry/internal/supply"
 )
 
 // newTestPantry opens an in-memory SQLite database, applies all migrations,
@@ -926,7 +927,25 @@ func TestWipe_ClearsOneUsersStockAndLeavesProductLookup(t *testing.T) {
 		t.Fatalf("scan entry: %v", err)
 	}
 
-	if err := pantry.Wipe(ctx, "user-1"); err != nil {
+	if _, err := db.ExecContext(ctx, `
+		INSERT INTO app_settings (key, value) VALUES ('onboarding_started_at', ?), ('supply_months', '4')`,
+		now.UTC().Format(time.RFC3339)); err != nil {
+		t.Fatalf("settings: %v", err)
+	}
+	if _, err := db.ExecContext(ctx, `
+		INSERT INTO stock_in_events (product_id, at) VALUES ('prod-1', ?)`, now); err != nil {
+		t.Fatalf("stock-in: %v", err)
+	}
+	if _, err := db.ExecContext(ctx, `
+		INSERT INTO supply_overrides (product_id, quantity) VALUES ('prod-1', 4)`); err != nil {
+		t.Fatalf("override: %v", err)
+	}
+	if _, err := db.ExecContext(ctx, `
+		INSERT INTO brand_preferences (user_id, need_key, item_id, ignore_price) VALUES ('user-1', 'milk', 'pref-item', 0)`); err != nil {
+		t.Fatalf("preference: %v", err)
+	}
+
+	if err := supply.Open(db).Wipe(ctx, supply.WipePhrase); err != nil {
 		t.Fatalf("Wipe: %v", err)
 	}
 
@@ -981,6 +1000,11 @@ func TestWipe_ClearsOneUsersStockAndLeavesProductLookup(t *testing.T) {
 	assertCount(t, db, `SELECT COUNT(*) FROM shopping_list_items WHERE user_id = 'user-2'`, 1)
 	assertCount(t, db, `SELECT COUNT(*) FROM scan_entries`, 1)
 	assertCount(t, db, `SELECT COUNT(*) FROM item_instances WHERE item_id IN (SELECT id FROM items WHERE user_id = 'user-1')`, 0)
+	assertCount(t, db, `SELECT COUNT(*) FROM app_settings WHERE key = 'onboarding_started_at'`, 0)
+	assertCount(t, db, `SELECT COUNT(*) FROM app_settings WHERE key = 'supply_months' AND value = '4'`, 1)
+	assertCount(t, db, `SELECT COUNT(*) FROM supply_overrides WHERE product_id = 'prod-1' AND quantity = 4`, 1)
+	assertCount(t, db, `SELECT COUNT(*) FROM brand_preferences WHERE user_id = 'user-1'`, 1)
+	assertCount(t, db, `SELECT COUNT(*) FROM stock_in_events`, 0)
 }
 
 func assertCount(t *testing.T, db *sql.DB, query string, want int) {

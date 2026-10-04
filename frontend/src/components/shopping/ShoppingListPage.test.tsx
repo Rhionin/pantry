@@ -37,7 +37,7 @@ const renderPage = () => render(
 describe('ShoppingListPage', () => {
   it('renders derived and manual entries with product details and marks a manual item purchased', async () => {
     const initialEntries: ShoppingListEntry[] = [
-      { id: '', itemId: 'rice', quantity: 2, source: 'auto', purchasedAt: null },
+      { id: '', itemId: 'rice', quantity: 2, source: 'auto', purchasedAt: null, note: 'replacing 2 you used' },
       { id: 'manual-1', itemId: 'tea', quantity: 3, source: 'manual', purchasedAt: null },
     ];
     let purchased = false;
@@ -76,7 +76,8 @@ describe('ShoppingListPage', () => {
     expect(within(table).getByText('2 boxes')).toBeInTheDocument();
     expect(within(table).getByText('Derived')).toBeInTheDocument();
     expect(within(table).getByText('Green Tea')).toBeInTheDocument();
-    expect(within(table).getByText('Set a target quantity for automatic restocking.')).toBeInTheDocument();
+    expect(within(table).getByText('replacing 2 you used')).toBeInTheDocument();
+    expect(within(table).queryByText('Set a target quantity for automatic restocking.')).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: 'Mark Green Tea purchased' }));
 

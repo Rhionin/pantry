@@ -21,6 +21,7 @@ type ShoppingListItem struct {
 	ItemID      string
 	Quantity    int
 	Source      string // "manual" or "auto"
+	Note        string
 	PurchasedAt *time.Time
 	CreatedAt   time.Time
 }
@@ -94,7 +95,7 @@ func (s *Store) MarkPurchased(ctx context.Context, id string) error {
 // ordered by created_at ascending.
 func (s *Store) ListManualItems(ctx context.Context, userID string) ([]ShoppingListItem, error) {
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT id, user_id, item_id, quantity, source, purchased_at, created_at
+		`SELECT id, user_id, item_id, quantity, source, purchased_at, created_at, note
 		 FROM shopping_list_items
 		 WHERE user_id = ? AND source = 'manual' AND purchased_at IS NULL
 		 ORDER BY created_at ASC`,
@@ -124,7 +125,7 @@ func (s *Store) ListManualItems(ctx context.Context, userID string) ([]ShoppingL
 // manual row when both exist.
 func (s *Store) ListUnpurchased(ctx context.Context, userID string) ([]ShoppingListItem, error) {
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT id, user_id, item_id, quantity, source, purchased_at, created_at
+		`SELECT id, user_id, item_id, quantity, source, purchased_at, created_at, note
 		 FROM shopping_list_items
 		 WHERE user_id = ? AND purchased_at IS NULL
 		 ORDER BY created_at ASC`,
@@ -158,7 +159,7 @@ func (s *Store) GetItemByID(ctx context.Context, id string) (*ShoppingListItem, 
 // getByID retrieves a single shopping list item by its ID.
 func (s *Store) getByID(ctx context.Context, id string) (*ShoppingListItem, error) {
 	row := s.db.QueryRowContext(ctx,
-		`SELECT id, user_id, item_id, quantity, source, purchased_at, created_at
+		`SELECT id, user_id, item_id, quantity, source, purchased_at, created_at, note
 		 FROM shopping_list_items WHERE id = ?`,
 		id,
 	)
@@ -190,6 +191,7 @@ func scanShoppingListItem(row scanner) (*ShoppingListItem, error) {
 		&item.Source,
 		&purchasedAt,
 		&item.CreatedAt,
+		&item.Note,
 	)
 	if err != nil {
 		return nil, err

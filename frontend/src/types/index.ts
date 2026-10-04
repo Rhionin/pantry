@@ -176,6 +176,18 @@ export interface ProviderCredentials {
   source: 'saved' | 'environment' | 'none';
 }
 
+export interface SupplySettings {
+  months: number;
+  opening: boolean;
+  wipePhrase: string;
+}
+
+export interface SupplyOverride {
+  windowMonths?: number;
+  quantity?: number;
+  clear?: boolean;
+}
+
 export interface ShoppingListBasis {
   mode: ReplenishmentMode;
   targetQuantity?: number;
@@ -193,6 +205,7 @@ export interface ShoppingListEntry {
   itemId: string;
   quantity: number;
   source: 'auto' | 'manual';
+  note?: string;
   purchasedAt: string | null;
   replenishmentMode?: ReplenishmentMode;
   provider?: string;

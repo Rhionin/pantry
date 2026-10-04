@@ -14,38 +14,6 @@ func beans(id, name string, target, count int) ReplenishmentItem {
 	}
 }
 
-func TestApplyPreferences(t *testing.T) {
-	items := []ReplenishmentItem{
-		beans("gv", "Great Value Cut Green Beans", 4, 1),
-		beans("kr", "Kroger Cut Green Beans", 4, 1),
-		beans("corn", "Kroger Whole Kernel Corn", 2, 0),
-	}
-	collapsed := CollapseEquivalentNeeds(items, nil)
-	inputs := []DeriveInput{collapsed[0], {ItemID: "corn", TargetQuantity: 2, CurrentCount: 0}}
-
-	t.Run("preferred brand replaces the representative and keeps the gap", func(t *testing.T) {
-		key, ok := NeedKey("Kroger Cut Green Beans", "can")
-		if !ok {
-			t.Fatal("expected a need key")
-		}
-		got := ApplyPreferences(inputs, items, []Preference{{NeedKey: key, ItemID: "kr"}})
-		if got[0].ItemID != "kr" || got[0].TargetQuantity != inputs[0].TargetQuantity || got[0].CurrentCount != inputs[0].CurrentCount {
-			t.Fatalf("beans line = %+v, want kroger with the same counts", got[0])
-		}
-		if got[1].ItemID != "corn" {
-			t.Fatalf("corn line changed to %s", got[1].ItemID)
-		}
-	})
-
-	t.Run("preference for a different product is ignored", func(t *testing.T) {
-		key, _ := NeedKey("Kroger Cut Green Beans", "can")
-		got := ApplyPreferences(inputs, items, []Preference{{NeedKey: key, ItemID: "corn"}})
-		if got[0].ItemID != inputs[0].ItemID {
-			t.Fatalf("line changed to %s", got[0].ItemID)
-		}
-	})
-}
-
 func TestConsiderationsForLines(t *testing.T) {
 	items := []ReplenishmentItem{
 		beans("gv", "Great Value Cut Green Beans", 4, 1),

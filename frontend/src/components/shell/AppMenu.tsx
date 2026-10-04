@@ -102,6 +102,7 @@ export const AppMenu = ({ onCredentialsChanged }: AppMenuProps) => {
           <Menu.Item onClick={() => navigate('/diagnostics')}>Diagnostics</Menu.Item>
           <div className="app-menu-about">
             <Menu.Divider />
+            <Menu.Item onClick={() => navigate('/settings')}>Settings</Menu.Item>
             <Menu.Label className="app-menu-about-label">Build</Menu.Label>
             <div className="app-menu-build">
               <BuildStamp />

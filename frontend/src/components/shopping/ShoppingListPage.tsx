@@ -25,10 +25,9 @@ import {
   removeShoppingListItem,
   saveBrandPreference,
   saveItemDeal,
-  setReplenishmentMode,
   setShoppingListAdjustment,
 } from '../../api/client';
-import type { InventoryItem, ProviderInfo, ReplenishmentMode, ShoppingConsideration, ShoppingConsiderations, ShoppingListEntry } from '../../types';
+import type { InventoryItem, ProviderInfo, ShoppingConsideration, ShoppingConsiderations, ShoppingListEntry } from '../../types';
 import { useCredentialsRevision } from '../../credentialsRefresh';
 import { ProviderPanel } from './ProviderPanel';
 import { ProvisionButton } from './ProvisionButton';
@@ -112,16 +111,6 @@ export const ShoppingListPage = () => {
   }, [credentialsRevision, loadShoppingList]);
 
   const targetProvider = providers.find((row) => row.credentialsConfigured) ?? providers[0] ?? null;
-
-  const changeMode = async (entry: ShoppingListEntry, mode: ReplenishmentMode) => {
-    setError('');
-    try {
-      await setReplenishmentMode(entry.itemId, mode);
-      await loadShoppingList();
-    } catch (requestError) {
-      setError(requestErrorMessage(requestError, 'Unable to change the replenishment mode.'));
-    }
-  };
 
   const changeAdjustment = async (entry: ShoppingListEntry, value: number | string) => {
     if (entry.id === '' || targetProvider === null) return;
@@ -385,14 +374,15 @@ export const ShoppingListPage = () => {
                 const inventoryItem = inventoryByItemId.get(entry.itemId);
                 const productName = inventoryItem?.item.product.name ?? `Item ${entry.itemId}`;
                 const unit = inventoryItem?.item.product.unitOfMeasure ?? 'units';
-                const needsTarget = entry.source === 'manual' && inventoryItem?.item.targetQuantity === null;
                 const note = notesByLine.get(entry.itemId);
                 return (
                   <Table.Tr key={entry.id === '' ? `auto-${entry.itemId}` : entry.id}>
                     <Table.Td>
                       <Stack gap={2}>
                         <Text fw={600}>{productName}</Text>
-                        {needsTarget && <Text size="sm" c="dimmed">Set a target quantity for automatic restocking.</Text>}
+                        {entry.note !== undefined && entry.note !== '' && (
+                          <Text size="sm" c="dimmed">{entry.note}</Text>
+                        )}
                         {note && (
                           <Group gap="xs" align="end" wrap="wrap">
                             <NativeSelect
@@ -429,18 +419,6 @@ export const ShoppingListPage = () => {
                         {entry.adjustment !== undefined && entry.computedQuantity !== undefined && (
                           <Text size="sm" c="dimmed">Computed {entry.computedQuantity} {unit}</Text>
                         )}
-                        {entry.replenishmentMode && (
-                          <NativeSelect
-                            size="xs"
-                            aria-label={`Replenishment mode for ${productName}`}
-                            value={entry.replenishmentMode}
-                            data={[
-                              { value: 'target', label: 'Restock to target' },
-                              { value: 'replenish', label: 'Replace what was used' },
-                            ]}
-                            onChange={(event) => void changeMode(entry, event.currentTarget.value as ReplenishmentMode)}
-                          />
-                        )}
                         {entry.id !== '' && targetProvider !== null && (
                           <NumberInput
                             size="xs"
@@ -457,9 +435,7 @@ export const ShoppingListPage = () => {
                         )}
                         {entry.basis && (
                           <Text size="xs" c="dimmed">
-                            {entry.replenishmentMode === 'replenish'
-                              ? `${entry.basis.consumedUnits} used, ${entry.basis.requested} already requested`
-                              : `${entry.basis.instanceCount} on hand${entry.basis.targetQuantity !== undefined ? `, target ${entry.basis.targetQuantity}` : ''}`}
+                            {`${entry.basis.instanceCount} on hand`}
                           </Text>
                         )}
                       </Stack>

@@ -3,6 +3,7 @@ package server
 import (
 	"net/http"
 	"testing"
+	"time"
 )
 
 func TestShoppingBrandChoice(t *testing.T) {
@@ -10,9 +11,8 @@ func TestShoppingBrandChoice(t *testing.T) {
 		createItemViaStockIn(env.T, env.DB, env.ProductStore, "user-1", "prod-gv", "Great Value Cut Green Beans", "item-gv")
 		createItemViaStockIn(env.T, env.DB, env.ProductStore, "user-1", "prod-kr", "Kroger Cut Green Beans", "item-kr")
 		createItemViaStockIn(env.T, env.DB, env.ProductStore, "user-1", "prod-wf", "Western Family Cut Green Beans", "item-wf")
-		setTargetQuantity(env.T, env.DB, "item-gv", 4)
-		setTargetQuantity(env.T, env.DB, "item-kr", 4)
-		setTargetQuantity(env.T, env.DB, "item-wf", 4)
+		beginUsing(env.T, env.DB, time.Now())
+		setSupplyQuantity(env.T, env.DB, "prod-gv", 4)
 	}
 
 	tests := []handlerTestCase{
@@ -131,7 +131,6 @@ func TestShoppingBrandChoice(t *testing.T) {
 			setup: func(env testEnv) {
 				beans(env)
 				createItemViaStockIn(env.T, env.DB, env.ProductStore, "user-1", "prod-corn", "Kroger Whole Kernel Corn", "item-corn")
-				setTargetQuantity(env.T, env.DB, "item-corn", 2)
 			},
 			httpExchange: httpExchange{
 				method:         "POST",

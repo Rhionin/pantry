@@ -19,7 +19,7 @@ const KR = {
   name: 'Kroger Cut Green Beans',
 };
 const UNIT = 'can';
-const TARGET = 4;
+const PAR = 4;
 
 async function stockIn(page, barcode) {
   const card = await scanBarcode(page, barcode);
@@ -30,19 +30,25 @@ async function stockIn(page, barcode) {
   await card.waitFor({ state: 'detached', timeout: 15_000 });
 }
 
-async function setTarget(page, productName) {
-  // A full navigation remounts the target panel. Selecting a second product
-  // on the same page reuses that panel and keeps the previous confirmation.
+async function setSupplyQuantity(page, productName, units) {
   await page.goto('/inventory');
   const row = page
     .getByRole('article')
     .filter({ has: page.getByRole('heading', { name: productName, exact: true }) });
   await row.getByText(`1 ${UNIT}`, { exact: true }).waitFor({ state: 'visible', timeout: 10_000 });
   await row.getByRole('button', { name: 'View instances' }).click();
-  await page.getByRole('button', { name: 'Get suggestion' }).click();
-  await page.getByLabel('Manual target quantity').fill(String(TARGET));
-  await page.getByRole('button', { name: 'Save manual target' }).click();
-  await page.getByText(`Target quantity set to ${TARGET}.`).waitFor({ state: 'visible', timeout: 10_000 });
+  await row.getByRole('button', { name: 'Edit product' }).click();
+  await row.locator('summary', { hasText: 'Supply' }).click();
+  await row.getByLabel('Supply').selectOption({ label: 'Quantity on hand' });
+  const qty = row.getByLabel('Quantity');
+  const saved = page.waitForResponse((res) => (
+    res.url().includes('/supply-override') && res.request().method() === 'PUT' && res.ok()
+  ));
+  await qty.fill(String(units));
+  await qty.blur();
+  const response = await saved;
+  const body = response.request().postDataJSON();
+  assert(body.quantity === units, `quantity override saved as ${units}`);
 }
 
 const { browser, page } = await openBrowser();
@@ -59,8 +65,13 @@ try {
   await page.getByText('Mode: stock_in').waitFor({ state: 'visible', timeout: 10_000 });
   await stockIn(page, GV.barcode);
   await stockIn(page, KR.barcode);
-  await setTarget(page, GV.name);
-  await setTarget(page, KR.name);
+
+  await page.getByRole('link', { name: 'Inventory' }).click();
+  await page.getByRole('button', { name: 'This scan is complete' }).click();
+  await page.getByRole('alert', { name: 'Opening inventory' }).waitFor({ state: 'hidden', timeout: 10_000 });
+  // One quantity on Great Value keeps that brand on the shared line. On hand is
+  // one can of each brand, so the list buys PAR minus those two cans.
+  await setSupplyQuantity(page, GV.name, PAR);
 
   await page.getByRole('link', { name: 'Shopping List' }).click();
   const line = page.getByRole('row').filter({ hasText: GV.name });

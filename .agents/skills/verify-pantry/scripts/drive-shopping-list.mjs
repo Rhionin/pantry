@@ -1,12 +1,10 @@
 // drive-shopping-list.mjs — proves the shopping-list flow end to end through the
 // web UI.
 //
-// User story: a product has a target quantity; when its stock drops below the
-// target a `Derived` shortfall row appears on the shopping list. The backend
-// materializes derived entries (shopping.SyncDerivedItems), so the derived row
-// carries a real id and exposes `Mark <product> purchased`. Marking it purchased
-// dismisses the row and — because a purchase records intent, not stock — leaves
-// on-hand inventory unchanged. Run through scripts/pantry-verify.sh:
+// User story: the first scans are a snapshot. After the user marks that scan
+// complete, using a unit puts a Derived row on the shopping list that replaces
+// what was used. Marking it purchased dismisses the row and leaves on-hand
+// inventory unchanged. Run through scripts/pantry-verify.sh:
 //   scripts/pantry-verify.sh drive scripts/drive-shopping-list.mjs shopping-list
 import {
   openBrowser, createKnownProduct, scanBarcode, setScanExpiration, setScannerMode, captureProof, readInventory, assert,
@@ -15,8 +13,6 @@ import {
 const BARCODE = '910000000004';
 const PRODUCT = 'Verify Shopping Rice';
 const UNIT = 'bag';
-const TARGET = 2;
-
 async function stockInUnit(page, expiry) {
   const card = await scanBarcode(page, BARCODE);
   await card.getByRole('heading', { name: PRODUCT }).waitFor({ state: 'visible' });
@@ -39,19 +35,16 @@ try {
   await stockInUnit(page, '2032-04-10');
   await stockInUnit(page, '2032-08-20');
 
-  // Set a target quantity of 2 via Get suggestion -> manual target.
+  // The opening scans are already here. Marking them complete is the start date.
   await page.getByRole('link', { name: 'Inventory' }).click();
   const riceRow = page
     .getByRole('article')
     .filter({ has: page.getByRole('heading', { name: PRODUCT }) });
   await riceRow.getByText(`2 ${UNIT}`, { exact: true }).waitFor({ state: 'visible', timeout: 10_000 });
-  await riceRow.getByRole('button', { name: 'View instances' }).click();
-  await page.getByRole('button', { name: 'Get suggestion' }).click();
-  await page.getByLabel('Manual target quantity').fill(String(TARGET));
-  await page.getByRole('button', { name: 'Save manual target' }).click();
-  await page.getByText(`Target quantity set to ${TARGET}.`).waitFor({ state: 'visible', timeout: 10_000 });
+  await page.getByRole('button', { name: 'This scan is complete' }).click();
+  await page.getByRole('alert', { name: 'Opening inventory' }).waitFor({ state: 'hidden', timeout: 10_000 });
 
-  // Create a shortfall: stock out one unit so on hand (1) < target (2).
+  // Using one bag after the snapshot is consumption, not another snapshot.
   await page.getByRole('link', { name: 'Scan Queue' }).click();
   await setScannerMode(page, 'stock_out');
   const outCard = await scanBarcode(page, BARCODE);
@@ -61,15 +54,14 @@ try {
   await outCard.getByRole('button', { name: 'Approve', exact: true }).click();
   await outCard.waitFor({ state: 'detached', timeout: 15_000 });
 
-  // Derivation proof: the Shopping List shows a `Derived` shortfall row of
-  // `1 bag` (target 2 minus 1 on hand). The backend materializes it, so it
-  // carries a real id and exposes the Mark-purchased action.
+  // The list replaces the one bag that was used.
   await page.getByRole('link', { name: 'Shopping List' }).click();
   const derivedRow = page
     .getByRole('row')
     .filter({ hasText: PRODUCT })
     .filter({ has: page.getByText('Derived', { exact: true }) });
   await derivedRow.getByText(`1 ${UNIT}`, { exact: true }).waitFor({ state: 'visible', timeout: 10_000 });
+  await derivedRow.getByText('replacing 1 you used').waitFor({ state: 'visible' });
   await derivedRow.getByText('Derived', { exact: true }).waitFor({ state: 'visible' });
 
   // Inventory count before the purchase, to prove the purchase does not change it.
@@ -90,7 +82,6 @@ try {
     feature: 'shopping-list',
     barcode: BARCODE,
     product: PRODUCT,
-    target: TARGET,
     derivedQuantity: `1 ${UNIT}`,
     source: 'Derived',
     inventoryInstanceCountAfterPurchase: 1,

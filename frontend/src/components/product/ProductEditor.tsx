@@ -4,6 +4,7 @@ import { getProduct, updateProduct } from '../../api/client';
 import type { ProductDetail, ProductWriteInput } from '../../types';
 import { ContributeFields, type ContributeChoice } from './ContributeFields';
 import { showShareNotice } from './shareNotice';
+import { SupplyOverride } from './SupplyOverride';
 
 export interface ProductEditorProps {
   productId: string;
@@ -25,6 +26,7 @@ export const ProductEditor = ({ productId, onSaved }: ProductEditorProps) => {
   const [share, setShare] = useState<ContributeChoice>(emptyChoice);
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
+  const [supplyOpen, setSupplyOpen] = useState(false);
   // A slow product read must not replace text the person has already typed.
   const draftDirty = useRef(false);
 
@@ -116,6 +118,12 @@ export const ProductEditor = ({ productId, onSaved }: ProductEditorProps) => {
           setUnitOfMeasure(event.currentTarget.value);
         }}
       />
+      <details
+        onToggle={(event) => setSupplyOpen(event.currentTarget.open)}
+      >
+        <summary>Supply</summary>
+        {supplyOpen && <SupplyOverride productId={productId} />}
+      </details>
       <ContributeFields allowProductOptIn={!upstream} onChange={setShare} />
       {share.contribute && (
         <TextInput

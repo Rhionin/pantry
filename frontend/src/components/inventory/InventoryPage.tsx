@@ -1,15 +1,14 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { trackEventSource } from '../../telemetry/client';
 import { Alert, Loader, SimpleGrid, Stack, Text, TextInput, Title } from '@mantine/core';
-import { getInventoryList } from '../../api/client';
+import { getInventoryList, getSupplySettings } from '../../api/client';
 import type { InventoryItem } from '../../types';
 import { filterInventoryItems } from '../../utils/inventoryFilter';
 import { ProductEditor } from '../product/ProductEditor';
-import { SuggestionPanel } from '../suggestions/SuggestionPanel';
 import { ItemInstanceList } from './ItemInstanceList';
 import { ItemRow } from './ItemRow';
 import { mergeInventoryEvent } from './inventoryUtils';
-import { WipeInventoryDialog } from './WipeInventoryDialog';
+import { OpeningBanner } from './OpeningBanner';
 
 interface InventorySectionProps {
   heading: string;
@@ -53,12 +52,18 @@ export const InventoryPage = () => {
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [opening, setOpening] = useState(false);
 
   const loadInventory = useCallback(async () => {
     setLoading(true);
     setError('');
     try {
-      setInventoryItems(await getInventoryList());
+      const [items, settings] = await Promise.all([
+        getInventoryList(),
+        getSupplySettings().catch(() => null),
+      ]);
+      setInventoryItems(items);
+      setOpening(settings?.opening === true);
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : 'Unable to load inventory.');
     } finally {
@@ -98,11 +103,6 @@ export const InventoryPage = () => {
         productName={inventoryItem.item.product.name}
         onInventoryChanged={() => void loadInventory()}
       />
-      <SuggestionPanel
-        itemId={inventoryItem.item.id}
-        productName={inventoryItem.item.product.name}
-        onTargetQuantitySaved={() => void loadInventory()}
-      />
       <ProductEditor
         productId={inventoryItem.item.productId}
         onSaved={() => void loadInventory()}
@@ -113,6 +113,7 @@ export const InventoryPage = () => {
   return (
     <Stack gap="sm">
       <Title order={1} size="h3">Inventory</Title>
+      {opening && <OpeningBanner onComplete={() => setOpening(false)} />}
       <TextInput
         size="xs"
         label="Search inventory"
@@ -152,12 +153,6 @@ export const InventoryPage = () => {
           renderExpanded={renderExpanded}
         />
       )}
-      <WipeInventoryDialog
-        onWiped={() => {
-          setSelectedItemId(null);
-          void loadInventory();
-        }}
-      />
     </Stack>
   );
 };
