@@ -26,7 +26,7 @@ async function stockIn(page, barcode) {
   const name = barcode === GV.barcode ? GV.name : KR.name;
   await card.getByRole('heading', { name }).waitFor({ state: 'visible' });
   await setScanExpiration(page, card, '2032-06-01');
-  await card.getByRole('button', { name: 'Approve', exact: true }).click();
+  await card.getByRole('button', { name: 'Confirm', exact: true }).click();
   await card.waitFor({ state: 'detached', timeout: 15_000 });
 }
 

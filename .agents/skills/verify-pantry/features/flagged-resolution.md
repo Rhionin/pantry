@@ -44,7 +44,7 @@ Preconditions:
   detached), the card shows a heading with the product name, and a `Select scan
   for batch approval` checkbox appears.
 - **Confirm it is now approvable.** The card now renders like a pending stock
-  card; approve it with `card.getByRole('button', { name: 'Approve', exact: true
+  card; confirm it with `card.getByRole('button', { name: 'Confirm', exact: true
   }).click()` and confirm inventory as in [stock-in](./stock-in.md), or stop once
   the flag is cleared if you are only verifying resolution.
 - **Proof.** `captureProof(page, 'flagged-resolution', { barcode, product })`

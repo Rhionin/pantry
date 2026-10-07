@@ -92,7 +92,7 @@ hangs, the UI is blank, ports seem taken).
 Drivers are small Node ES modules under `scripts/` that import `scripts/harness.mjs`
 and drive the web UI with Playwright's Chromium. Use **stable handles**, never
 coordinates: ARIA roles and accessible names (`getByRole('textbox', { name: 'Barcode
-scanner input' })`, `getByRole('button', { name: 'Approve', exact: true })`),
+scanner input' })`, `getByRole('button', { name: 'Confirm', exact: true })`),
 route links (`getByRole('link', { name: 'Inventory' })`), and visible text.
 
 The key user action is scanning: the barcode field has

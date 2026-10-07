@@ -279,6 +279,107 @@ code {
   margin: 6px 0;
 }
 
+.scan-session-card {
+  border-left-width: 3px;
+  border-left-color: var(--mantine-color-blue-filled);
+  overflow: hidden;
+}
+
+.scan-session-card--collapsed {
+  border-left-color: var(--mantine-color-gray-5);
+}
+
+.scan-session-card--flagged {
+  border-left-color: var(--mantine-color-red-filled);
+  background: var(--mantine-color-red-light);
+}
+
+.scan-session-toggle {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.scan-session-card--expanded .scan-session-toggle {
+  border-bottom: 1px solid var(--mantine-color-default-border);
+}
+
+.scan-session-toggle:focus-visible {
+  outline: 2px solid var(--mantine-primary-color-filled);
+  outline-offset: -2px;
+}
+
+.scan-session-toggle-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.scan-session-time {
+  font-weight: 650;
+  color: var(--mantine-color-text);
+  line-height: 1.3;
+}
+
+.scan-session-meta {
+  color: var(--mantine-color-dimmed);
+  font-size: var(--mantine-font-size-xs);
+  line-height: 1.3;
+}
+
+.scan-session-chevron {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  margin-right: 4px;
+  border-right: 2px solid var(--mantine-color-dimmed);
+  border-bottom: 2px solid var(--mantine-color-dimmed);
+  transform: rotate(-45deg);
+}
+
+.scan-session-card--expanded .scan-session-chevron {
+  transform: rotate(45deg);
+  margin-top: -4px;
+}
+
+.scan-session-body {
+  padding: 8px 12px 10px;
+}
+
+.scan-session-select {
+  margin-bottom: 6px;
+}
+
+.scan-session-grid {
+  display: grid;
+  gap: 6px;
+  grid-template-columns: minmax(0, 1fr);
+}
+
+@media (min-width: 48em) {
+  .scan-session-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 75em) {
+  .scan-session-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
 .scan-entry-qty {
   width: 4.6rem;
   flex: none;

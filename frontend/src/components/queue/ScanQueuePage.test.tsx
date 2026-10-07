@@ -99,6 +99,11 @@ describe('ScanQueuePage', () => {
 
     render(<MantineProvider><ScanQueuePage /></MantineProvider>);
 
+    expect(await screen.findByText('Barcode: 222')).toBeInTheDocument();
+    // The earlier scan is a separate session and starts collapsed.
+    expect(screen.queryByText('Barcode: 111')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /1 scan/, expanded: false }));
+
     const cards = await screen.findAllByRole('article');
     expect(within(cards[0]).getByText('Barcode: 222')).toBeInTheDocument();
     expect(within(cards[1]).getByText('Barcode: 111')).toBeInTheDocument();
@@ -571,6 +576,10 @@ describe('ScanQueuePage', () => {
     }));
 
     await vi.waitFor(() => expect(screen.queryByText('Looking up product')).not.toBeInTheDocument());
+    expect(screen.getByRole('heading', { name: 'Oats' })).toBeInTheDocument();
+    // The earlier scan is now an older session, so it starts collapsed.
+    expect(screen.queryByText('Barcode: 111')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /1 scan/, expanded: false }));
     const settled = screen.getAllByRole('article');
     expect(within(settled[0]).getByText('Oats')).toBeInTheDocument();
     expect(within(settled[1]).getByText('Barcode: 111')).toBeInTheDocument();
@@ -1685,6 +1694,123 @@ describe('ScanQueuePage', () => {
 
       await vi.waitFor(() => expect(within(stockInTab).queryByText(/\d/)).not.toBeInTheDocument());
       expect(stockInTab).toBeInTheDocument();
+    });
+  });
+
+  describe('scan sessions', () => {
+    const product = (id: string, name: string): ScanEntry['product'] => ({
+      id,
+      name,
+      category: 'Grocery',
+      unitOfMeasure: 'bag',
+    });
+
+    it('groups a stock-in trip into an expanded session and selects only that session', async () => {
+      const posted: unknown[] = [];
+      const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (url.includes('batch-commit') && init?.method === 'POST') {
+          posted.push(JSON.parse(String(init.body)));
+          return Promise.resolve(jsonResponse({}));
+        }
+        if (url.includes('status=pending')) {
+          return Promise.resolve(jsonResponse([
+            scanEntry({
+              id: 'oats',
+              barcode: '111',
+              direction: 'stock_in',
+              scannedAt: '2026-03-20T16:02:00Z',
+              product: product('oats', 'Oats'),
+              productId: 'oats',
+            }),
+            scanEntry({
+              id: 'milk',
+              barcode: '222',
+              direction: 'stock_in',
+              scannedAt: '2026-03-20T16:06:00Z',
+              product: product('milk', 'Milk'),
+              productId: 'milk',
+            }),
+            scanEntry({
+              id: 'pasta',
+              barcode: '333',
+              direction: 'stock_in',
+              scannedAt: '2026-03-20T14:40:00Z',
+              product: product('pasta', 'Pasta'),
+              productId: 'pasta',
+            }),
+            scanEntry({
+              id: 'bread',
+              barcode: '444',
+              direction: 'stock_in',
+              scannedAt: '2026-03-20T14:42:00Z',
+              product: product('bread', 'Bread'),
+              productId: 'bread',
+            }),
+            scanEntry({
+              id: 'out',
+              barcode: '999',
+              direction: 'stock_out',
+              scannedAt: '2026-03-20T16:04:00Z',
+            }),
+          ]));
+        }
+        if (url.includes('status=flagged')) {
+          return Promise.resolve(jsonResponse([
+            scanEntry({
+              id: 'flagged',
+              barcode: '555',
+              direction: 'stock_in',
+              status: 'flagged',
+              scannedAt: '2026-03-20T16:08:00Z',
+            }),
+          ]));
+        }
+        if (url === '/api/inventory' || url === '/api/products') return Promise.resolve(jsonResponse([]));
+        if (url.endsWith('/api/scanner/config')) {
+          return Promise.resolve(jsonResponse({ stockInBarcode: 'STOCK_IN', stockOutBarcode: 'STOCK_OUT', currentMode: 'stock_in' }));
+        }
+        throw new Error(`Unexpected request: ${url}`);
+      });
+      vi.stubGlobal('fetch', fetchMock);
+
+      render(<MantineProvider><ScanQueuePage /></MantineProvider>);
+
+      const oats = await screen.findByRole('article', { name: 'Scan 111' });
+      const milk = screen.getByRole('article', { name: 'Scan 222' });
+      expect(screen.getByRole('article', { name: 'Scan 555' })).toBeInTheDocument();
+      expect(screen.queryByRole('article', { name: 'Scan 333' })).not.toBeInTheDocument();
+      expect(screen.queryByRole('article', { name: 'Scan 999' })).not.toBeInTheDocument();
+      expect(within(oats).getByLabelText('Unit count')).toBeInTheDocument();
+      expect(within(oats).getByRole('button', { name: 'Increase unit count' })).toBeInTheDocument();
+      expect(within(milk).getByLabelText('Unit count')).toBeInTheDocument();
+
+      const sessions = screen.getAllByRole('region', { name: /Scan session/ });
+      const expanded = sessions.find((session) => within(session).queryByRole('article', { name: 'Scan 111' }));
+      expect(expanded).toBeDefined();
+      const selectSession = within(expanded!).getByRole('checkbox', { name: /Select all eligible scans in/ });
+      fireEvent.click(selectSession);
+
+      expect(within(oats).getByRole('checkbox')).toBeChecked();
+      expect(within(milk).getByRole('checkbox')).toBeChecked();
+      expect(within(screen.getByRole('article', { name: 'Scan 555' })).queryByRole('checkbox')).not.toBeInTheDocument();
+
+      fireEvent.click(selectSession);
+      expect(within(oats).getByRole('checkbox')).not.toBeChecked();
+      expect(within(milk).getByRole('checkbox')).not.toBeChecked();
+
+      fireEvent.click(selectSession);
+      fireEvent.click(screen.getByRole('button', { name: 'Confirm 2 selected scans' }));
+      await vi.waitFor(() => expect(posted).toEqual([{ scanEntryIds: ['oats', 'milk'], commit: true }]));
+      expect(await screen.findByRole('button', { name: 'Confirm 0 selected scans' })).toBeInTheDocument();
+
+      fireEvent.click(screen.getByRole('checkbox', { name: 'Select all eligible scans for batch approval' }));
+      fireEvent.click(screen.getByRole('button', { name: /2 scans/, expanded: false }));
+      const pasta = await screen.findByRole('article', { name: 'Scan 333' });
+      const bread = screen.getByRole('article', { name: 'Scan 444' });
+      expect(within(pasta).getByRole('checkbox')).toBeChecked();
+      expect(within(bread).getByRole('checkbox')).toBeChecked();
+      expect(within(oats).getByRole('checkbox')).toBeChecked();
     });
   });
 

@@ -45,7 +45,7 @@ Preconditions:
   shows the product name, and `GET /api/contributions` has one
   `not_configured` row for that barcode. `GET /api/settings/contribution`
   reports `enabled: true` and `configured: false`.
-- **Edit the stocked product.** Approve the card, open Inventory, `View
+- **Edit the stocked product.** Confirm the card, open Inventory, `View
   instances`, then `Edit product`. Wait until `Product name` shows the saved
   name, change it, check `Contribute this product`, and `Save product`. The
   inventory heading updates and `GET /api/contributions` has two

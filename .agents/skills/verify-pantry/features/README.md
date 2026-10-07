@@ -72,8 +72,11 @@ behavior, then uses exactly these four H2 sections in order:
 ## Features
 
 - [Stock in a scan](./stock-in.md) — scan a known barcode in stock-in mode,
-  approve it, and confirm the unit lands in inventory. Proven end to end by
+  confirm it, and check the unit lands in inventory. Proven end to end by
   `scripts/drive-stock-in.mjs`.
+- [Scan sessions](./scan-sessions.md) — Stock in and Stock out group pending
+  scans into session cards with a 5-minute gap. Proven by
+  `scripts/drive-scan-sessions.mjs`.
 - [Scan with the device camera](./camera-scan.md) — opt in to the camera (or type
   a barcode when the camera cannot start) and approve the queued scan. Proven
   end to end by `scripts/drive-camera-scan.mjs`. A headless run cannot decode a

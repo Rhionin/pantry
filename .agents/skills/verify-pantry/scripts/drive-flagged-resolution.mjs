@@ -46,9 +46,9 @@ try {
     .getByRole('checkbox', { name: 'Select scan for batch approval' })
     .waitFor({ state: 'visible', timeout: 10_000 });
 
-  // The resolved scan carries a stock_in direction, so Approve renders. Approve
+  // The resolved scan carries a stock_in direction, so Confirm renders. Confirm
   // it and confirm the unit lands in inventory, like the stock-in flow.
-  await card.getByRole('button', { name: 'Approve', exact: true }).click();
+  await card.getByRole('button', { name: 'Confirm', exact: true }).click();
   await card.waitFor({ state: 'detached', timeout: 15_000 });
 
   // Side-effect proof (API view): the resolved+approved unit is in inventory.

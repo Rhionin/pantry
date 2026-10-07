@@ -130,7 +130,7 @@ try {
     capturePath,
   });
 
-  await card.getByRole('button', { name: 'Approve', exact: true }).click();
+  await card.getByRole('button', { name: 'Confirm', exact: true }).click();
   await card.waitFor({ state: 'detached', timeout: 15_000 });
 
   const inventory = await readInventory(page);

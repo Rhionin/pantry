@@ -26,8 +26,8 @@ try {
   await card.getByRole('heading', { name: PRODUCT }).waitFor({ state: 'visible' });
   await card.getByText(`Barcode: ${BARCODE}`).waitFor({ state: 'hidden' });
 
-  // Approve the single pending scan via its per-card Approve button.
-  await card.getByRole('button', { name: 'Approve', exact: true }).click();
+  // Confirm the single pending scan via its per-card Confirm button.
+  await card.getByRole('button', { name: 'Confirm', exact: true }).click();
   // The card leaves the queue once committed.
   await card.waitFor({ state: 'detached', timeout: 15_000 });
 

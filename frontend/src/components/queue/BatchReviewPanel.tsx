@@ -22,29 +22,29 @@ export const BatchReviewPanel = ({ selectedIds, onComplete }: BatchReviewPanelPr
       });
       onComplete(response);
     } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : 'Unable to approve selected scans.');
+      setError(requestError instanceof Error ? requestError.message : 'Unable to confirm selected scans.');
     } finally {
       setSubmitting(false);
     }
   };
 
   return (
-    <Stack component="section" aria-labelledby="approve-heading" gap={4} className="scan-batch-approve">
+    <Stack component="section" aria-labelledby="confirm-heading" gap={4} className="scan-batch-approve">
       <VisuallyHidden>
-        <h2 id="approve-heading">Approve scans</h2>
+        <h2 id="confirm-heading">Confirm scans</h2>
       </VisuallyHidden>
       <Button
         size="compact-xs"
         onClick={() => void handleApprove()}
         disabled={selectedIds.length === 0}
         loading={submitting}
-        aria-label={`Approve ${selectedIds.length} selected scans`}
+        aria-label={`Confirm ${selectedIds.length} selected scans`}
       >
-        Approve {selectedIds.length}
+        Confirm {selectedIds.length}
       </Button>
       {error !== '' && (
         <Alert color="red" py={4}>
-          Unable to approve selected scans.
+          Unable to confirm selected scans.
         </Alert>
       )}
     </Stack>

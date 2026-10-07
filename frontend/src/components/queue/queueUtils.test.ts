@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import fc from 'fast-check';
 import type { ProcessingNotice, ScanEntry, ScanStatus } from '../../types';
-import { addProcessingNotice, formatReviewCount, getEntriesForView, isValidUnitCount, mergeScanEvent, pruneSelection, removeProcessingNotice, settleProcessingNotice, sortScansNewestFirst, toggleSelectAll, isBatchEligible } from './queueUtils';
+import { addProcessingNotice, batchTimeBounds, formatBatchScanCount, formatBatchTimeRange, formatReviewCount, getEntriesForView, groupScansIntoBatches, isValidUnitCount, mergeScanEvent, pruneSelection, removeProcessingNotice, settleProcessingNotice, sortScansNewestFirst, toggleSelectAll, isBatchEligible } from './queueUtils';
 
 const DISPLAYABLE_SCAN_STATUSES: ScanStatus[] = ['pending', 'flagged'];
 
@@ -27,6 +27,162 @@ describe('sortScansNewestFirst', () => {
     const newer = scanEntry({ id: 'newer', scannedAt: '2026-03-20T11:00:00Z' });
 
     expect(sortScansNewestFirst([older, newer]).map((entry) => entry.id)).toEqual(['newer', 'older']);
+  });
+});
+
+const atOffset = (baseMs: number, offsetMs: number) => new Date(baseMs + offsetMs).toISOString();
+
+describe('groupScansIntoBatches', () => {
+  const base = Date.parse('2026-03-20T16:00:00.000Z');
+  const fiveMinutes = 5 * 60 * 1000;
+
+  it('keeps consecutive scans under 5 minutes in one session', () => {
+    const entries = [
+      scanEntry({ id: 'c', scannedAt: atOffset(base, 8 * 60 * 1000) }),
+      scanEntry({ id: 'a', scannedAt: atOffset(base, 0) }),
+      scanEntry({ id: 'b', scannedAt: atOffset(base, 4 * 60 * 1000) }),
+    ];
+
+    const batches = groupScansIntoBatches(entries);
+    expect(batches).toHaveLength(1);
+    expect(batches[0].map((entry) => entry.id)).toEqual(['a', 'b', 'c']);
+  });
+
+  it('starts a new session at a gap of exactly 5 minutes', () => {
+    const entries = [
+      scanEntry({ id: 'early', scannedAt: atOffset(base, 0) }),
+      scanEntry({ id: 'later', scannedAt: atOffset(base, fiveMinutes) }),
+    ];
+
+    const batches = groupScansIntoBatches(entries);
+    expect(batches.map((batch) => batch.map((entry) => entry.id))).toEqual([['later'], ['early']]);
+  });
+
+  it('keeps a pair that is 1ms under 5 minutes together', () => {
+    const entries = [
+      scanEntry({ id: 'early', scannedAt: atOffset(base, 0) }),
+      scanEntry({ id: 'later', scannedAt: atOffset(base, fiveMinutes - 1) }),
+    ];
+
+    expect(groupScansIntoBatches(entries)).toHaveLength(1);
+  });
+
+  it('allows one session to span more than 5 minutes when each step is shorter', () => {
+    const entries = [0, 4, 8, 12].map((minutes, index) =>
+      scanEntry({ id: `step-${index}`, scannedAt: atOffset(base, minutes * 60 * 1000) }),
+    );
+
+    const batches = groupScansIntoBatches(entries);
+    expect(batches).toHaveLength(1);
+    expect(batches[0]).toHaveLength(4);
+    const span = new Date(batches[0][3].scannedAt).getTime() - new Date(batches[0][0].scannedAt).getTime();
+    expect(span).toBeGreaterThan(fiveMinutes);
+  });
+
+  it('shows the newest session first and keeps scans chronological inside it', () => {
+    const entries = [
+      scanEntry({ id: 'old-a', scannedAt: atOffset(base, 0) }),
+      scanEntry({ id: 'old-b', scannedAt: atOffset(base, 2 * 60 * 1000) }),
+      scanEntry({ id: 'new-a', scannedAt: atOffset(base, 20 * 60 * 1000) }),
+      scanEntry({ id: 'new-b', scannedAt: atOffset(base, 22 * 60 * 1000) }),
+    ];
+
+    expect(groupScansIntoBatches(entries).map((batch) => batch.map((entry) => entry.id))).toEqual([
+      ['new-a', 'new-b'],
+      ['old-a', 'old-b'],
+    ]);
+  });
+
+  it('preserves input order when scannedAt ties', () => {
+    const same = atOffset(base, 0);
+    const first = scanEntry({ id: 'first', scannedAt: same });
+    const second = scanEntry({ id: 'second', scannedAt: same });
+
+    expect(groupScansIntoBatches([first, second])[0].map((entry) => entry.id)).toEqual(['first', 'second']);
+    expect(groupScansIntoBatches([second, first])[0].map((entry) => entry.id)).toEqual(['second', 'first']);
+  });
+
+  it('returns no sessions for an empty queue', () => {
+    expect(groupScansIntoBatches([])).toEqual([]);
+  });
+
+  it('groups only by consecutive scannedAt gaps', () => {
+    fc.assert(fc.property(
+      fc.array(fc.record({
+        id: fc.uuid(),
+        offsetMs: fc.integer({ min: 0, max: 60 * 60 * 1000 }),
+      }), { maxLength: 25 }),
+      (rows) => {
+        const seen = new Set<string>();
+        const entries = rows.flatMap((row) => {
+          if (seen.has(row.id)) return [];
+          seen.add(row.id);
+          return [scanEntry({ id: row.id, scannedAt: atOffset(base, row.offsetMs) })];
+        });
+        const batches = groupScansIntoBatches(entries);
+        const ascending = [...entries].sort(
+          (left, right) => new Date(left.scannedAt).getTime() - new Date(right.scannedAt).getTime(),
+        );
+
+        expect([...batches].reverse().flat().map((entry) => entry.id)).toEqual(ascending.map((entry) => entry.id));
+
+        for (const batch of batches) {
+          for (let index = 1; index < batch.length; index += 1) {
+            const gap = new Date(batch[index].scannedAt).getTime() - new Date(batch[index - 1].scannedAt).getTime();
+            expect(gap).toBeGreaterThanOrEqual(0);
+            expect(gap).toBeLessThan(fiveMinutes);
+          }
+        }
+
+        for (let index = 0; index < batches.length - 1; index += 1) {
+          const newer = batches[index];
+          const older = batches[index + 1];
+          const gap = new Date(newer[0].scannedAt).getTime() - new Date(older[older.length - 1].scannedAt).getTime();
+          expect(gap).toBeGreaterThanOrEqual(fiveMinutes);
+        }
+      },
+    ), { numRuns: 100 });
+  });
+});
+
+describe('formatBatchTimeRange', () => {
+  it('uses one clock time when the session starts and ends in the same minute', () => {
+    const label = formatBatchTimeRange('2026-03-20T16:02:10.000Z', '2026-03-20T16:02:50.000Z');
+    expect(label).not.toContain('\u2013');
+    expect(label.length).toBeGreaterThan(0);
+  });
+
+  it('joins the earliest and latest times on the same day', () => {
+    const label = formatBatchTimeRange('2026-03-20T16:02:00.000Z', '2026-03-20T16:18:00.000Z');
+    const [start, end] = label.split('\u2013');
+    expect(start?.length).toBeGreaterThan(0);
+    expect(end?.length).toBeGreaterThan(0);
+    expect(start).not.toEqual(end);
+  });
+
+  it('includes the date when the session crosses local days', () => {
+    const label = formatBatchTimeRange('2026-03-20T12:00:00.000Z', '2026-03-22T18:00:00.000Z');
+    expect(label).toContain('\u2013');
+    expect(label).toMatch(/\d/);
+  });
+
+  it('reads bounds from the earliest and latest scan, not array order', () => {
+    const entries = [
+      scanEntry({ id: 'late', scannedAt: '2026-03-20T16:18:00.000Z' }),
+      scanEntry({ id: 'early', scannedAt: '2026-03-20T16:02:00.000Z' }),
+    ];
+    expect(batchTimeBounds(entries)).toEqual({
+      earliest: '2026-03-20T16:02:00.000Z',
+      latest: '2026-03-20T16:18:00.000Z',
+    });
+  });
+});
+
+describe('formatBatchScanCount', () => {
+  it('singularizes a single scan', () => {
+    expect(formatBatchScanCount(1)).toBe('1 scan');
+    expect(formatBatchScanCount(0)).toBe('0 scans');
+    expect(formatBatchScanCount(12)).toBe('12 scans');
   });
 });
 
