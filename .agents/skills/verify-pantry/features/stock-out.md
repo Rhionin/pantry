@@ -44,7 +44,7 @@ Preconditions:
   `stock_in`.
 - **Scan for stock out.** `scanBarcode(page, barcode)`; the card appears under
   the Stock out tab. Leave the instance selector unset to exercise oldest-first.
-- **Approve.** `card.getByRole('button', { name: 'Approve', exact: true
+- **Confirm.** `card.getByRole('button', { name: 'Confirm', exact: true
   }).click()`; the card detaches.
 - **Confirm oldest consumed.** Open `Inventory`, open the product's `View
   instances`, and assert the later date remains (`Expires Dec 20, 2030`) while

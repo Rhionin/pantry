@@ -27,7 +27,7 @@ test('stock-out without a selection removes the earliest-expiring instance', asy
   await expect(
     stockOutCard.getByRole('radio', { name: 'Use oldest available automatically' }),
   ).toBeVisible()
-  await stockOutCard.getByRole('button', { name: 'Approve', exact: true }).click()
+  await stockOutCard.getByRole('button', { name: 'Confirm', exact: true }).click()
   await expect(stockOutCard).toHaveCount(0)
   await page.getByRole('link', { name: 'Inventory' }).click()
 

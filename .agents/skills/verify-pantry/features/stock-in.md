@@ -11,7 +11,7 @@ appear in inventory. This is the core add-to-pantry flow.
 - `stock-in-card` the pending scan is a flat list row, not a bordered card. It
   shows the product name, a scanned timestamp, an inline thumb-sized unit-count
   stepper (decrease, count, increase; at least 44px), a small `Add expiration`
-  text control that reveals the date only when opened, and Approve/Remove
+  text control that reveals the date only when opened, and Confirm/Remove
   buttons. The barcode number is not shown on the row. A saved date is shown as
   compact `Expires …` text with Change and Clear.
 - `stock-in-approve` approving the card commits it and removes it from the queue.
@@ -22,8 +22,9 @@ appear in inventory. This is the core add-to-pantry flow.
 
 - Open `Scan Queue` (the default route `/`) and scan into the `Barcode scanner
   input` field; the queue opens in `stock_in` mode.
-- The batch path (`Select scan for batch approval` checkbox, then `Approve N
-  selected` in the Approve scans panel) commits several pending scans at once.
+- The batch path (`Select scan for batch approval` checkbox, then `Confirm N`
+  in the Confirm scans panel) commits several pending scans at once. The same
+  commit is also available from each session card's `Select all`.
 
 ## Driving it with Playwright
 
@@ -45,7 +46,7 @@ Preconditions:
 - **Read the row.** The row contains a heading with the product name. The
   barcode number is not shown on the row. The article's accessible name is still
   `Scan <barcode>`.
-- **Approve.** `card.getByRole('button', { name: 'Approve', exact: true
+- **Confirm.** `card.getByRole('button', { name: 'Confirm', exact: true
   }).click()`. The row detaches from the queue (`waitFor({ state: 'detached' })`).
 - **Confirm inventory (API view).** `readInventory(page)` returns a row whose
   `item.product.name` matches and whose `instanceCount` is `1`.
@@ -60,9 +61,8 @@ Preconditions:
 
 ## Gotchas
 
-- Use `{ exact: true }` on the `Approve` button: `getByRole('button', { name:
-  'Approve' })` also matches the `Approve N selected` batch button and the
-  `Approve scans` heading region.
+- Use `{ exact: true }` on the `Confirm` button: `getByRole('button', { name:
+  'Confirm' })` also matches the `Confirm N selected scans` batch button.
 - The barcode field is visually hidden (`VisuallyHidden`) but focusable; drive it
   by role and accessible name, not by clicking a visible box.
 - An unseeded barcode flags instead of creating a pending card. Seed first, or you

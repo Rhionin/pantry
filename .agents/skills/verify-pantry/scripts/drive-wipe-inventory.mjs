@@ -22,7 +22,7 @@ try {
   await page.goto('/');
   await page.getByText('Mode: stock_in').waitFor({ state: 'visible', timeout: 10_000 });
   const card = await scanBarcode(page, BARCODE);
-  await card.getByRole('button', { name: 'Approve', exact: true }).click();
+  await card.getByRole('button', { name: 'Confirm', exact: true }).click();
   await card.waitFor({ state: 'detached', timeout: 15_000 });
 
   await page.getByRole('link', { name: 'Inventory' }).click();

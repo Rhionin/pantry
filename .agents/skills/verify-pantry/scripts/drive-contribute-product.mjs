@@ -81,7 +81,7 @@ try {
 
   // The scan was taken in stock-in mode, so the resolved card can be approved
   // and the product lands in inventory, where the same opt-in edits it.
-  await card.getByRole('button', { name: 'Approve', exact: true }).click();
+  await card.getByRole('button', { name: 'Confirm', exact: true }).click();
   await card.waitFor({ state: 'detached', timeout: 15_000 });
   await page.getByRole('link', { name: 'Inventory' }).click();
   const invCard = page.getByRole('article').filter({ has: page.getByRole('heading', { name: PRODUCT }) });

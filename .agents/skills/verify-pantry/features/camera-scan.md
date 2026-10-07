@@ -54,7 +54,7 @@ Steps:
   holds the barcode in frame.
   This environment has no printed code, so if nothing is queued, enqueue through
   `Barcode scanner input` instead. A decoded frame uses that same capture handler.
-- Wait for the article `Scan <barcode>`, then `Approve` it.
+- Wait for the article `Scan <barcode>`, then `Confirm` it.
 - Confirm the card detaches, the inventory API reports one unit, and the
   Inventory route shows `1 box`.
 
@@ -71,5 +71,5 @@ Steps:
   typed fallback.
 - The same code is ignored for two seconds so a code held in frame is not queued
   twice.
-- `Approve` needs `{ exact: true }` so it does not match the batch approve
+- `Confirm` needs `{ exact: true }` so it does not match the batch confirm
   control.

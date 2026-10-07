@@ -107,7 +107,7 @@ export const ScanEntryCard = ({
       await commitScanEntry(entry.id, instanceId === '' ? undefined : instanceId);
       onChanged();
     } catch (requestError) {
-      setApproveError(requestError instanceof Error ? requestError.message : 'Unable to approve scan.');
+      setApproveError(requestError instanceof Error ? requestError.message : 'Unable to confirm scan.');
     } finally {
       setApproving(false);
     }
@@ -325,7 +325,7 @@ export const ScanEntryCard = ({
                 loading={approving}
                 onClick={() => void handleApprove()}
               >
-                Approve
+                Confirm
               </Button>
               <Button
                 size="compact-xs"

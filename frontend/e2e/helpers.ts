@@ -89,7 +89,7 @@ export const setScannerMode = async (
 }
 
 /**
- * Approve a single pending scan through its per-card Approve button, the real
+ * Confirm a single pending scan through its per-card Confirm button, the real
  * current flow (see .agents/skills/verify-pantry/scripts/drive-stock-in.mjs).
  * Direction is not set here: it is stamped from the scanner mode at scan time,
  * so the caller scans in the correct mode (use setScannerMode for stock_out).
@@ -124,7 +124,7 @@ export const commitSelectedScan = async (
     //
     // Pressing Tab does NOT blur this composite date input (the browser moves
     // focus between its day/month/year segments), so the onBlur PATCH only ever
-    // fired when Approve was clicked - racing the commit. Blur explicitly to
+    // fired when Confirm was clicked - racing the commit. Blur explicitly to
     // fire the PATCH deterministically, then await it.
     const patchResponse = page.waitForResponse(
       (response) =>
@@ -138,7 +138,7 @@ export const commitSelectedScan = async (
     // PATCH lands. Wait for that summary so approval cannot race the save.
     await expect(scanCard.getByText(/^Expires /)).toBeVisible()
   }
-  await scanCard.getByRole('button', { name: 'Approve', exact: true }).click()
+  await scanCard.getByRole('button', { name: 'Confirm', exact: true }).click()
   await expect(scanCard).toHaveCount(0)
 }
 

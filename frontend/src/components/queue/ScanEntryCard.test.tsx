@@ -74,7 +74,7 @@ describe('ScanEntryCard stock-out review', () => {
     const options = await screen.findAllByRole('radio');
     expect(options.map((option) => option.getAttribute('value'))).toEqual(['', 'oldest', 'later', 'undated']);
     fireEvent.click(options[2]);
-    fireEvent.click(screen.getByRole('button', { name: 'Approve' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm' }));
 
     await waitFor(() => expect(onChanged).toHaveBeenCalled());
     const commitCall = fetchMock.mock.calls.find(([url]) => String(url).includes('/commit'));
@@ -104,7 +104,7 @@ describe('ScanEntryCard approve scan rename', () => {
       </MantineProvider>,
     );
 
-    const button = screen.getByRole('button', { name: 'Approve' });
+    const button = screen.getByRole('button', { name: 'Confirm' });
     expect(button).toBeInTheDocument();
   });
 
@@ -129,7 +129,7 @@ describe('ScanEntryCard approve scan rename', () => {
       </MantineProvider>,
     );
 
-    const button = screen.getByRole('button', { name: 'Approve' });
+    const button = screen.getByRole('button', { name: 'Confirm' });
     fireEvent.click(button);
 
     await waitFor(() => {
@@ -139,7 +139,7 @@ describe('ScanEntryCard approve scan rename', () => {
     });
   });
 
-  it('shows fallback error message "Unable to approve scan." when error is not an Error instance', async () => {
+  it('shows fallback error message "Unable to confirm scan." when error is not an Error instance', async () => {
     const fetchMock = vi.fn((input: RequestInfo | URL, request?: RequestInit) => {
       const url = String(input);
       if (url === '/api/inventory/item-1/instances') return Promise.resolve(jsonResponse(instances));
@@ -160,13 +160,13 @@ describe('ScanEntryCard approve scan rename', () => {
       </MantineProvider>,
     );
 
-    const button = screen.getByRole('button', { name: 'Approve' });
+    const button = screen.getByRole('button', { name: 'Confirm' });
     fireEvent.click(button);
 
     await waitFor(() => {
       const errorAlert = screen.getByRole('alert');
       expect(errorAlert).toBeInTheDocument();
-      expect(errorAlert).toHaveTextContent('Unable to approve scan.');
+      expect(errorAlert).toHaveTextContent('Unable to confirm scan.');
     });
   });
 });

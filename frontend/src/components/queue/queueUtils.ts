@@ -8,6 +8,74 @@ export const sortScansNewestFirst = (entries: ScanEntry[]): ScanEntry[] =>
       new Date(right.scannedAt).getTime() - new Date(left.scannedAt).getTime(),
   );
 
+// A session is a shopping trip, not a stored id. Consecutive scans belong
+// together while each step is strictly under 5 minutes; a longer pause starts
+// another session even when the whole trip runs past 5 minutes.
+const BATCH_GAP_MS = 5 * 60 * 1000;
+
+const scannedAtMillis = (entry: ScanEntry): number => {
+  const value = new Date(entry.scannedAt).getTime();
+  return Number.isFinite(value) ? value : 0;
+};
+
+// Sort ascending to find the runs, then return newest session first. Entries
+// inside a session stay chronological (oldest at the top of the card).
+export const groupScansIntoBatches = (entries: ScanEntry[]): ScanEntry[][] => {
+  const chronological = [...entries].sort(
+    (left, right) => scannedAtMillis(left) - scannedAtMillis(right),
+  );
+  const batches: ScanEntry[][] = [];
+  for (const entry of chronological) {
+    const current = batches[batches.length - 1];
+    if (current === undefined) {
+      batches.push([entry]);
+      continue;
+    }
+    const previous = current[current.length - 1];
+    const gap = scannedAtMillis(entry) - scannedAtMillis(previous);
+    if (gap < BATCH_GAP_MS) current.push(entry);
+    else batches.push([entry]);
+  }
+  return batches.reverse();
+};
+
+export const formatBatchScanCount = (count: number): string =>
+  count === 1 ? '1 scan' : `${count} scans`;
+
+// first–last scannedAt for a session header. Same local minute collapses to
+// one time; a later day includes the date so "Yesterday" still has a range.
+export const formatBatchTimeRange = (earliestIso: string, latestIso: string): string => {
+  const start = new Date(earliestIso);
+  const end = new Date(latestIso);
+  const timeOnly: Intl.DateTimeFormatOptions = { hour: 'numeric', minute: '2-digit' };
+  const sameDay = start.toDateString() === end.toDateString();
+  const sameMinute = sameDay
+    && start.getHours() === end.getHours()
+    && start.getMinutes() === end.getMinutes();
+  if (sameMinute) return start.toLocaleTimeString(undefined, timeOnly);
+  if (sameDay) {
+    return `${start.toLocaleTimeString(undefined, timeOnly)}\u2013${end.toLocaleTimeString(undefined, timeOnly)}`;
+  }
+  const dateTime: Intl.DateTimeFormatOptions = {
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  };
+  return `${start.toLocaleString(undefined, dateTime)}\u2013${end.toLocaleString(undefined, dateTime)}`;
+};
+
+export const batchTimeBounds = (entries: ScanEntry[]): { earliest: string; latest: string } => {
+  if (entries.length === 0) return { earliest: '', latest: '' };
+  let earliest = entries[0];
+  let latest = entries[0];
+  for (const entry of entries.slice(1)) {
+    if (scannedAtMillis(entry) < scannedAtMillis(earliest)) earliest = entry;
+    if (scannedAtMillis(entry) > scannedAtMillis(latest)) latest = entry;
+  }
+  return { earliest: earliest.scannedAt, latest: latest.scannedAt };
+};
+
 export const sortInstancesUseOldestFirst = (
   instances: ItemInstanceWithStatus[],
 ): ItemInstanceWithStatus[] =>

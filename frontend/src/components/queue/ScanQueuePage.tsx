@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { notifications } from '@mantine/notifications';
 import { trackEventSource } from '../../telemetry/client';
-import { Alert, Badge, Checkbox, Group, Loader, Tabs, SimpleGrid, Stack, Text, Title } from '@mantine/core';
+import { Alert, Badge, Checkbox, Group, Loader, Tabs, Stack, Text, Title } from '@mantine/core';
 import { createScanEntry, getInventoryList, getScannerConfig, listScanEntries, setScannerMode } from '../../api/client';
 import type { InventoryItem, ProcessingFailure, ProcessingNotice, ScanEntry, ScannerConfig } from '../../types';
 import { BarcodeInputField } from '../scanner/BarcodeInputField';
@@ -9,7 +9,8 @@ import { CameraScanner } from '../scanner/CameraScanner';
 import { BatchReviewPanel } from './BatchReviewPanel';
 import { ProcessingScanCard } from './ProcessingScanCard';
 import { ScanEntryCard } from './ScanEntryCard';
-import { addProcessingNotice, entryMatchesView, formatReviewCount, getEntriesForView, isBatchEligible, mergeScanEvent, pruneSelection, removeProcessingNotice, settleProcessingNotice, sortScansNewestFirst, toggleSelectAll } from './queueUtils';
+import { ScanSessionCard } from './ScanSessionCard';
+import { addProcessingNotice, entryMatchesView, formatReviewCount, getEntriesForView, groupScansIntoBatches, isBatchEligible, mergeScanEvent, pruneSelection, removeProcessingNotice, settleProcessingNotice, sortScansNewestFirst, toggleSelectAll } from './queueUtils';
 import { scannerModeFromEventData } from './scannerModeEvent';
 
 const DEFAULT_USER_ID = 'user-1';
@@ -34,6 +35,7 @@ export const ScanQueuePage = ({ userId = DEFAULT_USER_ID }: ScanQueuePageProps) 
   const [scanError, setScanError] = useState('');
   const [cameraOpen, setCameraOpen] = useState(false);
   const [capturedBarcode, setCapturedBarcode] = useState('');
+  const [sessionExpansion, setSessionExpansion] = useState<Record<string, boolean>>({});
   const captureHighlightTimer = useRef(0);
   const scannerModeRef = useRef<QueueView>('stock_in');
   // Bumped when this page or an event stream sets the mode, so a config
@@ -68,6 +70,7 @@ export const ScanQueuePage = ({ userId = DEFAULT_USER_ID }: ScanQueuePageProps) 
   const stockOutCount = useMemo(() => getEntriesForView(entries, 'stock_out').length, [entries]);
 
   const viewEntries = useMemo(() => getEntriesForView(entries, activeView), [entries, activeView]);
+  const batches = useMemo(() => groupScansIntoBatches(viewEntries), [viewEntries]);
   const processingForView = useMemo(
     () => processing.filter((notice) => notice.userId === userId && entryMatchesView(notice.direction, activeView)),
     [processing, userId, activeView],
@@ -334,7 +337,7 @@ export const ScanQueuePage = ({ userId = DEFAULT_USER_ID }: ScanQueuePageProps) 
           </Group>
         )}
       </div>
-      <Stack gap={6} className="scan-page-queue" aria-label="Scan queue entries">
+      <Stack gap={8} className="scan-page-queue" aria-label="Scan queue entries">
         {loading && <Loader size="sm" aria-label="Loading scan queue" />}
         {error !== '' && (
           <Alert color="red" py={4}>
@@ -344,30 +347,46 @@ export const ScanQueuePage = ({ userId = DEFAULT_USER_ID }: ScanQueuePageProps) 
         {!loading && error === '' && viewEntries.length === 0 && processingForView.length === 0 && (
           <Text c="dimmed" size="sm">No pending scans.</Text>
         )}
-        <SimpleGrid
-          className={activeView === 'stock_in' ? 'scan-entry-list scan-entry-list--flat' : 'scan-entry-list'}
-          cols={activeView === 'stock_in' ? 1 : { base: 1, sm: 2, lg: 3 }}
-          spacing={activeView === 'stock_in' ? 0 : 6}
-        >
-          {processingForView.map((notice) => (
-            <ProcessingScanCard
-              key={notice.id}
-              notice={notice}
-              justCaptured={capturedBarcode !== '' && notice.barcode === capturedBarcode}
-            />
-          ))}
-          {viewEntries.map((entry) => (
-            <ScanEntryCard
-              key={entry.id}
-              entry={entry}
-              itemId={entry.productId === null ? undefined : itemIdByProductId.get(entry.productId)}
-              justCaptured={capturedBarcode !== '' && entry.barcode === capturedBarcode}
-              selected={selectedIds.includes(entry.id)}
-              onSelectedChange={(selected) => setEntrySelected(entry.id, selected)}
-              onChanged={() => void loadQueue()}
-            />
-          ))}
-        </SimpleGrid>
+        {processingForView.map((notice) => (
+          <ProcessingScanCard
+            key={notice.id}
+            notice={notice}
+            justCaptured={capturedBarcode !== '' && notice.barcode === capturedBarcode}
+          />
+        ))}
+        {batches.map((batch, index) => {
+          const key = batch.map((entry) => entry.id).sort().join('|');
+          const expanded = sessionExpansion[key] ?? index === 0;
+          return (
+            <ScanSessionCard
+              key={key}
+              entries={batch}
+              expanded={expanded}
+              onToggleExpanded={() => {
+                setSessionExpansion((current) => ({
+                  ...current,
+                  [key]: !(current[key] ?? index === 0),
+                }));
+              }}
+              directionLabel={activeView === 'stock_in' ? 'stock in' : 'stock out'}
+              selectedIds={selectedIds}
+              onSelectionChange={setSelectedIds}
+              flat={activeView === 'stock_in'}
+            >
+              {batch.map((entry) => (
+                <ScanEntryCard
+                  key={entry.id}
+                  entry={entry}
+                  itemId={entry.productId === null ? undefined : itemIdByProductId.get(entry.productId)}
+                  justCaptured={capturedBarcode !== '' && entry.barcode === capturedBarcode}
+                  selected={selectedIds.includes(entry.id)}
+                  onSelectedChange={(selected) => setEntrySelected(entry.id, selected)}
+                  onChanged={() => void loadQueue()}
+                />
+              ))}
+            </ScanSessionCard>
+          );
+        })}
       </Stack>
     </Stack>
   );

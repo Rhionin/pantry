@@ -41,7 +41,7 @@ async function stockInUnit(page, expiry) {
   const card = await scanBarcode(page, BARCODE);
   await card.getByRole('heading', { name: PRODUCT }).waitFor({ state: 'visible' });
   await setScanExpiration(page, card, expiry);
-  await card.getByRole('button', { name: 'Approve', exact: true }).click();
+  await card.getByRole('button', { name: 'Confirm', exact: true }).click();
   await card.waitFor({ state: 'detached', timeout: 15_000 });
 }
 
@@ -95,7 +95,7 @@ try {
   await setScannerMode(page, 'stock_out');
   const outCard = await scanBarcode(page, BARCODE);
   await outCard.getByRole('radio', { name: 'Use oldest available automatically' }).waitFor({ state: 'visible', timeout: 15_000 });
-  await outCard.getByRole('button', { name: 'Approve', exact: true }).click();
+  await outCard.getByRole('button', { name: 'Confirm', exact: true }).click();
   await outCard.waitFor({ state: 'detached', timeout: 15_000 });
 
   await page.getByRole('link', { name: 'Shopping List' }).click();

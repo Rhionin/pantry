@@ -17,7 +17,7 @@ async function stockInUnit(page, expiry) {
   const card = await scanBarcode(page, BARCODE);
   await card.getByRole('heading', { name: PRODUCT }).waitFor({ state: 'visible' });
   await setScanExpiration(page, card, expiry);
-  await card.getByRole('button', { name: 'Approve', exact: true }).click();
+  await card.getByRole('button', { name: 'Confirm', exact: true }).click();
   await card.waitFor({ state: 'detached', timeout: 15_000 });
 }
 
@@ -51,7 +51,7 @@ try {
   await outCard
     .getByRole('radio', { name: 'Use oldest available automatically' })
     .waitFor({ state: 'visible', timeout: 15_000 });
-  await outCard.getByRole('button', { name: 'Approve', exact: true }).click();
+  await outCard.getByRole('button', { name: 'Confirm', exact: true }).click();
   await outCard.waitFor({ state: 'detached', timeout: 15_000 });
 
   // The list replaces the one bag that was used, once the owner fills the cart.

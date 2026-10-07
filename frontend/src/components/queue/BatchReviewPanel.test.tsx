@@ -14,11 +14,11 @@ describe('BatchReviewPanel', () => {
       </MantineProvider>,
     );
 
-    expect(screen.getByRole('heading', { level: 2, name: 'Approve scans' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Approve 2 selected scans' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Approve 2 selected scans' })).toHaveAttribute(
+    expect(screen.getByRole('heading', { level: 2, name: 'Confirm scans' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Confirm 2 selected scans' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Confirm 2 selected scans' })).toHaveAttribute(
       'aria-label',
-      'Approve 2 selected scans',
+      'Confirm 2 selected scans',
     );
   });
 
@@ -33,10 +33,10 @@ describe('BatchReviewPanel', () => {
       </MantineProvider>,
     );
 
-    fireEvent.click(screen.getByRole('button', { name: 'Approve 2 selected scans' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm 2 selected scans' }));
 
     await waitFor(() =>
-      expect(screen.getByText('Unable to approve selected scans.')).toBeInTheDocument(),
+      expect(screen.getByText('Unable to confirm selected scans.')).toBeInTheDocument(),
     );
   });
 
@@ -55,7 +55,7 @@ describe('BatchReviewPanel', () => {
       </MantineProvider>,
     );
 
-    fireEvent.click(screen.getByRole('button', { name: 'Approve 2 selected scans' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm 2 selected scans' }));
 
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalledWith(
@@ -91,7 +91,7 @@ describe('BatchReviewPanel', () => {
       </MantineProvider>,
     );
 
-    fireEvent.click(screen.getByRole('button', { name: 'Approve 2 selected scans' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm 2 selected scans' }));
 
     await waitFor(() => {
       // Verify the exact request body sent to the API
