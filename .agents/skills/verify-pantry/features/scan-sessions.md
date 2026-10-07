@@ -12,7 +12,9 @@ all, and Confirm commits only the scans that are selected.
 - `session-gap` scans less than 5 minutes apart share a card; a 5-minute gap
   starts a new card. One card may cover more than 5 minutes in total.
 - `session-expand` the newest card is open; older cards show the time range
-  and scan count until opened.
+  and scan count until opened. Inside an open card, the newest scan is first.
+  The barcode number is secondary text on each open row and is absent from a
+  closed card. The queue scrolls on desktop and on mobile.
 - `session-select-all` Select all on an open card selects or clears only the
   eligible scans in that card.
 - `session-confirm` the toolbar button reads Confirm N and commits the

@@ -279,7 +279,15 @@ code {
   margin: 6px 0;
 }
 
+.copyable-barcode {
+  user-select: text;
+  cursor: text;
+}
+
 .scan-session-card {
+  /* overflow: hidden would let this flex item shrink below its content and
+     clip the open session, so the queue would have nothing left to scroll. */
+  flex: 0 0 auto;
   border-left-width: 3px;
   border-left-color: var(--mantine-color-blue-filled);
   overflow: hidden;

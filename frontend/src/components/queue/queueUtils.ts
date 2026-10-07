@@ -18,25 +18,26 @@ const scannedAtMillis = (entry: ScanEntry): number => {
   return Number.isFinite(value) ? value : 0;
 };
 
-// Sort ascending to find the runs, then return newest session first. Entries
-// inside a session stay chronological (oldest at the top of the card).
+// Walk newest-first so the open session and the rows inside it stay in the
+// same order on a fresh load, a refresh, and a live insert. Equal timestamps
+// keep their input order; the stable sort does not reshuffle a tie.
 export const groupScansIntoBatches = (entries: ScanEntry[]): ScanEntry[][] => {
-  const chronological = [...entries].sort(
-    (left, right) => scannedAtMillis(left) - scannedAtMillis(right),
+  const newestFirst = [...entries].sort(
+    (left, right) => scannedAtMillis(right) - scannedAtMillis(left),
   );
   const batches: ScanEntry[][] = [];
-  for (const entry of chronological) {
+  for (const entry of newestFirst) {
     const current = batches[batches.length - 1];
     if (current === undefined) {
       batches.push([entry]);
       continue;
     }
     const previous = current[current.length - 1];
-    const gap = scannedAtMillis(entry) - scannedAtMillis(previous);
+    const gap = scannedAtMillis(previous) - scannedAtMillis(entry);
     if (gap < BATCH_GAP_MS) current.push(entry);
     else batches.push([entry]);
   }
-  return batches.reverse();
+  return batches;
 };
 
 export const formatBatchScanCount = (count: number): string =>

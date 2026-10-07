@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { trackEventSource } from '../../telemetry/client';
 import { Alert, Loader, SimpleGrid, Stack, Text, TextInput, Title } from '@mantine/core';
-import { getInventoryList, getSupplySettings } from '../../api/client';
+import { getInventoryList, getProduct, getSupplySettings } from '../../api/client';
 import type { InventoryItem } from '../../types';
 import { filterInventoryItems } from '../../utils/inventoryFilter';
 import { ProductEditor } from '../product/ProductEditor';
@@ -17,6 +17,32 @@ interface InventorySectionProps {
   onSelect: (itemId: string) => void;
   renderExpanded: (item: InventoryItem) => ReactNode;
 }
+
+const ProductBarcodeLine = ({ productId }: { productId: string }) => {
+  const [barcodes, setBarcodes] = useState<string[]>([]);
+
+  useEffect(() => {
+    let active = true;
+    void getProduct(productId)
+      .then((product) => {
+        if (active) setBarcodes(product.barcodes ?? []);
+      })
+      .catch(() => {
+        if (active) setBarcodes([]);
+      });
+    return () => {
+      active = false;
+    };
+  }, [productId]);
+
+  if (barcodes.length === 0) return null;
+
+  return (
+    <Text size="xs" c="dimmed" className="copyable-barcode">
+      Barcode: {barcodes.join(', ')}
+    </Text>
+  );
+};
 
 const InventorySection = ({
   heading,
@@ -110,6 +136,7 @@ export const InventoryPage = () => {
 
   const renderExpanded = (inventoryItem: InventoryItem) => (
     <Stack gap="sm">
+      <ProductBarcodeLine productId={inventoryItem.item.productId} />
       <ItemInstanceList
         itemId={inventoryItem.item.id}
         productName={inventoryItem.item.product.name}

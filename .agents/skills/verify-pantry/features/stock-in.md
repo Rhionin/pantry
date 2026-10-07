@@ -12,7 +12,8 @@ appear in inventory. This is the core add-to-pantry flow.
   shows the product name, a scanned timestamp, an inline thumb-sized unit-count
   stepper (decrease, count, increase; at least 44px), a small `Add expiration`
   text control that reveals the date only when opened, and Confirm/Remove
-  buttons. The barcode number is not shown on the row. A saved date is shown as
+  buttons. The open session shows the barcode number as secondary text on the
+  row. A collapsed session does not list it. A saved date is shown as
   compact `Expires …` text with Change and Clear.
 - `stock-in-approve` approving the card commits it and removes it from the queue.
 - `stock-in-inventory` the approved unit appears on the Inventory route and in
@@ -44,7 +45,7 @@ Preconditions:
   'Barcode scanner input' })` and presses Enter. A `getByRole('article', { name:
   'Scan <barcode>' })` row appears under the Stock in tab.
 - **Read the row.** The row contains a heading with the product name. The
-  barcode number is not shown on the row. The article's accessible name is still
+  barcode number is secondary text on that open row. The article's accessible name is still
   `Scan <barcode>`.
 - **Confirm.** `card.getByRole('button', { name: 'Confirm', exact: true
   }).click()`. The row detaches from the queue (`waitFor({ state: 'detached' })`).
