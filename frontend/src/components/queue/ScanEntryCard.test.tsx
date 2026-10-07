@@ -1250,8 +1250,9 @@ describe('ScanEntryCard stock-in confirmation', () => {
     expect(row).toHaveClass('scan-entry-row');
     expect(row).not.toHaveClass('mantine-Card-root');
     expect(screen.getByRole('heading', { name: 'Milk' })).toBeInTheDocument();
-    expect(screen.queryByText('Barcode: 123')).not.toBeInTheDocument();
-    expect(row).not.toHaveTextContent('123');
+    const barcode = screen.getByText('Barcode: 123');
+    expect(barcode).toHaveClass('copyable-barcode');
+    expect(barcode.closest('button')).toBeNull();
     expect(screen.getByRole('button', { name: 'Decrease unit count' })).toBeDisabled();
     expect(screen.getByRole('button', { name: 'Increase unit count' })).toBeEnabled();
     expect(screen.getByLabelText('Unit count')).toHaveValue('1');

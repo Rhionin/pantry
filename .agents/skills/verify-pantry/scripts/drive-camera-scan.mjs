@@ -107,7 +107,7 @@ try {
 
   await card.waitFor({ state: 'visible', timeout: 15_000 });
   await card.getByRole('heading', { name: PRODUCT }).waitFor({ state: 'visible' });
-  await card.getByText(`Barcode: ${BARCODE}`).waitFor({ state: 'hidden' });
+  await card.getByText(`Barcode: ${BARCODE}`).waitFor({ state: 'visible' });
   if (capturePath === 'camera-decode') {
     const preview = page.getByLabel('Camera preview');
     const previewBox = await preview.boundingBox();

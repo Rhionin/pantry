@@ -45,7 +45,7 @@ describe('groupScansIntoBatches', () => {
 
     const batches = groupScansIntoBatches(entries);
     expect(batches).toHaveLength(1);
-    expect(batches[0].map((entry) => entry.id)).toEqual(['a', 'b', 'c']);
+    expect(batches[0].map((entry) => entry.id)).toEqual(['c', 'b', 'a']);
   });
 
   it('starts a new session at a gap of exactly 5 minutes', () => {
@@ -74,12 +74,12 @@ describe('groupScansIntoBatches', () => {
 
     const batches = groupScansIntoBatches(entries);
     expect(batches).toHaveLength(1);
-    expect(batches[0]).toHaveLength(4);
-    const span = new Date(batches[0][3].scannedAt).getTime() - new Date(batches[0][0].scannedAt).getTime();
+    expect(batches[0].map((entry) => entry.id)).toEqual(['step-3', 'step-2', 'step-1', 'step-0']);
+    const span = new Date(batches[0][0].scannedAt).getTime() - new Date(batches[0][3].scannedAt).getTime();
     expect(span).toBeGreaterThan(fiveMinutes);
   });
 
-  it('shows the newest session first and keeps scans chronological inside it', () => {
+  it('shows the newest session first and the newest scan first inside it', () => {
     const entries = [
       scanEntry({ id: 'old-a', scannedAt: atOffset(base, 0) }),
       scanEntry({ id: 'old-b', scannedAt: atOffset(base, 2 * 60 * 1000) }),
@@ -88,9 +88,34 @@ describe('groupScansIntoBatches', () => {
     ];
 
     expect(groupScansIntoBatches(entries).map((batch) => batch.map((entry) => entry.id))).toEqual([
-      ['new-a', 'new-b'],
-      ['old-a', 'old-b'],
+      ['new-b', 'new-a'],
+      ['old-b', 'old-a'],
     ]);
+  });
+
+  it('orders a fresh oldest-first load the same as a newest-first live insert', () => {
+    const older = scanEntry({ id: 'older', scannedAt: atOffset(base, 0) });
+    const middle = scanEntry({ id: 'middle', scannedAt: atOffset(base, 2 * 60 * 1000) });
+    const newest = scanEntry({ id: 'newest', scannedAt: atOffset(base, 4 * 60 * 1000) });
+    const freshLoad = groupScansIntoBatches([older, middle, newest]);
+    const live = groupScansIntoBatches(sortScansNewestFirst(mergeScanEvent([older, middle], newest)));
+
+    expect(freshLoad.map((batch) => batch.map((entry) => entry.id))).toEqual([['newest', 'middle', 'older']]);
+    expect(live).toEqual(freshLoad);
+  });
+
+  it('keeps an older session newest-first when a live scan opens a new session', () => {
+    const older = scanEntry({ id: 'older', scannedAt: atOffset(base, 0) });
+    const middle = scanEntry({ id: 'middle', scannedAt: atOffset(base, 2 * 60 * 1000) });
+    const newest = scanEntry({ id: 'newest', scannedAt: atOffset(base, 20 * 60 * 1000) });
+    const fromApi = groupScansIntoBatches([older, middle, newest]);
+    const fromLive = groupScansIntoBatches(sortScansNewestFirst([middle, older, newest]));
+
+    expect(fromApi.map((batch) => batch.map((entry) => entry.id))).toEqual([
+      ['newest'],
+      ['middle', 'older'],
+    ]);
+    expect(fromLive).toEqual(fromApi);
   });
 
   it('preserves input order when scannedAt ties', () => {
@@ -120,15 +145,16 @@ describe('groupScansIntoBatches', () => {
           return [scanEntry({ id: row.id, scannedAt: atOffset(base, row.offsetMs) })];
         });
         const batches = groupScansIntoBatches(entries);
-        const ascending = [...entries].sort(
-          (left, right) => new Date(left.scannedAt).getTime() - new Date(right.scannedAt).getTime(),
-        );
-
-        expect([...batches].reverse().flat().map((entry) => entry.id)).toEqual(ascending.map((entry) => entry.id));
+        const displayed = batches.flat();
+        expect(displayed.map((entry) => entry.id).sort()).toEqual(entries.map((entry) => entry.id).sort());
+        for (let index = 1; index < displayed.length; index += 1) {
+          expect(new Date(displayed[index - 1].scannedAt).getTime())
+            .toBeGreaterThanOrEqual(new Date(displayed[index].scannedAt).getTime());
+        }
 
         for (const batch of batches) {
           for (let index = 1; index < batch.length; index += 1) {
-            const gap = new Date(batch[index].scannedAt).getTime() - new Date(batch[index - 1].scannedAt).getTime();
+            const gap = new Date(batch[index - 1].scannedAt).getTime() - new Date(batch[index].scannedAt).getTime();
             expect(gap).toBeGreaterThanOrEqual(0);
             expect(gap).toBeLessThan(fiveMinutes);
           }
@@ -137,7 +163,7 @@ describe('groupScansIntoBatches', () => {
         for (let index = 0; index < batches.length - 1; index += 1) {
           const newer = batches[index];
           const older = batches[index + 1];
-          const gap = new Date(newer[0].scannedAt).getTime() - new Date(older[older.length - 1].scannedAt).getTime();
+          const gap = new Date(newer[newer.length - 1].scannedAt).getTime() - new Date(older[0].scannedAt).getTime();
           expect(gap).toBeGreaterThanOrEqual(fiveMinutes);
         }
       },

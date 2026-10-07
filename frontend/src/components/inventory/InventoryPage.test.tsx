@@ -144,6 +144,16 @@ describe('InventoryPage', () => {
       if (url === '/api/settings/supply') {
         return Promise.resolve(jsonResponse({ months: 3, opening: false, wipePhrase: 'WIPE INVENTORY' }));
       }
+      if (url === '/api/products/product-bread') {
+        return Promise.resolve(jsonResponse({
+          id: 'product-bread',
+          name: 'Sourdough',
+          category: 'Bakery',
+          unitOfMeasure: 'unit',
+          createdAt: '2026-01-01T00:00:00Z',
+          barcodes: [],
+        }));
+      }
       throw new Error(`Unexpected request: ${url}`);
     });
     vi.stubGlobal('fetch', fetchMock);
@@ -238,6 +248,16 @@ describe('InventoryPage', () => {
         onHand = Math.max(0, onHand - 1);
         return Promise.resolve(jsonResponse({}));
       }
+      if (url === '/api/products/product-oats' && method === 'GET') {
+        return Promise.resolve(jsonResponse({
+          id: 'product-oats',
+          name: 'Rolled Oats',
+          category: 'Grains',
+          unitOfMeasure: 'unit',
+          createdAt: '2026-01-01T00:00:00Z',
+          barcodes: [],
+        }));
+      }
       throw new Error(`Unexpected request: ${method} ${url}`);
     });
     vi.stubGlobal('fetch', fetchMock);
@@ -291,5 +311,47 @@ describe('InventoryPage', () => {
     fireEvent.click(screen.getByRole('button', { name: 'This scan is complete' }));
     await waitFor(() => expect(screen.queryByRole('alert', { name: 'Opening inventory' })).not.toBeInTheDocument());
     expect(fetchMock).toHaveBeenCalledWith('/api/onboarding/complete', expect.objectContaining({ method: 'POST' }));
+  });
+
+  it('shows the product barcode only in the expanded row', async () => {
+    const fetchMock = vi.fn((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === '/api/inventory') {
+        return Promise.resolve(jsonResponse([
+          inventoryItem('bread', 'Sourdough', 'Bakery', false),
+        ]));
+      }
+      if (url === '/api/settings/supply') {
+        return Promise.resolve(jsonResponse({ months: 3, opening: false, wipePhrase: 'WIPE INVENTORY' }));
+      }
+      if (url === '/api/inventory/bread/instances') {
+        return Promise.resolve(jsonResponse([]));
+      }
+      if (url === '/api/products/product-bread') {
+        return Promise.resolve(jsonResponse({
+          id: 'product-bread',
+          name: 'Sourdough',
+          category: 'Bakery',
+          unitOfMeasure: 'unit',
+          createdAt: '2026-01-01T00:00:00Z',
+          barcodes: ['012345678905', '998877665544'],
+        }));
+      }
+      throw new Error(`Unexpected request: ${url}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<MantineProvider><InventoryPage /></MantineProvider>);
+    const article = await screen.findByRole('article');
+    expect(within(article).queryByText(/Barcode:/)).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'View instances' }));
+
+    const barcode = await within(article).findByText('Barcode: 012345678905, 998877665544');
+    expect(barcode).toHaveClass('copyable-barcode');
+    expect(barcode.closest('button')).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Hide instances' }));
+    expect(within(article).queryByText(/Barcode:/)).not.toBeInTheDocument();
   });
 });

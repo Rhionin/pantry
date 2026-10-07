@@ -240,9 +240,7 @@ export const ScanEntryCard = ({
             {entry.status === 'flagged' && <Badge size="xs" color="orange">Flagged</Badge>}
           </div>
           <div className="scan-entry-meta">
-            {!flatRow && (
-              <Text size="xs" c="dimmed" component="span">Barcode: {entry.barcode}</Text>
-            )}
+            <Text size="xs" c="dimmed" component="span" className="copyable-barcode">Barcode: {entry.barcode}</Text>
             <Text size="xs" c="dimmed" component="span">Scanned: {scannedAtLabel}</Text>
             <ProvenanceBadge externalSource={entry.product?.externalSource} />
           </div>

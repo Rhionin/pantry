@@ -24,7 +24,7 @@ try {
 
   const card = await scanBarcode(page, BARCODE);
   await card.getByRole('heading', { name: PRODUCT }).waitFor({ state: 'visible' });
-  await card.getByText(`Barcode: ${BARCODE}`).waitFor({ state: 'hidden' });
+  await card.getByText(`Barcode: ${BARCODE}`).waitFor({ state: 'visible' });
 
   // Confirm the single pending scan via its per-card Confirm button.
   await card.getByRole('button', { name: 'Confirm', exact: true }).click();

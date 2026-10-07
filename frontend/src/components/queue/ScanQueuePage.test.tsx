@@ -719,12 +719,12 @@ describe('ScanQueuePage', () => {
     // Verify clicking Stock_In tab changes the content
     stockInTab.click();
 
-    // Now stock_in entries should be visible, without the barcode number.
+    // The open stock-in session shows the barcode as secondary text.
     await findScan('222');
     const cardsAfterSwitch = await screen.findAllByRole('article');
     expect(cardsAfterSwitch).toHaveLength(1);
     expect(cardsAfterSwitch[0]).toHaveAttribute('aria-label', 'Scan 222');
-    expect(within(cardsAfterSwitch[0]).queryByText('Barcode: 222')).not.toBeInTheDocument();
+    expect(within(cardsAfterSwitch[0]).getByText('Barcode: 222')).toHaveClass('copyable-barcode');
   });
 
   it('follows the seeded scanner mode on a fresh mount after a prior instance was switched to Stock_In_View', async () => {
@@ -758,7 +758,7 @@ describe('ScanQueuePage', () => {
     const cardsAfterSwitch = await screen.findAllByRole('article');
     expect(cardsAfterSwitch).toHaveLength(1);
     expect(cardsAfterSwitch[0]).toHaveAttribute('aria-label', 'Scan 222');
-    expect(within(cardsAfterSwitch[0]).queryByText('Barcode: 222')).not.toBeInTheDocument();
+    expect(within(cardsAfterSwitch[0]).getByText('Barcode: 222')).toBeInTheDocument();
 
     unmount();
 
@@ -785,7 +785,7 @@ describe('ScanQueuePage', () => {
     const cardsAfterSwitch2 = await screen.findAllByRole('article');
     expect(cardsAfterSwitch2).toHaveLength(1);
     expect(cardsAfterSwitch2[0]).toHaveAttribute('aria-label', 'Scan 222');
-    expect(within(cardsAfterSwitch2[0]).queryByText('Barcode: 222')).not.toBeInTheDocument();
+    expect(within(cardsAfterSwitch2[0]).getByText('Barcode: 222')).toBeInTheDocument();
   });
 
   // Regression (FEAT-003): the backend defaults the scanner mode to stock_in,
@@ -864,7 +864,7 @@ describe('ScanQueuePage', () => {
     const cards = screen.getAllByRole('article');
     expect(cards).toHaveLength(1);
     expect(cards[0]).toHaveAttribute('aria-label', 'Scan 111');
-    expect(within(cards[0]).queryByText('Barcode: 111')).not.toBeInTheDocument();
+    expect(within(cards[0]).getByText('Barcode: 111')).toHaveClass('copyable-barcode');
   });
 
   it('Stock_Out_View renders direction === "stock_out" and direction === null entries, but not stock_in', async () => {
@@ -966,7 +966,7 @@ describe('ScanQueuePage', () => {
 
     cards = screen.getAllByRole('article');
     expect(cards).toHaveLength(1);
-    expect(within(cards[0]).queryByText('Barcode: 111')).not.toBeInTheDocument();
+    expect(within(cards[0]).getByText('Barcode: 111')).toBeInTheDocument();
   });
 
   describe('Selection clearing on tab switch', () => {
@@ -1801,7 +1801,7 @@ describe('ScanQueuePage', () => {
 
       fireEvent.click(selectSession);
       fireEvent.click(screen.getByRole('button', { name: 'Confirm 2 selected scans' }));
-      await vi.waitFor(() => expect(posted).toEqual([{ scanEntryIds: ['oats', 'milk'], commit: true }]));
+      await vi.waitFor(() => expect(posted).toEqual([{ scanEntryIds: ['milk', 'oats'], commit: true }]));
       expect(await screen.findByRole('button', { name: 'Confirm 0 selected scans' })).toBeInTheDocument();
 
       fireEvent.click(screen.getByRole('checkbox', { name: 'Select all eligible scans for batch approval' }));
@@ -1811,6 +1811,90 @@ describe('ScanQueuePage', () => {
       expect(within(pasta).getByRole('checkbox')).toBeChecked();
       expect(within(bread).getByRole('checkbox')).toBeChecked();
       expect(within(oats).getByRole('checkbox')).toBeChecked();
+    });
+
+    it('keeps newest-first rows on a fresh load and after a live insert, and hides barcodes in a collapsed session', async () => {
+      const product = (id: string, name: string): ScanEntry['product'] => ({
+        id,
+        name,
+        category: 'Grocery',
+        unitOfMeasure: 'bag',
+      });
+      vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url.includes('status=pending')) {
+          return Promise.resolve(jsonResponse([
+            scanEntry({
+              id: 'oats',
+              barcode: '111',
+              direction: 'stock_in',
+              scannedAt: '2026-03-20T16:00:00Z',
+              product: product('oats', 'Oats'),
+              productId: 'oats',
+            }),
+            scanEntry({
+              id: 'milk',
+              barcode: '222',
+              direction: 'stock_in',
+              scannedAt: '2026-03-20T16:02:00Z',
+              product: product('milk', 'Milk'),
+              productId: 'milk',
+            }),
+            scanEntry({
+              id: 'bread',
+              barcode: '333',
+              direction: 'stock_in',
+              scannedAt: '2026-03-20T16:04:00Z',
+              product: product('bread', 'Bread'),
+              productId: 'bread',
+            }),
+            scanEntry({
+              id: 'yogurt',
+              barcode: '444',
+              direction: 'stock_in',
+              scannedAt: '2026-03-20T15:00:00Z',
+              product: product('yogurt', 'Yogurt'),
+              productId: 'yogurt',
+            }),
+          ]));
+        }
+        if (url.includes('status=flagged')) return Promise.resolve(jsonResponse([]));
+        if (url === '/api/inventory' || url === '/api/products') return Promise.resolve(jsonResponse([]));
+        if (url.endsWith('/api/scanner/config')) {
+          return Promise.resolve(jsonResponse({ stockInBarcode: 'STOCK_IN', stockOutBarcode: 'STOCK_OUT', currentMode: 'stock_in' }));
+        }
+        throw new Error(`Unexpected request: ${url}`);
+      }));
+
+      render(<MantineProvider><ScanQueuePage /></MantineProvider>);
+
+      const bread = await screen.findByRole('article', { name: 'Scan 333' });
+      expect(screen.getAllByRole('article').map((article) => article.getAttribute('aria-label'))).toEqual([
+        'Scan 333',
+        'Scan 222',
+        'Scan 111',
+      ]);
+      expect(within(bread).getByText('Barcode: 333')).toHaveClass('copyable-barcode');
+      expect(screen.queryByRole('article', { name: 'Scan 444' })).not.toBeInTheDocument();
+      expect(screen.queryByText('Barcode: 444')).not.toBeInTheDocument();
+
+      FakeEventSource.instances[0].dispatch('scan', scanEntry({
+        id: 'rice',
+        barcode: '555',
+        direction: 'stock_in',
+        scannedAt: '2026-03-20T16:06:00Z',
+        product: product('rice', 'Rice'),
+        productId: 'rice',
+      }));
+
+      await screen.findByRole('article', { name: 'Scan 555' });
+      expect(screen.getAllByRole('article').map((article) => article.getAttribute('aria-label'))).toEqual([
+        'Scan 555',
+        'Scan 333',
+        'Scan 222',
+        'Scan 111',
+      ]);
+      expect(within(screen.getByRole('article', { name: 'Scan 555' })).getByText('Barcode: 555')).toBeInTheDocument();
     });
   });
 
