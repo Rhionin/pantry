@@ -35,7 +35,7 @@ test('desktop scan queue scrolls to the bottom and keeps newest-first order afte
   const newestFirst = [...items].reverse().map((item) => `Scan ${item.barcode}`)
   await expect.poll(() => articleLabels(page)).toEqual(newestFirst)
   const newest = items[items.length - 1]
-  await expect(page.getByRole('article', { name: `Scan ${newest.barcode}` }).getByText(`Barcode: ${newest.barcode}`)).toBeVisible()
+  await expect(page.getByRole('article', { name: `Scan ${newest.barcode}`, exact: true }).getByText(`Barcode: ${newest.barcode}`)).toBeVisible()
 
   await page.reload()
   await expect.poll(() => articleLabels(page)).toEqual(newestFirst)
@@ -54,14 +54,14 @@ test('desktop scan queue scrolls to the bottom and keeps newest-first order afte
   await queue.evaluate((element) => {
     element.scrollTop = element.scrollHeight
   })
-  await expect(page.getByRole('article', { name: `Scan ${items[0].barcode}` })).toBeInViewport()
+  await expect(page.getByRole('article', { name: `Scan ${items[0].barcode}`, exact: true })).toBeInViewport()
 
   await page.setViewportSize({ width: 390, height: 700 })
   await expect.poll(() => queue.evaluate((element) => element.scrollHeight > element.clientHeight + 1)).toBe(true)
   await queue.evaluate((element) => {
     element.scrollTop = element.scrollHeight
   })
-  await expect(page.getByRole('article', { name: `Scan ${items[0].barcode}` })).toBeInViewport()
+  await expect(page.getByRole('article', { name: `Scan ${items[0].barcode}`, exact: true })).toBeInViewport()
 })
 
 const phoneItems = Array.from({ length: 10 }, (_, index) => ({

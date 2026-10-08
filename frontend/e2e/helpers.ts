@@ -50,7 +50,9 @@ export const scanBarcode = async (page: Page, barcode: string): Promise<Locator>
   await scannerInput.fill(barcode)
   await scannerInput.press('Enter')
 
-  const scanCard = page.getByRole('article', { name: `Scan ${barcode}` })
+  // exact: the in-flight placeholder is "Scan <barcode> processing", and a
+  // substring match would return that card before the real row exists.
+  const scanCard = page.getByRole('article', { name: `Scan ${barcode}`, exact: true })
   await expect(scanCard).toBeVisible()
   return scanCard
 }
@@ -110,10 +112,13 @@ export const commitSelectedScan = async (
 ): Promise<void> => {
   if (expirationDate !== undefined) {
     const addExpiration = scanCard.getByRole('button', { name: 'Add expiration' })
+    const expiry = scanCard.getByLabel('Expiration date')
+    // The row can paint after the scan response. Wait for the control instead
+    // of sampling isVisible once and then filling a field that was never opened.
+    await expect(addExpiration.or(expiry)).toBeVisible()
     if (await addExpiration.isVisible()) {
       await addExpiration.click()
     }
-    const expiry = scanCard.getByLabel('Expiration date')
     await expiry.fill(expirationDate)
     // The date field persists on blur via PATCH /api/scans/:id, and approving
     // commits the entry to inventory through a separate request. We MUST wait
