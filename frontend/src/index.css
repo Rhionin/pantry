@@ -502,7 +502,8 @@ code {
 }
 
 .scan-entry-add-expiry,
-.scan-entry-expiry-action {
+.scan-entry-expiry-action,
+.scan-entry-more {
   box-sizing: border-box;
   min-height: 44px;
   padding: 0 2px;
@@ -517,12 +518,14 @@ code {
 }
 
 .scan-entry-add-expiry:hover,
-.scan-entry-expiry-action:hover {
+.scan-entry-expiry-action:hover,
+.scan-entry-more:hover {
   color: var(--mantine-color-text);
 }
 
 .scan-entry-add-expiry:focus-visible,
-.scan-entry-expiry-action:focus-visible {
+.scan-entry-expiry-action:focus-visible,
+.scan-entry-more:focus-visible {
   outline: 2px solid var(--mantine-primary-color-filled);
   outline-offset: 2px;
 }

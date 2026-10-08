@@ -21,9 +21,10 @@ test('stock-out without a selection removes the earliest-expiring instance', asy
   // scan the product so the card is stamped stock_out.
   await setScannerMode(page, 'stock_out')
   const stockOutCard = await scanBarcode(page, barcode)
-  // Wait for the instance selector to resolve the inventory item before
-  // approving; leave it at the default (Use oldest available automatically,
-  // empty value) to exercise oldest-first removal.
+  // The date field and instance list stay behind More. Open it, leave the
+  // default (Use oldest available automatically) selected, then approve.
+  await expect(stockOutCard.getByLabel('Expiration date')).toHaveCount(0)
+  await stockOutCard.getByRole('button', { name: 'More' }).click()
   await expect(
     stockOutCard.getByRole('radio', { name: 'Use oldest available automatically' }),
   ).toBeVisible()
