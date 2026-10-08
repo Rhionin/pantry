@@ -111,11 +111,22 @@ type Suggestion struct {
 }
 
 // SuggestionMember is one product on a card.
+// Picture, brand, size, and barcode are copied from the product we already
+// have. Empty fields stay empty so the page does not invent them.
 type SuggestionMember struct {
-	ProductID string `json:"productId"`
-	Name      string `json:"name"`
-	Included  bool   `json:"included"`
-	Caution   string `json:"caution"`
+	ProductID     string   `json:"productId"`
+	Name          string   `json:"name"`
+	Included      bool     `json:"included"`
+	Caution       string   `json:"caution"`
+	ImageURL      string   `json:"imageUrl,omitempty"`
+	Brand         string   `json:"brand,omitempty"`
+	Variety       string   `json:"variety,omitempty"`
+	Category      string   `json:"category,omitempty"`
+	UnitOfMeasure string   `json:"unitOfMeasure,omitempty"`
+	NetAmount     *float64 `json:"netAmount,omitempty"`
+	NetUnit       string   `json:"netUnit,omitempty"`
+	PackCount     *int     `json:"packCount,omitempty"`
+	Barcodes      []string `json:"barcodes,omitempty"`
 }
 
 // Groups is the household's product groups.
@@ -485,6 +496,10 @@ func (g *Groups) ListSuggestions(ctx context.Context) ([]Suggestion, error) {
 		members, err := suggestionMembers(ctx, g.db, out[i].ID)
 		if err != nil {
 			return nil, err
+		}
+		for j := range members {
+			members[j].Brand = memberBrand(members[j].Name, out[i].Title)
+			members[j].Variety = memberVariety(members[j].Name)
 		}
 		out[i].Members = members
 	}
@@ -1314,7 +1329,9 @@ func loadSuggestion(ctx context.Context, q querier, id string) (Suggestion, erro
 
 func suggestionMembers(ctx context.Context, q querier, id string) ([]SuggestionMember, error) {
 	rows, err := q.QueryContext(ctx, `
-		SELECT m.product_id, COALESCE(p.name, ''), m.included, m.caution
+		SELECT m.product_id, COALESCE(p.name, ''), m.included, m.caution,
+		       COALESCE(p.image_url, ''), COALESCE(p.category, ''), COALESCE(p.unit_of_measure, ''),
+		       p.net_base_value, COALESCE(p.net_dimension, ''), p.pack_count
 		FROM group_suggestion_members m
 		LEFT JOIN products p ON p.id = m.product_id
 		WHERE m.suggestion_id = ?
@@ -1327,14 +1344,68 @@ func suggestionMembers(ctx context.Context, q querier, id string) ([]SuggestionM
 	for rows.Next() {
 		var m SuggestionMember
 		var included int
-		if err := rows.Scan(&m.ProductID, &m.Name, &included, &m.Caution); err != nil {
+		var net sql.NullFloat64
+		var pack sql.NullInt64
+		var dimension string
+		if err := rows.Scan(&m.ProductID, &m.Name, &included, &m.Caution,
+			&m.ImageURL, &m.Category, &m.UnitOfMeasure, &net, &dimension, &pack); err != nil {
 			return nil, fmt.Errorf("could not load suggestions: %w", err)
 		}
 		m.Included = included != 0
+		if net.Valid {
+			if amount, unit, ok := product.DisplayNetSize(net.Float64, dimension); ok {
+				m.NetAmount = &amount
+				m.NetUnit = unit
+			}
+		}
+		if pack.Valid && pack.Int64 > 0 {
+			n := int(pack.Int64)
+			m.PackCount = &n
+		}
 		members = append(members, m)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("could not load suggestions: %w", err)
 	}
+	if err := attachBarcodes(ctx, q, members); err != nil {
+		return nil, err
+	}
 	return members, nil
+}
+
+func attachBarcodes(ctx context.Context, q querier, members []SuggestionMember) error {
+	if len(members) == 0 {
+		return nil
+	}
+	holders := make([]string, len(members))
+	args := make([]any, len(members))
+	index := make(map[string]int, len(members))
+	for i, member := range members {
+		holders[i] = "?"
+		args[i] = member.ProductID
+		index[member.ProductID] = i
+	}
+	rows, err := q.QueryContext(ctx, `
+		SELECT product_id, barcode FROM barcodes
+		WHERE product_id IN (`+strings.Join(holders, ",")+`)
+		ORDER BY barcode`, args...)
+	if err != nil {
+		return fmt.Errorf("could not load suggestions: %w", err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var productID, barcode string
+		if err := rows.Scan(&productID, &barcode); err != nil {
+			return fmt.Errorf("could not load suggestions: %w", err)
+		}
+		i, ok := index[productID]
+		if !ok || barcode == "" {
+			continue
+		}
+		members[i].Barcodes = append(members[i].Barcodes, barcode)
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("could not load suggestions: %w", err)
+	}
+	return nil
 }

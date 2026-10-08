@@ -95,10 +95,20 @@ func baseLookAlike(name string) (string, string) {
 }
 
 func stripDifferentiators(tokens []string) ([]string, string) {
+	labels, rest := takeDifferentiators(tokens)
+	if len(labels) == 0 {
+		return tokens, ""
+	}
+	return rest, cautionSentence(labels[0])
+}
+
+// takeDifferentiators returns every differentiator in list order, and the
+// tokens that remain. Longer phrases are removed first so "french style"
+// stays one label.
+func takeDifferentiators(tokens []string) (labels []string, rest []string) {
 	matched := map[string]bool{}
 	phrases := make([]string, len(differentiators))
 	copy(phrases, differentiators)
-	// Longer phrases first so "french style" is removed as a phrase.
 	for i := 0; i < len(phrases); i++ {
 		for j := i + 1; j < len(phrases); j++ {
 			if len(strings.Fields(phrases[j])) > len(strings.Fields(phrases[i])) {
@@ -106,23 +116,24 @@ func stripDifferentiators(tokens []string) ([]string, string) {
 			}
 		}
 	}
+	rest = append([]string(nil), tokens...)
 	for _, label := range phrases {
 		words := strings.Fields(label)
 		for {
-			next, ok := removeWords(tokens, words)
+			next, ok := removeWords(rest, words)
 			if !ok {
 				break
 			}
-			tokens = next
+			rest = next
 			matched[label] = true
 		}
 	}
 	for _, label := range differentiators {
 		if matched[label] {
-			return tokens, cautionSentence(label)
+			labels = append(labels, label)
 		}
 	}
-	return tokens, ""
+	return labels, rest
 }
 
 func cautionSentence(label string) string {
