@@ -54,4 +54,7 @@ fi
 if [[ "$mode" != tunnel || -f /opt/pantry/auth.caddy ]]; then
   drop_other_publish_containers "$mode"
 fi
+if [[ "$mode" == tunnel && -f /opt/pantry/auth.caddy ]]; then
+  drop_stale_cloudflared
+fi
 "${compose[@]}" up -d

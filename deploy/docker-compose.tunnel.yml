@@ -7,9 +7,13 @@
 # (9e158cce-4d31-4881-82f3-d905af6164e7). Ingress is set in Cloudflare,
 # not in a file here. Public hostname in Zero Trust → Networks → Tunnels:
 #   pantry.rhionin.com  →  http://caddy:80
-# `caddy` is an alias on cf-tunnel. cloudflared is the only member of that
-# network besides Caddy, at 10.77.77.2. Caddyfile.tunnel trusts
-# X-Forwarded-Proto and CF-Connecting-IP from that address only.
+# `caddy` is an alias on cf-tunnel. cloudflared is pinned to 10.77.77.2,
+# the only address Caddyfile.tunnel trusts for X-Forwarded-Proto and
+# CF-Connecting-IP. Caddy is pinned to 10.77.77.3. It starts first
+# (cloudflared depends_on it); without a fixed address, IPAM hands it
+# 10.77.77.2 and cloudflared cannot start. The gateway stays 10.77.77.1.
+# Dynamic addresses come from 10.77.77.4/30, so an unpinned container
+# cannot be given .2 or .3.
 
 services:
   caddy-tunnel:
@@ -28,6 +32,7 @@ services:
       cf-tunnel:
         aliases:
           - caddy
+        ipv4_address: 10.77.77.3
     volumes:
       - ./Caddyfile.tunnel:/etc/caddy/Caddyfile:ro
       - ./auth.caddy:/etc/caddy/auth.caddy:ro
@@ -62,3 +67,5 @@ networks:
       driver: default
       config:
         - subnet: 10.77.77.0/29
+          ip_range: 10.77.77.4/30
+          gateway: 10.77.77.1
