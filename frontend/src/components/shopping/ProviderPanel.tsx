@@ -52,7 +52,7 @@ export const ProviderPanel = ({ providers, onChanged }: ProviderPanelProps) => {
   };
 
   return (
-    <Stack gap="xs" aria-label="Grocery providers">
+    <Stack className="page-cluster" gap="xs" aria-label="Grocery providers">
       {providers.map((provider) => (
         <ProviderRow
           key={provider.id}
@@ -82,7 +82,7 @@ const ProviderRow = ({
 
   return (
     <Stack gap="xs">
-      <Group justify="space-between" wrap="wrap">
+      <Group justify="flex-start" align="flex-start" wrap="wrap">
         <Group gap="xs">
           <Text fw={600}>{provider.displayName}</Text>
           {!provider.credentialsConfigured && <Badge color="gray">unconfigured</Badge>}

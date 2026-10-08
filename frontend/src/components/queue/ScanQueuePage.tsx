@@ -320,7 +320,7 @@ export const ScanQueuePage = ({ userId = DEFAULT_USER_ID }: ScanQueuePageProps) 
           </Tabs.List>
         </Tabs>
         {viewEntries.length > 0 && (
-          <Group className="scan-batch-row" justify="space-between" align="center" wrap="nowrap" gap="xs">
+          <Group className="scan-batch-row" justify="flex-start" align="center" wrap="wrap" gap="xs">
             <Checkbox
               size="xs"
               label="Select all"

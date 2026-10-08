@@ -51,16 +51,18 @@ function App() {
             </div>
           </AppShell.Header>
           <AppShell.Main>
-            <Routes>
-              <Route path="/" element={<ScanQueuePage />} />
-              <Route path="/inventory" element={<InventoryPage />} />
-              <Route path="/shopping" element={<ShoppingListPage />} />
-              <Route path="/diagnostics" element={<DiagnosticsPage />} />
-              <Route path="/settings" element={<SettingsPage />} />
-              <Route path="/groups" element={<GroupsPage />} />
-              <Route path="/groups/suggestions" element={<InboxPage />} />
-              <Route path="/groups/:id" element={<GroupDetailPage />} />
-            </Routes>
+            <div className="page-frame">
+              <Routes>
+                <Route path="/" element={<ScanQueuePage />} />
+                <Route path="/inventory" element={<InventoryPage />} />
+                <Route path="/shopping" element={<ShoppingListPage />} />
+                <Route path="/diagnostics" element={<DiagnosticsPage />} />
+                <Route path="/settings" element={<SettingsPage />} />
+                <Route path="/groups" element={<GroupsPage />} />
+                <Route path="/groups/suggestions" element={<InboxPage />} />
+                <Route path="/groups/:id" element={<GroupDetailPage />} />
+              </Routes>
+            </div>
           </AppShell.Main>
         </AppShell>
       </CredentialsRevisionContext.Provider>

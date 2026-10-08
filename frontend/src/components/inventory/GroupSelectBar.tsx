@@ -40,7 +40,7 @@ export const GroupSelectBar = ({ productIds, groups, onDone }: GroupSelectBarPro
   };
 
   return (
-    <Stack className="group-select-bar" gap="xs" p="sm">
+    <Stack className="group-select-bar page-cluster" gap="xs" p="sm">
       <Text size="sm">{productIds.length} selected</Text>
       {conflict && (
         <Stack gap={4}>

@@ -192,7 +192,7 @@ export const ShoppingListPage = () => {
   };
 
   return (
-    <Stack gap="sm">
+    <Stack gap="sm" className="page-wide">
       <div className="shopping-toolbar">
         <Title order={1} size="h3" className="shopping-toolbar-title">Shopping plan</Title>
         <div className="shopping-toolbar-actions">
@@ -214,7 +214,7 @@ export const ShoppingListPage = () => {
       </div>
       <ProviderPanel providers={providers} onChanged={() => void loadShoppingList()} />
       {!loading && showDecisions && (
-        <Alert variant="light" color="teal" title="Note a sale">
+        <Alert className="page-cluster" variant="light" color="teal" title="Note a sale">
           <Group align="end" gap="xs" wrap="wrap">
             <NativeSelect
               size="xs"
@@ -247,7 +247,7 @@ export const ShoppingListPage = () => {
           </Group>
         </Alert>
       )}
-      {showDecisions && <Stack component="form" gap="xs" onSubmit={(event) => {
+      {showDecisions && <Stack className="page-cluster" component="form" gap="xs" onSubmit={(event) => {
         event.preventDefault();
         void addManualItem();
       }}>

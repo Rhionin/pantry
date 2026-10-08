@@ -67,7 +67,7 @@ export const ItemRow = memo(({
             <Title order={3} size="h5">{item.product.name}</Title>
             {category !== null && <Text size="sm" c="dimmed">{category}</Text>}
             <ProvenanceBadge quiet externalSource={item.product.externalSource} />
-            <Group justify="space-between" align="center" gap="xs" wrap="wrap">
+            <Group justify="flex-start" align="center" gap="xs" wrap="wrap">
               <Group gap={6} wrap="wrap">
                 <Text size="sm">{instanceCount} {item.product.unitOfMeasure}</Text>
                 {nearExpiryCount > 0 && (

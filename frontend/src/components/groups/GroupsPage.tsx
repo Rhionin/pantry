@@ -63,58 +63,64 @@ export const GroupsPage = () => {
   const banner = suggestionBanner(suggestions);
 
   return (
-    <Stack gap="sm">
-      <Title order={1} size="h3">Product groups</Title>
-      {loading && <Loader aria-label="Loading groups" />}
-      {error !== '' && <Alert color="red" py="xs">{error}</Alert>}
-      {banner !== '' && (
-        <Alert variant="light" color="blue" title="Suggestions">
-          <Anchor component={Link} to="/groups/suggestions">{banner}</Anchor>
-        </Alert>
-      )}
-      <TextInput
-        label="Search groups"
-        value={search}
-        onChange={(event) => setSearch(event.currentTarget.value)}
-      />
-      <Group gap="xs">
-        {chips.map((item) => (
-          <Button
-            key={item.id}
-            size="xs"
-            variant={chip === item.id ? 'filled' : 'light'}
-            aria-pressed={chip === item.id}
-            onClick={() => setChip(item.id)}
-          >
-            {item.label}
-          </Button>
-        ))}
-      </Group>
-      <Group align="end" gap="xs">
+    <Stack gap="sm" className="page-wide">
+      <Stack gap="sm" className="page-cluster">
+        <Title order={1} size="h3">Product groups</Title>
+        {loading && <Loader aria-label="Loading groups" />}
+        {error !== '' && <Alert color="red" py="xs">{error}</Alert>}
+        {banner !== '' && (
+          <Alert variant="light" color="blue" title="Suggestions">
+            <Anchor component={Link} to="/groups/suggestions">{banner}</Anchor>
+          </Alert>
+        )}
         <TextInput
-          label="New group"
-          value={name}
-          onChange={(event) => setName(event.currentTarget.value)}
-          style={{ flex: 1 }}
+          label="Search groups"
+          value={search}
+          onChange={(event) => setSearch(event.currentTarget.value)}
         />
-        <Button size="xs" loading={saving} disabled={name.trim() === ''} onClick={() => void create()}>
-          + New
-        </Button>
-      </Group>
-      {!loading && shown.length === 0 && <Text c="dimmed">No groups yet.</Text>}
-      {shown.map((group) => (
-        <Paper key={group.id} component={Link} to={`/groups/${group.id}`} withBorder p="sm" className="group-row">
-          <Group justify="space-between" align="flex-start" wrap="wrap">
-            <Stack gap={2}>
-              <Text fw={600}>{group.name}</Text>
-              <Text size="sm">{onHandCount(group.members)} on hand · {targetLabel(group)}</Text>
-            </Stack>
-            {group.ruleConfirmed
-              ? <Badge variant="light">{ruleLabel(group.rule)}</Badge>
-              : <Badge color="yellow">Pick a rule</Badge>}
-          </Group>
-        </Paper>
-      ))}
+        <Group gap="xs">
+          {chips.map((item) => (
+            <Button
+              key={item.id}
+              size="xs"
+              variant={chip === item.id ? 'filled' : 'light'}
+              aria-pressed={chip === item.id}
+              onClick={() => setChip(item.id)}
+            >
+              {item.label}
+            </Button>
+          ))}
+        </Group>
+        <Group align="end" gap="xs">
+          <TextInput
+            label="New group"
+            value={name}
+            onChange={(event) => setName(event.currentTarget.value)}
+            style={{ flex: 1 }}
+          />
+          <Button size="xs" loading={saving} disabled={name.trim() === ''} onClick={() => void create()}>
+            + New
+          </Button>
+        </Group>
+        {!loading && shown.length === 0 && <Text c="dimmed">No groups yet.</Text>}
+      </Stack>
+      {shown.length > 0 && (
+        <div className="card-grid">
+          {shown.map((group) => (
+            <Paper key={group.id} component={Link} to={`/groups/${group.id}`} withBorder p="sm" className="group-row">
+              <Group justify="flex-start" align="flex-start" wrap="wrap" gap="sm">
+                <Stack gap={2}>
+                  <Text fw={600}>{group.name}</Text>
+                  <Text size="sm">{onHandCount(group.members)} on hand · {targetLabel(group)}</Text>
+                </Stack>
+                {group.ruleConfirmed
+                  ? <Badge variant="light">{ruleLabel(group.rule)}</Badge>
+                  : <Badge color="yellow">Pick a rule</Badge>}
+              </Group>
+            </Paper>
+          ))}
+        </div>
+      )}
     </Stack>
   );
 };
