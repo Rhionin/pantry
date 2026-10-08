@@ -172,7 +172,15 @@ export const mergeScanEvent = (entries: ScanEntry[], event: ScanEntry): ScanEntr
   }
   const index = entries.findIndex((entry) => entry.id === event.id);
   if (index === -1) return [...entries, event];
-  return entries.map((entry) => (entry.id === event.id ? event : entry));
+  return entries.map((entry) => {
+    if (entry.id !== event.id) return entry;
+    // Live scan events are the stored row. The list is what attaches a group
+    // hint, so a later event must not wipe a hint the list already showed.
+    if (event.groupHint === undefined && entry.groupHint !== undefined) {
+      return { ...event, groupHint: entry.groupHint };
+    }
+    return event;
+  });
 };
 
 // Drops any id from a selection that no longer names a displayed entry.

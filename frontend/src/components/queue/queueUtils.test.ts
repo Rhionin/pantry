@@ -257,6 +257,14 @@ describe('mergeScanEvent', () => {
     expect(mergeScanEvent(entries, event)).toEqual([entries[0], event]);
   });
 
+  it('keeps a group hint when a live scan event does not include one', () => {
+    const entries = [scanEntry({ id: 'a', groupHint: { groupId: 'beans', name: 'Cut green beans' } })];
+    const event = scanEntry({ id: 'a', unitCount: 2 });
+
+    expect(mergeScanEvent(entries, event)[0]?.groupHint).toEqual({ groupId: 'beans', name: 'Cut green beans' });
+    expect(mergeScanEvent(entries, event)[0]?.unitCount).toBe(2);
+  });
+
   it('replaces an existing entry in place with a flagged event', () => {
     const entries = [
       scanEntry({ id: 'a', barcode: '111' }),

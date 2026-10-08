@@ -214,6 +214,17 @@ func (h *GroupHandler) PutTarget(req Request[targetBody, groupIDParams]) (*group
 	return &view, nil
 }
 
+type fromScanBody struct {
+	ProductID string `json:"productId"`
+}
+
+func (h *GroupHandler) NoteFromScan(req Request[fromScanBody, struct{}]) (NoContent, error) {
+	if err := h.Groups.NoteFromScan(req.Context, req.Body.ProductID); err != nil {
+		return NoContent{}, groupErr(err)
+	}
+	return NoContent{}, nil
+}
+
 func (h *GroupHandler) ListSuggestions(req Request[struct{}, struct{}]) ([]group.Suggestion, error) {
 	rows, err := h.Groups.ListSuggestions(req.Context)
 	if err != nil {

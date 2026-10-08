@@ -474,6 +474,13 @@ export function setGroupTarget(id: string, target: GroupTarget): Promise<Product
   });
 }
 
+export function noteGroupFromScan(productId: string): Promise<void> {
+  return apiFetch('/api/group-suggestions/from-scan', {
+    method: 'POST',
+    body: JSON.stringify({ productId }),
+  });
+}
+
 export function listSuggestions(): Promise<GroupSuggestion[]> {
   return apiFetch('/api/group-suggestions');
 }
