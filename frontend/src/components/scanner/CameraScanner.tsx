@@ -278,13 +278,17 @@ export function CameraScanner({
   }
 
   const modeSwitch = mode !== undefined && onModeChange !== undefined ? (
-    <ScannerModeSwitch
-      mode={mode}
-      onChange={onModeChange}
-      label="Camera scan mode"
-      className="camera-mode-switch"
-      size="lg"
-    />
+    <div className="camera-mode-field">
+      <span className="scan-mode-switch-caption" aria-hidden="true">Scanning mode</span>
+      <ScannerModeSwitch
+        mode={mode}
+        onChange={onModeChange}
+        label="Scanning mode"
+        className="camera-mode-switch"
+        size="lg"
+        fullWidth
+      />
+    </div>
   ) : null;
 
   function submitManualBarcode(event: React.FormEvent) {

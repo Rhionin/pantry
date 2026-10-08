@@ -2079,6 +2079,8 @@ describe('ScanQueuePage', () => {
 
       render(<MantineProvider><ScanQueuePage /></MantineProvider>);
       await expectScannerMode('stock_in');
+      expect(screen.getByText('Scanning mode')).toBeInTheDocument();
+      expect(screen.getAllByRole('radiogroup', { name: 'Scanning mode' })).toHaveLength(1);
 
       fireEvent.click(screen.getByRole('radio', { name: 'STOCK OUT' }));
 
@@ -2117,13 +2119,21 @@ describe('ScanQueuePage', () => {
       expect(modes).toEqual(['stock_out']);
       expect(screen.getByLabelText('Camera preview')).toBeInTheDocument();
       expect(screen.queryByRole('button', { name: 'Scan with camera' })).not.toBeInTheDocument();
-      expect(within(screen.getByRole('radiogroup', { name: 'Scanner mode' })).getByRole('radio', { name: 'STOCK OUT' })).toBeChecked();
+      expect(screen.getAllByRole('radiogroup', { name: 'Scanning mode' })).toHaveLength(1);
+      expect(within(camera).getByRole('radio', { name: 'STOCK OUT' })).toBeChecked();
+      expect(screen.getByText('Mode: stock_out')).toBeInTheDocument();
 
       FakeEventSource.instances[0].dispatch('scanner_mode', 'stock_in');
 
       await expectScannerMode('stock_in');
       expect(within(camera).getByRole('radio', { name: 'STOCK IN' })).toBeChecked();
       expect(screen.getByLabelText('Camera preview')).toBeInTheDocument();
+
+      fireEvent.click(screen.getByRole('button', { name: 'Stop camera' }));
+
+      expect(screen.queryByLabelText('Camera preview')).not.toBeInTheDocument();
+      expect(screen.getAllByRole('radiogroup', { name: 'Scanning mode' })).toHaveLength(1);
+      await expectScannerMode('stock_in');
     });
 
     it('shows the server error when a mode switch cannot be saved', async () => {

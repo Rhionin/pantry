@@ -13,7 +13,8 @@ export interface ScannerModeSwitchProps {
   onChange: (mode: ScanDirection) => void;
   label: string;
   className?: string;
-  size?: 'sm' | 'md' | 'lg';
+  size?: 'xs' | 'sm' | 'md' | 'lg';
+  fullWidth?: boolean;
 }
 
 export function ScannerModeSwitch({
@@ -21,13 +22,14 @@ export function ScannerModeSwitch({
   onChange,
   label,
   className,
-  size = 'md',
+  size = 'sm',
+  fullWidth = false,
 }: ScannerModeSwitchProps) {
   return (
     <SegmentedControl
       className={className}
       aria-label={label}
-      fullWidth
+      fullWidth={fullWidth}
       size={size}
       radius="xl"
       color={mode === 'stock_in' ? 'blue' : 'orange'}

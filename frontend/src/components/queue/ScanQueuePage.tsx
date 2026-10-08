@@ -283,15 +283,21 @@ export const ScanQueuePage = ({ userId = DEFAULT_USER_ID }: ScanQueuePageProps) 
         <div className="scan-toolbar-primary">
           <Title order={1} className="scan-toolbar-title">Scan queue</Title>
           {/* "Mode: stock_…" stays in the DOM for the queue banner matcher.
-              The visible control is the STOCK IN / STOCK OUT switch. */}
+              The visible switch hides while the camera's own control is open. */}
           <div role="alert" className={`scan-mode-switch scan-mode-switch--${scannerMode}`}>
             <span className="scan-mode-chip-key" aria-hidden="true">Mode: {scannerMode}</span>
-            <ScannerModeSwitch
-              mode={scannerMode}
-              onChange={(mode) => { void applyScannerMode(mode); }}
-              label="Scanner mode"
-              className="scan-mode-switch-control"
-            />
+            {!cameraOpen && (
+              <div className="scan-mode-switch-field">
+                <span className="scan-mode-switch-caption" aria-hidden="true">Scanning mode</span>
+                <ScannerModeSwitch
+                  mode={scannerMode}
+                  onChange={(mode) => { void applyScannerMode(mode); }}
+                  label="Scanning mode"
+                  className="scan-mode-switch-control"
+                  size="sm"
+                />
+              </div>
+            )}
           </div>
           <CameraScanner
             onScan={noteCameraCapture}
