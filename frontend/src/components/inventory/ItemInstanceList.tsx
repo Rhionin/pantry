@@ -154,7 +154,7 @@ export const ItemInstanceList = ({
         <Stack component="ol" gap="xs">
           {instances.map((instance) => (
             <Paper component="li" key={instance.id} withBorder p="xs">
-              <Group justify="space-between" align="center" wrap="nowrap">
+              <Group justify="flex-start" align="center" wrap="wrap">
                 <Group gap="xs">
                   <Text size="sm">Stocked in {formatDate(instance.stockInAt)}</Text>
                   <Text size="sm" c="dimmed">

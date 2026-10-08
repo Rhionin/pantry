@@ -325,6 +325,54 @@ code {
   margin: 6px 0;
 }
 
+/* A laptop column is wide enough to read a scan. An ultrawide should not
+   draw that same row across the whole monitor. */
+@media (min-width: 64em) and (max-width: 99.99em) {
+  .scan-page {
+    width: min(100%, 52rem);
+    margin-inline: auto;
+    align-self: center;
+  }
+
+  .app-shell:has(.scan-page) .app-header {
+    width: min(100%, 52rem);
+    margin-inline: auto;
+  }
+}
+
+@media (min-width: 64em) {
+  .scan-view-tabs {
+    max-width: 28rem;
+  }
+}
+
+@media (min-width: 100em) {
+  .scan-toolbar-primary > .camera-scanner-region {
+    margin-left: 0;
+  }
+
+  .scan-session-toggle {
+    justify-content: flex-start;
+  }
+
+  .scan-entry-list--flat {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 32rem), 1fr));
+    gap: 10px 12px;
+    align-items: start;
+  }
+
+  .scan-entry-list--flat > .scan-entry-row {
+    border: 1px solid var(--mantine-color-default-border);
+    border-radius: var(--mantine-radius-md);
+    padding: 8px 10px 10px;
+  }
+
+  .processing-scan-card {
+    max-width: 32rem;
+  }
+}
+
 .copyable-barcode {
   user-select: text;
   cursor: text;

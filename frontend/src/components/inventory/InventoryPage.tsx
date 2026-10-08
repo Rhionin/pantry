@@ -73,8 +73,8 @@ const InventorySection = ({
   onInventoryChanged,
 }: InventorySectionProps) => (
   <Stack component="section" aria-label={heading} gap="xs">
-    <Title order={2} size="h4">{heading}</Title>
-    <Stack gap="xs">
+    <Title order={2} size="h4" className="page-cluster">{heading}</Title>
+    <div className="card-grid">
       {clusterInventory(items).map((cluster) => {
         const group = cluster.items[0]?.group;
         if (group) {
@@ -110,7 +110,7 @@ const InventorySection = ({
           </ItemRow>
         );
       })}
-    </Stack>
+    </div>
   </Stack>
 );
 
@@ -227,10 +227,10 @@ export const InventoryPage = () => {
   );
 
   return (
-    <Stack gap="sm">
-      <Title order={1} size="h3">Inventory</Title>
+    <Stack gap="sm" className="page-wide">
+      <Title order={1} size="h3" className="page-cluster">Inventory</Title>
       {opening && <OpeningBanner onComplete={() => setOpening(false)} />}
-      <Group gap="xs" align="flex-end">
+      <Group className="page-cluster" gap="xs" align="flex-end">
         <TextInput
           size="xs"
           label="Search inventory"
