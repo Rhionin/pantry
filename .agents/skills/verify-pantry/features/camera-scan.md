@@ -27,7 +27,10 @@ typed barcode so the item can still be queued.
   label `Camera`) sits on the title row. Under the title, one compact
   `Scanning mode` control shows STOCK IN / STOCK OUT and writes the shared
   scanner mode. A one-line hardware status sits under that and mentions the
-  camera when the scanner is disconnected.
+  camera when the scanner is disconnected. From a laptop width up, that
+  switch sits on the title row between the heading and Camera, inside the
+  centered column. The open camera, its Scanning mode control, and Stop
+  stay in one cluster at most 480px wide.
 - Choose `Scan with camera`. Allow the camera prompt on a secure (HTTPS or
   localhost) page. The preview stays short so the queue remains on screen. If
   the picture has not started, tap `Tap to start scanning`. Otherwise the frame

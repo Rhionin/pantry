@@ -217,6 +217,19 @@ code {
   margin-left: 0;
 }
 
+/* Once the preview is capped, keep the Scanning mode bar and Stop button in
+   that same cluster. A full-width flex item would stretch the switch across
+   the centered column. */
+@media (min-width: 48em) {
+  .scan-toolbar-primary:has(.camera-preview),
+  .scan-toolbar-primary:has(.camera-scanner-fallback) {
+    display: grid;
+    grid-template-columns: minmax(0, 480px);
+    justify-content: start;
+    align-items: start;
+  }
+}
+
 .scan-status {
   margin: 0;
   line-height: 1.3;
@@ -368,6 +381,19 @@ code {
 @media (min-width: 64em) {
   .scan-view-tabs {
     max-width: 28rem;
+  }
+
+  /* Phone wraps the switch under the title and parks Camera on the title
+     row. In the centered column, keep the switch with the title and Camera
+     at the end of that row. At 100em the Camera margin resets to 0, so the
+     three pack on the left ahead of the card grid. */
+  .scan-toolbar-primary > .scan-mode-switch {
+    order: 1;
+    align-self: center;
+  }
+
+  .scan-toolbar-primary > .camera-scanner-region {
+    order: 2;
   }
 }
 
