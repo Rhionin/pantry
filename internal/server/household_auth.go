@@ -96,6 +96,14 @@ func failClosed() *HouseholdAuth {
 	return &HouseholdAuth{FailClosed: true, limiter: newAttemptLimiter()}
 }
 
+// FailClosedHouseholdAuth refuses the public hostname. main uses it when
+// PANTRY_AUTH_FILE is unset or empty, so a request marked public is never
+// served without a password check. The LAN listener does not send that
+// header and stays open.
+func FailClosedHouseholdAuth() *HouseholdAuth {
+	return failClosed()
+}
+
 func (a *HouseholdAuth) nowTime() time.Time {
 	if a != nil && a.now != nil {
 		return a.now()
@@ -112,38 +120,50 @@ func (a *HouseholdAuth) enforced(r *http.Request) bool {
 
 // Middleware lets the LAN through unchanged. On the public hostname it
 // accepts a session cookie or a Basic credential, leaves the telemetry,
-// brand, legal, and Kroger callback paths open, and answers other API
-// calls with JSON. Document loads continue to the web UI, which shows
-// the login page.
+// brand, legal, and deploy-hook paths open, and answers other API calls
+// with JSON. Document loads continue to the web UI, which shows the login
+// page. A public request is refused when the password file is not configured.
 func (a *HouseholdAuth) Middleware(next http.Handler) http.Handler {
 	if a == nil {
 		return next
 	}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if !a.enforced(r) || isPublicPath(r) || isAuthEndpoint(r) {
+		if !a.enforced(r) || isPublicPath(r) {
 			next.ServeHTTP(w, r)
 			return
 		}
-		if a.Configured {
-			if user, pass, ok := basicCredentials(r); ok {
-				keys := []string{clientKey(r), userKey(user)}
-				if blocked, retry := a.limiter.blocked(a.nowTime(), keys...); blocked {
-					writeLimited(w, retry)
-					return
-				}
-				if a.passwordMatches(user, pass) {
-					a.limiter.reset(keys...)
-					next.ServeHTTP(w, r)
-					return
-				}
-				a.limiter.fail(a.nowTime(), keys...)
-				writeAuthError(w, http.StatusUnauthorized, "Sign in required.")
-				return
-			}
-			if _, ok := a.sessionUser(r); ok {
+		if !a.Configured {
+			if isDocument(r) {
 				next.ServeHTTP(w, r)
 				return
 			}
+			writeAuthError(w, http.StatusUnauthorized, "Sign in required.")
+			return
+		}
+		if isAuthEndpoint(r) {
+			next.ServeHTTP(w, r)
+			return
+		}
+		if user, pass, ok := basicCredentials(r); ok {
+			key := clientKey(r)
+			if blocked, retry := a.limiter.blocked(a.nowTime(), key); blocked {
+				writeLimited(w, retry)
+				return
+			}
+			if a.passwordMatches(user, pass) {
+				a.limiter.reset(key)
+				next.ServeHTTP(w, r)
+				return
+			}
+			a.limiter.fail(a.nowTime(), key)
+			writeAuthError(w, http.StatusUnauthorized, "Sign in required.")
+			return
+		}
+		// A session cookie is not a sign-in attempt. An address that is
+		// paused can still use a browser that already signed in.
+		if _, ok := a.sessionUser(r); ok {
+			next.ServeHTTP(w, r)
+			return
 		}
 		if isDocument(r) {
 			next.ServeHTTP(w, r)
@@ -164,17 +184,17 @@ func (a *HouseholdAuth) ServeSession(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if user, pass, ok := basicCredentials(r); ok {
-		keys := []string{clientKey(r), userKey(user)}
-		if blocked, retry := a.limiter.blocked(a.nowTime(), keys...); blocked {
+		key := clientKey(r)
+		if blocked, retry := a.limiter.blocked(a.nowTime(), key); blocked {
 			writeLimited(w, retry)
 			return
 		}
 		if a.passwordMatches(user, pass) {
-			a.limiter.reset(keys...)
+			a.limiter.reset(key)
 			writeJSON(w, http.StatusOK, map[string]any{"required": true, "username": a.Username})
 			return
 		}
-		a.limiter.fail(a.nowTime(), keys...)
+		a.limiter.fail(a.nowTime(), key)
 		writeAuthError(w, http.StatusUnauthorized, "Sign in required.")
 		return
 	}
@@ -204,17 +224,17 @@ func (a *HouseholdAuth) ServeLogin(w http.ResponseWriter, r *http.Request) {
 		writeAuthError(w, http.StatusBadRequest, "Enter your username and password.")
 		return
 	}
-	keys := []string{clientKey(r), userKey(body.Username)}
-	if blocked, retry := a.limiter.blocked(a.nowTime(), keys...); blocked {
+	key := clientKey(r)
+	if blocked, retry := a.limiter.blocked(a.nowTime(), key); blocked {
 		writeLimited(w, retry)
 		return
 	}
 	if !a.passwordMatches(body.Username, body.Password) {
-		a.limiter.fail(a.nowTime(), keys...)
+		a.limiter.fail(a.nowTime(), key)
 		writeAuthError(w, http.StatusUnauthorized, "The username or password is incorrect.")
 		return
 	}
-	a.limiter.reset(keys...)
+	a.limiter.reset(key)
 	exp := a.nowTime().Add(sessionLifetime)
 	http.SetCookie(w, &http.Cookie{
 		Name:     sessionCookie,
@@ -223,7 +243,7 @@ func (a *HouseholdAuth) ServeLogin(w http.ResponseWriter, r *http.Request) {
 		Expires:  exp,
 		MaxAge:   int(sessionLifetime.Seconds()),
 		HttpOnly: true,
-		Secure:   requestHTTPS(r),
+		Secure:   cookieSecure(r),
 		SameSite: http.SameSiteLaxMode,
 	})
 	writeJSON(w, http.StatusOK, map[string]string{"username": a.Username})
@@ -239,7 +259,7 @@ func (a *HouseholdAuth) ServeLogout(w http.ResponseWriter, r *http.Request) {
 		Expires:  time.Unix(0, 0),
 		MaxAge:   -1,
 		HttpOnly: true,
-		Secure:   requestHTTPS(r),
+		Secure:   cookieSecure(r),
 		SameSite: http.SameSiteLaxMode,
 	})
 	writeJSON(w, http.StatusOK, map[string]any{})
@@ -299,6 +319,16 @@ func (a *HouseholdAuth) sessionUser(r *http.Request) (string, bool) {
 	return user, true
 }
 
+// cookieSecure is true on the public hostname even when Caddy's connection
+// to Pantry is plain HTTP. Tunnel mode terminates TLS at Cloudflare, so
+// X-Forwarded-Proto can say http while the browser is on https.
+func cookieSecure(r *http.Request) bool {
+	if r.Header.Get(entryHeader) == entryPublic {
+		return true
+	}
+	return requestHTTPS(r)
+}
+
 func requestHTTPS(r *http.Request) bool {
 	if r.TLS != nil {
 		return true
@@ -344,36 +374,16 @@ func isDocument(r *http.Request) bool {
 	return true
 }
 
-// isPublicPath matches the paths Caddy serves without a password, plus the
-// Kroger authorization-code callback. The callback is a browser navigation
-// from Kroger and has no session cookie to send.
+// isPublicPath matches the paths Caddy serves without a password. The Kroger
+// callback is not one of them: a SameSite=Lax cookie is sent on the top-level
+// GET that brings the browser back from Kroger.
 func isPublicPath(r *http.Request) bool {
 	switch r.URL.Path {
 	case "/api/telemetry", "/api/telemetry/client", "/api/deploy-hook", "/brand/logo.png", "/terms", "/privacy":
 		return true
 	default:
-		return (r.Method == http.MethodGet || r.Method == http.MethodHead) && isProviderCallback(r.URL.Path)
-	}
-}
-
-func isProviderCallback(path string) bool {
-	const prefix = "/api/providers/"
-	const suffix = "/callback"
-	if !strings.HasPrefix(path, prefix) || !strings.HasSuffix(path, suffix) {
 		return false
 	}
-	id := strings.TrimSuffix(strings.TrimPrefix(path, prefix), suffix)
-	if id == "" || strings.Contains(id, "/") {
-		return false
-	}
-	for _, c := range id {
-		switch {
-		case c >= 'a' && c <= 'z', c >= 'A' && c <= 'Z', c >= '0' && c <= '9', c == '_', c == '-':
-		default:
-			return false
-		}
-	}
-	return true
 }
 
 func parseCaddyBasicAuth(data []byte) (string, string, error) {
@@ -461,10 +471,6 @@ func clientKey(r *http.Request) string {
 		ip = host
 	}
 	return "ip:" + ip
-}
-
-func userKey(user string) string {
-	return "user:" + user
 }
 
 type attemptLimiter struct {

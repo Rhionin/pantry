@@ -9,9 +9,13 @@
 # deploy/Caddyfile. Keep the two site blocks identical.
 {
 	admin off
+	# cloudflared is the only TCP client, so the socket address is always
+	# 10.77.77.2. {client_ip} in the routes below is the visitor from
+	# Cf-Connecting-Ip, not that container. The certificate Caddyfile has no
+	# trusted proxy, so {client_ip} there stays the real remote address.
 	servers {
 		trusted_proxies static 10.77.77.2/32
-		client_ip_headers CF-Connecting-IP
+		client_ip_headers Cf-Connecting-Ip
 	}
 }
 

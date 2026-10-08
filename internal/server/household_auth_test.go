@@ -72,8 +72,6 @@ func TestHouseholdAuthPublicPathsAndLAN(t *testing.T) {
 		{http.MethodGet, "/terms"},
 		{http.MethodGet, "/privacy"},
 		{http.MethodPost, "/api/deploy-hook"},
-		{http.MethodGet, "/api/providers/kroger/callback?code=abc&state=def"},
-		{http.MethodHead, "/api/providers/kroger/callback"},
 	}
 	for _, tc := range public {
 		req := httptest.NewRequest(tc.method, tc.path, nil)
@@ -87,6 +85,7 @@ func TestHouseholdAuthPublicPathsAndLAN(t *testing.T) {
 
 	closed := []string{
 		"/api/providers/kroger/authorize",
+		"/api/providers/kroger/callback",
 		"/api/providers/kroger/callback/extra",
 		"/api/providers//callback",
 		"/api/telemetry/other",
@@ -212,6 +211,7 @@ func TestHouseholdAuthCookieAndBasic(t *testing.T) {
 
 	plain := httptest.NewRequest(http.MethodPost, "/api/login", strings.NewReader(`{"username":"pantry","password":"correct-horse-battery"}`))
 	plain.Header.Set(entryHeader, entryPublic)
+	plain.Header.Set("X-Forwarded-Proto", "http")
 	plain.Header.Set(clientIPHeader, "203.0.113.9")
 	plain.RemoteAddr = "10.0.0.9:1234"
 	plainRec := httptest.NewRecorder()
@@ -219,8 +219,9 @@ func TestHouseholdAuthCookieAndBasic(t *testing.T) {
 	if plainRec.Code != http.StatusOK {
 		t.Fatalf("http login = %d %s", plainRec.Code, plainRec.Body.String())
 	}
-	if strings.Contains(plainRec.Header().Get("Set-Cookie"), "Secure") {
-		t.Fatalf("cookie on plain HTTP is Secure: %s", plainRec.Header().Get("Set-Cookie"))
+	plainCookies := plainRec.Result().Cookies()
+	if len(plainCookies) != 1 || !plainCookies[0].Secure {
+		t.Fatalf("public-site cookie must be Secure even when the proxy connection is http: %s", plainRec.Header().Get("Set-Cookie"))
 	}
 
 	basic := httptest.NewRequest(http.MethodGet, "/api/scans", nil)
@@ -305,6 +306,31 @@ func TestHouseholdAuthRateLimit(t *testing.T) {
 	handler.ServeHTTP(openRec, open)
 	if openRec.Code != http.StatusOK {
 		t.Fatalf("public path during lockout = %d", openRec.Code)
+	}
+
+	// Another address is not paused, and knowing the username does not lock the household.
+	other := httptest.NewRequest(http.MethodPost, "/api/login", strings.NewReader(`{"username":"pantry","password":"correct-horse-battery"}`))
+	other.Header.Set(entryHeader, entryPublic)
+	other.Header.Set(clientIPHeader, "203.0.113.40")
+	other.RemoteAddr = "10.0.0.40:1234"
+	otherRec := httptest.NewRecorder()
+	handler.ServeHTTP(otherRec, other)
+	if otherRec.Code != http.StatusOK {
+		t.Fatalf("login from another address = %d %s", otherRec.Code, otherRec.Body.String())
+	}
+	otherCookies := otherRec.Result().Cookies()
+	if len(otherCookies) != 1 {
+		t.Fatalf("other address cookies = %d", len(otherCookies))
+	}
+
+	// The paused address can still use a session it already has.
+	kept := httptest.NewRequest(http.MethodGet, "/api/scans", nil)
+	withPublicEntry(kept)
+	kept.AddCookie(otherCookies[0])
+	keptRec := httptest.NewRecorder()
+	handler.ServeHTTP(keptRec, kept)
+	if keptRec.Code != http.StatusOK {
+		t.Fatalf("session cookie while the address is paused = %d", keptRec.Code)
 	}
 
 	now = now.Add(authFailureWindow + time.Minute)
@@ -498,14 +524,14 @@ func TestHouseholdAuthCredentialEdges(t *testing.T) {
 	unavailable.Header.Set(entryHeader, entryPublic)
 	unavailableRec := httptest.NewRecorder()
 	closedHandler.ServeHTTP(unavailableRec, unavailable)
-	if unavailableRec.Code != http.StatusServiceUnavailable {
+	if unavailableRec.Code != http.StatusUnauthorized {
 		t.Fatalf("session without a hash = %d %s", unavailableRec.Code, unavailableRec.Body.String())
 	}
 	closedLogin := httptest.NewRequest(http.MethodPost, "/api/login", strings.NewReader(`{"username":"pantry","password":"x"}`))
 	closedLogin.Header.Set(entryHeader, entryPublic)
 	closedLoginRec := httptest.NewRecorder()
 	closedHandler.ServeHTTP(closedLoginRec, closedLogin)
-	if closedLoginRec.Code != http.StatusServiceUnavailable {
+	if closedLoginRec.Code != http.StatusUnauthorized {
 		t.Fatalf("login without a hash = %d", closedLoginRec.Code)
 	}
 

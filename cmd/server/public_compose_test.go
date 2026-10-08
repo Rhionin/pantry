@@ -281,7 +281,7 @@ func TestPublicProxyIsOptIn(t *testing.T) {
 		"http://{$PUBLIC_HOST}",
 		"admin off",
 		"trusted_proxies static 10.77.77.2/32",
-		"client_ip_headers CF-Connecting-IP",
+		"client_ip_headers Cf-Connecting-Ip",
 		"X-Pantry-Entry public",
 		"(security_headers)",
 	} {
