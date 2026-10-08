@@ -39,7 +39,7 @@ function App() {
         >
           <AppShell.Header>
             <div className="app-header">
-              <Title order={3} size="h4" className="app-header-brand">Pantry</Title>
+              <Title order={3} size="h4" className="app-header-brand"><img className="app-header-mark" src="/favicon.svg" alt="" width={28} height={28} />{"Pantry"}</Title>
               <Group component="nav" aria-label="Sections" gap={0} wrap="nowrap" className="app-nav">
                 <NavLink to="/" end className="app-nav-link">Scan Queue</NavLink>
                 <NavLink to="/inventory" className="app-nav-link">Inventory</NavLink>

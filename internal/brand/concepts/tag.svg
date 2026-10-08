@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <title>Tag</title>
+  <desc>A claim check with a paper eyelet. It says something is accounted for, whether that is a jar, a tool, or a box in the garage.</desc>
+  <path fill="#E15A2D" d="M256 32 420 168v172a96 96 0 0 1-96 96H188a96 96 0 0 1-96-96V168Z"/>
+  <circle cx="256" cy="268" r="60" fill="#F6F1E6"/>
+</svg>
