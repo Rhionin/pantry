@@ -1382,3 +1382,112 @@ describe('ScanEntryCard provenance badge', () => {
     expect(badge).not.toBeInTheDocument();
   });
 });
+
+describe('ScanEntryCard group hint', () => {
+  const hinted: ScanEntry = {
+    ...entry,
+    direction: 'stock_in',
+    groupHint: { groupId: 'beans', name: 'Cut green beans' },
+  };
+
+  it('hides the group buttons when the scan has no hint', () => {
+    vi.stubGlobal('fetch', vi.fn());
+    render(
+      <MantineProvider>
+        <ScanEntryCard
+          entry={entry}
+          itemId="item-1"
+          selected={false}
+          onSelectedChange={vi.fn()}
+          onChanged={vi.fn()}
+        />
+      </MantineProvider>,
+    );
+
+    expect(screen.queryByRole('button', { name: 'Add to group' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Not now' })).not.toBeInTheDocument();
+    expect(screen.queryByText(/Looks like/)).not.toBeInTheDocument();
+  });
+
+  it('adds the product to the group from the hint button', async () => {
+    const fetchMock = vi.fn((input: RequestInfo | URL, request?: RequestInit) => {
+      const url = String(input);
+      if (url === '/api/groups/beans/members') {
+        expect(request?.method).toBe('POST');
+        expect(JSON.parse(request?.body as string)).toEqual({ productIds: ['product-1'] });
+        return Promise.resolve(jsonResponse({ id: 'beans', name: 'Cut green beans', members: [{ productId: 'product-1' }] }));
+      }
+      throw new Error(`Unexpected ${request?.method ?? 'GET'} request: ${url}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const onChanged = vi.fn();
+    render(
+      <MantineProvider>
+        <ScanEntryCard
+          entry={hinted}
+          selected={false}
+          onSelectedChange={vi.fn()}
+          onChanged={onChanged}
+        />
+      </MantineProvider>,
+    );
+
+    expect(screen.getByRole('checkbox', { name: 'Select scan for batch approval' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Add to group' }));
+    await waitFor(() => expect(onChanged).toHaveBeenCalled());
+    expect(fetchMock).toHaveBeenCalledWith('/api/groups/beans/members', expect.any(Object));
+  });
+
+  it('records one from-scan suggestion when Not now is tapped', async () => {
+    const fetchMock = vi.fn((input: RequestInfo | URL, request?: RequestInit) => {
+      const url = String(input);
+      if (url === '/api/group-suggestions/from-scan') {
+        expect(request?.method).toBe('POST');
+        expect(JSON.parse(request?.body as string)).toEqual({ productId: 'product-1' });
+        return Promise.resolve(new Response(null, { status: 204 }));
+      }
+      throw new Error(`Unexpected ${request?.method ?? 'GET'} request: ${url}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const onChanged = vi.fn();
+    render(
+      <MantineProvider>
+        <ScanEntryCard
+          entry={hinted}
+          selected={false}
+          onSelectedChange={vi.fn()}
+          onChanged={onChanged}
+        />
+      </MantineProvider>,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Not now' }));
+    await waitFor(() => expect(onChanged).toHaveBeenCalled());
+    const posts = fetchMock.mock.calls.filter(([url]) => String(url) === '/api/group-suggestions/from-scan');
+    expect(posts).toHaveLength(1);
+  });
+
+  it('opens What is it as a sheet instead of the resolver on the row', async () => {
+    const fetchMock = vi.fn((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === '/api/products') return Promise.resolve(jsonResponse([]));
+      throw new Error(`Unexpected request: ${url}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    render(
+      <MantineProvider>
+        <ScanEntryCard
+          entry={{ ...entry, status: 'flagged', direction: null, product: null, productId: null }}
+          selected={false}
+          onSelectedChange={vi.fn()}
+          onChanged={vi.fn()}
+        />
+      </MantineProvider>,
+    );
+
+    expect(screen.getByRole('button', { name: 'What is it?' })).toBeInTheDocument();
+    expect(screen.queryByLabelText('Search products')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'What is it?' }));
+    expect(await screen.findByLabelText('Search products')).toBeInTheDocument();
+  });
+});

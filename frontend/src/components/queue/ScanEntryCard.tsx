@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
-import { Alert, Avatar, Badge, Button, Card, Checkbox, Group, NumberInput, Stack, Text, TextInput, Title } from '@mantine/core';
-import { commitScanEntry, updateScanEntry } from '../../api/client';
+import { Alert, Avatar, Badge, Button, Card, Checkbox, Drawer, Group, NumberInput, Stack, Text, TextInput, Title } from '@mantine/core';
+import { addGroupMembers, commitScanEntry, noteGroupFromScan, updateProduct, updateScanEntry } from '../../api/client';
 import type { ScanEntry } from '../../types';
 import { FlaggedEntryResolver } from './FlaggedEntryResolver';
 import { StockOutInstanceSelector } from './StockOutInstanceSelector';
@@ -13,6 +13,8 @@ const CLEARED_EXPIRY_ISO = '0001-01-01T00:00:00.000Z';
 // A burst of plus or minus taps updates the number immediately and saves the
 // latest count once the taps pause.
 const UNIT_COUNT_SAVE_DELAY_MS = 200;
+
+const multipackName = /\d+\s*x\s*\d/i;
 
 const expiryDatePart = (expiresAt: string | null): string =>
   expiresAt === null ? '' : expiresAt.substring(0, 10);
@@ -52,6 +54,12 @@ export const ScanEntryCard = ({
   const expiryInputRef = useRef<HTMLInputElement>(null);
   const [instancePickerOpen, setInstancePickerOpen] = useState(false);
   const [showChangeIndicator, setShowChangeIndicator] = useState(true);
+  const [hintBusy, setHintBusy] = useState(false);
+  const [hintError, setHintError] = useState('');
+  const [whatOpen, setWhatOpen] = useState(false);
+  const [packDraft, setPackDraft] = useState('');
+  const [packError, setPackError] = useState('');
+  const [packBusy, setPackBusy] = useState(false);
 
   const prefersReducedMotion = () =>
     typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -108,6 +116,15 @@ export const ScanEntryCard = ({
     justCaptured ? 'scan-entry-card--just-captured' : undefined,
   ].filter(Boolean).join(' ');
   const productName = entry.product?.name ?? 'Unknown product';
+  const hint = entry.groupHint;
+  const rememberedPack = entry.product?.packCount;
+  const askPackCount = isStockIn
+    && entry.status === 'pending'
+    && entry.productId !== null
+    && entry.product !== undefined
+    && entry.product !== null
+    && rememberedPack == null
+    && multipackName.test(entry.product.name);
   const scannedAtLabel = new Date(entry.scannedAt).toLocaleString(undefined, {
     month: 'short',
     day: 'numeric',
@@ -256,6 +273,58 @@ export const ScanEntryCard = ({
     }
   };
 
+  const addToGroup = async () => {
+    if (hint?.groupId === undefined || entry.productId === null) return;
+    setHintBusy(true);
+    setHintError('');
+    try {
+      await addGroupMembers(hint.groupId, [entry.productId]);
+      onChanged();
+    } catch (requestError) {
+      setHintError(requestError instanceof Error ? requestError.message : 'Unable to add this to the group.');
+    } finally {
+      setHintBusy(false);
+    }
+  };
+
+  const notNow = async () => {
+    if (entry.productId === null) return;
+    setHintBusy(true);
+    setHintError('');
+    try {
+      await noteGroupFromScan(entry.productId);
+      onChanged();
+    } catch (requestError) {
+      setHintError(requestError instanceof Error ? requestError.message : 'Unable to save that for later.');
+    } finally {
+      setHintBusy(false);
+    }
+  };
+
+  const rememberPack = async () => {
+    if (entry.productId === null || entry.product === undefined || entry.product === null) return;
+    const count = Number(packDraft);
+    if (!Number.isInteger(count) || count < 1) {
+      setPackError('Enter how many units are in the pack.');
+      return;
+    }
+    setPackBusy(true);
+    setPackError('');
+    try {
+      await updateProduct(entry.productId, {
+        name: entry.product.name,
+        category: entry.product.category,
+        unitOfMeasure: entry.product.unitOfMeasure,
+        packCount: count,
+      });
+      onChanged();
+    } catch (requestError) {
+      setPackError(requestError instanceof Error ? requestError.message : 'Unable to remember the pack.');
+    } finally {
+      setPackBusy(false);
+    }
+  };
+
   const queueItem = (
     <>
       <div className="scan-entry-layout">
@@ -286,6 +355,40 @@ export const ScanEntryCard = ({
             <Text size="xs" c="dimmed" component="span">Scanned: {scannedAtLabel}</Text>
             <ProvenanceBadge externalSource={entry.product?.externalSource} />
           </div>
+          {hint !== undefined && (
+            <div className="scan-entry-hint">
+              <Text size="xs">Looks like {hint.name}</Text>
+              <Group gap={4} wrap="wrap">
+                {hint.groupId !== undefined && entry.productId !== null && (
+                  <Button size="compact-xs" loading={hintBusy} onClick={() => void addToGroup()}>
+                    Add to group
+                  </Button>
+                )}
+                {entry.productId !== null && (
+                  <Button size="compact-xs" variant="default" loading={hintBusy} onClick={() => void notNow()}>
+                    Not now
+                  </Button>
+                )}
+              </Group>
+            </div>
+          )}
+          {rememberedPack !== undefined && rememberedPack > 1 && (
+            <Text size="xs" c="dimmed">Each barcode adds {rememberedPack} units</Text>
+          )}
+          {askPackCount && (
+            <Group className="scan-entry-hint" gap={4} wrap="wrap" align="flex-end">
+              <TextInput
+                size="xs"
+                label="How many units are in this pack?"
+                value={packDraft}
+                onChange={(event) => setPackDraft(event.currentTarget.value)}
+                inputMode="numeric"
+              />
+              <Button size="compact-xs" loading={packBusy} onClick={() => void rememberPack()}>
+                Remember
+              </Button>
+            </Group>
+          )}
         </div>
       </div>
 
@@ -432,13 +535,10 @@ export const ScanEntryCard = ({
       )}
 
       {entry.status === 'flagged' && (
-        <div className="scan-entry-extra">
-          <FlaggedEntryResolver entry={entry} onResolved={onChanged} />
-        </div>
-      )}
-
-      {entry.status === 'flagged' && (
         <Group justify="flex-end" mt={4}>
+          <Button size="compact-xs" onClick={() => setWhatOpen(true)}>
+            What is it?
+          </Button>
           <Button
             size="compact-xs"
             variant="light"
@@ -451,8 +551,22 @@ export const ScanEntryCard = ({
         </Group>
       )}
 
+      <Drawer opened={whatOpen} onClose={() => setWhatOpen(false)} position="bottom" title="What is it?" size="auto">
+        {whatOpen && (
+          <FlaggedEntryResolver
+            entry={entry}
+            onResolved={() => {
+              setWhatOpen(false);
+              onChanged();
+            }}
+          />
+        )}
+      </Drawer>
+
       {approveError !== '' && <Alert color="red" py={4} mt={4}>{approveError}</Alert>}
       {removeError !== '' && <Alert color="red" py={4} mt={4}>{removeError}</Alert>}
+      {hintError !== '' && <Alert color="red" py={4} mt={4}>{hintError}</Alert>}
+      {packError !== '' && <Alert color="red" py={4} mt={4}>{packError}</Alert>}
     </>
   );
 

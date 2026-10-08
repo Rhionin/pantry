@@ -287,6 +287,14 @@ code {
   gap: 1px 8px;
 }
 
+.scan-entry-hint {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  margin-top: 4px;
+}
+
 .scan-entry-actions {
   margin-top: 6px;
 }

@@ -18,10 +18,12 @@ var (
 	ErrNoneOnHand = errors.New("nothing on hand")
 )
 
-// CommitStockIn commits a stock-in scan entry by creating N item instances
-// (where N = scanEntry.UnitCount) and marking the scan entry as committed.
-// Each item instance receives the scan entry's ScannedAt as stock_in_at and
-// the scan entry's ExpiresAt (if set).
+// CommitStockIn commits a stock-in scan entry by creating one item instance
+// per unit and marking the scan entry as committed. A remembered pack count
+// greater than one splits the barcode into that many units, so a 6-pack scan
+// with a unit count of 2 puts 12 units on the shelf. Each instance receives
+// the scan entry's ScannedAt as stock_in_at and the scan entry's ExpiresAt
+// (if set).
 //
 // This function handles the complete stock-in flow:
 // 1. Ensures an item exists for the user+product combination
@@ -55,7 +57,11 @@ func (r *Queue) CommitStockIn(ctx context.Context, scanEntry *ScanEntry) error {
 
 	// Opening records the units already on the shelf and stops. The scan
 	// still has to leave the queue, so the entry is committed either way.
-	if _, err := r.recordStockInTx(ctx, tx, itemID, *scanEntry.ProductID, scanEntry.ScannedAt, scanEntry.ExpiresAt, scanEntry.UnitCount); err != nil {
+	units, err := stockInUnits(ctx, tx, *scanEntry.ProductID, scanEntry.UnitCount)
+	if err != nil {
+		return err
+	}
+	if _, err := r.recordStockInTx(ctx, tx, itemID, *scanEntry.ProductID, scanEntry.ScannedAt, scanEntry.ExpiresAt, units); err != nil {
 		return err
 	}
 
@@ -112,6 +118,24 @@ func (r *Queue) trackRestock(ctx context.Context, tx *sql.Tx) (bool, error) {
 		return false, fmt.Errorf("could not read supply settings: %w", err)
 	}
 	return !opening, nil
+}
+
+// stockInUnits is the number of shelf units one commit adds.
+// A missing pack count, or a count of 1, means the scan's unit count is the
+// number of units. A remembered multipack multiplies that count.
+func stockInUnits(ctx context.Context, tx *sql.Tx, productID string, unitCount int) (int, error) {
+	var pack sql.NullInt64
+	err := tx.QueryRowContext(ctx, `SELECT pack_count FROM products WHERE id = ?`, productID).Scan(&pack)
+	if errors.Is(err, sql.ErrNoRows) {
+		return 0, fmt.Errorf("that product was not found")
+	}
+	if err != nil {
+		return 0, fmt.Errorf("could not read how many units are in the pack: %w", err)
+	}
+	if pack.Valid && pack.Int64 > 1 {
+		return unitCount * int(pack.Int64), nil
+	}
+	return unitCount, nil
 }
 
 // recordStockInTx adds units on the shelf. Once opening is finished it also

@@ -106,6 +106,11 @@ export interface ProcessingFailure {
   message: string;
 }
 
+export interface ScanGroupHint {
+  groupId?: string;
+  name: string;
+}
+
 export interface ScanEntry {
   id: string;
   userId: string;
@@ -117,6 +122,7 @@ export interface ScanEntry {
   status: ScanStatus;
   productId: string | null;
   product: ProductSummary | null;
+  groupHint?: ScanGroupHint;
   committedAt: string | null;
   createdAt: string;
 }

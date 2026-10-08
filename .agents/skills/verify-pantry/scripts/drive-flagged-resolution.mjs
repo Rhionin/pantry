@@ -32,11 +32,12 @@ try {
   const card = await scanBarcode(page, BARCODE);
   await card.getByText('Flagged', { exact: true }).waitFor({ state: 'visible', timeout: 10_000 });
 
-  // Resolve it: fill the card's `Create new product` fieldset and create+use.
-  await card.getByLabel('Product name').fill(PRODUCT);
-  await card.getByLabel('Category').fill(CATEGORY);
-  await card.getByLabel('Unit of measure').fill(UNIT);
-  await card.getByRole('button', { name: 'Create and use product' }).click();
+  // Resolve it from the What is it? sheet: create a product and use it.
+  await card.getByRole('button', { name: 'What is it?' }).click();
+  await page.getByLabel('Product name').fill(PRODUCT);
+  await page.getByLabel('Category').fill(CATEGORY);
+  await page.getByLabel('Package').fill(UNIT);
+  await page.getByRole('button', { name: 'Create and use product' }).click();
 
   // Resolution proof: the Flagged badge disappears, the product heading shows,
   // and the pending batch-approval checkbox renders.

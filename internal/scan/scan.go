@@ -34,18 +34,27 @@ const (
 
 // ScanEntry represents a single item in the scan queue.
 type ScanEntry struct {
-	ID          string                  `json:"id"`
-	UserID      string                  `json:"userId"`
-	Barcode     string                  `json:"barcode"`
-	ScannedAt   time.Time               `json:"scannedAt"`
-	Direction   *ScanDirection          `json:"direction"` // nil means not yet set
-	UnitCount   int                     `json:"unitCount"`
-	ExpiresAt   *time.Time              `json:"expiresAt"`
-	Status      ScanStatus              `json:"status"`
-	ProductID   *string                 `json:"productId"`
-	Product     *product.ProductSummary `json:"product,omitempty"` // populated by join queries
-	CommittedAt *time.Time              `json:"committedAt"`
-	CreatedAt   time.Time               `json:"createdAt"`
+	ID        string                  `json:"id"`
+	UserID    string                  `json:"userId"`
+	Barcode   string                  `json:"barcode"`
+	ScannedAt time.Time               `json:"scannedAt"`
+	Direction *ScanDirection          `json:"direction"` // nil means not yet set
+	UnitCount int                     `json:"unitCount"`
+	ExpiresAt *time.Time              `json:"expiresAt"`
+	Status    ScanStatus              `json:"status"`
+	ProductID *string                 `json:"productId"`
+	Product   *product.ProductSummary `json:"product,omitempty"` // populated by join queries
+	// GroupHint is set by the scan list handler when this product looks like a group.
+	// The scan package does not compute it.
+	GroupHint   *GroupHint `json:"groupHint,omitempty"`
+	CommittedAt *time.Time `json:"committedAt"`
+	CreatedAt   time.Time  `json:"createdAt"`
+}
+
+// GroupHint is the one line on a scan row that offers to add the product to a group.
+type GroupHint struct {
+	GroupID string `json:"groupId,omitempty"`
+	Name    string `json:"name"`
 }
 
 // NewEntryFromLookup builds a ScanEntry for a freshly scanned barcode from a
@@ -182,7 +191,7 @@ func (r *Queue) GetScanEntry(ctx context.Context, id string) (*ScanEntry, error)
 		SELECT 
 			se.id, se.user_id, se.barcode, se.scanned_at, se.direction, se.unit_count, 
 			se.expires_at, se.status, se.product_id, se.committed_at, se.created_at,
-			p.id, p.name, COALESCE(p.category, ''), COALESCE(p.unit_of_measure, ''), COALESCE(p.image_url, ''), COALESCE(p.external_source, '')
+			p.id, p.name, COALESCE(p.category, ''), COALESCE(p.unit_of_measure, ''), COALESCE(p.image_url, ''), COALESCE(p.external_source, ''), p.pack_count
 		FROM scan_entries se
 		LEFT JOIN products p ON p.id = se.product_id
 		WHERE se.id = ?`,
@@ -215,7 +224,7 @@ func (r *Queue) findMergeableScanEntry(ctx context.Context, userID, barcode stri
 		SELECT 
 			se.id, se.user_id, se.barcode, se.scanned_at, se.direction, se.unit_count, 
 			se.expires_at, se.status, se.product_id, se.committed_at, se.created_at,
-			p.id, p.name, COALESCE(p.category, ''), COALESCE(p.unit_of_measure, ''), COALESCE(p.image_url, ''), COALESCE(p.external_source, '')
+			p.id, p.name, COALESCE(p.category, ''), COALESCE(p.unit_of_measure, ''), COALESCE(p.image_url, ''), COALESCE(p.external_source, ''), p.pack_count
 		FROM scan_entries se
 		LEFT JOIN products p ON p.id = se.product_id
 		WHERE se.user_id = ? AND se.barcode = ? AND se.direction IS ? AND se.status IN ('pending', 'flagged')
@@ -242,7 +251,7 @@ func (r *Queue) ListScanEntries(ctx context.Context, userID string, status ScanS
 		SELECT 
 			se.id, se.user_id, se.barcode, se.scanned_at, se.direction, se.unit_count, 
 			se.expires_at, se.status, se.product_id, se.committed_at, se.created_at,
-			p.id, p.name, COALESCE(p.category, ''), COALESCE(p.unit_of_measure, ''), COALESCE(p.image_url, ''), COALESCE(p.external_source, '')
+			p.id, p.name, COALESCE(p.category, ''), COALESCE(p.unit_of_measure, ''), COALESCE(p.image_url, ''), COALESCE(p.external_source, ''), p.pack_count
 		FROM scan_entries se
 		LEFT JOIN products p ON p.id = se.product_id
 		WHERE se.user_id = ?`
@@ -471,6 +480,7 @@ func scanScanEntry(row scanner) (*ScanEntry, error) {
 	var direction, productIDCol sql.NullString
 	var expiresAt, committedAt sql.NullTime
 	var productID, productName, productCategory, productUnitOfMeasure, productImageURL, productExternalSource sql.NullString
+	var packCount sql.NullInt64
 
 	err := row.Scan(
 		&entry.ID,
@@ -490,6 +500,7 @@ func scanScanEntry(row scanner) (*ScanEntry, error) {
 		&productUnitOfMeasure,
 		&productImageURL,
 		&productExternalSource,
+		&packCount,
 	)
 	if err != nil {
 		return nil, err
@@ -517,6 +528,10 @@ func scanScanEntry(row scanner) (*ScanEntry, error) {
 			UnitOfMeasure:  productUnitOfMeasure.String,
 			ImageURL:       productImageURL.String,
 			ExternalSource: product.ExternalSource(productExternalSource.String),
+		}
+		if packCount.Valid {
+			n := int(packCount.Int64)
+			entry.Product.PackCount = &n
 		}
 	}
 
