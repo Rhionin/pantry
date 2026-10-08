@@ -371,7 +371,7 @@ export const ScanQueuePage = ({ userId = DEFAULT_USER_ID }: ScanQueuePageProps) 
               directionLabel={activeView === 'stock_in' ? 'stock in' : 'stock out'}
               selectedIds={selectedIds}
               onSelectionChange={setSelectedIds}
-              flat={activeView === 'stock_in'}
+              flat
             >
               {batch.map((entry) => (
                 <ScanEntryCard

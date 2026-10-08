@@ -43,6 +43,7 @@ export const ScanEntryCard = ({
   const [expiryEditorOpen, setExpiryEditorOpen] = useState(false);
   const [expiryError, setExpiryError] = useState('');
   const expiryInputRef = useRef<HTMLInputElement>(null);
+  const [instancePickerOpen, setInstancePickerOpen] = useState(false);
   const [showChangeIndicator, setShowChangeIndicator] = useState(true);
 
   const prefersReducedMotion = () =>
@@ -79,8 +80,9 @@ export const ScanEntryCard = ({
   }, [entry.unitCount]);
 
   const isStockIn = entry.direction === 'stock_in';
-  // Pending stock-in is a list row. Stock-out and flagged review stay cards.
-  const flatRow = isStockIn && entry.status === 'pending';
+  const isStockOut = entry.direction === 'stock_out';
+  // Pending confirmation is a list row. Flagged review stays a card.
+  const flatRow = entry.status === 'pending';
 
   const changeIndicatorClass = [
     'scan-entry-card',
@@ -255,42 +257,19 @@ export const ScanEntryCard = ({
           wrap="wrap"
           justify="flex-start"
         >
-          {isStockIn ? (
-            <div className="scan-entry-stepper">
-              <button
-                type="button"
-                className="scan-entry-stepper-btn"
-                aria-label="Decrease unit count"
-                disabled={!isValidUnitCount(Number(unitCountDraft)) || Number(unitCountDraft) <= 1}
-                onClick={() => adjustUnitCount(-1)}
-              >
-                <span aria-hidden="true">−</span>
-              </button>
-              <NumberInput
-                className="scan-entry-stepper-value"
-                hideControls
-                min={1}
-                step={1}
-                allowDecimal={false}
-                value={unitCountDraft}
-                onChange={handleUnitCountChange}
-                onBlur={handleUnitCountBlur}
-                onKeyDown={handleUnitCountKeyDown}
-                aria-label="Unit count"
-              />
-              <button
-                type="button"
-                className="scan-entry-stepper-btn"
-                aria-label="Increase unit count"
-                onClick={() => adjustUnitCount(1)}
-              >
-                <span aria-hidden="true">+</span>
-              </button>
-            </div>
-          ) : (
+          <div className="scan-entry-stepper">
+            <button
+              type="button"
+              className="scan-entry-stepper-btn"
+              aria-label="Decrease unit count"
+              disabled={!isValidUnitCount(Number(unitCountDraft)) || Number(unitCountDraft) <= 1}
+              onClick={() => adjustUnitCount(-1)}
+            >
+              <span aria-hidden="true">−</span>
+            </button>
             <NumberInput
-              className="scan-entry-qty"
-              size="xs"
+              className="scan-entry-stepper-value"
+              hideControls
               min={1}
               step={1}
               allowDecimal={false}
@@ -300,22 +279,15 @@ export const ScanEntryCard = ({
               onKeyDown={handleUnitCountKeyDown}
               aria-label="Unit count"
             />
-          )}
-          {!isStockIn && (
-            <TextInput
-              className="scan-entry-expiry"
-              size="xs"
-              type="date"
-              placeholder="mm/dd/yyyy"
-              value={expiryDraft}
-              onChange={(event) => {
-                setExpiryDraft(event.currentTarget.value);
-                setExpiryError('');
-              }}
-              onBlur={handleExpiryBlur}
-              aria-label="Expiration date"
-            />
-          )}
+            <button
+              type="button"
+              className="scan-entry-stepper-btn"
+              aria-label="Increase unit count"
+              onClick={() => adjustUnitCount(1)}
+            >
+              <span aria-hidden="true">+</span>
+            </button>
+          </div>
           {entry.direction !== null && (
             <Group gap={4} wrap="nowrap">
               <Button
@@ -381,6 +353,16 @@ export const ScanEntryCard = ({
               )}
             </div>
           )}
+          {isStockOut && (
+            <button
+              type="button"
+              className="scan-entry-more"
+              aria-expanded={instancePickerOpen}
+              onClick={() => setInstancePickerOpen((open) => !open)}
+            >
+              More
+            </button>
+          )}
         </Group>
       )}
 
@@ -399,12 +381,12 @@ export const ScanEntryCard = ({
         </Stack>
       )}
 
-      {entry.status === 'pending' && entry.direction === 'stock_out' && itemId !== undefined && (
+      {instancePickerOpen && isStockOut && itemId !== undefined && (
         <div className="scan-entry-extra">
           <StockOutInstanceSelector itemId={itemId} value={instanceId} onChange={setInstanceId} />
         </div>
       )}
-      {entry.status === 'pending' && entry.direction === 'stock_out' && itemId === undefined && (
+      {instancePickerOpen && isStockOut && itemId === undefined && (
         <Alert color="yellow" py={4} mt={4}>No inventory item is available for this product.</Alert>
       )}
 

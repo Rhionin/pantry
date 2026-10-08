@@ -30,7 +30,7 @@ const jsonResponse = (body: unknown) =>
   new Response(JSON.stringify(body), { status: 200, headers: { 'Content-Type': 'application/json' } });
 
 describe('ScanEntryCard stock-out review', () => {
-  it('keeps stock-out review inside a bordered card', () => {
+  it('keeps a pending stock-out row lean and hides the expiration control', () => {
     vi.stubGlobal('fetch', vi.fn(() => Promise.resolve(jsonResponse(instances))));
     render(
       <MantineProvider>
@@ -44,10 +44,55 @@ describe('ScanEntryCard stock-out review', () => {
       </MantineProvider>,
     );
 
-    const card = screen.getByRole('article', { name: 'Scan 123' });
-    expect(card).toHaveClass('mantine-Card-root');
-    expect(card).not.toHaveClass('scan-entry-row');
-    expect(within(card).getByText('Barcode: 123')).toBeInTheDocument();
+    const row = screen.getByRole('article', { name: 'Scan 123' });
+    expect(row).toHaveClass('scan-entry-row');
+    expect(row).not.toHaveClass('mantine-Card-root');
+    expect(within(row).getByText('Barcode: 123')).toBeInTheDocument();
+    expect(within(row).getByRole('button', { name: 'Decrease unit count' })).toBeInTheDocument();
+    expect(within(row).getByRole('button', { name: 'Increase unit count' })).toBeInTheDocument();
+    expect(screen.queryByLabelText('Expiration date')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Add expiration' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('radio', { name: 'Use oldest available automatically' })).not.toBeInTheDocument();
+    expect(screen.queryByText('No inventory item is available for this product.')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'More', expanded: false })).toBeInTheDocument();
+  });
+
+  it('keeps the missing-inventory note behind More and still hides the expiration control', () => {
+    vi.stubGlobal('fetch', vi.fn());
+    render(
+      <MantineProvider>
+        <ScanEntryCard
+          entry={entry}
+          selected={false}
+          onSelectedChange={vi.fn()}
+          onChanged={vi.fn()}
+        />
+      </MantineProvider>,
+    );
+
+    expect(screen.queryByText('No inventory item is available for this product.')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Expiration date')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'More' }));
+    expect(screen.getByText('No inventory item is available for this product.')).toBeInTheDocument();
+    expect(screen.queryByLabelText('Expiration date')).not.toBeInTheDocument();
+  });
+
+  it('does not render the expiration control by default even when the scan has a date', () => {
+    vi.stubGlobal('fetch', vi.fn());
+    render(
+      <MantineProvider>
+        <ScanEntryCard
+          entry={{ ...entry, expiresAt: '2026-05-15T00:00:00Z' }}
+          itemId="item-1"
+          selected={false}
+          onSelectedChange={vi.fn()}
+          onChanged={vi.fn()}
+        />
+      </MantineProvider>,
+    );
+
+    expect(screen.queryByLabelText('Expiration date')).not.toBeInTheDocument();
+    expect(screen.queryByText(/Expires /)).not.toBeInTheDocument();
   });
 
   it('orders instances oldest first and commits the specifically selected instance', async () => {
@@ -71,7 +116,10 @@ describe('ScanEntryCard stock-out review', () => {
       </MantineProvider>,
     );
 
+    fireEvent.click(screen.getByRole('button', { name: 'More', expanded: false }));
     const options = await screen.findAllByRole('radio');
+    expect(screen.getByRole('button', { name: 'More', expanded: true })).toBeInTheDocument();
+    expect(screen.queryByLabelText('Expiration date')).not.toBeInTheDocument();
     expect(options.map((option) => option.getAttribute('value'))).toEqual(['', 'oldest', 'later', 'undated']);
     fireEvent.click(options[2]);
     fireEvent.click(screen.getByRole('button', { name: 'Confirm' }));
@@ -936,116 +984,35 @@ describe('ScanEntryCard batch selection checkbox', () => {
 });
 
 describe('ScanEntryCard expiration date input', () => {
-  it('shows date input when entry.status is pending', async () => {
-    const fetchMock = vi.fn();
-    vi.stubGlobal('fetch', fetchMock);
+  const stockIn: ScanEntry = { ...entry, direction: 'stock_in' };
 
-    render(
-      <MantineProvider>
-        <ScanEntryCard
-          entry={entry}
-          itemId="item-1"
-          selected={false}
-          onSelectedChange={vi.fn()}
-          onChanged={vi.fn()}
-        />
-      </MantineProvider>,
-    );
+  const renderStockInExpiry = (overrides: Partial<ScanEntry> = {}) => render(
+    <MantineProvider>
+      <ScanEntryCard
+        entry={{ ...stockIn, ...overrides }}
+        itemId="item-1"
+        selected={false}
+        onSelectedChange={vi.fn()}
+        onChanged={vi.fn()}
+      />
+    </MantineProvider>,
+  );
 
-    expect(screen.getByLabelText('Expiration date')).toBeInTheDocument();
-  });
-
-  it('defaults to empty string when entry.expiresAt is null', async () => {
-    const fetchMock = vi.fn();
-    vi.stubGlobal('fetch', fetchMock);
-
-    render(
-      <MantineProvider>
-        <ScanEntryCard
-          entry={{ ...entry, expiresAt: null }}
-          itemId="item-1"
-          selected={false}
-          onSelectedChange={vi.fn()}
-          onChanged={vi.fn()}
-        />
-      </MantineProvider>,
-    );
-
-    const input = screen.getByLabelText('Expiration date') as HTMLInputElement;
-    expect(input).toHaveValue('');
-  });
-
-  it('defaults to YYYY-MM-DD format when entry.expiresAt is set', async () => {
-    const fetchMock = vi.fn();
-    vi.stubGlobal('fetch', fetchMock);
-
-    render(
-      <MantineProvider>
-        <ScanEntryCard
-          entry={{ ...entry, expiresAt: '2026-05-15T10:00:00Z' }}
-          itemId="item-1"
-          selected={false}
-          onSelectedChange={vi.fn()}
-          onChanged={vi.fn()}
-        />
-      </MantineProvider>,
-    );
-
-    const input = screen.getByLabelText('Expiration date') as HTMLInputElement;
-    expect(input).toHaveValue('2026-05-15');
-  });
-
-  it('sends expected PATCH for a confirmed date value', async () => {
-    const fetchMock = vi.fn((input: RequestInfo | URL, request?: RequestInit) => {
-      const url = String(input);
-      if (url === '/api/scans/scan-1') {
-        expect(request?.method).toBe('PATCH');
-        const body = JSON.parse(request?.body as string);
-        expect(body.expiresAt).toBe('2026-06-01T00:00:00.000Z');
-        return Promise.resolve(jsonResponse({ ...entry, expiresAt: '2026-06-01T00:00:00.000Z' }));
-      }
-      throw new Error(`Unexpected ${request?.method ?? 'GET'} request: ${url}`);
-    });
-    vi.stubGlobal('fetch', fetchMock);
-    const onChanged = vi.fn();
-
-    render(
-      <MantineProvider>
-        <ScanEntryCard
-          entry={{ ...entry, expiresAt: null }}
-          itemId="item-1"
-          selected={false}
-          onSelectedChange={vi.fn()}
-          onChanged={onChanged}
-        />
-      </MantineProvider>,
-    );
-
-    const input = screen.getByLabelText('Expiration date') as HTMLInputElement;
-    expect(input).toHaveValue('');
-    fireEvent.change(input, { target: { value: '2026-06-01' } });
-    fireEvent.blur(input);
-
-    await waitFor(() => {
-      expect(onChanged).toHaveBeenCalled();
-    });
-  });
+  const revealExpiry = () => {
+    const add = screen.queryByRole('button', { name: 'Add expiration' });
+    if (add) {
+      fireEvent.click(add);
+      return;
+    }
+    fireEvent.click(screen.getByRole('button', { name: 'Change expiration' }));
+  };
 
   it('does not send PATCH when value has not changed', async () => {
     const fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);
 
-    render(
-      <MantineProvider>
-        <ScanEntryCard
-          entry={{ ...entry, expiresAt: '2026-05-15T00:00:00Z' }}
-          itemId="item-1"
-          selected={false}
-          onSelectedChange={vi.fn()}
-          onChanged={vi.fn()}
-        />
-      </MantineProvider>,
-    );
+    renderStockInExpiry({ expiresAt: '2026-05-15T00:00:00Z' });
+    revealExpiry();
 
     const input = screen.getByLabelText('Expiration date') as HTMLInputElement;
     expect(input).toHaveValue('2026-05-15');
@@ -1065,17 +1032,8 @@ describe('ScanEntryCard expiration date input', () => {
     });
     vi.stubGlobal('fetch', fetchMock);
 
-    render(
-      <MantineProvider>
-        <ScanEntryCard
-          entry={{ ...entry, expiresAt: '2026-05-15T00:00:00Z' }}
-          itemId="item-1"
-          selected={false}
-          onSelectedChange={vi.fn()}
-          onChanged={vi.fn()}
-        />
-      </MantineProvider>,
-    );
+    renderStockInExpiry({ expiresAt: '2026-05-15T00:00:00Z' });
+    revealExpiry();
 
     const input = screen.getByLabelText('Expiration date') as HTMLInputElement;
     expect(input).toHaveValue('2026-05-15');
@@ -1103,17 +1061,8 @@ describe('ScanEntryCard expiration date input', () => {
     });
     vi.stubGlobal('fetch', fetchMock);
 
-    render(
-      <MantineProvider>
-        <ScanEntryCard
-          entry={{ ...entry, expiresAt: null }}
-          itemId="item-1"
-          selected={false}
-          onSelectedChange={vi.fn()}
-          onChanged={vi.fn()}
-        />
-      </MantineProvider>,
-    );
+    renderStockInExpiry({ expiresAt: null });
+    revealExpiry();
 
     const input = screen.getByLabelText('Expiration date') as HTMLInputElement;
     expect(input).toHaveValue('');
@@ -1141,17 +1090,8 @@ describe('ScanEntryCard expiration date input', () => {
     });
     vi.stubGlobal('fetch', fetchMock);
 
-    render(
-      <MantineProvider>
-        <ScanEntryCard
-          entry={{ ...entry, expiresAt: '2026-05-15T00:00:00Z' }}
-          itemId="item-1"
-          selected={false}
-          onSelectedChange={vi.fn()}
-          onChanged={vi.fn()}
-        />
-      </MantineProvider>,
-    );
+    renderStockInExpiry({ expiresAt: '2026-05-15T00:00:00Z' });
+    revealExpiry();
 
     const input = screen.getByLabelText('Expiration date') as HTMLInputElement;
     fireEvent.change(input, { target: { value: '2026-06-01' } });
@@ -1201,17 +1141,8 @@ describe('ScanEntryCard expiration date input', () => {
     });
     vi.stubGlobal('fetch', fetchMock);
 
-    render(
-      <MantineProvider>
-        <ScanEntryCard
-          entry={{ ...entry, expiresAt: '2026-05-15T00:00:00Z' }}
-          itemId="item-1"
-          selected={false}
-          onSelectedChange={vi.fn()}
-          onChanged={vi.fn()}
-        />
-      </MantineProvider>,
-    );
+    renderStockInExpiry({ expiresAt: '2026-05-15T00:00:00Z' });
+    revealExpiry();
 
     const input = screen.getByLabelText('Expiration date') as HTMLInputElement;
     fireEvent.change(input, { target: { value: '2026-06-01' } });
@@ -1256,6 +1187,7 @@ describe('ScanEntryCard stock-in confirmation', () => {
     expect(screen.getByRole('button', { name: 'Decrease unit count' })).toBeDisabled();
     expect(screen.getByRole('button', { name: 'Increase unit count' })).toBeEnabled();
     expect(screen.getByLabelText('Unit count')).toHaveValue('1');
+    expect(screen.queryByRole('button', { name: 'More' })).not.toBeInTheDocument();
     const addExpiration = screen.getByRole('button', { name: 'Add expiration' });
     expect(addExpiration).toHaveClass('scan-entry-add-expiry');
     expect(screen.queryByLabelText('Expiration date')).not.toBeInTheDocument();
