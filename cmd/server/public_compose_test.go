@@ -363,10 +363,22 @@ func TestPublicProxyIsOptIn(t *testing.T) {
 		"#### Rollback",
 		"cellular",
 		"Remove the Gryphon forwards",
+		"Dynu",
+		"pantry-pi",
+		"9e158cce-4d31-4881-82f3-d905af6164e7",
 	} {
 		if !strings.Contains(readmeText, want) {
 			t.Fatalf("deploy README missing %q", want)
 		}
+	}
+	if strings.Contains(readmeText, "Create a tunnel") {
+		t.Fatal("deploy README must use the existing pantry-pi tunnel")
+	}
+	if strings.Contains(setupText, "Create a tunnel") {
+		t.Fatal("setup.sh must not tell the operator to create a tunnel")
+	}
+	if !strings.Contains(setupText, "pantry-pi") {
+		t.Fatal("setup.sh must name the existing tunnel pantry-pi")
 	}
 }
 
