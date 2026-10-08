@@ -1,0 +1,61 @@
+name: Issue webhook
+
+on:
+  issues:
+    types: [opened, reopened, assigned]
+
+# No token scopes. The job only reads the event file and two repo secrets.
+permissions: {}
+
+# One in-flight notify per issue, plus at most one waiting. A newer event
+# replaces the waiting run so opened/assigned bursts do not pile up.
+concurrency:
+  group: pantry-issue-webhook-${{ github.event.issue.number }}
+  cancel-in-progress: false
+
+jobs:
+  notify:
+    name: Notify Pantry bot
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Post issue event
+        env:
+          PANTRY_WEBHOOK_URL: ${{ secrets.PANTRY_WEBHOOK_URL }}
+          PANTRY_WEBHOOK_KEY: ${{ secrets.PANTRY_WEBHOOK_KEY }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "${PANTRY_WEBHOOK_URL}" ] || [ -z "${PANTRY_WEBHOOK_KEY}" ]; then
+            echo "::notice::PANTRY_WEBHOOK_URL or PANTRY_WEBHOOK_KEY is unset; skipping issue notification"
+            exit 0
+          fi
+
+          # Secrets are already masked; this covers the key if it is copied or derived.
+          echo "::add-mask::${PANTRY_WEBHOOK_KEY}"
+
+          # File, not a pipe: curl can resend the body on retry, and the title
+          # never enters the shell as code.
+          body="$(mktemp)"
+          trap 'rm -f "${body}"' EXIT
+
+          jq -c '{
+            repo: .repository.full_name,
+            action: .action,
+            issue_number: .issue.number,
+            title: .issue.title,
+            html_url: .issue.html_url,
+            author_login: .issue.user.login,
+            assignee_login: (.assignee.login // .issue.assignee.login // null),
+            created_at: .issue.created_at
+          }' "${GITHUB_EVENT_PATH}" > "${body}"
+
+          curl \
+            --fail-with-body \
+            --max-time 20 \
+            --retry 3 \
+            --request POST \
+            --header "Authorization: Bearer ${PANTRY_WEBHOOK_KEY}" \
+            --header "Content-Type: application/json" \
+            --data-binary "@${body}" \
+            "${PANTRY_WEBHOOK_URL}"

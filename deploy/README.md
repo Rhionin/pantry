@@ -883,6 +883,15 @@ sudo docker login ghcr.io
 
 The credentials are stored in root's Docker config, which is the identity the update service runs as.
 
+## Issue webhook
+
+`.github/workflows/issue-webhook.yml` tells the Pantry bot when a GitHub issue is opened, reopened, or assigned. These are Actions secrets on the repository (Settings → Secrets and variables → Actions). They are not `/opt/pantry/.env` values.
+
+- `PANTRY_WEBHOOK_URL` — HTTPS endpoint that receives the POST.
+- `PANTRY_WEBHOOK_KEY` — bearer token. The workflow sends it as `Authorization: Bearer <key>` and does not print it.
+
+If either secret is empty, the run logs a notice and exits successfully. Otherwise it POSTs JSON built with `jq` from the event payload: `repo`, `action`, `issue_number`, `title`, `html_url`, `author_login`, `assignee_login` (the user just assigned, otherwise the issue's assignee, or null), and `created_at`. Runs for the same issue number share a concurrency group so a burst of events does not pile up. The workflow grants the GitHub token no permissions.
+
 ## Troubleshooting
 
 ### Public website doesn't load
