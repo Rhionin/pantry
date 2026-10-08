@@ -173,7 +173,8 @@ lack "$acme_json" "http_basic" "certificate adapt must not use browser basic aut
 lack "$tunnel_json" "http_basic" "tunnel adapt must not use browser basic auth"
 have "$acme_json" "X-Pantry-Entry" "certificate adapt marks the public site for the login page"
 have "$tunnel_json" "X-Pantry-Entry" "tunnel adapt marks the public site for the login page"
-have "$acme_json" "X-Pantry-Client-IP" "certificate adapt passes the visitor address"
-have "$tunnel_json" "X-Pantry-Client-IP" "tunnel adapt passes the visitor address"
+# Caddy's adapt output canonicalizes the header to Client-Ip.
+have "$acme_json" "X-Pantry-Client-Ip" "certificate adapt passes the visitor address"
+have "$tunnel_json" "X-Pantry-Client-Ip" "tunnel adapt passes the visitor address"
 
 echo "check-publish-modes ok"
