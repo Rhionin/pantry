@@ -6,10 +6,14 @@ import (
 )
 
 // HTTPError represents an error with an associated HTTP status code.
+// ErrorCode and Members are included in the JSON body when set, so a 409 can
+// name the decision the client has to make.
 type HTTPError struct {
-	Code    int
-	Message string
-	Err     error
+	Code      int
+	Message   string
+	Err       error
+	ErrorCode string
+	Members   any
 }
 
 func (e *HTTPError) Error() string {
@@ -38,6 +42,11 @@ func NotFound(message string) error {
 
 func Conflict(message string) error {
 	return &HTTPError{Code: http.StatusConflict, Message: message}
+}
+
+// ConflictDetails is a 409 whose body also carries a machine-readable code and members.
+func ConflictDetails(message, code string, members any) error {
+	return &HTTPError{Code: http.StatusConflict, Message: message, ErrorCode: code, Members: members}
 }
 
 func InternalError(err error) error {

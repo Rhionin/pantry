@@ -63,10 +63,15 @@ func TestMigrationApplies(t *testing.T) {
 		"brand_preferences",
 		"consumption_events",
 		"fulfillment_ledger",
+		"group_suggestion_dismissals",
+		"group_suggestion_members",
+		"group_suggestions",
 		"item_deals",
 		"item_instances",
 		"items",
 		"product_contributions",
+		"product_group_members",
+		"product_groups",
 		"products",
 		"provider_app_credentials",
 		"provider_connections",
@@ -107,13 +112,13 @@ func TestMigrationIsIdempotent(t *testing.T) {
 
 	// One schema_migrations row per applied .sql file; the second RunMigrations
 	// must not re-apply any file, so the count equals the number of migration
-	// files (001 through 005, both 006 files, both 007 files, 008, 009, and 010).
+	// files (001 through 005, both 006 files, both 007 files, 008, 009, 010, and 011).
 	var count int
 	if err := conn.QueryRow(`SELECT COUNT(*) FROM schema_migrations`).Scan(&count); err != nil {
 		t.Fatalf("count schema_migrations: %v", err)
 	}
-	if count != 12 {
-		t.Errorf("schema_migrations should have 12 rows after two runs, got %d", count)
+	if count != 13 {
+		t.Errorf("schema_migrations should have 13 rows after two runs, got %d", count)
 	}
 }
 
@@ -912,6 +917,26 @@ func TestMigration010NetSizeColumnsAndBackfill(t *testing.T) {
 	}
 	if still != base {
 		t.Fatalf("second backfill changed the size from %v to %v", base, still)
+	}
+}
+
+func TestMigration011ProductGroups(t *testing.T) {
+	conn, err := sql.Open("sqlite", ":memory:")
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	defer conn.Close()
+	if err := app.RunMigrations(conn); err != nil {
+		t.Fatalf("RunMigrations: %v", err)
+	}
+	if _, err := conn.Exec(`INSERT INTO product_groups (id, name, name_key, window_months) VALUES ('g', 'Beans', 'beans', 3)`); err != nil {
+		t.Fatalf("insert window: %v", err)
+	}
+	if _, err := conn.Exec(`UPDATE product_groups SET quantity_base_value = 10, quantity_dimension = 'mass' WHERE id = 'g'`); err == nil {
+		t.Fatal("window and quantity were both stored")
+	}
+	if _, err := conn.Exec(`INSERT INTO group_suggestion_dismissals (user_id, product_id_a, product_id_b) VALUES ('user-1', 'b', 'a')`); err == nil {
+		t.Fatal("dismissal stored the higher id first")
 	}
 }
 

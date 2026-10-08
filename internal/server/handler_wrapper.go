@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -32,6 +33,15 @@ type Created struct {
 // SeeOther redirects the browser. Location must not carry a credential.
 type SeeOther struct {
 	Location string
+}
+
+// NoContent is a 204 response with an empty body.
+type NoContent struct{}
+
+type errorPayload struct {
+	Error   string `json:"error"`
+	Code    string `json:"code,omitempty"`
+	Members any    `json:"members,omitempty"`
 }
 
 // handlerFunc is a handler function that takes a parsed request and returns a response.
@@ -74,13 +84,16 @@ func HandleJSON[TBody, TPathParams, TResp any](fn handlerFunc[TBody, TPathParams
 
 		resp, err := fn(req)
 		if err != nil {
-			status := httpStatusFromError(err)
-			writeError(w, status, err.Error())
+			writeHTTPError(w, httpStatusFromError(err), err)
 			return
 		}
 
 		if redir, ok := any(resp).(SeeOther); ok {
 			http.Redirect(w, r, redir.Location, http.StatusSeeOther)
+			return
+		}
+		if _, ok := any(resp).(NoContent); ok {
+			w.WriteHeader(http.StatusNoContent)
 			return
 		}
 
@@ -130,9 +143,37 @@ func writeJSON(w http.ResponseWriter, status int, data interface{}) {
 // detail in the server log and returns a fixed sentence, so a database or
 // upstream message is not part of the HTTP body.
 func writeError(w http.ResponseWriter, status int, message string) {
+	writeHTTPError(w, status, errors.New(message))
+}
+
+// writeHTTPError writes a JSON error. A 409 can include a code and a member list.
+func writeHTTPError(w http.ResponseWriter, status int, err error) {
+	message := ""
+	if err != nil {
+		message = err.Error()
+	}
+	var httpErr *HTTPError
+	var code string
+	var members any
+	extra := false
+	if errors.As(err, &httpErr) {
+		if httpErr.Message != "" {
+			message = httpErr.Message
+		}
+		if httpErr.ErrorCode != "" || httpErr.Members != nil {
+			extra = true
+			code = httpErr.ErrorCode
+			members = httpErr.Members
+		}
+	}
 	if status >= 500 {
 		log.Printf("request failed: %s", message)
 		message = "Something went wrong. Please try again."
+		extra = false
+	}
+	if extra {
+		writeJSON(w, status, errorPayload{Error: message, Code: code, Members: members})
+		return
 	}
 	writeJSON(w, status, map[string]string{"error": message})
 }
