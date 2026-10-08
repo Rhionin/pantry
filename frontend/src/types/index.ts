@@ -5,6 +5,9 @@
 
 export type ExternalSource = 'openfoodfacts' | 'openproductsfacts' | 'openbeautyfacts' | 'openpetfoodfacts';
 
+export type NetDimension = 'mass' | 'volume';
+export type NetSizeOrigin = 'off' | 'manual' | 'backfill';
+
 export interface ProductSummary {
   id: string;
   name: string;
@@ -15,6 +18,15 @@ export interface ProductSummary {
   imageUrl?: string;
   // Optional field indicating the external database source for this product.
   externalSource?: ExternalSource;
+  // Grams or milliliters for one unit. Omitted when the size is unknown.
+  netBaseValue?: number;
+  netDimension?: NetDimension;
+  netSizeOrigin?: NetSizeOrigin;
+  // Ounces or fluid ounces, rounded for the editor.
+  netAmount?: number;
+  netUnit?: 'oz' | 'fl oz';
+  // How many individual units one scan of this barcode adds. Omitted until remembered.
+  packCount?: number;
 }
 
 export interface Product extends ProductSummary {
@@ -56,6 +68,10 @@ export interface ProductWriteInput {
   contribute?: boolean;
   contributeTo?: ExternalSource;
   barcode?: string;
+  // Present only when the person changed the size. Null clears it.
+  netAmount?: number | null;
+  netUnit?: string | null;
+  packCount?: number | null;
 }
 
 export type ScanDirection = 'stock_in' | 'stock_out';

@@ -154,6 +154,21 @@ func TestProductOpenerContributorPostsOnlyTheSelectedDatabase(t *testing.T) {
 	if posted.Get("categories") != "Cleaning" || posted.Get("quantity") != "each" {
 		t.Fatalf("optional fields = %v", posted)
 	}
+
+	err = contributor.Contribute(context.Background(), Contribution{
+		Barcode:       "012345678905",
+		Name:          "Cut Green Beans",
+		Category:      "Canned",
+		UnitOfMeasure: "can",
+		Quantity:      "6 x 14.5 oz",
+		Database:      ExternalSourceOpenProductsFacts,
+	})
+	if err != nil {
+		t.Fatalf("Contribute sized: %v", err)
+	}
+	if posted.Get("quantity") != "6 x 14.5 oz" {
+		t.Fatalf("sized quantity = %q", posted.Get("quantity"))
+	}
 }
 
 func TestProductOpenerContributorOmitsEmptyOptionalFields(t *testing.T) {

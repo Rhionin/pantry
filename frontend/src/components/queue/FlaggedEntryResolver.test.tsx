@@ -164,7 +164,7 @@ describe('FlaggedEntryResolver', () => {
 
     fireEvent.change(screen.getByRole('textbox', { name: /^Product name/ }), { target: { value: milk.name } });
     fireEvent.change(screen.getByLabelText('Category'), { target: { value: milk.category } });
-    fireEvent.change(screen.getByLabelText('Unit of measure'), { target: { value: milk.unitOfMeasure } });
+    fireEvent.change(screen.getByLabelText('Package'), { target: { value: milk.unitOfMeasure } });
     fireEvent.click(screen.getByRole('button', { name: 'Create and use product' }));
 
     await waitFor(() => expect(onResolved).toHaveBeenCalled());
@@ -205,7 +205,7 @@ describe('FlaggedEntryResolver', () => {
     fireEvent.change(screen.getByLabelText('Open database'), { target: { value: 'openproductsfacts' } });
     fireEvent.change(screen.getByRole('textbox', { name: /^Product name/ }), { target: { value: milk.name } });
     fireEvent.change(screen.getByLabelText('Category'), { target: { value: milk.category } });
-    fireEvent.change(screen.getByLabelText('Unit of measure'), { target: { value: milk.unitOfMeasure } });
+    fireEvent.change(screen.getByLabelText('Package'), { target: { value: milk.unitOfMeasure } });
     fireEvent.click(screen.getByRole('button', { name: 'Create and use product' }));
 
     await waitFor(() => expect(onResolved).toHaveBeenCalled());

@@ -3,11 +3,13 @@ package product
 
 import (
 	"context"
+	stdjson "encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
@@ -140,12 +142,49 @@ func DefaultProductOpenerClients() map[ExternalSource]BarcodeLookup {
 // productOpenerResponse represents the JSON response structure from Product Opener API.
 type productOpenerResponse struct {
 	Product struct {
-		Name          string `json:"product_name"`
-		Category      string `json:"categories"`
-		Code          string `json:"code"`
-		ImageThumbURL string `json:"image_front_small_url"`
+		Name                string    `json:"product_name"`
+		Category            string    `json:"categories"`
+		Code                string    `json:"code"`
+		ImageThumbURL       string    `json:"image_front_small_url"`
+		Quantity            string    `json:"quantity"`
+		ProductQuantity     flexFloat `json:"product_quantity"`
+		ProductQuantityUnit string    `json:"product_quantity_unit"`
 	} `json:"product"`
 	Status int `json:"status"`
+}
+
+// flexFloat accepts the number Open Food Facts usually sends and the string
+// it sends for some products.
+type flexFloat struct {
+	Value float64
+	Set   bool
+}
+
+func (f *flexFloat) UnmarshalJSON(data []byte) error {
+	if string(data) == "null" || string(data) == `""` {
+		return nil
+	}
+	var number float64
+	if err := stdjson.Unmarshal(data, &number); err == nil {
+		f.Value = number
+		f.Set = true
+		return nil
+	}
+	var text string
+	if err := stdjson.Unmarshal(data, &text); err != nil {
+		return err
+	}
+	text = strings.TrimSpace(strings.ReplaceAll(text, ",", "."))
+	if text == "" {
+		return nil
+	}
+	number, err := strconv.ParseFloat(text, 64)
+	if err != nil {
+		return err
+	}
+	f.Value = number
+	f.Set = true
+	return nil
 }
 
 // LookupBarcode looks up a product by barcode from a Product Opener database.
@@ -207,6 +246,19 @@ func (c *ProductOpenerClient) LookupBarcode(ctx context.Context, barcode string)
 		Category:      data.Product.Category,
 		UnitOfMeasure: "",
 		ImageURL:      SafeImageURL(data.Product.ImageThumbURL),
+	}
+	quantity := 0.0
+	if data.Product.ProductQuantity.Set {
+		quantity = data.Product.ProductQuantity.Value
+	}
+	if parsed, ok := NetSizeFromOpenFoodFacts(data.Product.Quantity, quantity, data.Product.ProductQuantityUnit); ok {
+		base := parsed.BaseValue
+		ps.NetBaseValue = &base
+		ps.NetDimension = parsed.Dimension
+		if parsed.HasPack {
+			pack := parsed.PackCount
+			ps.PackCount = &pack
+		}
 	}
 	return ps, nil
 }
