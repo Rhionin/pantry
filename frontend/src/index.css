@@ -216,6 +216,27 @@ code {
   padding-bottom: 6px;
 }
 
+/* A circle badge locks its width to its height and ellipsizes the label, so
+   "32" paints as "3.." and "99+" as "9..". The count is already capped at
+   99+, and the section must not shrink when the two tabs share a phone row. */
+.scan-view-tabs .mantine-Tabs-tabSection {
+  flex: none;
+}
+
+.scan-view-tabs .scan-tab-count {
+  flex: none;
+  width: max-content;
+  min-width: var(--badge-height);
+  max-width: none;
+  overflow: visible;
+  text-overflow: clip;
+}
+
+.scan-view-tabs .scan-tab-count .mantine-Badge-label {
+  overflow: visible;
+  text-overflow: clip;
+}
+
 .scan-batch-row {
   min-height: 0;
 }

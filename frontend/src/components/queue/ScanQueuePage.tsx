@@ -304,7 +304,7 @@ export const ScanQueuePage = ({ userId = DEFAULT_USER_ID }: ScanQueuePageProps) 
             <Tabs.Tab
               value="stock_in"
               rightSection={stockInCount > 0
-                ? <Badge size="sm" circle aria-hidden>{formatReviewCount(stockInCount)}</Badge>
+                ? <Badge size="sm" className="scan-tab-count" aria-hidden>{formatReviewCount(stockInCount)}</Badge>
                 : undefined}
             >
               Stock in
@@ -312,7 +312,7 @@ export const ScanQueuePage = ({ userId = DEFAULT_USER_ID }: ScanQueuePageProps) 
             <Tabs.Tab
               value="stock_out"
               rightSection={stockOutCount > 0
-                ? <Badge size="sm" circle aria-hidden>{formatReviewCount(stockOutCount)}</Badge>
+                ? <Badge size="sm" className="scan-tab-count" aria-hidden>{formatReviewCount(stockOutCount)}</Badge>
                 : undefined}
             >
               Stock out
