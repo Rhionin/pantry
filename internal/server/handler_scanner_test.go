@@ -12,6 +12,39 @@ import (
 	"github.com/Rhionin/pantry/internal/scanlistener"
 )
 
+// TestScannerMode_InAppSwitchAndPhysicalControlBarcodeShareState verifies the
+// in-app mode write and a headless control barcode update one scannerMode.
+// The config read and the next untagged product scan both follow whichever
+// path changed it last.
+func TestScannerMode_InAppSwitchAndPhysicalControlBarcodeShareState(t *testing.T) {
+	mode := newScannerMode(nil)
+	mode.useClock(time.Now)
+	handler, _ := setupTestWithContributor(t, nil, WithScannerMode(mode))
+
+	postScannerMode(t, handler, "stock_out")
+	if got := getCurrentMode(t, handler); got != "stock_out" {
+		t.Fatalf("mode after in-app switch = %q, want stock_out", got)
+	}
+	if got := postUntaggedScan(t, handler, "111122223333", "user-shared-mode"); got != "stock_out" {
+		t.Fatalf("scan after in-app switch = %q, want stock_out", got)
+	}
+
+	listener := scanlistener.New()
+	listener.Source = scanlistener.SourceStdin
+	listener.StockInBarcode = "STOCK_IN"
+	listener.StockOutBarcode = "STOCK_OUT"
+	listener.Stdin = strings.NewReader("STOCK_IN\n")
+	listener.Mode = mode
+	listener.Run(context.Background())
+
+	if got := getCurrentMode(t, handler); got != "stock_in" {
+		t.Fatalf("mode after physical control barcode = %q, want stock_in", got)
+	}
+	if got := postUntaggedScan(t, handler, "444455556666", "user-shared-mode"); got != "stock_in" {
+		t.Fatalf("scan after physical control barcode = %q, want stock_in", got)
+	}
+}
+
 // TestScannerModeHandler_ValidModes verifies POST /api/scanner/mode accepts
 // both scan directions and echoes the selected mode back.
 func TestScannerModeHandler_ValidModes(t *testing.T) {

@@ -12,7 +12,11 @@ typed barcode so the item can still be queued.
 - `camera-enqueue` a decoded barcode is posted as a scan in the current mode.
 - `camera-fallback` a blocked camera offers Type a barcode, which posts the same way.
 - `camera-mode` a control barcode read by the camera switches stock in / stock out
-  and does not create a product scan.
+  and does not create a product scan. The same shared mode can be flipped with
+  the Scanning mode control under the preview, without closing the camera.
+  That control replaces the header one while the camera is open. With the
+  camera closed, the header shows one compact Scanning mode switch under the
+  title, separate from the Stock in / Stock out queue tabs.
 - `camera-disconnected` a disconnected hardware scanner points at the camera
   without changing the connection line. That line hides while the camera
   panel is open so the queue can stay on screen.
@@ -20,15 +24,21 @@ typed barcode so the item can still be queued.
 ## How to get to it (user POV)
 
 - Open `Scan Queue` (`/`). The toolbar's `Scan with camera` button (visible
-  label `Camera`) sits on the same row as the mode chip. A one-line hardware
-  status sits under that row and mentions the camera when the scanner is
-  disconnected.
+  label `Camera`) sits on the title row. Under the title, one compact
+  `Scanning mode` control shows STOCK IN / STOCK OUT and writes the shared
+  scanner mode. A one-line hardware status sits under that and mentions the
+  camera when the scanner is disconnected. From a laptop width up, that
+  switch sits on the title row between the heading and Camera, inside the
+  centered column. The open camera, its Scanning mode control, and Stop
+  stay in one cluster at most 480px wide.
 - Choose `Scan with camera`. Allow the camera prompt on a secure (HTTPS or
   localhost) page. The preview stays short so the queue remains on screen. If
   the picture has not started, tap `Tap to start scanning`. Otherwise the frame
-  says it scans automatically. A captured code flashes the preview, outlines
-  the barcode when the detector reports its location, and highlights the new
-  queue card. Type a barcode if the camera cannot start.
+  says it scans automatically. The header switch hides. Under the picture,
+  `Scanning mode` flips stock in / stock out without closing the camera. A
+  captured code flashes the preview, outlines the barcode when the detector
+  reports its location, and highlights the new queue card. Type a barcode if
+  the camera cannot start.
 - Review and approve the card the same way as a hardware scan.
 
 ## Driving it with Playwright

@@ -6,6 +6,7 @@ import { createScanEntry, getInventoryList, getScannerConfig, listScanEntries, s
 import type { InventoryItem, ProcessingFailure, ProcessingNotice, ScanEntry, ScannerConfig } from '../../types';
 import { BarcodeInputField } from '../scanner/BarcodeInputField';
 import { CameraScanner } from '../scanner/CameraScanner';
+import { ScannerModeSwitch } from '../scanner/ScannerModeSwitch';
 import { BatchReviewPanel } from './BatchReviewPanel';
 import { ProcessingScanCard } from './ProcessingScanCard';
 import { ScanEntryCard } from './ScanEntryCard';
@@ -196,6 +197,19 @@ export const ScanQueuePage = ({ userId = DEFAULT_USER_ID }: ScanQueuePageProps) 
     [inventory],
   );
 
+  // Writes the same scannerMode the magic barcode and the headless listener
+  // share. A repeat of the current direction is not a change.
+  const applyScannerMode = useCallback(async (mode: QueueView) => {
+    if (mode !== 'stock_in' && mode !== 'stock_out') return;
+    if (scannerModeRef.current === mode) return;
+    holdLocalMode(mode);
+    try {
+      await setScannerMode(mode);
+    } catch (requestError) {
+      setScanError(requestError instanceof Error ? requestError.message : 'Unable to switch scanner mode.');
+    }
+  }, [holdLocalMode]);
+
   // Classify a scanned string against the configured control barcodes using the
   // same exact-match rule the backend classify() applies (no trimming or
   // case-folding beyond what BarcodeInputField already trims). Returns the mode
@@ -214,19 +228,15 @@ export const ScanQueuePage = ({ userId = DEFAULT_USER_ID }: ScanQueuePageProps) 
     if (targetMode !== null) {
       // Show the switch immediately. The mode write and the scanner_mode event
       // confirm it; a config response that was already in flight is ignored.
-      holdLocalMode(targetMode);
-      try {
-        await setScannerMode(targetMode);
-      } catch (requestError) {
-        setScanError(requestError instanceof Error ? requestError.message : 'Unable to switch scanner mode.');
-      }
+      await applyScannerMode(targetMode);
       return;
     }
     try {
       // Stamp the entry with the selected mode so browser scans land in the
       // same view as the current direction, matching the headless listener
-      // which stamps each entry with its Current_Mode.
-      await createScanEntry({ barcode, direction: scannerMode, userId });
+      // which stamps each entry with its Current_Mode. The ref is current even
+      // when a camera frame arrives in the same turn as a mode tap.
+      await createScanEntry({ barcode, direction: scannerModeRef.current, userId });
       await loadQueue();
     } catch (requestError) {
       setScanError(requestError instanceof Error ? requestError.message : 'Unable to add the scan.');
@@ -262,7 +272,6 @@ export const ScanQueuePage = ({ userId = DEFAULT_USER_ID }: ScanQueuePageProps) 
     );
   };
 
-  const modeLabel = scannerMode === 'stock_in' ? 'STOCK IN' : 'STOCK OUT';
   // Later refreshes keep the rows on screen. A loader is only for the first
   // paint, when there is nothing to shift under the user's finger.
   const showInitialLoader = loading && entries.length === 0;
@@ -274,12 +283,28 @@ export const ScanQueuePage = ({ userId = DEFAULT_USER_ID }: ScanQueuePageProps) 
         <div className="scan-toolbar-primary">
           <Title order={1} className="scan-toolbar-title">Scan queue</Title>
           {/* "Mode: stock_…" stays in the DOM for the queue banner matcher.
-              The visible label is the short STOCK IN / STOCK OUT text. */}
-          <div role="alert" className={`scan-mode-chip scan-mode-chip--${scannerMode}`}>
+              The visible switch hides while the camera's own control is open. */}
+          <div role="alert" className={`scan-mode-switch scan-mode-switch--${scannerMode}`}>
             <span className="scan-mode-chip-key" aria-hidden="true">Mode: {scannerMode}</span>
-            <strong className="scan-mode-chip-label">{modeLabel}</strong>
+            {!cameraOpen && (
+              <div className="scan-mode-switch-field">
+                <span className="scan-mode-switch-caption" aria-hidden="true">Scanning mode</span>
+                <ScannerModeSwitch
+                  mode={scannerMode}
+                  onChange={(mode) => { void applyScannerMode(mode); }}
+                  label="Scanning mode"
+                  className="scan-mode-switch-control"
+                  size="sm"
+                />
+              </div>
+            )}
           </div>
-          <CameraScanner onScan={noteCameraCapture} onOpenChange={setCameraOpen} />
+          <CameraScanner
+            onScan={noteCameraCapture}
+            onOpenChange={setCameraOpen}
+            mode={scannerMode}
+            onModeChange={(mode) => { void applyScannerMode(mode); }}
+          />
         </div>
         {scanError !== '' && (
           <Alert color="red" py={4}>
