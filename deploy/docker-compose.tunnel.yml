@@ -3,7 +3,9 @@
 # A plain `docker compose -f docker-compose.yml --profile public` never
 # reads this file, so the certificate path is unchanged.
 #
-# Public hostname in Zero Trust → Networks → Tunnels:
+# Remotely managed tunnel pantry-pi
+# (9e158cce-4d31-4881-82f3-d905af6164e7). Ingress is set in Cloudflare,
+# not in a file here. Public hostname in Zero Trust → Networks → Tunnels:
 #   pantry.rhionin.com  →  http://caddy:80
 # `caddy` is an alias on cf-tunnel. cloudflared is the only member of that
 # network besides Caddy, at 10.77.77.2. Caddyfile.tunnel trusts

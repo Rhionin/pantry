@@ -546,7 +546,7 @@ cmd_apply() {
   local publish_mode mode_rc=0
   publish_mode=$(publish_mode_from_env "$tunnel_requested") || mode_rc=$?
   if [[ "$mode_rc" -eq 2 ]]; then
-    fatal "Tunnel mode needs CLOUDFLARE_TUNNEL_TOKEN in ${PANTRY_DIR}/.env. Create a tunnel in Cloudflare Zero Trust (Networks, then Tunnels), copy its token, and re-run: sudo ./setup.sh publish --tunnel"
+    fatal "Tunnel mode needs CLOUDFLARE_TUNNEL_TOKEN in ${PANTRY_DIR}/.env. Open the existing tunnel pantry-pi in Cloudflare Zero Trust, paste its token with no quotes, and re-run: sudo ./setup.sh publish --tunnel"
   elif [[ "$mode_rc" -ne 0 ]]; then
     fatal "Could not decide how to publish Pantry"
   fi
@@ -1159,7 +1159,8 @@ NOTES:
     Cellular data still uses the public name and the shared password.
   - `sudo ./setup.sh publish --tunnel` avoids that hang. Caddy listens only
     for cloudflared, at http://caddy:80, and ports 80 and 443 stay closed.
-    Empty CLOUDFLARE_TUNNEL_TOKEN to return to the certificate path.
+    Empty CLOUDFLARE_TUNNEL_TOKEN to return to the certificate path. An empty
+    token does not stop the Dynu update client or change the router forwards.
 EOF
 }
 

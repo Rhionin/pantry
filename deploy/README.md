@@ -137,7 +137,7 @@ The Gryphon in this house does not hairpin, so `https://pantry.rhionin.com` hang
 
 The public site asks for one shared password before it serves the UI, the API, and the live scan stream. That stops scanners and other bots that do not have the password. It is not separate accounts, and anyone who has the password can change the pantry. These exact paths stay open without that password: `GET /api/telemetry`, `POST /api/telemetry/client`, `GET /brand/logo.png`, `GET /terms`, and `GET /privacy`. The snapshot is counters and durations only — no barcodes, product names, or user ids — so an agent can `curl` it. The brand mark and the two legal pages are public because a grocery login stores those URLs. The home-network address `http://<pi-ip>:8080` does not ask for the password, so do not forward port 8080 on the router.
 
-The path below is Caddy in the `public` Compose profile, a Let's Encrypt certificate, and an A record at Squarespace. It needs a public IPv4 address and the ability to forward TCP ports 80 and 443. If your ISP uses CGNAT, skip to [When port forwarding cannot work](#when-port-forwarding-cannot-work).
+The path below is Caddy in the `public` Compose profile, a Let's Encrypt certificate, and the Dynu A record for `pantry.rhionin.com`. It needs a public IPv4 address and the ability to forward TCP ports 80 and 443. If your ISP uses CGNAT, skip to [When port forwarding cannot work](#when-port-forwarding-cannot-work). With `CLOUDFLARE_TUNNEL_TOKEN` empty, these steps are unchanged, and `setup.sh` does not call Dynu or stop its update client.
 
 ### 1. Confirm the Pi is reachable from the internet
 
@@ -179,9 +179,19 @@ sudo ufw allow 443/udp
 
 `sudo ./setup.sh` also drops non-LAN clients that reach the Pantry port (loopback, private LAN, and Tailscale `100.64.0.0/10` stay allowed; ports 80 and 443 are not changed). That runs whenever compose publishes the port, which the stock file always does, and whenever the public proxy is on. Set `PANTRY_LAN_FIREWALL=off` in `/opt/pantry/.env` and run `sudo ./setup.sh` again to leave the port reachable from any source. `sudo ./setup.sh firewall-off` removes the rule only until the next setup. Do not forward port 8080 either way. The router rule above is the one that matters for the public site.
 
-### 3. Point the Squarespace domain at that address
+### 3. Point pantry.rhionin.com at this Pi
 
-`rhionin.com` stays registered at Squarespace. You are adding one DNS record, not moving the domain.
+DNS for `rhionin.com` is at [Dynu](https://www.dynu.com/) today (dynamic DNS). While Dynu's nameservers are in place, the record phones look up is the one in Dynu. A custom record at Squarespace is not authoritative. `sudo ./setup.sh` does not call Dynu and does not stop a Dynu update client. With `CLOUDFLARE_TUNNEL_TOKEN` empty, leave that client running so `pantry.rhionin.com` keeps tracking the WAN address.
+
+In the Dynu panel, confirm `pantry` is an A record, or a Dynu dynamic hostname, for the IPv4 from `curl -4 https://ifconfig.me` on the Pi. Then:
+
+```bash
+dig +short pantry.rhionin.com A
+```
+
+The answer must be the same address `curl -4 https://ifconfig.me` prints. If `dig` is not installed, `getent hosts pantry.rhionin.com` is enough. When the home IP changes, the Dynu client updates this record. Do not turn the client off while the tunnel token is empty. Tunnel mode stops using the A record only after the Cloudflare hostname route is saved and the token is set. Until then, cellular still needs Dynu.
+
+If the nameservers point at Squarespace instead of Dynu, add the record there. That is not this house's current DNS. Registration can stay at Squarespace either way.
 
 1. Open the [Squarespace domains dashboard](https://account.squarespace.com/domains) and sign in.
 2. Click **rhionin.com**.
@@ -194,17 +204,9 @@ sudo ufw allow 443/udp
    - **Data** (IP address): the IPv4 from `curl -4 https://ifconfig.me`
 6. Save the record.
 
-Leave the Squarespace default records for `@` and `www` alone. A new host named `pantry` does not conflict with them. Use host `@` only if you want `https://rhionin.com` itself; in that case delete the Squarespace default A and CNAME records for `@` first, because a custom record cannot override those presets.
+Leave the Squarespace default records for `@` and `www` alone. A new host named `pantry` does not conflict with them. Use host `@` only if you want `https://rhionin.com` itself; in that case delete the Squarespace default A and CNAME records for `@` first, because a custom record cannot override those presets. Squarespace does not offer a TTL field. Those steps do nothing for resolution while Dynu is authoritative.
 
-Squarespace does not offer a TTL field; their DNS is commonly cached for about four hours. Check that the record has landed before asking for a certificate:
-
-```bash
-dig +short pantry.rhionin.com A
-```
-
-The answer must be the same address `curl -4 https://ifconfig.me` prints. If `dig` is not installed, `getent hosts pantry.rhionin.com` is enough. This often updates within an hour and can take up to a day.
-
-When your home IP changes, edit this same A record. The certificate is for the hostname, so HTTPS starts working again as soon as DNS matches the new address. Squarespace has no dynamic-DNS service; updating the record is a manual step.
+When your home IP changes and Dynu is still authoritative, the Dynu update client changes the A record. The certificate is for the hostname, so HTTPS starts working again as soon as DNS matches the new address. Leave that client running whenever `CLOUDFLARE_TUNNEL_TOKEN` is empty. Squarespace itself has no dynamic-DNS service; a Squarespace A record would be a manual edit, and only if Squarespace is actually the DNS host.
 
 ### 4. Start the proxy
 
@@ -328,7 +330,7 @@ sudo docker compose --profile public logs --tail=80 caddy
 
 | What you see | What to fix |
 |--------------|-------------|
-| `NXDOMAIN`, or `dig` returns no address | The Squarespace A record is missing or still cached. Wait, then check `dig +short pantry.rhionin.com A` again. |
+| `NXDOMAIN`, or `dig` returns no address | The Dynu A record is missing or still cached (or, if nameservers are not Dynu's, the record at the DNS host that is). Wait, then check `dig +short pantry.rhionin.com A` again. |
 | Certificate error mentioning timeout, connection refused, or `404` from another site | Port 80 is not reaching this Pi. Re-check the router forward and that no other program is bound to port 80. |
 | Browser warning, certificate name mismatch | `PUBLIC_HOST` and the Squarespace host are not the same name. They must match exactly. |
 | `https://` works at home but not on cellular | The phone is still using the LAN address, or the forward is wrong. Test on cellular. |
@@ -338,63 +340,57 @@ sudo docker compose --profile public logs --tail=80 caddy
 
 ### Cloudflare Tunnel
 
-This is the way `https://pantry.rhionin.com` works on home Wi-Fi and on cellular when the Gryphon does not hairpin, without forwarding ports 80 or 443. The Pi opens an outbound connection to Cloudflare. Caddy still asks for the same household password, and the same paths stay public: `GET /api/telemetry`, `POST /api/telemetry/client`, `GET /brand/logo.png`, `GET /terms`, and `GET /privacy`. Do not point the tunnel at port 8080. That port has no password. Do not turn on Cloudflare Access for this hostname. Caddy already asks for the password, and Access would be a second login.
+This is the way `https://pantry.rhionin.com` works on home Wi-Fi and on cellular when the Gryphon does not hairpin, without forwarding ports 80 or 443. The Pi opens an outbound connection to Cloudflare. The tunnel **pantry-pi** (`9e158cce-4d31-4881-82f3-d905af6164e7`) already exists and is remotely managed, so the Pi only runs `cloudflared` with `CLOUDFLARE_TUNNEL_TOKEN`. Do not create a second tunnel, and do not add a local ingress file. An empty token leaves Let's Encrypt, the Gryphon forwards, and the Dynu dynamic DNS client exactly as they are. Caddy still asks for the same household password, and the same paths stay public: `GET /api/telemetry`, `POST /api/telemetry/client`, `GET /brand/logo.png`, `GET /terms`, and `GET /privacy`. Do not point the tunnel at port 8080. That port has no password. Do not turn on Cloudflare Access for this hostname. Caddy already asks for the password, and Access would be a second login.
 
 LAN `http://192.168.1.203:8080` and `http://pantry.local:8080` keep working the whole time, with no password. Use them if the public name is down during the cutover.
 
 The token is a secret. It lives only in `/opt/pantry/.env`. Do not commit it, and do not wrap it in quotes.
 
-#### 1. Create a Cloudflare account and add the domain
+#### 1. Add the domain on the Free plan
 
-1. Create a Cloudflare account on the **Free** plan.
-2. Add the site `rhionin.com`. Cloudflare imports the DNS records it can see at Squarespace.
-3. Stay on the Free plan. Tunnels are included. You do not need Zero Trust paid seats for this.
+1. Use the Cloudflare account that already owns tunnel **pantry-pi**. Stay on the **Free** plan. Tunnels are included. You do not need Zero Trust paid seats for this.
+2. Add the site `rhionin.com` if it is not already there. Cloudflare imports the DNS records it can see. Those records are served by Dynu right now.
 
-Do not change nameservers until the next step checks the import.
+Do not change nameservers until the next step checks the import. Do not create a tunnel.
 
 #### 2. Check the imported records, and turn DNSSEC off
 
-Before the domain uses Cloudflare's nameservers, compare the imported records with Squarespace. A missing mail or website record is a silent outage after the switch.
+Before the domain uses Cloudflare's nameservers, compare the imported records with Dynu. A missing mail or website record is a silent outage after the switch.
 
-In Squarespace: **Domains → rhionin.com → DNS → DNS Settings**. Write down:
+Open the Dynu control panel and write down:
 
-- The website records: A and CNAME for `@` and `www`, and the existing `pantry` A record if it is there
+- The website records: A and CNAME for `@` and `www`, and the dynamic A record Dynu updates for this house, including `pantry` if it is a separate name
 - Every MX record
-- Every TXT record (SPF, domain verification, and anything else)
+- Every TXT record (mail SPF, DKIM, DMARC, site verification, and anything else Dynu shows)
 
-In Cloudflare's DNS tab, confirm each of those is present and the values match. Fix Cloudflare's copy before continuing. Leave the `pantry` A record pointing at the home address for now. That keeps the current site up after the nameserver change, until you attach the tunnel hostname.
+In Cloudflare's DNS tab, confirm each of those is present and the values match. Fix Cloudflare's copy before continuing. Leave the `pantry` A record pointing at the home address for now. That keeps cellular working after the nameserver change, until the tunnel hostname replaces it.
 
-Turn **DNSSEC off at Squarespace** before changing nameservers. Squarespace: **Domains → rhionin.com → DNS → DNSSEC**. If DNSSEC stays on, resolvers will reject Cloudflare's answers.
+DNSSEC has to be off before the nameservers change. Turn it off in Dynu if it is enabled there, and at the registrar (Squarespace Domains, if that is where the nameservers are set) if it is enabled there too. Wait until it shows disabled. Changing nameservers while DNSSEC is still on can make `rhionin.com` stop resolving.
 
-#### 3. Change nameservers at Squarespace
+#### 3. Change nameservers from Dynu to Cloudflare
 
-Cloudflare shows two nameservers when you add the site. Copy them.
+Cloudflare shows two nameservers when you add the site. Copy them. The registrar is where the nameservers are changed. If that is Squarespace: **Domains → rhionin.com → DNS → Nameservers → use custom nameservers**, and paste Cloudflare's two. Registration stays put. DNS for the whole domain moves off Dynu, which is why step 2 has to match the Dynu zone.
 
-1. Open the [Squarespace domains dashboard](https://account.squarespace.com/domains).
-2. Click **rhionin.com**.
-3. Open **DNS**, then **Nameservers**.
-4. Choose **use custom nameservers** and paste Cloudflare's two nameservers.
-
-Registration stays at Squarespace. DNS moves to Cloudflare. Wait until Cloudflare says the site is active. Check from the Pi:
+Wait until Cloudflare says the site is active. Check from the Pi:
 
 ```bash
 dig +short NS rhionin.com
 ```
 
-The answers should be Cloudflare's nameservers. The existing `pantry` A record, now served by Cloudflare, still points at the home address, so cellular keeps working through the Gryphon forwards. Home Wi-Fi still hangs on that name. That is expected until the tunnel hostname replaces the A record.
+The answers should be Cloudflare's nameservers, not Dynu's. The Dynu update client can keep running; it no longer affects this name once the nameservers have moved. The existing `pantry` A record, now served by Cloudflare, still points at the home address, so cellular keeps working through the Gryphon forwards. Home Wi-Fi still hangs on that name. That is expected until the tunnel hostname replaces the A record.
 
-#### 4. Create the tunnel and copy its token
+#### 4. Copy the token from pantry-pi
 
 1. In the Cloudflare dashboard, open **Zero Trust**.
 2. Go to **Networks → Tunnels**.
-3. Create a tunnel. Give it a name you will recognize, such as `pantry`.
-4. Choose the Docker install path. Copy the token. Cloudflare shows it once in the install command, after `--token`.
+3. Open **pantry-pi** (`9e158cce-4d31-4881-82f3-d905af6164e7`). Do not create a tunnel.
+4. On its overview, copy the token from the Docker install command (the value after `--token`). Do not run that command on the Pi. `setup.sh` starts `cloudflared`.
 
-You will put that token in `/opt/pantry/.env` as `CLOUDFLARE_TUNNEL_TOKEN`. Do not run setup yet, and do not add the public hostname yet. The site is still on the A record.
+You will put that token in `/opt/pantry/.env` as `CLOUDFLARE_TUNNEL_TOKEN`. Do not run setup yet. The site is still on the A record.
 
-#### 5. Add the public hostname
+#### 5. Set the public hostname service URL
 
-In the tunnel you just created, add a public hostname:
+On **pantry-pi**, open **Routes** (or **Public Hostname**). Add or edit the published application for `pantry.rhionin.com`. This is the remotely managed ingress. Nothing on the Pi stores it.
 
 | Field | Value |
 |-------|--------|
@@ -404,7 +400,7 @@ In the tunnel you just created, add a public hostname:
 | Type | HTTP |
 | URL | `http://caddy:80` |
 
-`http://caddy:80` is the Caddy container on the Pi's Docker network. It is not a LAN address, and it is not port 8080. Cloudflare reaches it through the tunnel. The public side is HTTPS with Cloudflare's certificate. Caddy sees the original `https` scheme and the visitor address only because that connection comes from cloudflared.
+`http://caddy:80` is how `cloudflared` reaches Caddy. Both containers share the Compose network `cf-tunnel`. The tunnel Caddy service is `caddy-tunnel`, and that network gives it the DNS name `caddy`. Its HTTP listener is port 80 inside the network. It is not a port on the Pi, and it is not port 8080. If the form asks for a type separately, choose **HTTP** and enter `caddy:80` so the scheme is not doubled. The public side is HTTPS with Cloudflare's certificate. Caddy sees the original `https` scheme and the visitor address only because that connection comes from cloudflared (`10.77.77.2`).
 
 Saving this hostname replaces the `pantry` A record with the tunnel. The public name stops working until the Pi is running cloudflared. Have the next command ready, then save the hostname.
 
@@ -420,7 +416,7 @@ BASIC_AUTH_USER=pantry
 BASIC_AUTH_PASSWORD=replace-with-a-long-passphrase
 ```
 
-`ACME_EMAIL` can stay. Tunnel mode does not request a certificate. Keep `BASIC_AUTH_PASSWORD` as it already is if `/opt/pantry/auth.caddy` exists. Setup will not regenerate that file.
+`ACME_EMAIL` can stay. Tunnel mode does not request a certificate. Keep `BASIC_AUTH_PASSWORD` as it already is if `/opt/pantry/auth.caddy` exists. Setup will not regenerate that file. Leave the Dynu client installed. With the token set, Pantry no longer depends on it, and emptying the token later does not restart or stop that client.
 
 ```bash
 sudo ./setup.sh publish --tunnel
@@ -459,19 +455,15 @@ Smaller rollback, DNS stays at Cloudflare:
 4. On the Pi, empty `CLOUDFLARE_TUNNEL_TOKEN` in `/opt/pantry/.env`. Leave `PUBLIC_HOST=pantry.rhionin.com`. Set `PUBLISH_MODE=acme` or leave it empty. A non-empty token keeps tunnel mode, so the token line has to be empty. Set `ACME_EMAIL` if it is empty.
 5. Run `sudo ./setup.sh`. That stops cloudflared and starts Caddy on ports 80 and 443 again. The certificate volume from the earlier certificate path is still there.
 6. Test on cellular. Home Wi-Fi hangs on the public name again. Use `http://192.168.1.203:8080` or `http://pantry.local:8080` on that network.
+7. Leave the **pantry-pi** tunnel in the dashboard. Emptying the token stops only the connector on the Pi.
 
-Full return to Squarespace DNS, after the smaller rollback is working:
-
-1. Turn DNSSEC off at Cloudflare.
-2. In Squarespace, set the nameservers back to Squarespace.
-3. Recreate the website A and CNAME records, the MX records, the TXT records, and the `pantry` A record so they match what you wrote down.
-4. Wait until `dig +short NS rhionin.com` shows Squarespace again, then test cellular one more time.
+To move DNS back to Dynu, after the smaller rollback is working, copy every record Cloudflare is serving (website, mail, and `pantry`) into Dynu first, and point `pantry` at the WAN address again. Then set the registrar nameservers back to Dynu's, confirm `dig +short NS rhionin.com` and `dig +short pantry.rhionin.com A`, and turn the Dynu update client back on if you stopped it. Only then turn DNSSEC back on if you want it. With the token empty, that dynamic DNS client is what keeps the port-forward site on the current home IP.
 
 `sudo ./setup.sh unpublish` stops the proxy and cloudflared and leaves the LAN site up. Clear `PUBLIC_HOST` and `CLOUDFLARE_TUNNEL_TOKEN` as well when the update timer is enabled, or the next update starts the tunnel again.
 
 ### When port forwarding cannot work
 
-**Cloudflare Tunnel** is wired in. Use [Cloudflare Tunnel](#cloudflare-tunnel) when the Gryphon does not hairpin or when you cannot forward ports. Do not also run the certificate path in front of the same hostname.
+**Cloudflare Tunnel** is wired in. Use [Cloudflare Tunnel](#cloudflare-tunnel) when the Gryphon does not hairpin or when you cannot forward ports. The service URL is `http://caddy:80` on the existing tunnel pantry-pi. Do not also run the certificate path in front of the same hostname. With the token empty, Dynu dynamic DNS and the port forwards stay as they are.
 
 **Tailscale Funnel** (fits a stable URL when you do not need `rhionin.com`) is not wired into this repo. The free personal tier can expose the Pi as a `*.ts.net` name without opening ports. Putting a Squarespace name on Funnel is more work than the Caddy path; use Funnel when a Tailscale hostname is enough. Do not funnel port 8080; that port has no password. Funnel the Caddy port, or put Tailscale in front of the LAN address and skip Funnel.
 
@@ -524,7 +516,7 @@ All configuration is handled through environment variables in `/opt/pantry/.env`
 | `HOST_PORT` | `8080` | IPv4 port for the LAN site. The container still listens on 8080. Published on `0.0.0.0` only, not IPv6. Do not forward this port on the router |
 | `PUBLIC_HOST` | empty | Hostname for the public HTTPS proxy, such as `pantry.rhionin.com`. Empty keeps the install LAN-only. No `https://` |
 | `PUBLISH_MODE` | empty | `tunnel` selects Cloudflare Tunnel and requires `CLOUDFLARE_TUNNEL_TOKEN`. Empty or `acme` is the certificate path, unless that token is set — a non-empty token selects tunnel on its own |
-| `CLOUDFLARE_TUNNEL_TOKEN` | empty | Remotely managed tunnel token from Zero Trust. Empty keeps ports 80 and 443 and Let's Encrypt. Secret. The hostname's service URL is `http://caddy:80` |
+| `CLOUDFLARE_TUNNEL_TOKEN` | empty | Token for the existing tunnel pantry-pi. Empty keeps Let's Encrypt, the Gryphon forwards, and the Dynu update client. Secret. The hostname's service URL is `http://caddy:80` |
 | `ACME_EMAIL` | empty | Email Let's Encrypt uses for certificate expiry notices. Required when `PUBLIC_HOST` is set and the token is empty. Not used in tunnel mode. Not a Pantry login |
 | `BASIC_AUTH_USER` | `pantry` | Username the browser asks for on the public site |
 | `BASIC_AUTH_PASSWORD` | empty | Shared password for the public site, 12 to 72 characters. Required the first time the public proxy starts, unless `auth.caddy` already exists. The hash is written to `auth.caddy`; this value stays in `.env`. Setup does not replace an existing `auth.caddy` |
@@ -895,7 +887,7 @@ The credentials are stored in root's Docker config, which is the identity the up
 
 ### Public website doesn't load
 
-See [Public Internet access](#public-internet-access). On the certificate path, the usual causes are the Squarespace A record not pointing at this Pi yet, or router ports 80 and 443 not forwarded. A hang that happens only on home Wi-Fi, while cellular loads the site, is [NAT hairpin](#home-wi-fi-hangs-on-the-public-name), not a down server. In tunnel mode, both networks use Cloudflare; logs for that path are `sudo docker compose -f docker-compose.yml -f docker-compose.tunnel.yml --profile tunnel logs --tail=80 cloudflared`. From `/opt/pantry`:
+See [Public Internet access](#public-internet-access). On the certificate path, the usual causes are the Dynu A record (or whichever DNS host is authoritative) not pointing at this Pi yet, or router ports 80 and 443 not forwarded. A hang that happens only on home Wi-Fi, while cellular loads the site, is [NAT hairpin](#home-wi-fi-hangs-on-the-public-name), not a down server. In tunnel mode, both networks use Cloudflare; logs for that path are `sudo docker compose -f docker-compose.yml -f docker-compose.tunnel.yml --profile tunnel logs --tail=80 cloudflared`. From `/opt/pantry`:
 
 ```bash
 sudo docker compose --profile public logs --tail=80 caddy
