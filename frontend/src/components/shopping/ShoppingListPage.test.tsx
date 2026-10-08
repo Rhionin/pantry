@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MantineProvider } from '@mantine/core';
 import { Notifications } from '@mantine/notifications';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { InventoryItem, ShoppingConsiderations, ShoppingListEntry } from '../../types';
 import { ShoppingListPage } from './ShoppingListPage';
 
@@ -33,6 +33,24 @@ const renderPage = () => render(
     <ShoppingListPage />
   </MantineProvider>,
 );
+
+beforeEach(() => {
+  // A real transition timeout can fire after this file's jsdom is gone.
+  vi.stubGlobal(
+    'matchMedia',
+    (query: string) =>
+      ({
+        matches: /prefers-reduced-motion/.test(query),
+        media: query,
+        onchange: null,
+        addListener: () => {},
+        removeListener: () => {},
+        addEventListener: () => {},
+        removeEventListener: () => {},
+        dispatchEvent: () => false,
+      }) as unknown as MediaQueryList,
+  );
+});
 
 describe('ShoppingListPage', () => {
   it('renders derived and manual entries with product details and marks a manual item purchased', async () => {
