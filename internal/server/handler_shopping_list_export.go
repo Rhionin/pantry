@@ -6,15 +6,13 @@ import (
 
 	"github.com/Rhionin/pantry/internal/cart"
 	"github.com/Rhionin/pantry/internal/cart/connection"
-	"github.com/Rhionin/pantry/internal/shopping"
 )
 
 // ShoppingListExportHandler handles POST /api/shopping-list/export.
 // It sends the staged cart. It does not recompute the supply plan, so a
-// quantity the owner changed is the quantity that is sent. useItemIds swaps
-// a line for another brand of the same product when the shopper accepts a
-// sale. The swap is this export only. With no configured provider the call
-// still returns the staged lines and confirms nothing.
+// quantity the owner changed is the quantity that is sent. A request that
+// names a different product for a line is refused. With no configured
+// provider the call still returns the staged lines and confirms nothing.
 type ShoppingListExportHandler struct {
 	ShoppingList shoppingListReader
 	Pantry       pantryLister
@@ -66,7 +64,7 @@ func (h *ShoppingListExportHandler) Handle(req Request[shoppingListExportRequest
 	if err != nil {
 		return nil, InternalError(err)
 	}
-	planned, swaps, err := planExportLines(provision, req.Body.UseItemIDs)
+	planned, err := planExportLines(provision, req.Body.UseItemIDs)
 	if err != nil {
 		return nil, err
 	}
@@ -81,7 +79,7 @@ func (h *ShoppingListExportHandler) Handle(req Request[shoppingListExportRequest
 	// No configured provider: the historical no-op report. Naming an unknown
 	// or unconfigured provider is still an error, so a client can tell those
 	// apart from "nothing was sent". The planned lines stay on the response
-	// so a sale swap can be checked before a retailer is connected.
+	// so the cart can be checked before a retailer is connected.
 	if h.Registry == nil || !h.Registry.AnyCredentialsConfigured() {
 		if req.Body.Provider != "" {
 			if h.Registry == nil {
@@ -123,14 +121,11 @@ func (h *ShoppingListExportHandler) Handle(req Request[shoppingListExportRequest
 		}
 	}
 
-	report, err := h.Provisioner.Provision(cart.WithExportSubstitutions(req.Context, swaps), userID, providerID)
+	report, err := h.Provisioner.Provision(req.Context, userID, providerID)
 	if err != nil {
 		var conflict *cart.ProvisionConflict
 		if errors.As(err, &conflict) {
 			return nil, Conflict(conflict.Reason)
-		}
-		if errors.Is(err, shopping.ErrDifferentProduct) {
-			return nil, &HTTPError{Code: 422, Message: "Choose a brand of the same product"}
 		}
 		return nil, InternalError(err)
 	}
@@ -174,30 +169,22 @@ func (h *ShoppingListExportHandler) Handle(req Request[shoppingListExportRequest
 	}, nil
 }
 
-// planExportLines applies one-export brand swaps to the merged list.
-// swaps maps the line's item id to the brand that should be bought.
-func planExportLines(provision shoppingProvision, useItemIDs map[string]string) ([]exportedItemResponse, map[string]string, error) {
+// planExportLines copies the staged lines. Naming a different product for a
+// line is refused; the group swap already changes the staged row itself.
+func planExportLines(provision shoppingProvision, useItemIDs map[string]string) ([]exportedItemResponse, error) {
 	planned := make([]exportedItemResponse, 0, len(provision.Rows))
-	swaps := map[string]string{}
 	for _, entry := range provision.Rows {
-		itemID, err := shopping.SubstituteBrand(entry.ItemID, useItemIDs[entry.ItemID], provision.Needs)
-		if err != nil {
-			if errors.Is(err, shopping.ErrDifferentProduct) {
-				return nil, nil, &HTTPError{Code: 422, Message: "Choose a brand of the same product"}
-			}
-			return nil, nil, InternalError(err)
-		}
-		if itemID != entry.ItemID {
-			swaps[entry.ItemID] = itemID
+		if useID := useItemIDs[entry.ItemID]; useID != "" && useID != entry.ItemID {
+			return nil, &HTTPError{Code: 422, Message: "Choose a product on this line."}
 		}
 		planned = append(planned, exportedItemResponse{
-			ItemID:   itemID,
-			Name:     itemName(provision.Needs, itemID),
+			ItemID:   entry.ItemID,
+			Name:     itemName(provision.Needs, entry.ItemID),
 			Quantity: entry.Quantity,
 		})
 	}
 	if len(planned) == 0 {
-		return nil, swaps, nil
+		return nil, nil
 	}
-	return planned, swaps, nil
+	return planned, nil
 }

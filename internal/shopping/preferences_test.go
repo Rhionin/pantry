@@ -7,41 +7,6 @@ import (
 	"github.com/Rhionin/pantry/internal/shopping"
 )
 
-func TestBrandPreferenceRoundTrip(t *testing.T) {
-	deps := newTestStore(t)
-	ctx := context.Background()
-	gv := createTestItem(t, deps, ctx, "user-1", "prod-gv", "Great Value Cut Green Beans")
-	kr := createTestItem(t, deps, ctx, "user-1", "prod-kr", "Kroger Cut Green Beans")
-
-	if err := deps.shopping.SavePreference(ctx, "user-1", shopping.Preference{
-		NeedKey: "cut green beans\x00can", ItemID: gv,
-	}); err != nil {
-		t.Fatalf("save: %v", err)
-	}
-	if err := deps.shopping.SavePreference(ctx, "user-1", shopping.Preference{
-		NeedKey: "cut green beans\x00can", ItemID: kr, IgnorePrice: true,
-	}); err != nil {
-		t.Fatalf("upsert: %v", err)
-	}
-	prefs, err := deps.shopping.ListPreferences(ctx, "user-1")
-	if err != nil {
-		t.Fatalf("list: %v", err)
-	}
-	if len(prefs) != 1 || prefs[0].ItemID != kr || !prefs[0].IgnorePrice {
-		t.Fatalf("prefs = %+v", prefs)
-	}
-	if err := deps.shopping.DeletePreference(ctx, "user-1", "cut green beans\x00can"); err != nil {
-		t.Fatalf("delete: %v", err)
-	}
-	prefs, err = deps.shopping.ListPreferences(ctx, "user-1")
-	if err != nil {
-		t.Fatalf("list after delete: %v", err)
-	}
-	if len(prefs) != 0 {
-		t.Fatalf("prefs after delete = %+v", prefs)
-	}
-}
-
 func TestDealRoundTrip(t *testing.T) {
 	deps := newTestStore(t)
 	ctx := context.Background()

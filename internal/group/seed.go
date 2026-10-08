@@ -7,7 +7,6 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/Rhionin/pantry/internal/shopping"
 	"github.com/google/uuid"
 )
 
@@ -97,7 +96,7 @@ func seedSuggestions(ctx context.Context, tx *sql.Tx) error {
 	needOf := map[string]string{}
 	needMembers := map[string][]string{}
 	for _, p := range products {
-		key, ok := shopping.NeedKey(p.name, p.unit)
+		key, ok := needKey(p.name, p.unit)
 		if !ok {
 			continue
 		}

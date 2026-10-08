@@ -6,7 +6,7 @@ import (
 	"time"
 )
 
-func TestShoppingBrandChoice(t *testing.T) {
+func TestShoppingDeals(t *testing.T) {
 	beans := func(env testEnv) {
 		createItemViaStockIn(env.T, env.DB, env.ProductStore, "user-1", "prod-gv", "Great Value Cut Green Beans", "item-gv")
 		createItemViaStockIn(env.T, env.DB, env.ProductStore, "user-1", "prod-kr", "Kroger Cut Green Beans", "item-kr")
@@ -17,33 +17,7 @@ func TestShoppingBrandChoice(t *testing.T) {
 
 	tests := []handlerTestCase{
 		{
-			name:  "a saved brand does not combine ungrouped products",
-			setup: beans,
-			httpExchange: httpExchange{
-				method:         "PUT",
-				path:           "/api/shopping-list/preferences",
-				body:           `{"itemId":"item-kr","ignorePrice":true}`,
-				expectedStatus: http.StatusOK,
-				assertions: []assertion{
-					{path: "$.itemId", value: "item-kr"},
-					{path: "$.genericName", value: "cut green beans"},
-					{path: "$.ignorePrice", value: true},
-				},
-			},
-			afterRequest: exchanges(httpExchange{
-				method:         "POST",
-				path:           "/api/shopping-list/fill",
-				expectedStatus: http.StatusOK,
-				assertions: []assertion{
-					{path: "$[0].itemId", value: "item-gv"},
-					{path: "$[0].quantity", value: float64(3)},
-					{path: "$[0].source", value: "auto"},
-					{path: "$[1]", absent: true},
-				},
-			}),
-		},
-		{
-			name:  "sale on another brand is offered and can be taken at export",
+			name:  "a noted sale does not change the product on the line",
 			setup: beans,
 			httpExchange: httpExchange{
 				method:         "PUT",
@@ -61,20 +35,10 @@ func TestShoppingBrandChoice(t *testing.T) {
 					method:         "POST",
 					path:           "/api/shopping-list/fill",
 					expectedStatus: http.StatusOK,
-				},
-				httpExchange{
-					method:         "GET",
-					path:           "/api/shopping-list/considerations",
-					expectedStatus: http.StatusOK,
 					assertions: []assertion{
-						{path: "$.retailerDeals", value: "unavailable"},
-						{path: "$.considerations[0].lineItemId", value: "item-gv"},
-						{path: "$.considerations[0].genericName", value: "cut green beans"},
-						{path: "$.considerations[0].ignorePrice", value: false},
-						{path: "$.considerations[0].offer.itemId", value: "item-kr"},
-						{path: "$.considerations[0].offer.label", value: "Weekly ad"},
-						{path: "$.considerations[0].offer.priceCents", value: float64(79)},
-						{path: "$.considerations[1]", absent: true},
+						{path: "$[0].itemId", value: "item-gv"},
+						{path: "$[0].quantity", value: float64(3)},
+						{path: "$[0].source", value: "auto"},
 					},
 				},
 				httpExchange{
@@ -82,8 +46,6 @@ func TestShoppingBrandChoice(t *testing.T) {
 					path:           "/api/shopping-list/export",
 					expectedStatus: http.StatusOK,
 					assertions: []assertion{
-						// Nothing is sent until a provider is configured. The
-						// planned line is still the usual brand.
 						{path: "$.exported", value: float64(0)},
 						{path: "$.items[0].itemId", value: "item-gv"},
 						{path: "$.items[0].quantity", value: float64(3)},
@@ -93,51 +55,15 @@ func TestShoppingBrandChoice(t *testing.T) {
 					method:         "POST",
 					path:           "/api/shopping-list/export",
 					body:           `{"useItemIds":{"item-gv":"item-kr"}}`,
-					expectedStatus: http.StatusOK,
+					expectedStatus: http.StatusUnprocessableEntity,
 					assertions: []assertion{
-						{path: "$.exported", value: float64(0)},
-						{path: "$.items[0].itemId", value: "item-kr"},
-						{path: "$.items[0].name", value: "Kroger Cut Green Beans"},
+						{path: "$.error", value: "Choose a product on this line."},
 					},
 				},
 			),
 		},
 		{
-			name:  "always this brand hides a cheaper sale",
-			setup: beans,
-			httpExchange: httpExchange{
-				method:         "PUT",
-				path:           "/api/shopping-list/preferences",
-				body:           `{"itemId":"item-kr","ignorePrice":true}`,
-				expectedStatus: http.StatusOK,
-			},
-			afterRequest: exchanges(
-				httpExchange{
-					method:         "POST",
-					path:           "/api/shopping-list/fill",
-					expectedStatus: http.StatusOK,
-				},
-				httpExchange{
-					method:         "PUT",
-					path:           "/api/shopping-list/deals",
-					body:           `{"itemId":"item-gv","priceCents":50,"label":"Sale"}`,
-					expectedStatus: http.StatusOK,
-				},
-				httpExchange{
-					method:         "GET",
-					path:           "/api/shopping-list/considerations",
-					expectedStatus: http.StatusOK,
-					assertions: []assertion{
-						{path: "$.considerations[0].chosenItemId", value: "item-gv"},
-						{path: "$.considerations[0].preferredItemId", value: "item-kr"},
-						{path: "$.considerations[0].ignorePrice", value: true},
-						{path: "$.considerations[0].offer", value: nil},
-					},
-				},
-			),
-		},
-		{
-			name: "export refuses a brand of a different product",
+			name: "export refuses a different product on the line",
 			setup: func(env testEnv) {
 				beans(env)
 				createItemViaStockIn(env.T, env.DB, env.ProductStore, "user-1", "prod-corn", "Kroger Whole Kernel Corn", "item-corn")
@@ -153,22 +79,46 @@ func TestShoppingBrandChoice(t *testing.T) {
 				body:           `{"useItemIds":{"item-gv":"item-corn"}}`,
 				expectedStatus: http.StatusUnprocessableEntity,
 				assertions: []assertion{
-					{path: "$.error", value: "Choose a brand of the same product"},
+					{path: "$.error", value: "Choose a product on this line."},
 				},
 			}),
 		},
 		{
-			name: "brand-only name cannot be saved as a preference",
+			name: "a sale needs a brand",
+			httpExchange: httpExchange{
+				method:         "PUT",
+				path:           "/api/shopping-list/deals",
+				body:           `{"priceCents":79}`,
+				expectedStatus: http.StatusUnprocessableEntity,
+				assertions: []assertion{
+					{path: "$.error", value: "Choose a brand to mark on sale"},
+				},
+			},
+		},
+		{
+			name: "a sale needs a price or a note",
 			setup: func(env testEnv) {
-				createItemViaStockIn(env.T, env.DB, env.ProductStore, "user-1", "prod-brand", "Kroger", "item-brand")
+				createItemViaStockIn(env.T, env.DB, env.ProductStore, "user-1", "prod-note", "Kroger Cut Green Beans", "item-note")
 			},
 			httpExchange: httpExchange{
 				method:         "PUT",
-				path:           "/api/shopping-list/preferences",
-				body:           `{"itemId":"item-brand","ignorePrice":true}`,
+				path:           "/api/shopping-list/deals",
+				body:           `{"itemId":"item-note"}`,
 				expectedStatus: http.StatusUnprocessableEntity,
 				assertions: []assertion{
-					{path: "$.error", value: "This product name is only a brand, so it can't be saved as a preference"},
+					{path: "$.error", value: "Add a sale price or a short note"},
+				},
+			},
+		},
+		{
+			name: "a sale for an unknown item is not saved",
+			httpExchange: httpExchange{
+				method:         "PUT",
+				path:           "/api/shopping-list/deals",
+				body:           `{"itemId":"missing","priceCents":79}`,
+				expectedStatus: http.StatusNotFound,
+				assertions: []assertion{
+					{path: "$.error", value: "item not found"},
 				},
 			},
 		},
@@ -188,7 +138,7 @@ func TestShoppingBrandChoice(t *testing.T) {
 			},
 		},
 		{
-			name:  "clearing a sale removes the offer",
+			name:  "clearing a sale succeeds",
 			setup: beans,
 			httpExchange: httpExchange{
 				method:         "PUT",
@@ -196,27 +146,11 @@ func TestShoppingBrandChoice(t *testing.T) {
 				body:           `{"itemId":"item-kr","priceCents":79,"label":"Weekly ad"}`,
 				expectedStatus: http.StatusOK,
 			},
-			afterRequest: exchanges(
-				httpExchange{
-					method:         "POST",
-					path:           "/api/shopping-list/fill",
-					expectedStatus: http.StatusOK,
-				},
-				httpExchange{
-					method:         "DELETE",
-					path:           "/api/shopping-list/deals/item-kr",
-					expectedStatus: http.StatusOK,
-				},
-				httpExchange{
-					method:         "GET",
-					path:           "/api/shopping-list/considerations",
-					expectedStatus: http.StatusOK,
-					assertions: []assertion{
-						{path: "$.considerations[0].offer", value: nil},
-						{path: "$.considerations[0].members[1].onSale", value: false},
-					},
-				},
-			),
+			afterRequest: exchanges(httpExchange{
+				method:         "DELETE",
+				path:           "/api/shopping-list/deals/item-kr",
+				expectedStatus: http.StatusOK,
+			}),
 		},
 	}
 

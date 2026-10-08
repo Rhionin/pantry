@@ -20,7 +20,6 @@ import type {
   ScanStatus,
   ProvisionReport,
   ProviderInfo,
-  ShoppingConsiderations,
   ShoppingListEntry,
   SupplyOverride,
   SupplySettings,
@@ -316,10 +315,9 @@ export function markShoppingListItemPurchased(id: string): Promise<ShoppingListE
   });
 }
 
-export function exportShoppingList(provider?: string, useItemIds?: Record<string, string>): Promise<ProvisionReport> {
-  const body: { provider?: string; useItemIds?: Record<string, string> } = {};
+export function exportShoppingList(provider?: string): Promise<ProvisionReport> {
+  const body: { provider?: string } = {};
   if (provider) body.provider = provider;
-  if (useItemIds !== undefined && Object.keys(useItemIds).length > 0) body.useItemIds = useItemIds;
   return apiFetch('/api/shopping-list/export', {
     method: 'POST',
     body: Object.keys(body).length > 0 ? JSON.stringify(body) : undefined,
@@ -374,21 +372,6 @@ export function resolveUnknownProvision(entryId: string, provider: string, reach
     method: 'POST',
     body: JSON.stringify({ provider, reachedProvider }),
   });
-}
-
-export function getShoppingConsiderations(): Promise<ShoppingConsiderations> {
-  return apiFetch('/api/shopping-list/considerations');
-}
-
-export function saveBrandPreference(itemId: string, ignorePrice: boolean): Promise<void> {
-  return apiFetch('/api/shopping-list/preferences', {
-    method: 'PUT',
-    body: JSON.stringify({ itemId, ignorePrice }),
-  });
-}
-
-export function clearBrandPreference(itemId: string): Promise<void> {
-  return apiFetch(`/api/shopping-list/preferences/${itemId}`, { method: 'DELETE' });
 }
 
 export function saveItemDeal(itemId: string, priceCents: number, label: string): Promise<void> {

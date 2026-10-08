@@ -2,6 +2,19 @@ package group
 
 import "testing"
 
+func TestLookAlikeEmptyName(t *testing.T) {
+	key, caution := LookAlikeKey("", nil)
+	if key != "" || caution != "" {
+		t.Fatalf("empty name key %q caution %q", key, caution)
+	}
+	if got := shorten("", nil); got != "" {
+		t.Fatalf("shorten empty = %q", got)
+	}
+	if got := cautionSentence(""); got != "" {
+		t.Fatalf("caution empty = %q", got)
+	}
+}
+
 func TestLookAlikeCutGreenBeans(t *testing.T) {
 	names := []string{
 		"Kroger Cut Green Beans",

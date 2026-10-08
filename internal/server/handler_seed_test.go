@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/Rhionin/pantry/internal/group"
-	"github.com/Rhionin/pantry/internal/shopping"
 )
 
 func TestSeededSuggestionsLeaveShoppingCombined(t *testing.T) {
@@ -18,11 +17,7 @@ func TestSeededSuggestionsLeaveShoppingCombined(t *testing.T) {
 				createItemViaStockIn(env.T, env.DB, env.ProductStore, "user-1", "kr", "Kroger Cut Green Beans", "item-kr")
 				createItemViaStockIn(env.T, env.DB, env.ProductStore, "user-1", "dm", "Del Monte Cut Green Beans", "item-dm")
 				mustExec(env, `UPDATE products SET unit_of_measure = 'can' WHERE id IN ('gv', 'kr', 'dm')`)
-				key, ok := shopping.NeedKey("Great Value Cut Green Beans", "can")
-				if !ok {
-					env.T.Fatal("need key")
-				}
-				mustExec(env, `INSERT INTO brand_preferences (user_id, need_key, item_id, ignore_price) VALUES ('user-1', ?, 'item-gv', 1)`, key)
+				mustExec(env, `INSERT INTO brand_preferences (user_id, need_key, item_id, ignore_price) VALUES ('user-1', ?, 'item-gv', 1)`, "cut green beans\x00can")
 				beginUsing(env.T, env.DB, time.Now())
 				setSupplyQuantity(env.T, env.DB, "gv", 4)
 				setSupplyQuantity(env.T, env.DB, "kr", 4)

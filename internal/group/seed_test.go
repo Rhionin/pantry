@@ -5,7 +5,6 @@ import (
 	"testing"
 
 	"github.com/Rhionin/pantry/internal/product"
-	"github.com/Rhionin/pantry/internal/shopping"
 )
 
 func TestSeed_OldPlanPinsFavoriteAndIncludesDelMonte(t *testing.T) {
@@ -23,7 +22,7 @@ func TestSeed_OldPlanPinsFavoriteAndIncludesDelMonte(t *testing.T) {
 	if _, err := conn.Exec(`INSERT INTO items (id, user_id, product_id) VALUES ('item-gv', 'user-1', 'gv')`); err != nil {
 		t.Fatal(err)
 	}
-	key, ok := shopping.NeedKey("Great Value Cut Green Beans", "can")
+	key, ok := needKey("Great Value Cut Green Beans", "can")
 	if !ok {
 		t.Fatal("need key")
 	}
@@ -78,7 +77,7 @@ func TestSeed_SkipsGoneAndSinglePreferences(t *testing.T) {
 	if err := catalog.CreateProduct(ctx, product.Product{ID: "milk", Name: "Whole Milk", UnitOfMeasure: "carton"}); err != nil {
 		t.Fatal(err)
 	}
-	key, ok := shopping.NeedKey("Whole Milk", "carton")
+	key, ok := needKey("Whole Milk", "carton")
 	if !ok {
 		t.Fatal("need key")
 	}

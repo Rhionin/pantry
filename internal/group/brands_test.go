@@ -1,8 +1,11 @@
-package shopping
+package group
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
-func TestGenericProductName(t *testing.T) {
+func TestStoreBrandStripsFromCommodity(t *testing.T) {
 	tests := []struct {
 		name string
 		in   string
@@ -26,25 +29,35 @@ func TestGenericProductName(t *testing.T) {
 		{name: "brand only", in: "Kroger", want: ""},
 		{name: "empty", in: "", want: ""},
 	}
-
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := GenericProductName(tt.in); got != tt.want {
-				t.Errorf("GenericProductName(%q) = %q, want %q", tt.in, got, tt.want)
+			got := strings.Join(stripStoreBrands(normalizeTokens(tt.in)), " ")
+			if got != tt.want {
+				t.Errorf("commodity(%q) = %q, want %q", tt.in, got, tt.want)
 			}
 		})
 	}
 }
 
-func TestGenericProductName_EveryStoreBrandStripsFromCommodity(t *testing.T) {
+func TestNeedKeyMatchesOldPreferenceIdentity(t *testing.T) {
+	key, ok := needKey("Great Value Cut Green Beans", "can")
+	if !ok || key != "cut green beans\x00can" {
+		t.Fatalf("needKey = %q ok=%v", key, ok)
+	}
+	if _, ok := needKey("Kroger", "can"); ok {
+		t.Fatal("a brand-only name is not a need")
+	}
+}
+
+func TestEveryStoreBrandStripsFromCommodity(t *testing.T) {
 	if len(storeBrandNames) == 0 {
 		t.Fatal("store brand list is empty")
 	}
 	for _, brand := range storeBrandNames {
 		name := brand + " Cut Green Beans"
-		got := GenericProductName(name)
+		got := strings.Join(stripStoreBrands(normalizeTokens(name)), " ")
 		if got != "cut green beans" {
-			t.Errorf("GenericProductName(%q) = %q, want %q", name, got, "cut green beans")
+			t.Errorf("commodity(%q) = %q, want %q", name, got, "cut green beans")
 		}
 	}
 }

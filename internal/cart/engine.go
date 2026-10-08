@@ -364,26 +364,15 @@ func (e *Engine) getComputedEntries(ctx context.Context, providerID ProviderID, 
 
 	itemNames := make(map[string]string, len(pantryItems))
 	itemProductIDs := make(map[string]string, len(pantryItems))
-	needs := make([]shopping.ReplenishmentItem, 0, len(pantryItems))
 	for _, item := range pantryItems {
 		itemProductIDs[item.ID] = item.ProductID
 		name := "Unknown"
-		unit := ""
-		if item.Product != nil {
-			if item.Product.Name != "" {
-				name = item.Product.Name
-			}
-			unit = item.Product.UnitOfMeasure
+		if item.Product != nil && item.Product.Name != "" {
+			name = item.Product.Name
 		}
 		itemNames[item.ID] = name
-		needs = append(needs, shopping.ReplenishmentItem{
-			ItemID:        item.ID,
-			Name:          name,
-			UnitOfMeasure: unit,
-		})
 	}
 
-	swaps := exportSubstitutions(ctx)
 	var result []ResolvedItem
 	for _, entry := range active {
 		qty := entry.Quantity - ledger[entry.ItemID].Requested
@@ -401,13 +390,6 @@ func (e *Engine) getComputedEntries(ctx context.Context, providerID ProviderID, 
 			continue
 		}
 		itemID := entry.ItemID
-		if useID := swaps[itemID]; useID != "" && useID != itemID {
-			swapped, subErr := shopping.SubstituteBrand(itemID, useID, needs)
-			if subErr != nil {
-				return nil, subErr
-			}
-			itemID = swapped
-		}
 		name := itemNames[itemID]
 		if name == "" {
 			name = "Unknown"
@@ -421,27 +403,6 @@ func (e *Engine) getComputedEntries(ctx context.Context, providerID ProviderID, 
 		})
 	}
 	return result, nil
-}
-
-type exportSwapContextKey struct{}
-
-// WithExportSubstitutions carries one-export brand swaps, keyed by the
-// shopping line's item id. A saved preference is applied first; these swaps
-// replace that brand for this call only.
-func WithExportSubstitutions(ctx context.Context, swaps map[string]string) context.Context {
-	if len(swaps) == 0 {
-		return ctx
-	}
-	copied := make(map[string]string, len(swaps))
-	for lineID, useID := range swaps {
-		copied[lineID] = useID
-	}
-	return context.WithValue(ctx, exportSwapContextKey{}, copied)
-}
-
-func exportSubstitutions(ctx context.Context) map[string]string {
-	swaps, _ := ctx.Value(exportSwapContextKey{}).(map[string]string)
-	return swaps
 }
 
 // exchangeRefresh asks the provider's OAuth flow for a new access token.

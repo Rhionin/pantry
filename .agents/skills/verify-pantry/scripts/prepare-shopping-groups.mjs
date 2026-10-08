@@ -49,12 +49,5 @@ for (const spec of products) {
   spec.productId = created.id;
 }
 
-const inventory = await send('/api/inventory');
-const gv = inventory.find((row) => row.item.product.name === 'Great Value Cut Green Beans');
-if (!gv) throw new Error('Great Value beans never reached inventory');
-await send('/api/shopping-list/preferences', {
-  method: 'PUT',
-  body: { itemId: gv.item.id, ignorePrice: true },
-});
 await send('/api/onboarding/complete', { method: 'POST', body: {} });
-console.log(`prepared ${products.length} products, favorite pinned to ${gv.item.id}`);
+console.log(`prepared ${products.length} products`);

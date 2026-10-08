@@ -2,7 +2,7 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import { MantineProvider } from '@mantine/core';
 import { Notifications } from '@mantine/notifications';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { InventoryItem, ShoppingConsiderations, ShoppingListEntry } from '../../types';
+import type { InventoryItem, ShoppingListEntry } from '../../types';
 import { ShoppingListPage } from './ShoppingListPage';
 
 const inventoryItem = (id: string, name: string, targetQuantity: number | null): InventoryItem => ({
@@ -77,13 +77,6 @@ describe('ShoppingListPage', () => {
         purchased = true;
         return Promise.resolve(jsonResponse({ ...initialEntries[1], purchasedAt: '2026-03-01T00:00:00Z' }));
       }
-      if (url === '/api/shopping-list/considerations') {
-        return Promise.resolve(jsonResponse({
-          retailerDeals: 'unavailable',
-          retailerDetail: '',
-          considerations: [],
-        }));
-      }
       throw new Error(`Unexpected request: ${url}`);
     });
     vi.stubGlobal('fetch', fetchMock);
@@ -125,13 +118,6 @@ describe('ShoppingListPage', () => {
         entries = [created];
         return Promise.resolve(jsonResponse(created, 201));
       }
-      if (url === '/api/shopping-list/considerations') {
-        return Promise.resolve(jsonResponse({
-          retailerDeals: 'unavailable',
-          retailerDetail: '',
-          considerations: [],
-        }));
-      }
       throw new Error(`Unexpected request: ${url}`);
     });
     vi.stubGlobal('fetch', fetchMock);
@@ -165,13 +151,6 @@ describe('ShoppingListPage', () => {
           credentialsConfigured: true,
         }]));
       }
-      if (url === '/api/shopping-list/considerations') {
-        return Promise.resolve(jsonResponse({
-          retailerDeals: 'unavailable',
-          retailerDetail: '',
-          considerations: [],
-        }));
-      }
       if (url.startsWith('/api/shopping-list') && init?.method === undefined) return Promise.resolve(jsonResponse([entry]));
       if (url === '/api/inventory') return Promise.resolve(jsonResponse([inventoryItem('tea', 'Green Tea', null)]));
       if (url === '/api/shopping-list/export') {
@@ -199,80 +178,8 @@ describe('ShoppingListPage', () => {
     expect(within(table).getByText('Green Tea')).toBeInTheDocument();
   });
 
-  it('offers a sale without blocking export, and sends the sale brand only after it is taken', async () => {
+  it('notes a sale without a preferred brand or an always-buy choice', async () => {
     const entry = { id: 'auto-gv', itemId: 'gv', quantity: 1, source: 'auto', purchasedAt: null } satisfies ShoppingListEntry;
-    const notes: ShoppingConsiderations = {
-      retailerDeals: 'unavailable',
-      retailerDetail: "Live store prices aren't connected. Sales you note yourself still show up here.",
-      considerations: [{
-        lineItemId: 'gv',
-        needKey: 'cut green beans',
-        genericName: 'cut green beans',
-        chosenItemId: 'gv',
-        preferredItemId: '',
-        ignorePrice: false,
-        members: [
-          { itemId: 'gv', name: 'Great Value Cut Green Beans', priceCents: null, onSale: false, saleLabel: '', dealSource: '' },
-          { itemId: 'kr', name: 'Kroger Cut Green Beans', priceCents: 79, onSale: true, saleLabel: 'Weekly ad', dealSource: 'recorded' },
-        ],
-        offer: {
-          itemId: 'kr',
-          name: 'Kroger Cut Green Beans',
-          label: 'Weekly ad',
-          priceCents: 79,
-          usualPriceCents: null,
-          source: 'recorded',
-        },
-      }],
-    };
-    const exportBodies: Array<BodyInit | null | undefined> = [];
-    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
-      const url = String(input);
-      if (url === '/api/providers') return Promise.resolve(jsonResponse([]));
-      if (url === '/api/shopping-list' && init?.method === undefined) return Promise.resolve(jsonResponse([entry]));
-      if (url === '/api/inventory') return Promise.resolve(jsonResponse([inventoryItem('gv', 'Great Value Cut Green Beans', 4)]));
-      if (url === '/api/shopping-list/considerations') return Promise.resolve(jsonResponse(notes));
-      if (url === '/api/shopping-list/export') {
-        exportBodies.push(init?.body);
-        return Promise.resolve(jsonResponse({ exported: 1 }));
-      }
-      throw new Error(`Unexpected request: ${url}`);
-    });
-    vi.stubGlobal('fetch', fetchMock);
-    renderPage();
-
-    expect(await screen.findByText(/Kroger Cut Green Beans is on sale at \$0\.79/)).toBeInTheDocument();
-    expect(screen.getByText(/Live store prices aren't connected/)).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'Send to Kroger' }));
-    await screen.findByText('1 item sent to Kroger.');
-    expect(exportBodies[0]).toBeUndefined();
-
-    fireEvent.click(screen.getByRole('button', { name: 'Take the deal on Kroger Cut Green Beans' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Send to Kroger' }));
-    await waitFor(() => expect(exportBodies).toHaveLength(2));
-    expect(exportBodies[1]).toBe(JSON.stringify({ useItemIds: { gv: 'kr' } }));
-    expect(screen.getByRole('button', { name: 'Keep Great Value Cut Green Beans' })).toBeInTheDocument();
-  });
-
-  it('saves a preferred brand and notes a sale price', async () => {
-    const entry = { id: 'auto-gv', itemId: 'gv', quantity: 1, source: 'auto', purchasedAt: null } satisfies ShoppingListEntry;
-    let notes: ShoppingConsiderations = {
-      retailerDeals: 'unavailable',
-      retailerDetail: 'Live store prices aren\'t connected. Sales you note yourself still show up here.',
-      considerations: [{
-        lineItemId: 'gv',
-        needKey: 'cut green beans',
-        genericName: 'cut green beans',
-        chosenItemId: 'gv',
-        preferredItemId: '',
-        ignorePrice: false,
-        members: [
-          { itemId: 'gv', name: 'Great Value Cut Green Beans', priceCents: null, onSale: false, saleLabel: '', dealSource: '' },
-          { itemId: 'kr', name: 'Kroger Cut Green Beans', priceCents: null, onSale: false, saleLabel: '', dealSource: '' },
-        ],
-        offer: null,
-      }],
-    };
     const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
       const method = init?.method ?? 'GET';
@@ -284,45 +191,22 @@ describe('ShoppingListPage', () => {
           inventoryItem('kr', 'Kroger Cut Green Beans', 4),
         ]));
       }
-      if (url === '/api/shopping-list/considerations') return Promise.resolve(jsonResponse(notes));
-      if (url === '/api/shopping-list/preferences' && method === 'PUT') {
-        const body = JSON.parse(String(init?.body)) as { itemId: string; ignorePrice: boolean };
-        notes = {
-          ...notes,
-          considerations: [{ ...notes.considerations[0], preferredItemId: body.itemId, ignorePrice: body.ignorePrice }],
-        };
-        return Promise.resolve(jsonResponse({ itemId: body.itemId, ignorePrice: body.ignorePrice }));
-      }
       if (url === '/api/shopping-list/deals' && method === 'PUT') {
-        const body = JSON.parse(String(init?.body)) as { itemId: string; priceCents: number; label: string };
-        expect(body).toEqual({ itemId: 'kr', priceCents: 89, label: 'Noted sale' });
-        const members = notes.considerations[0].members.map((member) => (
-          member.itemId === body.itemId
-            ? { ...member, priceCents: body.priceCents, onSale: true, saleLabel: body.label, dealSource: 'recorded' }
-            : member
-        ));
-        notes = { ...notes, considerations: [{ ...notes.considerations[0], members }] };
-        return Promise.resolve(jsonResponse(body));
+        return Promise.resolve(jsonResponse({ itemId: 'kr', priceCents: 89, label: 'Noted sale' }));
+      }
+      if (url === '/api/shopping-list/export') {
+        expect(init?.body).toBeUndefined();
+        return Promise.resolve(jsonResponse({ exported: 1 }));
       }
       throw new Error(`Unexpected request: ${url} ${method}`);
     });
     vi.stubGlobal('fetch', fetchMock);
     renderPage();
 
-    const brand = await screen.findByLabelText('Preferred brand for cut green beans');
-    fireEvent.change(brand, { target: { value: 'kr' } });
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith(
-      '/api/shopping-list/preferences',
-      expect.objectContaining({ method: 'PUT', body: JSON.stringify({ itemId: 'kr', ignorePrice: false }) }),
-    ));
-
-    const always = await screen.findByRole('checkbox', { name: 'Always buy this brand of cut green beans' });
-    await waitFor(() => expect(always).toBeEnabled());
-    fireEvent.click(always);
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith(
-      '/api/shopping-list/preferences',
-      expect.objectContaining({ method: 'PUT', body: JSON.stringify({ itemId: 'kr', ignorePrice: true }) }),
-    ));
+    expect(await screen.findByLabelText('Brand on sale')).toBeInTheDocument();
+    expect(screen.queryByLabelText('Preferred brand for cut green beans')).not.toBeInTheDocument();
+    expect(screen.queryByRole('checkbox', { name: 'Always buy this brand of cut green beans' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Take the deal/ })).not.toBeInTheDocument();
 
     fireEvent.change(screen.getByLabelText('Brand on sale'), { target: { value: 'kr' } });
     fireEvent.change(screen.getByLabelText('Sale price in cents'), { target: { value: '89' } });
@@ -331,6 +215,9 @@ describe('ShoppingListPage', () => {
       '/api/shopping-list/deals',
       expect.objectContaining({ method: 'PUT', body: JSON.stringify({ itemId: 'kr', priceCents: 89, label: 'Noted sale' }) }),
     ));
+
+    fireEvent.click(screen.getByRole('button', { name: 'Send to Kroger' }));
+    expect(await screen.findByText('1 item sent to Kroger.')).toBeInTheDocument();
   });
 
   it('shows a group line with its rule and swap, and hides brand controls', async () => {
@@ -363,22 +250,6 @@ describe('ShoppingListPage', () => {
           inventoryItem('kr', 'Kroger Cut Green Beans', null),
         ]));
       }
-      if (url === '/api/shopping-list/considerations') {
-        return Promise.resolve(jsonResponse({
-          retailerDeals: 'unavailable',
-          retailerDetail: '',
-          considerations: [{
-            lineItemId: 'gv',
-            needKey: 'cut green beans',
-            genericName: 'cut green beans',
-            chosenItemId: 'gv',
-            preferredItemId: '',
-            ignorePrice: false,
-            members: [],
-            offer: null,
-          }],
-        } satisfies ShoppingConsiderations));
-      }
       if (url === '/api/shopping-list/items/line-1/swap' && method === 'POST') {
         expect(init?.body).toBe(JSON.stringify({ itemId: 'kr' }));
         return Promise.resolve(jsonResponse({ ...entry, itemId: 'kr' }));
@@ -394,6 +265,7 @@ describe('ShoppingListPage', () => {
     expect(within(table).getByText('Always my favorite')).toBeInTheDocument();
     expect(within(table).getByText('This is the one with the star.')).toBeInTheDocument();
     expect(screen.queryByLabelText('Preferred brand for cut green beans')).not.toBeInTheDocument();
+    expect(screen.queryByRole('checkbox', { name: 'Always buy this brand of cut green beans' })).not.toBeInTheDocument();
 
     fireEvent.change(screen.getByLabelText('This trip, buy'), { target: { value: 'kr' } });
     await waitFor(() => expect(fetchMock).toHaveBeenCalledWith(
