@@ -140,32 +140,56 @@ code {
 }
 
 /* The key string stays first in the DOM so existing drivers can match
-   "Mode: stock_in". Sighted users get the short STOCK IN / STOCK OUT label. */
-.scan-mode-chip {
-  display: inline-flex;
-  align-items: center;
+   "Mode: stock_in". The visible switch is a compact control under the title,
+   labeled Scanning mode so it is not a second copy of the queue tabs.
+   While the camera is open the field is omitted and this box collapses. */
+.scan-toolbar-primary > .scan-mode-switch {
   position: relative;
-  flex: none;
-  padding: 4px 10px;
-  border-radius: 999px;
+  order: 2;
+  flex: 0 0 auto;
+  align-self: flex-start;
+}
+
+.scan-toolbar-primary > .scan-mode-switch:not(:has(.scan-mode-switch-field)) {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+}
+
+.scan-toolbar-primary > .scan-toolbar-title {
+  order: 0;
+}
+
+.scan-mode-switch-field {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+}
+
+.scan-mode-switch-caption {
+  font-size: 0.7rem;
+  font-weight: 650;
+  letter-spacing: 0.01em;
+  color: var(--mantine-color-dimmed);
   line-height: 1.2;
-  white-space: nowrap;
 }
 
-.scan-mode-chip--stock_in {
-  background: var(--mantine-color-blue-light);
-  color: var(--mantine-color-blue-light-color);
-}
-
-.scan-mode-chip--stock_out {
-  background: var(--mantine-color-orange-light);
-  color: var(--mantine-color-orange-light-color);
-}
-
-.scan-mode-chip-label {
-  font-size: 0.75rem;
+.scan-mode-switch-control .mantine-SegmentedControl-label,
+.camera-mode-switch .mantine-SegmentedControl-label {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
   font-weight: 700;
   letter-spacing: 0.04em;
+}
+
+.scan-mode-switch-control .mantine-SegmentedControl-label {
+  min-height: 36px;
+  padding-block: 0;
+  font-size: 0.72rem;
 }
 
 .scan-mode-chip-key {
@@ -181,6 +205,7 @@ code {
 }
 
 .scan-toolbar-primary > .camera-scanner-region {
+  order: 1;
   margin-left: auto;
   flex: none;
   min-width: 0;
@@ -190,6 +215,19 @@ code {
 .scan-toolbar-primary > .camera-scanner-region:has(.camera-scanner-fallback) {
   flex: 1 0 100%;
   margin-left: 0;
+}
+
+/* Once the preview is capped, keep the Scanning mode bar and Stop button in
+   that same cluster. A full-width flex item would stretch the switch across
+   the centered column. */
+@media (min-width: 48em) {
+  .scan-toolbar-primary:has(.camera-preview),
+  .scan-toolbar-primary:has(.camera-scanner-fallback) {
+    display: grid;
+    grid-template-columns: minmax(0, 480px);
+    justify-content: start;
+    align-items: start;
+  }
 }
 
 .scan-status {
@@ -343,6 +381,19 @@ code {
 @media (min-width: 64em) {
   .scan-view-tabs {
     max-width: 28rem;
+  }
+
+  /* Phone wraps the switch under the title and parks Camera on the title
+     row. In the centered column, keep the switch with the title and Camera
+     at the end of that row. At 100em the Camera margin resets to 0, so the
+     three pack on the left ahead of the card grid. */
+  .scan-toolbar-primary > .scan-mode-switch {
+    order: 1;
+    align-self: center;
+  }
+
+  .scan-toolbar-primary > .camera-scanner-region {
+    order: 2;
   }
 }
 
@@ -737,6 +788,26 @@ code {
 .camera-preview-status--captured {
   background: rgba(18, 92, 48, 0.92);
   font-weight: 600;
+}
+
+/* Sits under the preview so a thumb can flip stock in / stock out without
+   closing the camera or covering the barcode frame. */
+.camera-mode-switch {
+  width: 100%;
+}
+
+.camera-mode-field {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 2px;
+  width: 100%;
+}
+
+.camera-mode-switch .mantine-SegmentedControl-label {
+  min-height: 48px;
+  padding-block: 0;
+  font-size: 1rem;
 }
 
 .scan-entry-card--just-captured,

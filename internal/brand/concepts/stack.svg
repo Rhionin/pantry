@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <title>Stack</title>
+  <desc>Two rounded cards, one set behind the other. A collection of things you own, with no picture of food and no letter that would have to change if the app outgrows the pantry.</desc>
+  <rect x="156" y="36" width="312" height="312" rx="76" fill="#F0B429"/>
+  <rect x="44" y="164" width="312" height="312" rx="76" fill="#1C7C4E"/>
+</svg>
