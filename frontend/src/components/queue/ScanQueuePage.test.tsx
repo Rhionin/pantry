@@ -2132,28 +2132,28 @@ describe('ScanQueuePage', () => {
       expect(within(card).getByLabelText('Unit count')).toHaveValue('2');
     });
 
-    it('updates a stock-out count without showing the queue loader', async () => {
+    it('updates a stock-out count on tap without showing the queue loader', async () => {
       const { patches, releaseRefresh, pendingLoads } = renderQueue(milk, 'stock_out');
       const card = await screen.findByRole('article', { name: 'Scan 222' });
-      const input = within(card).getByLabelText('Unit count');
+      expect(screen.queryByLabelText('Loading scan queue')).not.toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'More' })).toBeInTheDocument();
+
+      fireEvent.click(within(card).getByRole('button', { name: 'Increase unit count' }));
+
+      expect(within(card).getByLabelText('Unit count')).toHaveValue('2');
       expect(screen.queryByLabelText('Loading scan queue')).not.toBeInTheDocument();
 
-      fireEvent.change(input, { target: { value: '4' } });
-      expect(input).toHaveValue('4');
-      expect(screen.queryByLabelText('Loading scan queue')).not.toBeInTheDocument();
-      fireEvent.blur(input);
-
-      await vi.waitFor(() => expect(patches).toEqual([{ unitCount: 4 }]));
+      await vi.waitFor(() => expect(patches).toEqual([{ unitCount: 2 }]));
       await vi.waitFor(() => expect(pendingLoads()).toBeGreaterThan(1));
-      expect(input).toHaveValue('4');
+      expect(within(card).getByLabelText('Unit count')).toHaveValue('2');
       expect(screen.queryByLabelText('Loading scan queue')).not.toBeInTheDocument();
       expect(screen.getByRole('region', { name: /Scan session/ })).toBeInTheDocument();
 
       await act(async () => {
-        releaseRefresh(jsonResponse([{ ...milk, unitCount: 4 }]));
+        releaseRefresh(jsonResponse([{ ...milk, unitCount: 2 }]));
       });
       expect(screen.queryByLabelText('Loading scan queue')).not.toBeInTheDocument();
-      expect(within(card).getByLabelText('Unit count')).toHaveValue('4');
+      expect(within(card).getByLabelText('Unit count')).toHaveValue('2');
     });
   });
 });
