@@ -15,6 +15,7 @@ bash -n "$ROOT/deploy/mdns/lan-ipv4.sh"
 bash -n "$ROOT/deploy/dns/pantry-split-dns.sh"
 bash -n "$ROOT/deploy/publish-mode.sh"
 bash -n "$ROOT/deploy/check-publish-modes.sh"
+bash -n "$ROOT/deploy/check-deploy-hook.sh"
 
 fail() {
   echo "FAIL: $*" >&2
@@ -177,6 +178,15 @@ run_setup "$lan"
 [[ "$LAST_RC" -eq 0 ]] || fail "LAN setup exited $LAST_RC: $LAST_OUT"
 have "$LAST_DOCKER" "up -d" "LAN compose up"
 lack "$LAST_DOCKER" "--profile public" "LAN must not start the public proxy"
+secret1=$(grep '^DEPLOY_HOOK_SECRET=' "$lan/.env" | cut -d= -f2-)
+[[ "$secret1" =~ ^[0-9a-f]{64}$ ]] || fail "setup did not generate a 64-hex deploy hook secret (got $secret1)"
+[[ -d "$lan/deploy-trigger" ]] || fail "setup did not create the deploy trigger directory"
+run_setup "$lan"
+[[ "$LAST_RC" -eq 0 ]] || fail "second LAN setup exited $LAST_RC: $LAST_OUT"
+secret2=$(grep '^DEPLOY_HOOK_SECRET=' "$lan/.env" | cut -d= -f2-)
+[[ "$secret1" == "$secret2" ]] || fail "setup rotated DEPLOY_HOOK_SECRET"
+printed=$(PANTRY_DIR="$lan" PANTRY_SETUP_SKIP_ROOT=1 bash "$SETUP" deploy-secret)
+[[ "$printed" == "$secret1" ]] || fail "deploy-secret printed [$printed], want [$secret1]"
 lack "$LAST_DOCKER" "docker-compose.tunnel.yml" "LAN must not select the tunnel file"
 lack "$LAST_DOCKER" "hash-password" "LAN must not hash a password"
 lack "$LAST_DOCKER" "restart pantry-caddy" "LAN must not restart Caddy"
@@ -543,5 +553,27 @@ write_env "$mode_dir" "PUBLIC_HOST=pantry.example.com" "CLOUDFLARE_TUNNEL_TOKEN=
 got=$(publish_mode_from_env tunnel)
 [[ "$got" == tunnel ]] || fail "--tunnel request, got $got"
 
-rm -rf "$lan" "$pub" "$first" "$bad" "$incomplete" "$opt" "$mdns" "$split" "$badip" "$mdns_bin" "$tun" "$notoken" "$unready" "$tunsplit" "$mode_dir"
+# A secret the operator set is left alone.
+custom=$(mktemp -d)
+write_env "$custom" \
+  "DEPLOY_HOOK_SECRET=not-generated" \
+  "HOST_PORT=8080" \
+  "PUBLIC_HOST=" \
+  "BASIC_AUTH_PASSWORD="
+run_setup "$custom"
+[[ "$LAST_RC" -eq 0 ]] || fail "custom secret setup exited $LAST_RC: $LAST_OUT"
+grep -q '^DEPLOY_HOOK_SECRET=not-generated$' "$custom/.env" || fail "setup replaced a custom DEPLOY_HOOK_SECRET"
+
+# --with-updates enables the timer and the path unit that the hook trips.
+updates=$(mktemp -d)
+write_env "$updates" \
+  "HOST_PORT=8080" \
+  "PUBLIC_HOST=" \
+  "BASIC_AUTH_PASSWORD="
+run_setup "$updates" --with-updates
+[[ "$LAST_RC" -eq 0 ]] || fail "--with-updates exited $LAST_RC: $LAST_OUT"
+have "$LAST_SYSTEMCTL" "enable --now pantry-update.timer" "timer enabled"
+have "$LAST_SYSTEMCTL" "enable --now pantry-update.path" "path unit enabled"
+
+rm -rf "$lan" "$pub" "$first" "$bad" "$incomplete" "$opt" "$mdns" "$split" "$badip" "$mdns_bin" "$tun" "$notoken" "$unready" "$tunsplit" "$mode_dir" "$custom" "$updates"
 echo "setup_apply_test ok"

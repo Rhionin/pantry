@@ -1,0 +1,13 @@
+[Unit]
+Description=Deploy Pantry when a signed hook arrives
+
+[Path]
+# The container writes this file after the signature check. PathChanged is
+# edge-triggered, so a second write while an update is running starts another
+# run after the current one exits. The update script also re-reads the file
+# so two writes that land in one run still pull the newer image.
+PathChanged=/opt/pantry/deploy-trigger/request
+Unit=pantry-update.service
+
+[Install]
+WantedBy=multi-user.target

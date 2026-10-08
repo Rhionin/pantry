@@ -56,6 +56,19 @@
 		}
 	}
 
+	# GitHub Actions POSTs here after the image push. The household password
+	# is not used: the caller is the workflow, and this Pi has no inbound
+	# port. The app checks an HMAC and a timestamp, and rejects anything else.
+	# Do not add other API paths to this matcher.
+	@deploy path /api/deploy-hook
+	handle @deploy {
+		route {
+			import security_headers
+			encode gzip
+			reverse_proxy pantry:8080
+		}
+	}
+
 	# Everything else asks for the shared password. basic_auth lives in this
 	# handle so the telemetry and public handles above are the only exceptions.
 	handle {

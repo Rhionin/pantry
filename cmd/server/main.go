@@ -242,6 +242,12 @@ func main() {
 		server.WithRetailerDeals(os.Getenv("PANTRY_RETAILER_API_KEY"), os.Getenv("PANTRY_RETAILER_API_URL")),
 		server.WithContributor(contributor),
 		server.WithScannerMode(scannerMode),
+		server.WithDeployHook(os.Getenv("DEPLOY_HOOK_SECRET"), os.Getenv("DEPLOY_TRIGGER_PATH")),
+	}
+	if strings.TrimSpace(os.Getenv("DEPLOY_HOOK_SECRET")) == "" {
+		log.Println("deploy hook: DEPLOY_HOOK_SECRET is empty; signed deploys are disabled")
+	} else {
+		log.Println("deploy hook: signature check enabled")
 	}
 	if listenerOK {
 		opts = append(opts, server.WithScannerStatus(listener.Status))

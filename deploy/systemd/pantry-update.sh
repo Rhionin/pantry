@@ -12,6 +12,11 @@
 # A non-empty CLOUDFLARE_TUNNEL_TOKEN selects the tunnel profile instead.
 # That profile does not publish ports 80 or 443. The certificate profile
 # is stopped so a token cannot leave both paths running.
+#
+# The timer and the deploy-hook path unit both start this script. A lock
+# keeps those from pulling at the same time. If a hook lands while a pull
+# is already running, the running copy sees the new trigger file and pulls
+# again instead of dropping it.
 
 set -euo pipefail
 
@@ -47,14 +52,56 @@ elif [[ "$mode" == acme ]]; then
   fi
 fi
 
-"${compose[@]}" pull
-# After a successful pull, drop a container left from the other mode so
-# the name pantry-caddy can be recreated on this path. A tunnel token with
-# no password file leaves whatever is already running alone.
-if [[ "$mode" != tunnel || -f /opt/pantry/auth.caddy ]]; then
-  drop_other_publish_containers "$mode"
+# uid 65532 is the distroless nonroot user that writes the trigger file.
+mkdir -p /opt/pantry/deploy-trigger
+chown 65532:65532 /opt/pantry/deploy-trigger
+chmod 755 /opt/pantry/deploy-trigger
+
+exec 9>/opt/pantry/deploy-trigger/.lock
+if ! flock -n 9; then
+  echo "pantry update: another update is running; waiting so this trigger is not dropped"
+  flock 9
 fi
-if [[ "$mode" == tunnel && -f /opt/pantry/auth.caddy ]]; then
-  drop_stale_cloudflared
-fi
-"${compose[@]}" up -d
+echo "pantry update: lock acquired"
+
+trigger_digest() {
+  if [[ -f /opt/pantry/deploy-trigger/request ]]; then
+    sha256sum /opt/pantry/deploy-trigger/request | awk '{print $1}'
+  fi
+}
+
+apply_compose() {
+  "${compose[@]}" pull
+  # After a successful pull, drop a container left from the other mode so
+  # the name pantry-caddy can be recreated on this path. A tunnel token with
+  # no password file leaves whatever is already running alone.
+  if [[ "$mode" != tunnel || -f /opt/pantry/auth.caddy ]]; then
+    drop_other_publish_containers "$mode"
+  fi
+  if [[ "$mode" == tunnel && -f /opt/pantry/auth.caddy ]]; then
+    drop_stale_cloudflared
+  fi
+  "${compose[@]}" up -d
+}
+
+round=0
+while true; do
+  round=$((round + 1))
+  if [[ "$round" -gt 3 ]]; then
+    echo "pantry update: stopping after 3 pulls; the timer will retry"
+    exit 0
+  fi
+  before=$(trigger_digest || true)
+  if [[ -n "$before" ]]; then
+    echo "pantry update: deploy trigger $(tr '\n' ' ' < /opt/pantry/deploy-trigger/request)"
+  else
+    echo "pantry update: scheduled pull"
+  fi
+  apply_compose
+  after=$(trigger_digest || true)
+  if [[ "$after" == "$before" ]]; then
+    echo "pantry update: finished"
+    break
+  fi
+  echo "pantry update: trigger changed during the pull; pulling again"
+done

@@ -135,7 +135,7 @@ This puts the Pantry UI on a hostname you already own, with HTTPS, using the sam
 
 The Gryphon in this house does not hairpin, so `https://pantry.rhionin.com` hangs on home Wi-Fi when DNS points at the router's WAN address. [Cloudflare Tunnel](#cloudflare-tunnel) is how that URL works on home Wi-Fi and on cellular without forwarding ports 80 and 443. The steps in this section are the certificate and port-forward path. Leave those forwards in place until the tunnel has been tested on both networks.
 
-The public site asks for one shared password before it serves the UI, the API, and the live scan stream. That stops scanners and other bots that do not have the password. It is not separate accounts, and anyone who has the password can change the pantry. These exact paths stay open without that password: `GET /api/telemetry`, `POST /api/telemetry/client`, `GET /brand/logo.png`, `GET /terms`, and `GET /privacy`. The snapshot is counters and durations only — no barcodes, product names, or user ids — so an agent can `curl` it. The brand mark and the two legal pages are public because a grocery login stores those URLs. The home-network address `http://<pi-ip>:8080` does not ask for the password, so do not forward port 8080 on the router.
+The public site asks for one shared password before it serves the UI, the API, and the live scan stream. That stops scanners and other bots that do not have the password. It is not separate accounts, and anyone who has the password can change the pantry. These exact paths stay open without that password: `GET /api/telemetry`, `POST /api/telemetry/client`, `GET /brand/logo.png`, `GET /terms`, `GET /privacy`, and `POST /api/deploy-hook`. The snapshot is counters and durations only — no barcodes, product names, or user ids — so an agent can `curl` it. The brand mark and the two legal pages are public because a grocery login stores those URLs. The deploy hook does not use the household password; it rejects any request whose HMAC signature or timestamp does not check out. See [Deploy when the image is published](#deploy-when-the-image-is-published). The home-network address `http://<pi-ip>:8080` does not ask for the password, so do not forward port 8080 on the router.
 
 The path below is Caddy in the `public` Compose profile, a Let's Encrypt certificate, and the Dynu A record for `pantry.rhionin.com`. It needs a public IPv4 address and the ability to forward TCP ports 80 and 443. If your ISP uses CGNAT, skip to [When port forwarding cannot work](#when-port-forwarding-cannot-work). With `CLOUDFLARE_TUNNEL_TOKEN` empty, these steps are unchanged, and `setup.sh` does not call Dynu or stop its update client.
 
@@ -471,7 +471,7 @@ To move DNS back to Dynu, after the smaller rollback is working, copy every reco
 
 Forwarding 80 and 443 to a computer in the house is a different risk from a VPN or a tunnel. The Pi is on your LAN. Anyone who gets past the shared password is on a process that can read the pantry database, change inventory, and, if you connected Kroger, use the refresh token stored in that database. A bug or a guessed password is not confined to a cloud VM. A tunnel or Tailscale does not put a listening port on the home router; the router path does.
 
-The shared password is one secret for the whole household. Caddy applies it to every path on the public hostname except `GET /api/telemetry`, `POST /api/telemetry/client`, `GET /brand/logo.png`, `GET /terms`, and `GET /privacy`. The telemetry paths are public so the timing snapshot can be read without credentials. The snapshot has no barcodes, product names, or user ids. The brand mark and the legal pages are public because a grocery developer app fetches those exact URLs. Inventory, scans, shopping, other static files, `/health`, and `/api/events` stay behind the password. There is no lockout and no rate limit in this Caddy build, so the password needs to be long (12 to 72 characters, and longer is better). The LAN address `http://<pi-ip>:8080` never asks for it. That is deliberate. Do not publish that port.
+The shared password is one secret for the whole household. Caddy applies it to every path on the public hostname except `GET /api/telemetry`, `POST /api/telemetry/client`, `GET /brand/logo.png`, `GET /terms`, `GET /privacy`, and `POST /api/deploy-hook`. The telemetry paths are public so the timing snapshot can be read without credentials. The snapshot has no barcodes, product names, or user ids. The brand mark and the legal pages are public because a grocery developer app fetches those exact URLs. The deploy hook is public so GitHub Actions can reach it through the tunnel; the app still rejects a request that fails the HMAC check. Inventory, scans, shopping, other static files, `/health`, and `/api/events` stay behind the password. There is no lockout and no rate limit in this Caddy build, so the password needs to be long (12 to 72 characters, and longer is better). The LAN address `http://<pi-ip>:8080` never asks for it. That is deliberate. Do not publish that port.
 
 Kroger client secrets and refresh tokens are stored in `pantry.db` as plain text. The HTTP API does not return them. A copy of the database (a backup, or the Docker volume) does. Treat `pantry.db` like a password file. The app has no login of its own: if Caddy is stopped or mis-mounted and something else forwards port 8080, every route is open, including wiping inventory (the body must contain `WIPE INVENTORY`) and saving a Kroger client secret.
 
@@ -535,6 +535,7 @@ All configuration is handled through environment variables in `/opt/pantry/.env`
 | `HEADLESS_USER_ID` | `user-1` | User ID for headless scan operations (when no user is logged in) |
 | `SCANNER_DEVICE` | `/dev/input/pantry-scanner` | Path to the scanner's stable symlink created by the udev rule. Point at a concrete `/dev/input/eventN` to bypass the symlink while debugging |
 | `SCANNER_GID` | `65532` | Numeric group ID the container process joins so it can read the `0640` scanner node |
+| `DEPLOY_HOOK_SECRET` | generated | Shared HMAC secret for `POST /api/deploy-hook`. `sudo ./setup.sh` fills this in when it is empty and never replaces a value already set. The same value is the GitHub Actions secret `DEPLOY_HOOK_SECRET`. Print it with `sudo ./setup.sh deploy-secret` |
 
 **Note:** The variables `ADDR` and `DB_PATH` are pinned by the Docker Compose file and should not be overridden. To change the host port, use `HOST_PORT` instead of modifying `ADDR`.
 
@@ -778,24 +779,43 @@ For automatic updates, you can install systemd units that periodically check for
    # Should output: /usr/bin/docker
    ```
 
-2. Install the systemd units. The service runs `/opt/pantry/systemd/pantry-update.sh`, which `sudo ./setup.sh` copies into place and marks executable. When `PUBLIC_HOST` is set and `auth.caddy` exists, that script keeps the HTTPS proxy in the update. Or pass `--with-updates` to `sudo ./setup.sh`.
+2. Install the systemd units. The service runs `/opt/pantry/systemd/pantry-update.sh`, which `sudo ./setup.sh` copies into place and marks executable. When `PUBLIC_HOST` is set and `auth.caddy` exists, that script keeps the HTTPS proxy in the update. The path unit starts that same service when a deploy hook arrives. Or pass `--with-updates` to `sudo ./setup.sh`.
    ```bash
    sudo cp /opt/pantry/systemd/pantry-update.service /etc/systemd/system/
    sudo cp /opt/pantry/systemd/pantry-update.timer /etc/systemd/system/
+   sudo cp /opt/pantry/systemd/pantry-update.path /etc/systemd/system/
    sudo systemctl daemon-reload
    ```
 
 3. Enable and start automatic updates:
    ```bash
    sudo systemctl enable --now pantry-update.timer
+   sudo systemctl enable --now pantry-update.path
    ```
+
+### Deploy when the image is published
+
+The timer above is the fallback. After `ghcr.io/rhionin/pantry:latest` is pushed, GitHub Actions POSTs a signed request to `https://pantry.rhionin.com/api/deploy-hook`. Caddy does not ask for the household password on that path. The app checks an HMAC of the timestamp and body, rejects a replay older than five minutes (and a timestamp more than a minute ahead), and writes `/opt/pantry/deploy-trigger/request`. `pantry-update.path` starts `pantry-update.service`, which is the same pull the timer runs. Two hooks that arrive together share one pull; a hook that arrives during a pull causes one more pull. The container cannot call `systemctl` itself. Nothing on the router is opened: the request comes in through the existing Cloudflare tunnel (`cloudflared` to `caddy:80`).
+
+Do this once, after the files from this change are on the Pi:
+
+1. From `deploy/`, run `sudo ./setup.sh`. That generates `DEPLOY_HOOK_SECRET` in `/opt/pantry/.env` when the value is empty, creates `/opt/pantry/deploy-trigger` for uid 65532, and, if the update timer is already installed, installs `pantry-update.path` and applies the 1-minute timer. A secret that is already set is left as it is.
+2. If automatic updates are not on yet, run `sudo ./setup.sh --with-updates`. That enables `pantry-update.timer` and `pantry-update.path`.
+3. Print the secret:
+   ```bash
+   sudo ./setup.sh deploy-secret
+   ```
+4. On GitHub, open the `Rhionin/pantry` repository, then **Settings → Secrets and variables → Actions → New repository secret**. Name it `DEPLOY_HOOK_SECRET` and paste the printed value. There is no other repository secret to add. The hook URL is `https://pantry.rhionin.com/api/deploy-hook`.
+5. The next push to `master` that publishes `latest` sends the hook. If `DEPLOY_HOOK_SECRET` is not set on the repository, that workflow step skips and the 1-minute timer still deploys.
+
+`sudo ./setup.sh freeze` masks both the timer and the path unit so a hook does not change the image while you are iterating. `sudo ./setup.sh thaw` turns them back on.
 
 ### Management
 
 **Freeze / thaw during iteration:**
 ```bash
-sudo ./setup.sh freeze   # mask the timer so updates don't change the target
-sudo ./setup.sh thaw     # unmask it when you're done
+sudo ./setup.sh freeze   # mask the timer and the deploy hook
+sudo ./setup.sh thaw     # unmask them when you're done
 ```
 
 **Check status:**
@@ -812,7 +832,7 @@ sudo systemctl status pantry-update.timer
 
 **Disable automatic updates:**
 ```bash
-sudo systemctl disable --now pantry-update.timer
+sudo systemctl disable --now pantry-update.timer pantry-update.path
 ```
 
 **Manual trigger:**
@@ -822,7 +842,7 @@ sudo systemctl start pantry-update.service
 
 ### Update Interval
 
-The default interval is 5 minutes after boot, then every 5 minutes. To customize:
+The fallback interval is 1 minute after boot, then every minute. A signed deploy hook starts the same update as soon as the image push finishes; see [Deploy when the image is published](#deploy-when-the-image-is-published). To customize the fallback:
 
 ```bash
 sudo systemctl edit pantry-update.timer
@@ -840,15 +860,15 @@ Save and reload:
 sudo systemctl daemon-reload
 ```
 
-**Note:** Shorter intervals mean more registry requests but no faster delivery than the build workflow's runtime.
+**Note:** The hook is what removes the wait after a push. The timer is only the fallback for a missed hook. A shorter timer means more registry requests.
 
 ### Rollback After Automatic Update
 
 If an automatic update causes issues:
 
-1. Disable automatic updates:
+1. Disable automatic updates. The path unit has to stop too, or the next hook pulls `latest` again:
    ```bash
-   sudo systemctl disable --now pantry-update.timer
+   sudo systemctl disable --now pantry-update.timer pantry-update.path
    ```
 
 2. Pin to last known good version in `.env`:
