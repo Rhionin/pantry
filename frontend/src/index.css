@@ -98,6 +98,23 @@ code {
   flex: 1 1 auto;
   min-height: 0;
   overflow: auto;
+  /* The finger's pan belongs to this list. contain stops the gesture from
+     chaining to the shell, which has no room to move. */
+  overscroll-behavior: contain;
+  touch-action: pan-y;
+}
+
+/* The shell main is also a scrollport. On a phone a touch over the queue
+   latches onto that outer box, and it has nothing to scroll while the queue
+   is the flex child that actually overflows. */
+.app-shell:has(.scan-page) > .mantine-AppShell-main {
+  overflow: hidden;
+}
+
+/* Mantine buttons set overflow:hidden, which makes each control a scroll
+   container. A pan that starts on Confirm or the stepper then dies there. */
+.scan-page-queue button {
+  overflow: clip;
 }
 
 .scan-toolbar {
@@ -285,12 +302,15 @@ code {
 }
 
 .scan-session-card {
-  /* overflow: hidden would let this flex item shrink below its content and
-     clip the open session, so the queue would have nothing left to scroll. */
+  /* overflow:hidden is a scroll container. The open session is as tall as its
+     rows, so it cannot move, and iOS gives the pan to the card instead of the
+     queue. clip keeps the rounded corners. flex: 0 0 auto keeps a long session
+     from shrinking away the queue's overflow. */
   flex: 0 0 auto;
   border-left-width: 3px;
   border-left-color: var(--mantine-color-blue-filled);
-  overflow: hidden;
+  overflow: clip;
+  touch-action: pan-y;
 }
 
 .scan-session-card--collapsed {
