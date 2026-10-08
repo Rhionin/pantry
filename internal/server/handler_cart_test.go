@@ -370,7 +370,7 @@ func TestCartHTTP(t *testing.T) {
 			),
 		},
 		{
-			name: "accepted sale is the brand a configured provider receives",
+			name: "export refuses a brand that is not the line",
 			setup: func(env testEnv) {
 				createItemViaStockIn(env.T, env.DB, env.ProductStore, "user-1", "prod-swap-gv", "Great Value Cut Green Beans", "item-swap-gv")
 				createItemViaStockIn(env.T, env.DB, env.ProductStore, "user-1", "prod-swap-kr", "Kroger Cut Green Beans", "item-swap-kr")
@@ -407,21 +407,9 @@ func TestCartHTTP(t *testing.T) {
 					method:         "POST",
 					path:           "/api/shopping-list/export",
 					body:           `{"provider":"test-none-server_push","useItemIds":{"item-swap-gv":"item-swap-kr"}}`,
-					expectedStatus: http.StatusOK,
+					expectedStatus: http.StatusUnprocessableEntity,
 					assertions: []assertion{
-						{path: "$.exported", value: float64(1)},
-						{path: "$.entries[0].itemId", value: "item-swap-kr"},
-						{path: "$.entries[0].outcome", value: "confirmed"},
-						{path: "$.items[0].itemId", value: "item-swap-kr"},
-					},
-				},
-				httpExchange{
-					method:         "GET",
-					path:           "/api/providers/test-none-server_push/ledger",
-					expectedStatus: http.StatusOK,
-					assertions: []assertion{
-						{path: "$.entries[0].itemId", value: "item-swap-kr"},
-						{path: "$.entries[0].requested", value: float64(3)},
+						{path: "$.error", value: "Choose a product on this line."},
 					},
 				},
 			),

@@ -3,7 +3,6 @@ import {
   Alert,
   Badge,
   Button,
-  Checkbox,
   Group,
   Loader,
   NativeSelect,
@@ -15,21 +14,18 @@ import {
 } from '@mantine/core';
 import {
   addShoppingListItem,
-  clearBrandPreference,
   clearItemDeal,
   fillShoppingCart,
   getInventoryList,
-  getShoppingConsiderations,
   getShoppingList,
   listProviders,
   markShoppingListItemPurchased,
   removeShoppingListItem,
-  saveBrandPreference,
   swapShoppingLine,
   saveItemDeal,
   setShoppingListAdjustment,
 } from '../../api/client';
-import type { InventoryItem, ProviderInfo, ShoppingConsideration, ShoppingConsiderations, ShoppingListEntry } from '../../types';
+import type { InventoryItem, ProviderInfo, ShoppingListEntry } from '../../types';
 import { ruleLabel } from '../groups/copy';
 import { useCredentialsRevision } from '../../credentialsRefresh';
 import { ProviderPanel } from './ProviderPanel';
@@ -38,34 +34,10 @@ import { ProvisionButton } from './ProvisionButton';
 const requestErrorMessage = (error: unknown, fallback: string) =>
   error instanceof Error ? error.message : fallback;
 
-const emptyNotes: ShoppingConsiderations = {
-  retailerDeals: 'unavailable',
-  retailerDetail: '',
-  considerations: [],
-};
-
-const formatCents = (cents: number) => `$${(cents / 100).toFixed(2)}`;
-
-const offerSentence = (note: ShoppingConsideration) => {
-  const offer = note.offer;
-  if (offer === null) return '';
-  const usual = note.members.find((member) => member.itemId === note.chosenItemId)?.name ?? 'the usual brand';
-  const noteLabel = offer.label !== '' && offer.label !== 'On sale' ? ` (${offer.label})` : '';
-  if (offer.priceCents !== null && offer.usualPriceCents !== null) {
-    return `${offer.name} is ${formatCents(offer.priceCents)}${noteLabel}, compared with ${formatCents(offer.usualPriceCents)} for ${usual}.`;
-  }
-  if (offer.priceCents !== null) {
-    return `${offer.name} is on sale at ${formatCents(offer.priceCents)}${noteLabel}. This list buys ${usual}.`;
-  }
-  return `${offer.name} is on sale${noteLabel}. This list buys ${usual}.`;
-};
-
 export const ShoppingListPage = () => {
   const [entries, setEntries] = useState<ShoppingListEntry[]>([]);
   const [providers, setProviders] = useState<ProviderInfo[]>([]);
   const [inventory, setInventory] = useState<InventoryItem[]>([]);
-  const [notes, setNotes] = useState<ShoppingConsiderations>(emptyNotes);
-  const [accepted, setAccepted] = useState<Record<string, string>>({});
   const [selectedItemId, setSelectedItemId] = useState('');
   const [quantity, setQuantity] = useState<number | string>(1);
   const [saleItemId, setSaleItemId] = useState('');
@@ -86,11 +58,6 @@ export const ShoppingListPage = () => {
     setProviders(providerRows);
     setEntries(shoppingEntries);
     setInventory(inventoryItems);
-    try {
-      setNotes(await getShoppingConsiderations());
-    } catch {
-      setNotes(emptyNotes);
-    }
   }, []);
 
   const loadShoppingList = useCallback(async () => {
@@ -130,43 +97,17 @@ export const ShoppingListPage = () => {
     }
   };
 
-  // A taken deal only applies while that offer is still the one on the line.
-  // Deriving it here drops a stale choice when the notes refresh, without
-  // writing state from an effect.
-  const acceptedDeals = useMemo(() => {
-    const next: Record<string, string> = {};
-    for (const [lineId, useId] of Object.entries(accepted)) {
-      const note = notes.considerations.find((item) => item.lineItemId === lineId);
-      if (note?.offer?.itemId === useId) next[lineId] = useId;
-    }
-    return next;
-  }, [accepted, notes]);
-
   const inventoryByItemId = useMemo(
     () => new Map(inventory.map((inventoryItem) => [inventoryItem.item.id, inventoryItem])),
     [inventory],
   );
-  const notesByLine = useMemo(
-    () => new Map(notes.considerations.map((note) => [note.lineItemId, note])),
-    [notes],
+  const saleBrands = useMemo(
+    () => inventory.map((inventoryItem) => ({
+      value: inventoryItem.item.id,
+      label: inventoryItem.item.product.name,
+    })),
+    [inventory],
   );
-  const saleBrands = useMemo(() => {
-    const byId = new Map<string, string>();
-    for (const note of notes.considerations) {
-      for (const member of note.members) {
-        byId.set(member.itemId, member.name);
-      }
-    }
-    return [...byId.entries()].map(([value, label]) => ({ value, label }));
-  }, [notes]);
-  const selectedSale = useMemo(() => {
-    for (const note of notes.considerations) {
-      const member = note.members.find((item) => item.itemId === saleItemId);
-      if (member) return member;
-    }
-    return undefined;
-  }, [notes, saleItemId]);
-  const offers = notes.considerations.filter((note) => note.offer !== null);
   const showDecisions = decisionsOpen || entries.length > 0;
   const listAction = entries.length > 0 ? 'Update the list' : 'Build the list';
   const manualQuantity = typeof quantity === 'number' ? quantity : Number(quantity);
@@ -227,20 +168,6 @@ export const ShoppingListPage = () => {
     }
   };
 
-  const saveBrand = async (note: ShoppingConsideration, itemId: string, ignorePrice: boolean) => {
-    setError('');
-    try {
-      if (itemId === '') {
-        await clearBrandPreference(note.members[0]?.itemId ?? note.lineItemId);
-      } else {
-        await saveBrandPreference(itemId, ignorePrice);
-      }
-      await refresh();
-    } catch (requestError) {
-      setError(requestErrorMessage(requestError, 'Unable to save the brand preference.'));
-    }
-  };
-
   const noteSale = async () => {
     if (saleItemId === '' || !salePriceIsValid) return;
     setError('');
@@ -264,20 +191,6 @@ export const ShoppingListPage = () => {
     }
   };
 
-  const toggleDeal = (note: ShoppingConsideration) => {
-    const offer = note.offer;
-    if (offer === null) return;
-    setAccepted((current) => {
-      const next = { ...current };
-      if (next[note.lineItemId] === offer.itemId) {
-        delete next[note.lineItemId];
-      } else {
-        next[note.lineItemId] = offer.itemId;
-      }
-      return next;
-    });
-  };
-
   return (
     <Stack gap="sm">
       <div className="shopping-toolbar">
@@ -294,63 +207,44 @@ export const ShoppingListPage = () => {
           <ProvisionButton
             provider={targetProvider}
             entries={entries}
-            useItemIds={acceptedDeals}
             explainEmpty={!loading}
             onFinished={() => void loadShoppingList()}
           />
         </div>
       </div>
       <ProviderPanel providers={providers} onChanged={() => void loadShoppingList()} />
-      {!loading && showDecisions && notes.considerations.length > 0 && (
-        <Alert variant="light" color="teal" title={offers.length > 0 ? 'A sale to consider' : 'Brand notes'}>
-          <Stack gap="xs">
-            {offers.map((note) => {
-              const offer = note.offer;
-              if (offer === null) return null;
-              const usual = note.members.find((member) => member.itemId === note.chosenItemId)?.name ?? 'the usual brand';
-              const taken = acceptedDeals[note.lineItemId] === offer.itemId;
-              return (
-                <Group key={note.lineItemId} justify="space-between" align="center" wrap="wrap">
-                  <Text size="sm">{offerSentence(note)}</Text>
-                  <Button size="xs" variant={taken ? 'filled' : 'light'} onClick={() => toggleDeal(note)}>
-                    {taken ? `Keep ${usual}` : `Take the deal on ${offer.name}`}
-                  </Button>
-                </Group>
-              );
-            })}
-            <Text size="xs" c="dimmed">Send to Kroger sends the usual brand until you take a deal.</Text>
-            {notes.retailerDetail !== '' && <Text size="xs" c="dimmed">{notes.retailerDetail}</Text>}
-            <Group align="end" gap="xs" wrap="wrap">
-              <NativeSelect
-                size="xs"
-                label="Brand on sale"
-                value={saleItemId}
-                onChange={(event) => setSaleItemId(event.currentTarget.value)}
-                data={[{ value: '', label: 'Choose a brand' }, ...saleBrands]}
-              />
-              <NumberInput
-                size="xs"
-                label="Sale price in cents"
-                min={0}
-                step={1}
-                allowDecimal={false}
-                value={salePrice}
-                onChange={setSalePrice}
-                w={160}
-              />
-              <Button size="xs" variant="light" disabled={saleItemId === '' || !salePriceIsValid} onClick={() => void noteSale()}>
-                Note sale
-              </Button>
-              <Button
-                size="xs"
-                variant="default"
-                disabled={saleItemId === '' || selectedSale?.onSale !== true}
-                onClick={() => void clearSale()}
-              >
-                Clear sale
-              </Button>
-            </Group>
-          </Stack>
+      {!loading && showDecisions && (
+        <Alert variant="light" color="teal" title="Note a sale">
+          <Group align="end" gap="xs" wrap="wrap">
+            <NativeSelect
+              size="xs"
+              label="Brand on sale"
+              value={saleItemId}
+              onChange={(event) => setSaleItemId(event.currentTarget.value)}
+              data={[{ value: '', label: 'Choose a brand' }, ...saleBrands]}
+            />
+            <NumberInput
+              size="xs"
+              label="Sale price in cents"
+              min={0}
+              step={1}
+              allowDecimal={false}
+              value={salePrice}
+              onChange={setSalePrice}
+              w={160}
+            />
+            <Button size="xs" variant="light" disabled={saleItemId === '' || !salePriceIsValid} onClick={() => void noteSale()}>
+              Note sale
+            </Button>
+            <Button
+              size="xs"
+              variant="default"
+              disabled={saleItemId === ''}
+              onClick={() => void clearSale()}
+            >
+              Clear sale
+            </Button>
+          </Group>
         </Alert>
       )}
       {showDecisions && <Stack component="form" gap="xs" onSubmit={(event) => {
@@ -415,7 +309,6 @@ export const ShoppingListPage = () => {
                 const productName = inventoryItem?.item.product.name ?? `Item ${entry.itemId}`;
                 const title = entry.group ? entry.group.name : productName;
                 const unit = inventoryItem?.item.product.unitOfMeasure ?? 'units';
-                const note = entry.group ? undefined : notesByLine.get(entry.itemId);
                 return (
                   <Table.Tr key={entry.id === '' ? `auto-${entry.itemId}` : entry.id}>
                     <Table.Td>
@@ -438,34 +331,6 @@ export const ShoppingListPage = () => {
                             data={entry.group.members.map((member) => ({ value: member.itemId, label: member.name }))}
                             onChange={(event) => void swapLine(entry, event.currentTarget.value)}
                           />
-                        )}
-                        {note && (
-                          <Group gap="xs" align="end" wrap="wrap">
-                            <NativeSelect
-                              size="xs"
-                              label={`Preferred brand for ${note.genericName}`}
-                              value={note.preferredItemId}
-                              onChange={(event) => {
-                                const itemId = event.currentTarget.value;
-                                void saveBrand(note, itemId, itemId === '' ? false : note.ignorePrice);
-                              }}
-                              data={[
-                                { value: '', label: 'No preference' },
-                                ...note.members.map((member) => ({ value: member.itemId, label: member.name })),
-                              ]}
-                            />
-                            <Checkbox
-                              size="xs"
-                              mt="lg"
-                              label={`Always buy this brand of ${note.genericName}`}
-                              checked={note.ignorePrice}
-                              disabled={note.preferredItemId === ''}
-                              onChange={(event) => {
-                                if (note.preferredItemId === '') return;
-                                void saveBrand(note, note.preferredItemId, event.currentTarget.checked);
-                              }}
-                            />
-                          </Group>
                         )}
                       </Stack>
                     </Table.Td>

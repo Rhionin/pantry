@@ -20,17 +20,15 @@ type PlannedLine struct {
 	Manual    bool
 }
 
-// ShelfMember is one pantry item that can receive a saved brand preference.
+// ShelfMember is one pantry item in a product group.
 type ShelfMember struct {
 	ItemID   string
 	GroupKey string
 }
 
 // SavePlannedLines writes one supply snapshot into the staged cart.
-// Untouched auto rows are refreshed. A line the owner changed (touched) stays,
-// including when a brand preference would otherwise pick a different item in
-// the same group. Auto rows the owner removed stay removed. Manual rows are
-// neither deleted nor resized. Buy and Note stay the plan's.
+// Untouched auto rows are refreshed. A line the owner changed (touched) stays.
+// Auto rows the owner removed stay removed. Manual rows are neither deleted nor resized.
 func (s *Store) SavePlannedLines(ctx context.Context, userID string, lines []PlannedLine, members []ShelfMember) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -38,14 +36,6 @@ func (s *Store) SavePlannedLines(ctx context.Context, userID string, lines []Pla
 	}
 	defer tx.Rollback()
 
-	prefs, err := listPreferences(ctx, tx, userID)
-	if err != nil {
-		return err
-	}
-	prefItem := map[string]string{}
-	for _, pref := range prefs {
-		prefItem[pref.NeedKey] = pref.ItemID
-	}
 	membersOf := map[string]map[string]struct{}{}
 	for _, member := range members {
 		if member.GroupKey == "" {
@@ -88,13 +78,6 @@ func (s *Store) SavePlannedLines(ctx context.Context, userID string, lines []Pla
 		if key == "" {
 			key = groupOf[itemID]
 		}
-		if key != "" {
-			if preferred := prefItem[key]; preferred != "" {
-				if _, ok := membersOf[key][preferred]; ok {
-					itemID = preferred
-				}
-			}
-		}
 		if groupSkipped(skipped, skippedGroups, key, itemID, membersOf) {
 			continue
 		}
@@ -118,35 +101,6 @@ func (s *Store) SavePlannedLines(ctx context.Context, userID string, lines []Pla
 		return fmt.Errorf("could not save shopping list updates: %w", err)
 	}
 	return nil
-}
-
-func listPreferences(ctx context.Context, tx *sql.Tx, userID string) ([]Preference, error) {
-	rows, err := tx.QueryContext(ctx,
-		`SELECT need_key, item_id, ignore_price
-		 FROM brand_preferences
-		 WHERE user_id = ?
-		 ORDER BY need_key`,
-		userID,
-	)
-	if err != nil {
-		return nil, fmt.Errorf("could not load brand preferences: %w", err)
-	}
-	defer rows.Close()
-
-	var prefs []Preference
-	for rows.Next() {
-		var pref Preference
-		var ignore int
-		if err := rows.Scan(&pref.NeedKey, &pref.ItemID, &ignore); err != nil {
-			return nil, fmt.Errorf("could not read brand preference: %w", err)
-		}
-		pref.IgnorePrice = ignore != 0
-		prefs = append(prefs, pref)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("could not list brand preferences: %w", err)
-	}
-	return prefs, nil
 }
 
 func upsertAutoLine(ctx context.Context, tx *sql.Tx, userID, itemID, groupID string, quantity int, note string) error {

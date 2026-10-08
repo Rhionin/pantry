@@ -72,6 +72,16 @@ API_PID=""
 python3 - "$DB_PATH" <<'PY'
 import sqlite3, sys
 con = sqlite3.connect(sys.argv[1])
+row = con.execute(
+    "SELECT i.id FROM items i JOIN products p ON p.id = i.product_id WHERE p.name = ?",
+    ("Great Value Cut Green Beans",),
+).fetchone()
+if row is None:
+    raise SystemExit("Great Value beans never reached inventory")
+con.execute(
+    "INSERT INTO brand_preferences (user_id, need_key, item_id, ignore_price) VALUES ('user-1', ?, ?, 1)",
+    ("cut green beans\x00can", row[0]),
+)
 con.execute("DELETE FROM app_settings WHERE key = 'group_suggestions_seeded_v1'")
 con.commit()
 PY
@@ -86,6 +96,10 @@ log "starting vite"
   >"$RUN_DIR/vite.log" 2>&1 &
 WEB_PID=$!
 wait_for_url "$WEB_URL" "vite" 60
+if ! kill -0 "$WEB_PID" 2>/dev/null; then
+  log "ERROR: vite exited before the drive"
+  exit 1
+fi
 PANTRY_WEB_URL="$WEB_URL" PANTRY_API_URL="$API_URL" PANTRY_EVIDENCE_DIR="$RUN_DIR" \
   PANTRY_DB_PATH="$DB_PATH" \
   node "$SKILL_DIR/scripts/drive-shopping-groups.mjs"

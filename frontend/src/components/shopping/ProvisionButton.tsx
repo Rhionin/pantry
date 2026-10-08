@@ -7,7 +7,6 @@ import { provisionQuantity, summarizeNames } from './outcome';
 export interface ProvisionButtonProps {
   provider: ProviderInfo | null;
   entries: ShoppingListEntry[];
-  useItemIds?: Record<string, string>;
   explainEmpty?: boolean;
   onFinished: () => void;
 }
@@ -22,12 +21,12 @@ const canProvision = (provider: ProviderInfo | null, entries: ShoppingListEntry[
   if (inFlight) return false;
   if (!entries.some((entry) => provisionQuantity(entry) >= 1)) return false;
   // An unconfigured store still accepts the export. The server confirms
-  // nothing and returns the planned lines, including a sale the shopper took.
+  // nothing and returns the planned lines.
   if (provider === null || !provider.credentialsConfigured) return true;
   return storeIsReady(provider);
 };
 
-export const ProvisionButton = ({ provider, entries, useItemIds, explainEmpty = false, onFinished }: ProvisionButtonProps) => {
+export const ProvisionButton = ({ provider, entries, explainEmpty = false, onFinished }: ProvisionButtonProps) => {
   const [inFlight, setInFlight] = useState(false);
   const [report, setReport] = useState<ProvisionReport | null>(null);
   const [error, setError] = useState('');
@@ -42,7 +41,7 @@ export const ProvisionButton = ({ provider, entries, useItemIds, explainEmpty = 
     setReport(null);
     try {
       const providerId = provider !== null && provider.credentialsConfigured ? provider.id : undefined;
-      const result = await exportShoppingList(providerId, useItemIds);
+      const result = await exportShoppingList(providerId);
       setReport(result);
       onFinished();
     } catch (requestError) {

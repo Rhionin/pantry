@@ -16,13 +16,11 @@ type shoppingProvision struct {
 	Rows   []shopping.ShoppingListItem
 	Needs  []shopping.ReplenishmentItem
 	Deals  []shopping.Deal
-	Prefs  []shopping.Preference
 }
 
 type shoppingListReader interface {
 	ListManualItems(ctx context.Context, userID string) ([]shopping.ShoppingListItem, error)
 	ListUnpurchased(ctx context.Context, userID string) ([]shopping.ShoppingListItem, error)
-	ListPreferences(ctx context.Context, userID string) ([]shopping.Preference, error)
 	ListDeals(ctx context.Context, userID string) ([]shopping.Deal, error)
 }
 
@@ -39,10 +37,6 @@ type pantryLister interface {
 // loadShoppingSnapshot reads the staged cart. It does not recompute the supply plan.
 func loadShoppingSnapshot(ctx context.Context, userID string, pantry pantryLister, list shoppingListReader) (shoppingProvision, error) {
 	items, err := pantry.ListItems(ctx, userID)
-	if err != nil {
-		return shoppingProvision{}, err
-	}
-	prefs, err := list.ListPreferences(ctx, userID)
 	if err != nil {
 		return shoppingProvision{}, err
 	}
@@ -64,7 +58,6 @@ func loadShoppingSnapshot(ctx context.Context, userID string, pantry pantryListe
 		Rows:   rows,
 		Needs:  replenishmentNeeds(items, counts),
 		Deals:  deals,
-		Prefs:  prefs,
 	}, nil
 }
 

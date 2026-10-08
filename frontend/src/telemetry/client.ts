@@ -72,7 +72,6 @@ const firstPaintRoutes = new Set([
   '/api/products',
   '/api/scanner/config',
   '/api/shopping-list',
-  '/api/shopping-list/considerations',
   '/api/providers',
   '/api/build',
 ]);

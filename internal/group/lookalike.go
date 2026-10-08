@@ -3,8 +3,6 @@ package group
 import (
 	"strings"
 	"unicode"
-
-	"github.com/Rhionin/pantry/internal/shopping"
 )
 
 // Match is one product name after look-alike normalization.
@@ -90,7 +88,7 @@ func ResolveLookAlikes(names []string, extraKeys []string) []Match {
 }
 
 func baseLookAlike(name string) (string, string) {
-	tokens := shopping.StripStoreBrands(shopping.NormalizeTokens(name))
+	tokens := stripStoreBrands(normalizeTokens(name))
 	tokens, caution := stripDifferentiators(tokens)
 	tokens = dropSizeAndPackage(tokens)
 	return strings.Join(tokens, " "), caution

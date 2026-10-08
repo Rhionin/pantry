@@ -18,7 +18,15 @@ try {
   assert(corn !== undefined && corn.kind === 'looks_alike', `corn is still a look-alike suggestion (${corn?.kind})`);
 
   await page.goto('/groups/suggestions');
-  await page.getByRole('heading', { name: 'Cut green beans' }).waitFor({ state: 'visible', timeout: 10_000 });
+  await page.getByRole('heading', { name: 'Suggestions' }).waitFor({ state: 'visible', timeout: 10_000 });
+  const cardTitle = page.getByRole('heading', { level: 2 });
+  for (let i = 0; i < 6; i++) {
+    const current = (await cardTitle.innerText()).trim();
+    if (current === 'Cut green beans') break;
+    await page.getByRole('button', { name: 'Skip for now' }).click();
+    await cardTitle.filter({ hasNotText: current }).waitFor({ state: 'visible', timeout: 5_000 });
+  }
+  await page.getByRole('heading', { level: 2, name: 'Cut green beans' }).waitFor({ state: 'visible', timeout: 10_000 });
   await page.getByText('from the old shopping plan').waitFor({ state: 'visible' });
   await page.getByText('Del Monte Cut Green Beans').waitFor({ state: 'visible' });
   await phoneShot(page, 'pr8-groups-inbox');
@@ -43,8 +51,10 @@ try {
   await beanRow.getByRole('paragraph').filter({ hasText: 'Great Value Cut Green Beans' }).waitFor({ state: 'visible' });
   await beanRow.getByLabel('This trip, buy').waitFor({ state: 'visible' });
   await expectAbsent(page.getByLabel('Preferred brand for cut green beans'));
+  await expectAbsent(page.getByRole('checkbox', { name: /Always buy this brand/ }));
   await beanRow.scrollIntoViewIfNeeded();
   await phoneShot(page, 'pr8-shopping-group-line');
+  await phoneShot(page, 'pr9-no-brand-pref');
 
   const cornRows = page.getByRole('row').filter({ hasText: /Kernel Corn/ });
   await cornRows.first().waitFor({ state: 'visible' });
@@ -61,6 +71,11 @@ try {
   const looseCorn = lines.filter((line) => /Kernel Corn/.test(nameOf.get(line.itemId) ?? '') && !line.group);
   assert(grouped.length === 1, `one beans group line (got ${grouped.length})`);
   assert(looseCorn.length === 2, `two corn lines (got ${looseCorn.length})`);
+
+  await page.goto('/groups');
+  await page.getByRole('heading', { name: 'Product groups' }).waitFor({ state: 'visible', timeout: 10_000 });
+  await page.getByText('Cut green beans', { exact: true }).waitFor({ state: 'visible' });
+  await phoneShot(page, 'pr9-groups-still-listed');
 
   await captureProof(page, 'pr8-done', {
     feature: 'shopping-groups',
