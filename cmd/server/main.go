@@ -252,6 +252,7 @@ func main() {
 	if listenerOK {
 		opts = append(opts, server.WithScannerStatus(listener.Status))
 	}
+	opts = append(opts, server.WithHouseholdAuth(loadHouseholdAuth()))
 	handler, scanQueue := server.NewHandler(catalog, lookupService, refresher, sqlDB, opts...)
 
 	if listenerOK {
@@ -280,9 +281,31 @@ func main() {
 	}
 }
 
+// loadHouseholdAuth always returns a gate. An unset, empty, or unreadable
+// password file fails closed on the public hostname instead of serving it
+// with no login. The LAN listener never sends X-Pantry-Entry, so it stays open.
+func loadHouseholdAuth() *server.HouseholdAuth {
+	path := strings.TrimSpace(os.Getenv("PANTRY_AUTH_FILE"))
+	if path == "" {
+		log.Print("household login: no password file is configured; the public site refuses requests")
+		return server.FailClosedHouseholdAuth()
+	}
+	household, err := server.LoadHouseholdAuth(path, os.Getenv("PANTRY_SESSION_SECRET"))
+	if err != nil {
+		log.Printf("household login: %s", err.Error())
+	}
+	if household == nil {
+		return server.FailClosedHouseholdAuth()
+	}
+	if household.Configured {
+		log.Printf("household login: the public site signs in as %s", household.Username)
+	}
+	return household
+}
+
 // unauthenticatedListenWarning reports when addr is reachable beyond this
-// process's loopback interface. The application has no login of its own;
-// the LAN listener is intentional, and a router forward of this port is not.
+// process's loopback interface. The LAN listener has no login of its own;
+// that is intentional, and a router forward of this port is not.
 func unauthenticatedListenWarning(addr string) string {
 	host, _, err := net.SplitHostPort(addr)
 	if err != nil {

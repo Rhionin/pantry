@@ -69,12 +69,13 @@
 		}
 	}
 
-	# Everything else asks for the shared password. basic_auth lives in this
-	# handle so the telemetry and public handles above are the only exceptions.
+	# Everything else is the household site. Caddy does not show a password
+	# prompt. Pantry asks for the same username and password when it sees
+	# X-Pantry-Entry, and the handles above stay open. header_up replaces a
+	# value supplied by the client, so the LAN port cannot be made to look
+	# like the public site by omitting the header on the way through Caddy.
 	handle {
 		route {
-			import auth.caddy
-
 			import security_headers
 
 			# Scan and inventory pages keep a Server-Sent Events stream open on
@@ -84,12 +85,17 @@
 			handle @events {
 				reverse_proxy pantry:8080 {
 					flush_interval -1
+					header_up X-Pantry-Entry public
+					header_up X-Pantry-Client-IP {client_ip}
 				}
 			}
 
 			handle {
 				encode gzip
-				reverse_proxy pantry:8080
+				reverse_proxy pantry:8080 {
+					header_up X-Pantry-Entry public
+					header_up X-Pantry-Client-IP {client_ip}
+				}
 			}
 		}
 	}

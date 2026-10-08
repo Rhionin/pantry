@@ -45,6 +45,7 @@ internal/webui/assets/*
 deploy/.env
 deploy/auth.caddy
 deploy/deploy-trigger/
+deploy/auth/
 
 # Editor / OS
 .DS_Store

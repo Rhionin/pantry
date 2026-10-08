@@ -35,10 +35,11 @@ have .github/workflows/ci.yml "github.ref == 'refs/heads/master'" "workflow noti
 
 have deploy/Caddyfile '@deploy path /api/deploy-hook' "certificate Caddyfile exempts the hook"
 have deploy/Caddyfile.tunnel '@deploy path /api/deploy-hook' "tunnel Caddyfile exempts the hook"
-# The exception has to be above the password import. route_body equality is
-# checked by check-publish-modes.sh; here, confirm the hook is not after auth.
-caddy_before=$(awk '/import auth.caddy/{exit} {print}' deploy/Caddyfile)
-printf '%s\n' "$caddy_before" | grep -q -F '@deploy path /api/deploy-hook' || fail "deploy hook is behind the household password"
+# The exception has to be above the catch-all household handle. route_body
+# equality is checked by check-publish-modes.sh; here, confirm the hook is
+# not inside that handle. `handle {` is the catch-all; `handle @name {` is not.
+caddy_before=$(awk '/handle \{/{exit} {print}' deploy/Caddyfile)
+printf '%s\n' "$caddy_before" | grep -q -F '@deploy path /api/deploy-hook' || fail "deploy hook is behind the household login"
 
 have deploy/systemd/pantry-update.timer 'OnUnitActiveSec=1min' "fallback poll is one minute"
 if grep -q 'OnUnitActiveSec=5min' deploy/systemd/pantry-update.timer; then
