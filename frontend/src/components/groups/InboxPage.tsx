@@ -4,14 +4,58 @@ import {
   Alert, Anchor, Button, Checkbox, Group, Loader, NumberInput, Stack, Text, TextInput, Title,
 } from '@mantine/core';
 import { ApiError, acceptSuggestion, dismissSuggestion, listSuggestions, skipSuggestion } from '../../api/client';
-import type { GroupSuggestion, GroupTarget, TargetConflictMember } from '../../types';
-import { conflictLine, kindPhrase } from './copy';
+import type { GroupSuggestion, GroupTarget, SuggestionMember, TargetConflictMember } from '../../types';
+import { conflictLine, kindPhrase, memberFacts } from './copy';
+
+const MemberPhoto = ({ src }: { src?: string }) => {
+  const [failed, setFailed] = useState(false);
+  if (!src || failed) {
+    return <div className="suggestion-photo suggestion-photo-empty">No photo</div>;
+  }
+  return <img src={src} alt="" className="suggestion-photo" onError={() => setFailed(true)} />;
+};
+
+const MemberCard = ({
+  member,
+  facts,
+  checked,
+  onChecked,
+}: {
+  member: SuggestionMember;
+  facts: ReturnType<typeof memberFacts>;
+  checked: boolean;
+  onChecked: (on: boolean) => void;
+}) => (
+  <article className="suggestion-member" data-included={checked ? 'true' : 'false'}>
+    <Checkbox
+      label="Include"
+      aria-label={member.name}
+      checked={checked}
+      onChange={(event) => onChecked(event.currentTarget.checked)}
+    />
+    <MemberPhoto src={member.imageUrl} />
+    <Title order={3} size="h5" className="suggestion-name">{member.name}</Title>
+    {facts.length > 0 && (
+      <dl className="suggestion-facts">
+        {facts.map((fact) => {
+          const value = fact.text(member);
+          return (
+            <div key={fact.key}>
+              <dt>{fact.label}</dt>
+              <dd className={value === '' ? 'suggestion-missing' : undefined}>{value === '' ? 'Not listed' : value}</dd>
+            </div>
+          );
+        })}
+      </dl>
+    )}
+    {member.caution !== '' && <Text size="sm" c="dimmed">{member.caution}</Text>}
+  </article>
+);
 
 export const InboxPage = () => {
   const [cards, setCards] = useState<GroupSuggestion[]>([]);
   const [index, setIndex] = useState(0);
   const [checks, setChecks] = useState<{ cardId: string; values: Record<string, boolean> } | null>(null);
-  const [editingId, setEditingId] = useState('');
   const [nameDraft, setNameDraft] = useState<{ cardId: string; name: string } | null>(null);
   const [conflictFor, setConflictFor] = useState<{ cardId: string; members: TargetConflictMember[] } | null>(null);
   const [months, setMonths] = useState<number | string>(3);
@@ -42,8 +86,8 @@ export const InboxPage = () => {
     ? checks.values
     : Object.fromEntries((card?.members ?? []).map((member) => [member.productId, member.included]));
   const name = nameDraft !== null && card !== undefined && nameDraft.cardId === card.id ? nameDraft.name : (card?.title ?? '');
-  const editing = card !== undefined && editingId === card.id;
   const conflict = conflictFor !== null && card !== undefined && conflictFor.cardId === card.id ? conflictFor.members : null;
+  const facts = memberFacts(card?.members ?? []);
 
   const setChecked = (productId: string, on: boolean) => {
     if (!card) return;
@@ -105,27 +149,30 @@ export const InboxPage = () => {
       {error !== '' && <Alert color="red" py="xs">{error}</Alert>}
       {!loading && cards.length === 0 && <Text c="dimmed">Nothing to review.</Text>}
       {card && (
-        <Stack gap="xs">
-          <Text size="sm" c="dimmed">{index + 1} of {cards.length}</Text>
-          <Title order={2} size="h4">{card.title}</Title>
-          <Text size="sm" c="dimmed">{kindPhrase(card.kind)}</Text>
-          {card.members.map((member) => (
-            <Stack key={member.productId} gap={2}>
-              <Checkbox
-                label={member.name}
-                checked={checked[member.productId] === true}
-                onChange={(event) => setChecked(member.productId, event.currentTarget.checked)}
-              />
-              {member.caution !== '' && <Text size="sm" c="dimmed">{member.caution}</Text>}
-            </Stack>
-          ))}
-          {editing && (
+        <Stack gap="sm">
+          <Text size="sm" c="dimmed">{index + 1} of {cards.length} · {kindPhrase(card.kind)}</Text>
+          <Text size="sm">Uncheck a product that does not belong. Then group the rest, or dismiss the suggestion.</Text>
+          {card.existingGroupId ? (
+            <Text size="sm">These join {card.title}.</Text>
+          ) : (
             <TextInput
               label="Group name"
+              description="Edit the name before you group them."
               value={name}
-              onChange={(event) => card && setNameDraft({ cardId: card.id, name: event.currentTarget.value })}
+              onChange={(event) => setNameDraft({ cardId: card.id, name: event.currentTarget.value })}
             />
           )}
+          <div className="suggestion-compare">
+            {card.members.map((member) => (
+              <MemberCard
+                key={member.productId}
+                member={member}
+                facts={facts}
+                checked={checked[member.productId] === true}
+                onChecked={(on) => setChecked(member.productId, on)}
+              />
+            ))}
+          </div>
           {conflict !== null && (
             <Alert color="yellow" title="Choose what this group should keep on hand">
               <Stack gap="xs">
@@ -134,9 +181,9 @@ export const InboxPage = () => {
                 <NumberInput label="Ounces" min={0} value={ounces} onChange={setOunces} w={140} />
                 <NumberInput label="Months" min={1} max={12} allowDecimal={false} value={months} onChange={setMonths} w={140} />
                 <Group gap="xs">
-                  <Button size="xs" onClick={() => void group({ clear: true })}>Use the account window</Button>
+                  <Button size="sm" onClick={() => void group({ clear: true })}>Use the account window</Button>
                   <Button
-                    size="xs"
+                    size="sm"
                     variant="light"
                     onClick={() => {
                       const value = typeof ounces === 'number' ? ounces : Number(ounces);
@@ -147,7 +194,7 @@ export const InboxPage = () => {
                     Use ounces
                   </Button>
                   <Button
-                    size="xs"
+                    size="sm"
                     variant="light"
                     onClick={() => {
                       const value = typeof months === 'number' ? months : Number(months);
@@ -161,14 +208,13 @@ export const InboxPage = () => {
               </Stack>
             </Alert>
           )}
-          <Group gap="xs">
-            <Button size="xs" loading={saving} disabled={selected.length === 0} onClick={() => void group()}>
-              {card.existingGroupId ? 'Add to group' : 'Group'}
+          <div className="suggestion-actions">
+            <Button className="suggestion-primary" size="sm" loading={saving} disabled={selected.length === 0} onClick={() => void group()}>
+              {card.existingGroupId ? 'Add to group' : 'Group these'}
             </Button>
-            <Button size="xs" variant="light" onClick={() => card && setEditingId(card.id)}>Edit</Button>
-            <Button size="xs" variant="default" loading={saving} onClick={() => void dismiss()}>Not the same</Button>
-            <Button size="xs" variant="subtle" onClick={() => void skip()}>Skip for now</Button>
-          </Group>
+            <Button size="sm" variant="light" color="red" loading={saving} onClick={() => void dismiss()}>Not the same</Button>
+            <Button size="sm" variant="subtle" onClick={() => void skip()}>Skip for now</Button>
+          </div>
         </Stack>
       )}
     </Stack>

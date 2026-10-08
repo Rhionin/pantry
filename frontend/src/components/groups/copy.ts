@@ -1,4 +1,4 @@
-import type { GroupMember, ProductGroup, TargetConflictMember } from '../../types';
+import type { GroupMember, ProductGroup, SuggestionMember, TargetConflictMember } from '../../types';
 
 export const ruleLabels: Record<string, string> = {
   same_as_ran_out: 'Same as what ran out',
@@ -37,6 +37,34 @@ export const targetLabel = (group: Pick<ProductGroup, 'quantity' | 'dimension' |
 };
 
 export const onHandCount = (members: GroupMember[]) => members.reduce((sum, member) => sum + member.onHand, 0);
+
+export function formatMemberSize(member: Pick<SuggestionMember, 'netAmount' | 'netUnit' | 'packCount'>): string {
+  if (member.netAmount === undefined || member.netUnit === undefined || member.netUnit === '') return '';
+  const amount = Number.isInteger(member.netAmount) ? String(member.netAmount) : String(member.netAmount);
+  const size = `${amount} ${member.netUnit}`;
+  if (member.packCount !== undefined && member.packCount > 1) return `${member.packCount} x ${size}`;
+  return size;
+}
+
+export interface MemberFact {
+  key: string;
+  label: string;
+  text: (member: SuggestionMember) => string;
+}
+
+// Rows that at least one member can fill. A blank cell stays in the row so
+// the products still line up.
+export function memberFacts(members: SuggestionMember[]): MemberFact[] {
+  const defs: MemberFact[] = [
+    { key: 'brand', label: 'Brand', text: (member) => member.brand ?? '' },
+    { key: 'size', label: 'Size', text: (member) => formatMemberSize(member) },
+    { key: 'variety', label: 'Variety', text: (member) => member.variety ?? '' },
+    { key: 'package', label: 'Package', text: (member) => member.unitOfMeasure ?? '' },
+    { key: 'barcode', label: 'Barcode', text: (member) => (member.barcodes ?? []).filter((code) => code !== '').join(', ') },
+    { key: 'category', label: 'Category', text: (member) => member.category ?? '' },
+  ];
+  return defs.filter((fact) => members.some((member) => fact.text(member) !== ''));
+}
 
 export const conflictLine = (member: TargetConflictMember) => {
   if (member.quantity !== undefined) return `${member.name}: keep ${member.quantity}`;

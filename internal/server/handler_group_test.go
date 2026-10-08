@@ -260,6 +260,55 @@ func TestGroupHandlers(t *testing.T) {
 			},
 		},
 		{
+			name: "suggestion members include picture brand size and barcode",
+			setup: func(env testEnv) {
+				base := 10 * 29.5735295625
+				pack := 6
+				if err := env.ProductStore.CreateProduct(env.T.Context(), product.Product{
+					ID:            "relish-olive",
+					Name:          "Mt. Olive Sweet Relish, 10 FL OZ",
+					Category:      "Condiments",
+					UnitOfMeasure: "jar",
+					ImageURL:      "https://images.openfoodfacts.org/images/relish.jpg",
+					NetBaseValue:  &base,
+					NetDimension:  product.DimensionVolume,
+					NetSizeOrigin: product.OriginOff,
+					PackCount:     &pack,
+				}); err != nil {
+					env.T.Fatal(err)
+				}
+				mustGroupProduct(env, "relish-plain", "Sweet Relish")
+				mustExec(env, `INSERT INTO barcodes (barcode, product_id, source, user_id) VALUES ('0009300000444', 'relish-olive', 'global', '')`)
+				mustExec(env, `INSERT INTO group_suggestions (id, user_id, kind, title, status) VALUES ('sug-relish', 'user-1', 'looks_alike', 'Sweet relish', 'open')`)
+				mustExec(env, `INSERT INTO group_suggestion_members (suggestion_id, product_id, included, caution) VALUES ('sug-relish', 'relish-olive', 1, ''), ('sug-relish', 'relish-plain', 1, '')`)
+			},
+			httpExchange: httpExchange{
+				method:         http.MethodGet,
+				path:           "/api/group-suggestions",
+				expectedStatus: http.StatusOK,
+				assertions: []assertion{
+					{path: "$[0].title", value: "Sweet relish"},
+					{path: "$[0].members[0].productId", value: "relish-olive"},
+					{path: "$[0].members[0].brand", value: "Mt. Olive"},
+					{path: "$[0].members[0].imageUrl", value: "https://images.openfoodfacts.org/images/relish.jpg"},
+					{path: "$[0].members[0].netAmount", value: float64(10)},
+					{path: "$[0].members[0].netUnit", value: "fl oz"},
+					{path: "$[0].members[0].packCount", value: float64(6)},
+					{path: "$[0].members[0].unitOfMeasure", value: "jar"},
+					{path: "$[0].members[0].category", value: "Condiments"},
+					{path: "$[0].members[0].barcodes[0]", value: "0009300000444"},
+					{path: "$[0].members[0].variety", absent: true},
+					{path: "$[0].members[1].productId", value: "relish-plain"},
+					{path: "$[0].members[1].name", value: "Sweet Relish"},
+					{path: "$[0].members[1].brand", absent: true},
+					{path: "$[0].members[1].imageUrl", absent: true},
+					{path: "$[0].members[1].netAmount", absent: true},
+					{path: "$[0].members[1].barcodes", absent: true},
+					{path: "$[1]", absent: true},
+				},
+			},
+		},
+		{
 			name: "opening suggestions creates one look-alike card",
 			setup: func(env testEnv) {
 				mustGroupProduct(env, "gv", "Great Value Cut Green Beans")

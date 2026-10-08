@@ -343,6 +343,15 @@ export interface SuggestionMember {
   name: string;
   included: boolean;
   caution: string;
+  imageUrl?: string;
+  brand?: string;
+  variety?: string;
+  category?: string;
+  unitOfMeasure?: string;
+  netAmount?: number;
+  netUnit?: string;
+  packCount?: number;
+  barcodes?: string[];
 }
 
 export interface GroupSuggestion {

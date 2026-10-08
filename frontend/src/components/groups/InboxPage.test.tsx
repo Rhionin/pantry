@@ -52,7 +52,7 @@ describe('InboxPage', () => {
     expect(screen.getByText('Crunchy. Probably not the same.')).toBeInTheDocument();
     expect(screen.getByLabelText('Great Value Peanut Butter')).toBeChecked();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Group' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Group these' }));
     await waitFor(() => expect(calls.some((call) => call.url.endsWith('/accept'))).toBe(true));
     const accept = calls.find((call) => call.url.endsWith('/accept'));
     expect(JSON.parse(accept?.body ?? '{}')).toEqual({ productIds: ['plain'] });
@@ -75,11 +75,86 @@ describe('InboxPage', () => {
       throw new Error(`Unexpected ${url}`);
     });
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Group' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Group these' }));
     expect(await screen.findByText('Great Value Peanut Butter: keep 4')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Group' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Group these' })).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: 'Not the same' }));
     await waitFor(() => expect(calls.some((call) => call.startsWith('POST') && call.endsWith('/dismiss'))).toBe(true));
+  });
+
+  it('shows the picture, brand, size, and barcode, and sends an edited group name', async () => {
+    const calls: { url: string; body?: string }[] = [];
+    const relish: GroupSuggestion = {
+      id: 'relish',
+      kind: 'looks_alike',
+      title: 'Sweet relish',
+      status: 'open',
+      members: [
+        {
+          productId: 'olive',
+          name: 'Mt. Olive Sweet Relish, 10 FL OZ',
+          included: true,
+          caution: '',
+          imageUrl: 'https://images.openfoodfacts.org/images/relish.jpg',
+          brand: 'Mt. Olive',
+          category: 'Condiments',
+          unitOfMeasure: 'jar',
+          netAmount: 10,
+          netUnit: 'fl oz',
+          barcodes: ['0009300000444'],
+        },
+        {
+          productId: 'vlasic',
+          name: 'Vlasic Sweet Relish, 10 FL OZ',
+          included: true,
+          caution: '',
+          brand: 'Vlasic',
+          barcodes: ['0054100018700'],
+        },
+        {
+          productId: 'crunchy',
+          name: 'Great Value Crunchy Peanut Butter',
+          included: false,
+          caution: 'Crunchy. Probably not the same.',
+          brand: 'Great Value',
+          variety: 'Crunchy',
+          netAmount: 16,
+          netUnit: 'oz',
+          packCount: 2,
+        },
+      ],
+    };
+    renderInbox((url, init) => {
+      calls.push({ url, body: init?.body as string | undefined });
+      if (url === '/api/group-suggestions') return json([relish]);
+      if (url.endsWith('/accept')) {
+        return json({ id: 'g', name: 'Sandwich relish', rule: 'same_as_ran_out', ruleConfirmed: false, members: [], runningLow: false });
+      }
+      throw new Error(`Unexpected ${url}`);
+    });
+
+    const photo = await screen.findByText('Mt. Olive Sweet Relish, 10 FL OZ');
+    expect(photo.closest('article')?.querySelector('img')).toHaveAttribute('src', 'https://images.openfoodfacts.org/images/relish.jpg');
+    expect(screen.getAllByText('No photo')).toHaveLength(2);
+    expect(screen.getByText('Mt. Olive')).toBeInTheDocument();
+    expect(screen.getByText('Vlasic')).toBeInTheDocument();
+    expect(screen.getByText('10 fl oz')).toBeInTheDocument();
+    expect(screen.getByText('2 x 16 oz')).toBeInTheDocument();
+    expect(screen.getAllByText('Not listed').length).toBeGreaterThan(0);
+    expect(screen.getByText('0009300000444')).toBeInTheDocument();
+    expect(screen.getByText('Crunchy')).toBeInTheDocument();
+    expect(screen.getByText('jar')).toBeInTheDocument();
+    expect(screen.getByLabelText('Group name')).toHaveValue('Sweet relish');
+    expect(screen.queryByRole('button', { name: 'Edit' })).not.toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText('Group name'), { target: { value: 'Sandwich relish' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Group these' }));
+    await waitFor(() => expect(calls.some((call) => call.url.endsWith('/accept'))).toBe(true));
+    const accept = calls.find((call) => call.url.endsWith('/accept'));
+    expect(JSON.parse(accept?.body ?? '{}')).toEqual({
+      productIds: ['olive', 'vlasic'],
+      name: 'Sandwich relish',
+    });
   });
 });
