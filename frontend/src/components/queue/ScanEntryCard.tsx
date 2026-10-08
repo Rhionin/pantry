@@ -10,6 +10,10 @@ import { expiryDateToISOString, formatExpiryDate, isValidUnitCount } from './que
 // A zero timestamp clears expires_at. JSON null leaves the stored date unchanged.
 const CLEARED_EXPIRY_ISO = '0001-01-01T00:00:00.000Z';
 
+// A burst of plus or minus taps updates the number immediately and saves the
+// latest count once the taps pause.
+const UNIT_COUNT_SAVE_DELAY_MS = 200;
+
 const expiryDatePart = (expiresAt: string | null): string =>
   expiresAt === null ? '' : expiresAt.substring(0, 10);
 
@@ -38,6 +42,9 @@ export const ScanEntryCard = ({
   const [unitCountDraft, setUnitCountDraft] = useState(entry.unitCount);
   const [unitCountError, setUnitCountError] = useState('');
   const unitCountRef = useRef(entry.unitCount);
+  const confirmedCountRef = useRef(entry.unitCount);
+  const saveTimer = useRef(0);
+  const saveGeneration = useRef(0);
   const [expiryDraft, setExpiryDraft] = useState(expiryDatePart(entry.expiresAt));
   const [expiryCommitted, setExpiryCommitted] = useState(expiryDatePart(entry.expiresAt));
   const [expiryEditorOpen, setExpiryEditorOpen] = useState(false);
@@ -49,13 +56,19 @@ export const ScanEntryCard = ({
   const prefersReducedMotion = () =>
     typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-  // Sync draft state when unitCount or expiresAt changes (server updates)
+  // A refresh can echo a count the user has already moved past. Applying that
+  // echo snaps the stepper backward and shifts the control under their finger.
   useEffect(() => {
+    if (unitCountRef.current !== confirmedCountRef.current && entry.unitCount !== unitCountRef.current) {
+      return;
+    }
     // Deliberate prop->draft sync: reset the controlled draft when the server value changes.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     setUnitCountDraft(entry.unitCount);
     unitCountRef.current = entry.unitCount;
+    confirmedCountRef.current = entry.unitCount;
   }, [entry.unitCount]);
+
+  useEffect(() => () => window.clearTimeout(saveTimer.current), []);
 
   useEffect(() => {
     // Deliberate prop->draft sync: reset the controlled draft when the server value changes.
@@ -128,35 +141,60 @@ export const ScanEntryCard = ({
     }
   };
 
+  const clearSaveTimer = () => {
+    window.clearTimeout(saveTimer.current);
+    saveTimer.current = 0;
+  };
+
   const persistUnitCount = async (draft: number) => {
+    clearSaveTimer();
     if (!isValidUnitCount(draft)) {
-      unitCountRef.current = entry.unitCount;
-      setUnitCountDraft(entry.unitCount);
+      unitCountRef.current = confirmedCountRef.current;
+      setUnitCountDraft(confirmedCountRef.current);
       return;
     }
-    if (draft === entry.unitCount) return;
+    if (draft === confirmedCountRef.current) return;
+    const generation = ++saveGeneration.current;
     try {
       await updateScanEntry(entry.id, { unitCount: draft });
+      if (generation !== saveGeneration.current) return;
+      // A newer tap landed while this save was in flight. Keep that number
+      // and send it next. confirmedCountRef stays on the last count the queue
+      // has actually shown, so an older refresh cannot snap the stepper back.
+      if (unitCountRef.current !== draft) {
+        void persistUnitCount(unitCountRef.current);
+        return;
+      }
       onChanged();
     } catch {
+      if (generation !== saveGeneration.current || unitCountRef.current !== draft) return;
       setUnitCountError('Unable to update unit count.');
-      unitCountRef.current = entry.unitCount;
-      setUnitCountDraft(entry.unitCount);
+      unitCountRef.current = confirmedCountRef.current;
+      setUnitCountDraft(confirmedCountRef.current);
     }
+  };
+
+  const schedulePersist = () => {
+    clearSaveTimer();
+    saveTimer.current = window.setTimeout(() => {
+      saveTimer.current = 0;
+      void persistUnitCount(unitCountRef.current);
+    }, UNIT_COUNT_SAVE_DELAY_MS);
   };
 
   const handleUnitCountBlur = () => {
-    void persistUnitCount(Number(unitCountDraft));
+    clearSaveTimer();
+    void persistUnitCount(Number(unitCountRef.current));
   };
 
   const adjustUnitCount = (delta: number) => {
-    const base = isValidUnitCount(unitCountRef.current) ? unitCountRef.current : entry.unitCount;
+    const base = isValidUnitCount(unitCountRef.current) ? unitCountRef.current : confirmedCountRef.current;
     const next = base + delta;
     if (!isValidUnitCount(next)) return;
     unitCountRef.current = next;
     setUnitCountDraft(next);
     setUnitCountError('');
-    void persistUnitCount(next);
+    schedulePersist();
   };
 
   const handleUnitCountKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
@@ -166,12 +204,14 @@ export const ScanEntryCard = ({
   };
 
   const handleUnitCountChange = (value: number | string | null) => {
-    const next = value === null || value === '' ? entry.unitCount : Number(value);
+    const next = value === null || value === '' ? confirmedCountRef.current : Number(value);
     unitCountRef.current = next;
     setUnitCountDraft(next);
-    if (value !== null && value !== '') {
-      setUnitCountError('');
-    }
+    if (value === null || value === '') return;
+    setUnitCountError('');
+    // Typing a count schedules the same save as +/−, including a value the
+    // field accepts without blurring.
+    if (isValidUnitCount(next)) schedulePersist();
   };
 
   const handleExpiryBlur = async () => {
@@ -270,6 +310,7 @@ export const ScanEntryCard = ({
             <NumberInput
               className="scan-entry-stepper-value"
               hideControls
+              clampBehavior="none"
               min={1}
               step={1}
               allowDecimal={false}
