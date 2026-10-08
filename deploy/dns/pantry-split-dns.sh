@@ -50,6 +50,13 @@ restart_dnsmasq() {
   systemctl restart dnsmasq.service
 }
 
+# setup.sh passes --remove in tunnel mode. A LAN answer for the public
+# name would skip Cloudflare, and Caddy is not on the Pi's port 443 then.
+if [[ "${1:-}" == --remove ]]; then
+  remove_drop_in
+  exit 0
+fi
+
 flag=$(env_value PANTRY_SPLIT_DNS)
 flag=$(printf '%s' "$flag" | tr '[:upper:]' '[:lower:]')
 case "$flag" in

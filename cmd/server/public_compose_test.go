@@ -239,6 +239,146 @@ func TestPublicProxyIsOptIn(t *testing.T) {
 	if !strings.Contains(text, "Do not publish port 8080") {
 		t.Fatal("Caddyfile must keep the warning that port 8080 is not the hairpin workaround")
 	}
+	if strings.Contains(text, "trusted_proxies") {
+		t.Fatal("certificate Caddyfile must not trust forwarded headers; that is tunnel mode only")
+	}
+
+	tunnelCaddy, err := os.ReadFile(filepath.Join("..", "..", "deploy", "Caddyfile.tunnel"))
+	if err != nil {
+		t.Fatalf("read Caddyfile.tunnel: %v", err)
+	}
+	tunnelText := string(tunnelCaddy)
+	acmeRoutes := routeBody(text)
+	tunnelRoutes := routeBody(tunnelText)
+	if acmeRoutes == "" || acmeRoutes != tunnelRoutes {
+		t.Fatal("certificate and tunnel Caddyfiles must share the same route block")
+	}
+	for _, want := range []string{
+		"http://{$PUBLIC_HOST}",
+		"admin off",
+		"trusted_proxies static 10.77.77.2/32",
+		"client_ip_headers CF-Connecting-IP",
+		"import auth.caddy",
+		"(security_headers)",
+	} {
+		if !strings.Contains(tunnelText, want) {
+			t.Fatalf("Caddyfile.tunnel missing %q", want)
+		}
+	}
+	if strings.Contains(tunnelText, "{$ACME_EMAIL}") || strings.Contains(tunnelText, "email ") {
+		t.Fatal("tunnel Caddyfile must not request a certificate")
+	}
+
+	tunnelComposeRaw, err := os.ReadFile(filepath.Join("..", "..", "deploy", "docker-compose.tunnel.yml"))
+	if err != nil {
+		t.Fatalf("read tunnel compose: %v", err)
+	}
+	var tunnelCompose struct {
+		Services map[string]struct {
+			Image         string            `yaml:"image"`
+			Profiles      []string          `yaml:"profiles"`
+			Ports         []string          `yaml:"ports"`
+			Command       []string          `yaml:"command"`
+			Environment   map[string]string `yaml:"environment"`
+			ContainerName string            `yaml:"container_name"`
+		} `yaml:"services"`
+	}
+	if err := yaml.Unmarshal(tunnelComposeRaw, &tunnelCompose); err != nil {
+		t.Fatalf("parse tunnel compose: %v", err)
+	}
+	caddyTunnel, ok := tunnelCompose.Services["caddy-tunnel"]
+	if !ok {
+		t.Fatal("caddy-tunnel service missing")
+	}
+	if caddyTunnel.Image != "caddy:2.11.4-alpine" {
+		t.Fatalf("caddy-tunnel image = %q", caddyTunnel.Image)
+	}
+	if len(caddyTunnel.Profiles) != 1 || caddyTunnel.Profiles[0] != "tunnel" {
+		t.Fatalf("caddy-tunnel profiles = %v", caddyTunnel.Profiles)
+	}
+	if len(caddyTunnel.Ports) != 0 {
+		t.Fatalf("caddy-tunnel must not publish host ports, got %v", caddyTunnel.Ports)
+	}
+	if caddyTunnel.ContainerName != "pantry-caddy" {
+		t.Fatalf("caddy-tunnel container = %q", caddyTunnel.ContainerName)
+	}
+	cloudflared, ok := tunnelCompose.Services["cloudflared"]
+	if !ok {
+		t.Fatal("cloudflared service missing")
+	}
+	if cloudflared.Image != "cloudflare/cloudflared:2026.10.0" {
+		t.Fatalf("cloudflared image = %q", cloudflared.Image)
+	}
+	if len(cloudflared.Profiles) != 1 || cloudflared.Profiles[0] != "tunnel" {
+		t.Fatalf("cloudflared profiles = %v", cloudflared.Profiles)
+	}
+	if len(cloudflared.Ports) != 0 {
+		t.Fatalf("cloudflared must not publish host ports, got %v", cloudflared.Ports)
+	}
+	if strings.Join(cloudflared.Command, " ") != "tunnel run" {
+		t.Fatalf("cloudflared command = %#v, want tunnel run", cloudflared.Command)
+	}
+	if !strings.Contains(cloudflared.Environment["TUNNEL_TOKEN"], "CLOUDFLARE_TUNNEL_TOKEN") {
+		t.Fatalf("cloudflared token env = %q", cloudflared.Environment["TUNNEL_TOKEN"])
+	}
+	if cloudflared.ContainerName != "pantry-cloudflared" {
+		t.Fatalf("cloudflared container = %q", cloudflared.ContainerName)
+	}
+	tunnelYAML := string(tunnelComposeRaw)
+	if !strings.Contains(tunnelYAML, "ipv4_address: 10.77.77.2") {
+		t.Fatal("cloudflared must use the address Caddyfile.tunnel trusts")
+	}
+	if !strings.Contains(tunnelYAML, "http://caddy:80") {
+		t.Fatal("tunnel compose must document the public-hostname service URL")
+	}
+	if _, ok := tunnelCompose.Services["caddy"]; ok {
+		t.Fatal("tunnel compose must not redefine the certificate caddy service")
+	}
+
+	for _, want := range []string{
+		"--tunnel",
+		"CLOUDFLARE_TUNNEL_TOKEN",
+		"docker-compose.tunnel.yml",
+		"http://caddy:80",
+		"publish_mode_from_env",
+	} {
+		if !strings.Contains(setupText, want) {
+			t.Fatalf("setup.sh missing %q", want)
+		}
+	}
+	if !strings.Contains(envText, "\nPUBLISH_MODE=\n") || !strings.Contains(envText, "\nCLOUDFLARE_TUNNEL_TOKEN=\n") {
+		t.Fatal(".env.example must leave PUBLISH_MODE and CLOUDFLARE_TUNNEL_TOKEN empty")
+	}
+	if !strings.Contains(updaterText, "docker-compose.tunnel.yml") || !strings.Contains(updaterText, "--profile tunnel") {
+		t.Fatal("automatic updates must select the tunnel profile when the token is set")
+	}
+	for _, want := range []string{
+		"CLOUDFLARE_TUNNEL_TOKEN",
+		"sudo ./setup.sh publish --tunnel",
+		"http://caddy:80",
+		"DNSSEC",
+		"Zero Trust",
+		"Free",
+		"nameservers",
+		"#### Rollback",
+		"cellular",
+		"Remove the Gryphon forwards",
+	} {
+		if !strings.Contains(readmeText, want) {
+			t.Fatalf("deploy README missing %q", want)
+		}
+	}
+}
+
+// routeBody returns the shared site routes. The certificate and tunnel
+// files differ above this comment and must match from it to the end.
+func routeBody(text string) string {
+	const marker = "\n\t# handle is first-match."
+	i := strings.Index(text, marker)
+	if i < 0 {
+		return ""
+	}
+	return text[i:]
 }
 
 // pathMatchers returns every Caddy `path` matcher, in source order.
