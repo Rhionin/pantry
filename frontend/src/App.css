@@ -49,6 +49,17 @@
 
 .app-header-brand {
   flex: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.app-header-mark {
+  width: 28px;
+  height: 28px;
+  flex: none;
+  display: block;
 }
 
 .app-header-menu {
@@ -183,6 +194,15 @@ a.group-row {
   .app-header {
     gap: 8px;
     padding-inline: 8px;
+  }
+
+  .app-header-brand {
+    gap: 6px;
+  }
+
+  .app-header-mark {
+    width: 22px;
+    height: 22px;
   }
 
   .app-nav {

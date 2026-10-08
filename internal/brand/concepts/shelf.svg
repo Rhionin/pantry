@@ -1,5 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
-  <title>Pantry</title>
+  <title>Shelf</title>
+  <desc>A labeled parcel resting on a shelf. The thing being kept is a box, not a picture of food, so the mark still fits when Pantry grows into a general home inventory.</desc>
   <rect width="512" height="512" rx="118" fill="#1C7C4E"/>
   <rect x="164" y="118" width="184" height="156" rx="42" fill="#F0B429"/>
   <rect x="196" y="150" width="120" height="34" rx="17" fill="#F6F1E6"/>
