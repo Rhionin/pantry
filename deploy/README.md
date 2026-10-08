@@ -32,7 +32,7 @@ New to this? Follow these steps in order on your Raspberry Pi and you'll have Pa
    sudo ./setup.sh status
    ```
 
-6. **Optional: open it to the public internet.** The steps above stay on your home network. To serve the same UI at a hostname you own, such as `https://pantry.rhionin.com`, follow [Public Internet access](#public-internet-access). The public site asks for one shared password. The timing snapshot at `/api/telemetry` is public on that hostname.
+6. **Optional: open it to the public internet.** The steps above stay on your home network. To serve the same UI at a hostname you own, such as `https://pantry.rhionin.com`, follow [Public Internet access](#public-internet-access). The Gryphon router does not hairpin, so that name hangs on home Wi-Fi when it is reached through a port forward. [Cloudflare Tunnel](#cloudflare-tunnel) is the path that works on home Wi-Fi and on cellular without forwarding ports. The public site asks for one shared password. The timing snapshot at `/api/telemetry` is public on that hostname.
 
 ## Updating
 
@@ -42,7 +42,7 @@ After `git pull` on the Pi, from `deploy/`:
 sudo ./setup.sh
 ```
 
-That one command is the whole update. It copies `deploy/` to `/opt/pantry`, starts the containers from the compose file you just pulled (including the public HTTPS proxy when `PUBLIC_HOST` is set and `/opt/pantry/auth.caddy` is already there), restarts Caddy so the current `Caddyfile` is what is serving, applies the LAN firewall for the published Pantry port, and republishes `pantry.local` when Avahi is installed. That Caddyfile leaves `GET /api/telemetry`, `POST /api/telemetry/client`, `GET /brand/logo.png`, `GET /terms`, and `GET /privacy` public. Run it again any time. Existing `.env` values stay, an existing `auth.caddy` is not regenerated, and a site that is already on the public internet stays there. LAN `http://<pi-ip>:8080` stays up. The public name still hangs on home Wi-Fi until the router hairpins or you use the LAN address; see [Home Wi-Fi hangs on the public name](#home-wi-fi-hangs-on-the-public-name).
+That one command is the whole update. It copies `deploy/` to `/opt/pantry`, starts the containers from the compose file you just pulled (including the public HTTPS proxy when `PUBLIC_HOST` is set and `/opt/pantry/auth.caddy` is already there), restarts Caddy so the current `Caddyfile` is what is serving, applies the LAN firewall for the published Pantry port, and republishes `pantry.local` when Avahi is installed. When `CLOUDFLARE_TUNNEL_TOKEN` is set, the same command keeps the tunnel profile instead of ports 80 and 443. That Caddyfile leaves `GET /api/telemetry`, `POST /api/telemetry/client`, `GET /brand/logo.png`, `GET /terms`, and `GET /privacy` public. Run it again any time. Existing `.env` values stay, an existing `auth.caddy` is not regenerated, and a site that is already on the public internet stays there. LAN `http://<pi-ip>:8080` stays up. On the certificate path, the public name still hangs on home Wi-Fi until the router hairpins or you use the LAN address; see [Home Wi-Fi hangs on the public name](#home-wi-fi-hangs-on-the-public-name). Tunnel mode does not have that hang.
 
 `sudo ./setup.sh firewall-off` removes the port rule until the next setup. To leave it off, set `PANTRY_LAN_FIREWALL=off` in `/opt/pantry/.env` and run `sudo ./setup.sh` again.
 
@@ -132,6 +132,8 @@ sudo ./setup.sh status
 ## Public Internet access
 
 This puts the Pantry UI on a hostname you already own, with HTTPS, using the same Docker Compose stack. The recommended name is a subdomain (`pantry.rhionin.com`) so the bare domain can stay unused.
+
+The Gryphon in this house does not hairpin, so `https://pantry.rhionin.com` hangs on home Wi-Fi when DNS points at the router's WAN address. [Cloudflare Tunnel](#cloudflare-tunnel) is how that URL works on home Wi-Fi and on cellular without forwarding ports 80 and 443. The steps in this section are the certificate and port-forward path. Leave those forwards in place until the tunnel has been tested on both networks.
 
 The public site asks for one shared password before it serves the UI, the API, and the live scan stream. That stops scanners and other bots that do not have the password. It is not separate accounts, and anyone who has the password can change the pantry. These exact paths stay open without that password: `GET /api/telemetry`, `POST /api/telemetry/client`, `GET /brand/logo.png`, `GET /terms`, and `GET /privacy`. The snapshot is counters and durations only — no barcodes, product names, or user ids — so an agent can `curl` it. The brand mark and the two legal pages are public because a grocery login stores those URLs. The home-network address `http://<pi-ip>:8080` does not ask for the password, so do not forward port 8080 on the router.
 
@@ -257,7 +259,7 @@ To change the password, edit `BASIC_AUTH_PASSWORD`, remove `/opt/pantry/auth.cad
 
 ### Home Wi-Fi hangs on the public name
 
-`https://pantry.rhionin.com` loads on cellular and sits there on home Wi-Fi until the browser gives up. Caddy and Pantry are up the whole time. The phone on Wi-Fi looks up the public DNS A record, gets the router's WAN address (`38.148.49.79` in this house), and sends the connection to the Gryphon. Cellular never does that: it is already outside the house, so the same port forward delivers it to the Pi.
+On the certificate path, `https://pantry.rhionin.com` loads on cellular and sits there on home Wi-Fi until the browser gives up. Caddy and Pantry are up the whole time. [Cloudflare Tunnel](#cloudflare-tunnel) is how the same name loads on both. The rest of this section is the port-forward behavior. The phone on Wi-Fi looks up the public DNS A record, gets the router's WAN address (`38.148.49.79` in this house), and sends the connection to the Gryphon. Cellular never does that: it is already outside the house, so the same port forward delivers it to the Pi.
 
 That inside-the-house path is NAT hairpin (also called NAT loopback or NAT reflection). The router has to send a connection aimed at its own WAN address back to `192.168.1.203`. Many home routers drop or ignore that connection instead of refusing it, so the browser hangs rather than showing an error. Nothing on the Pi can answer a packet that never arrives. This repository does not change the Gryphon.
 
@@ -334,13 +336,144 @@ sudo docker compose --profile public logs --tail=80 caddy
 | Browser or curl gets `401` | The shared password is missing or does not match `.env`. A request with no password is supposed to be rejected, except `GET /api/telemetry`, `POST /api/telemetry/client`, `GET /brand/logo.png`, `GET /terms`, and `GET /privacy`, which are public. Edit `BASIC_AUTH_PASSWORD`, remove `/opt/pantry/auth.caddy`, and run `sudo ./setup.sh`. |
 | UI loads, but the scan queue never updates live | `/api/events` is being buffered. `deploy/Caddyfile` must keep `flush_interval -1` on that path. Run `sudo ./setup.sh` after pulling a fresh `Caddyfile`. |
 
+### Cloudflare Tunnel
+
+This is the way `https://pantry.rhionin.com` works on home Wi-Fi and on cellular when the Gryphon does not hairpin, without forwarding ports 80 or 443. The Pi opens an outbound connection to Cloudflare. Caddy still asks for the same household password, and the same paths stay public: `GET /api/telemetry`, `POST /api/telemetry/client`, `GET /brand/logo.png`, `GET /terms`, and `GET /privacy`. Do not point the tunnel at port 8080. That port has no password. Do not turn on Cloudflare Access for this hostname. Caddy already asks for the password, and Access would be a second login.
+
+LAN `http://192.168.1.203:8080` and `http://pantry.local:8080` keep working the whole time, with no password. Use them if the public name is down during the cutover.
+
+The token is a secret. It lives only in `/opt/pantry/.env`. Do not commit it, and do not wrap it in quotes.
+
+#### 1. Create a Cloudflare account and add the domain
+
+1. Create a Cloudflare account on the **Free** plan.
+2. Add the site `rhionin.com`. Cloudflare imports the DNS records it can see at Squarespace.
+3. Stay on the Free plan. Tunnels are included. You do not need Zero Trust paid seats for this.
+
+Do not change nameservers until the next step checks the import.
+
+#### 2. Check the imported records, and turn DNSSEC off
+
+Before the domain uses Cloudflare's nameservers, compare the imported records with Squarespace. A missing mail or website record is a silent outage after the switch.
+
+In Squarespace: **Domains → rhionin.com → DNS → DNS Settings**. Write down:
+
+- The website records: A and CNAME for `@` and `www`, and the existing `pantry` A record if it is there
+- Every MX record
+- Every TXT record (SPF, domain verification, and anything else)
+
+In Cloudflare's DNS tab, confirm each of those is present and the values match. Fix Cloudflare's copy before continuing. Leave the `pantry` A record pointing at the home address for now. That keeps the current site up after the nameserver change, until you attach the tunnel hostname.
+
+Turn **DNSSEC off at Squarespace** before changing nameservers. Squarespace: **Domains → rhionin.com → DNS → DNSSEC**. If DNSSEC stays on, resolvers will reject Cloudflare's answers.
+
+#### 3. Change nameservers at Squarespace
+
+Cloudflare shows two nameservers when you add the site. Copy them.
+
+1. Open the [Squarespace domains dashboard](https://account.squarespace.com/domains).
+2. Click **rhionin.com**.
+3. Open **DNS**, then **Nameservers**.
+4. Choose **use custom nameservers** and paste Cloudflare's two nameservers.
+
+Registration stays at Squarespace. DNS moves to Cloudflare. Wait until Cloudflare says the site is active. Check from the Pi:
+
+```bash
+dig +short NS rhionin.com
+```
+
+The answers should be Cloudflare's nameservers. The existing `pantry` A record, now served by Cloudflare, still points at the home address, so cellular keeps working through the Gryphon forwards. Home Wi-Fi still hangs on that name. That is expected until the tunnel hostname replaces the A record.
+
+#### 4. Create the tunnel and copy its token
+
+1. In the Cloudflare dashboard, open **Zero Trust**.
+2. Go to **Networks → Tunnels**.
+3. Create a tunnel. Give it a name you will recognize, such as `pantry`.
+4. Choose the Docker install path. Copy the token. Cloudflare shows it once in the install command, after `--token`.
+
+You will put that token in `/opt/pantry/.env` as `CLOUDFLARE_TUNNEL_TOKEN`. Do not run setup yet, and do not add the public hostname yet. The site is still on the A record.
+
+#### 5. Add the public hostname
+
+In the tunnel you just created, add a public hostname:
+
+| Field | Value |
+|-------|--------|
+| Subdomain | `pantry` |
+| Domain | `rhionin.com` |
+| Path | leave empty |
+| Type | HTTP |
+| URL | `http://caddy:80` |
+
+`http://caddy:80` is the Caddy container on the Pi's Docker network. It is not a LAN address, and it is not port 8080. Cloudflare reaches it through the tunnel. The public side is HTTPS with Cloudflare's certificate. Caddy sees the original `https` scheme and the visitor address only because that connection comes from cloudflared.
+
+Saving this hostname replaces the `pantry` A record with the tunnel. The public name stops working until the Pi is running cloudflared. Have the next command ready, then save the hostname.
+
+#### 6. Put the token on the Pi and switch
+
+On the Pi, edit `/opt/pantry/.env`:
+
+```bash
+PUBLIC_HOST=pantry.rhionin.com
+PUBLISH_MODE=tunnel
+CLOUDFLARE_TUNNEL_TOKEN=paste-the-token-here
+BASIC_AUTH_USER=pantry
+BASIC_AUTH_PASSWORD=replace-with-a-long-passphrase
+```
+
+`ACME_EMAIL` can stay. Tunnel mode does not request a certificate. Keep `BASIC_AUTH_PASSWORD` as it already is if `/opt/pantry/auth.caddy` exists. Setup will not regenerate that file.
+
+```bash
+sudo ./setup.sh publish --tunnel
+```
+
+That is the command that switches modes. A later `sudo ./setup.sh` stays on the tunnel as long as the token is set, which is also what the automatic-update timer does. The command copies the tunnel compose file, starts `cloudflared` with `tunnel run`, and starts Caddy on an internal HTTP port only. Nothing on the Pi listens on 80 or 443. The shared password and the public paths are unchanged.
+
+If `PANTRY_SPLIT_DNS` was on, this run removes it. A LAN answer for `pantry.rhionin.com` would send phones to the Pi, and Caddy is no longer on port 443 there. Leave `PANTRY_SPLIT_DNS=off`.
+
+#### 7. Test on home Wi-Fi and on cellular
+
+From a phone on home Wi-Fi, open `https://pantry.rhionin.com`, enter the household password, and confirm the pantry loads. Repeat on cellular data, with Wi-Fi off. Both should load. Neither should hang.
+
+```bash
+curl -fsS -u 'pantry:replace-with-a-long-passphrase' https://pantry.rhionin.com/health
+curl -fsS https://pantry.rhionin.com/api/telemetry
+```
+
+`/health` without the password is `401`. `/api/telemetry` without the password is JSON. The brand mark, terms, and privacy URLs are still public. The Kroger callback stays behind the household password, same as before: the browser already has that password for this host when Kroger sends it back.
+
+`http://192.168.1.203:8080` still does not ask for the password. Do not forward it.
+
+#### 8. Remove the Gryphon forwards
+
+Do this only after both networks load the public name. In Gryphon Connect, delete the forwards for external TCP 80 and external TCP 443 to `192.168.1.203`. Delete UDP 443 too if it was added. Do not add a forward for 8080.
+
+If you previously ran `sudo ufw allow 80/tcp` and `sudo ufw allow 443/tcp`, you can delete those allows. Leave a firewall that is currently inactive turned off.
+
+#### Rollback
+
+Smaller rollback, DNS stays at Cloudflare:
+
+1. Put the Gryphon TCP 80 and TCP 443 forwards back, to the Pi, before changing DNS.
+2. In the tunnel, delete the public hostname `pantry.rhionin.com`.
+3. In Cloudflare DNS, add an A record: name `pantry`, value the address from `curl -4 https://ifconfig.me` on the Pi.
+4. On the Pi, empty `CLOUDFLARE_TUNNEL_TOKEN` in `/opt/pantry/.env`. Leave `PUBLIC_HOST=pantry.rhionin.com`. Set `PUBLISH_MODE=acme` or leave it empty. A non-empty token keeps tunnel mode, so the token line has to be empty. Set `ACME_EMAIL` if it is empty.
+5. Run `sudo ./setup.sh`. That stops cloudflared and starts Caddy on ports 80 and 443 again. The certificate volume from the earlier certificate path is still there.
+6. Test on cellular. Home Wi-Fi hangs on the public name again. Use `http://192.168.1.203:8080` or `http://pantry.local:8080` on that network.
+
+Full return to Squarespace DNS, after the smaller rollback is working:
+
+1. Turn DNSSEC off at Cloudflare.
+2. In Squarespace, set the nameservers back to Squarespace.
+3. Recreate the website A and CNAME records, the MX records, the TXT records, and the `pantry` A record so they match what you wrote down.
+4. Wait until `dig +short NS rhionin.com` shows Squarespace again, then test cellular one more time.
+
+`sudo ./setup.sh unpublish` stops the proxy and cloudflared and leaves the LAN site up. Clear `PUBLIC_HOST` and `CLOUDFLARE_TUNNEL_TOKEN` as well when the update timer is enabled, or the next update starts the tunnel again.
+
 ### When port forwarding cannot work
 
-Two free options, neither of which is wired into this repo. Pick one; do not run them in front of Caddy at the same time.
+**Cloudflare Tunnel** is wired in. Use [Cloudflare Tunnel](#cloudflare-tunnel) when the Gryphon does not hairpin or when you cannot forward ports. Do not also run the certificate path in front of the same hostname.
 
-**Cloudflare Tunnel** (fits `pantry.rhionin.com` when you cannot forward ports). Create a free Cloudflare account, add `rhionin.com`, and let Cloudflare show you two nameservers. In Squarespace: **Domains → rhionin.com → DNS → Nameservers → use custom nameservers**, and paste those two. That moves DNS for the whole domain to Cloudflare; the registration stays at Squarespace. Then install `cloudflared` on the Pi. Do not point the tunnel at port 8080: that port has no password. Put Cloudflare Access (free for a small number of users) in front of the hostname, or publish through Caddy on localhost and tunnel to that. The tunnel login writes a credential on the Pi. Leave it there; do not commit it. No ports to forward, and a changing home IP does not matter.
-
-**Tailscale Funnel** (fits a stable URL when you do not need `rhionin.com`). The free personal tier can expose the Pi as a `*.ts.net` name without opening ports. Putting a Squarespace name on Funnel is more work than the Caddy path; use Funnel when a Tailscale hostname is enough. Do not funnel port 8080; that port has no password. Funnel the Caddy port, or put Tailscale in front of the LAN address and skip Funnel.
+**Tailscale Funnel** (fits a stable URL when you do not need `rhionin.com`) is not wired into this repo. The free personal tier can expose the Pi as a `*.ts.net` name without opening ports. Putting a Squarespace name on Funnel is more work than the Caddy path; use Funnel when a Tailscale hostname is enough. Do not funnel port 8080; that port has no password. Funnel the Caddy port, or put Tailscale in front of the LAN address and skip Funnel.
 
 ### What stays exposed if you forward ports
 
@@ -356,7 +489,7 @@ Prefer a tunnel or Tailscale when you do not need a public listener. If you keep
 
 ### Keeping HTTPS across automatic updates
 
-`pantry-update.sh` includes the `public` profile only when `PUBLIC_HOST` is set and `auth.caddy` exists, so a timer pull renews the proxy instead of forgetting it. `sudo ./setup.sh` copies the updated unit into `/etc/systemd/system/` if that unit is already installed. If you enabled the timer before this change and have not run setup yet:
+`pantry-update.sh` includes the `public` profile only when `PUBLIC_HOST` is set and `auth.caddy` exists, so a timer pull renews the proxy instead of forgetting it. When `CLOUDFLARE_TUNNEL_TOKEN` is set, the timer uses the `tunnel` profile instead and does not publish ports 80 or 443. `sudo ./setup.sh` copies the updated unit into `/etc/systemd/system/` if that unit is already installed. If you enabled the timer before this change and have not run setup yet:
 
 ```bash
 sudo cp /opt/pantry/systemd/pantry-update.service /etc/systemd/system/
@@ -390,7 +523,9 @@ All configuration is handled through environment variables in `/opt/pantry/.env`
 | `PANTRY_IMAGE_TAG` | `latest` | Container image tag to deploy. Use `latest` for newest build, `master` for master branch, or full commit SHA to pin version |
 | `HOST_PORT` | `8080` | IPv4 port for the LAN site. The container still listens on 8080. Published on `0.0.0.0` only, not IPv6. Do not forward this port on the router |
 | `PUBLIC_HOST` | empty | Hostname for the public HTTPS proxy, such as `pantry.rhionin.com`. Empty keeps the install LAN-only. No `https://` |
-| `ACME_EMAIL` | empty | Email Let's Encrypt uses for certificate expiry notices. Required when `PUBLIC_HOST` is set. Not a Pantry login |
+| `PUBLISH_MODE` | empty | `tunnel` selects Cloudflare Tunnel and requires `CLOUDFLARE_TUNNEL_TOKEN`. Empty or `acme` is the certificate path, unless that token is set — a non-empty token selects tunnel on its own |
+| `CLOUDFLARE_TUNNEL_TOKEN` | empty | Remotely managed tunnel token from Zero Trust. Empty keeps ports 80 and 443 and Let's Encrypt. Secret. The hostname's service URL is `http://caddy:80` |
+| `ACME_EMAIL` | empty | Email Let's Encrypt uses for certificate expiry notices. Required when `PUBLIC_HOST` is set and the token is empty. Not used in tunnel mode. Not a Pantry login |
 | `BASIC_AUTH_USER` | `pantry` | Username the browser asks for on the public site |
 | `BASIC_AUTH_PASSWORD` | empty | Shared password for the public site, 12 to 72 characters. Required the first time the public proxy starts, unless `auth.caddy` already exists. The hash is written to `auth.caddy`; this value stays in `.env`. Setup does not replace an existing `auth.caddy` |
 | `PANTRY_LAN_FIREWALL` | `on` | `off` leaves `HOST_PORT` reachable from any source. Any other value, including empty, installs the LAN-only rule when compose publishes that port or the public proxy is on |
@@ -418,7 +553,7 @@ cd /opt/pantry
 sudo docker compose up -d
 ```
 
-Setting `PUBLIC_HOST` does not publish the site by itself. Run `sudo ./setup.sh` so the `public` profile starts when `ACME_EMAIL` is set and `auth.caddy` exists (or `BASIC_AUTH_PASSWORD` is set and `auth.caddy` does not). A plain `docker compose up` leaves that profile off.
+Setting `PUBLIC_HOST` does not publish the site by itself. Run `sudo ./setup.sh` so the `public` profile starts when `ACME_EMAIL` is set and `auth.caddy` exists (or `BASIC_AUTH_PASSWORD` is set and `auth.caddy` does not). A plain `docker compose up` leaves that profile off. With `CLOUDFLARE_TUNNEL_TOKEN` set, `sudo ./setup.sh` starts the `tunnel` profile instead. `ACME_EMAIL` is not required then.
 
 ## Headless Scanner Input
 
@@ -760,7 +895,7 @@ The credentials are stored in root's Docker config, which is the identity the up
 
 ### Public website doesn't load
 
-See [Public Internet access](#public-internet-access). The usual causes are the Squarespace A record not pointing at this Pi yet, or router ports 80 and 443 not forwarded. A hang that happens only on home Wi-Fi, while cellular loads the site, is [NAT hairpin](#home-wi-fi-hangs-on-the-public-name), not a down server. From `/opt/pantry`:
+See [Public Internet access](#public-internet-access). On the certificate path, the usual causes are the Squarespace A record not pointing at this Pi yet, or router ports 80 and 443 not forwarded. A hang that happens only on home Wi-Fi, while cellular loads the site, is [NAT hairpin](#home-wi-fi-hangs-on-the-public-name), not a down server. In tunnel mode, both networks use Cloudflare; logs for that path are `sudo docker compose -f docker-compose.yml -f docker-compose.tunnel.yml --profile tunnel logs --tail=80 cloudflared`. From `/opt/pantry`:
 
 ```bash
 sudo docker compose --profile public logs --tail=80 caddy

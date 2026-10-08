@@ -13,6 +13,7 @@ set -euo pipefail
 #   sudo ./setup.sh                  # Sync files, containers, Caddy, and firewall
 #   sudo ./setup.sh apply            # Same command, explicit name
 #   sudo ./setup.sh --with-updates   # ...and enable the auto-update timer
+#   sudo ./setup.sh publish --tunnel # Publish https://PUBLIC_HOST through Cloudflare Tunnel
 #   sudo ./setup.sh unpublish        # Stop the public proxy; LAN pantry keeps running
 #   sudo ./setup.sh firewall-off     # Remove the LAN port rule until the next setup
 #   sudo ./setup.sh rule             # Regenerate udev rule for a new scanner
@@ -50,6 +51,8 @@ source "$SCRIPT_DIR/mdns/lan-ipv4.sh"
 PANTRY_DIR="${PANTRY_DIR:-/opt/pantry}"
 # Where systemd units are installed. Tests point this at a temp directory.
 PANTRY_SYSTEMD_UNIT_DIR="${PANTRY_SYSTEMD_UNIT_DIR:-/etc/systemd/system}"
+# shellcheck disable=SC1091
+source "$SCRIPT_DIR/publish-mode.sh"
 
 # Helpers
 log_info() {
@@ -145,7 +148,7 @@ copy_deploy_files() {
   log_info "Copying deployment files to ${PANTRY_DIR}..."
   mkdir -p "${PANTRY_DIR}"
   local item src dest
-  for item in docker-compose.yml .env.example Caddyfile udev systemd firewall mdns dns; do
+  for item in docker-compose.yml docker-compose.tunnel.yml .env.example Caddyfile Caddyfile.tunnel publish-mode.sh udev systemd firewall mdns dns; do
     src="$SCRIPT_DIR/$item"
     dest="${PANTRY_DIR}/$item"
     if [[ ! -e "$src" ]]; then
@@ -228,6 +231,9 @@ prepare_public_profile() {
   local public_host acme_email
   public_host=$(env_value PUBLIC_HOST)
   if [[ -z "$public_host" ]]; then
+    if [[ "${publish_mode:-}" == tunnel ]]; then
+      log_warn "CLOUDFLARE_TUNNEL_TOKEN is set but PUBLIC_HOST is empty. The tunnel was not started. Set PUBLIC_HOST=pantry.rhionin.com in ${PANTRY_DIR}/.env."
+    fi
     return 1
   fi
   if [[ ! "$public_host" =~ ^[A-Za-z0-9.-]+$ ]] || [[ "$public_host" != *.* ]] || [[ "$public_host" == .* ]] || [[ "$public_host" == *. ]]; then
@@ -248,14 +254,23 @@ prepare_public_profile() {
     chmod 600 "$PANTRY_DIR/auth.caddy" || fatal "Could not protect $PANTRY_DIR/auth.caddy"
     log_success "Keeping existing $PANTRY_DIR/auth.caddy"
   elif ! write_auth_from_env; then
-    log_warn "PUBLIC_HOST is set but $PANTRY_DIR/auth.caddy is missing and BASIC_AUTH_PASSWORD is empty. The public proxy was not started. LAN access is unchanged."
+    if [[ "${publish_mode:-}" == tunnel ]]; then
+      log_warn "CLOUDFLARE_TUNNEL_TOKEN is set but $PANTRY_DIR/auth.caddy is missing and BASIC_AUTH_PASSWORD is empty. The tunnel was not started. LAN access is unchanged."
+    else
+      log_warn "PUBLIC_HOST is set but $PANTRY_DIR/auth.caddy is missing and BASIC_AUTH_PASSWORD is empty. The public proxy was not started. LAN access is unchanged."
+    fi
     return 1
   fi
 
-  acme_email=$(env_value ACME_EMAIL)
-  if [[ -z "$acme_email" ]] || [[ ! "$acme_email" =~ ^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$ ]]; then
-    log_warn "Set ACME_EMAIL in $PANTRY_DIR/.env to an email address for Let's Encrypt expiry notices. The public proxy was not started."
-    return 1
+  # Tunnel mode has no certificate request. The email is only for Let's Encrypt.
+  if [[ "${publish_mode:-acme}" == acme ]]; then
+    acme_email=$(env_value ACME_EMAIL)
+    if [[ -z "$acme_email" ]] || [[ ! "$acme_email" =~ ^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$ ]]; then
+      log_warn "Set ACME_EMAIL in $PANTRY_DIR/.env to an email address for Let's Encrypt expiry notices. The public proxy was not started."
+      return 1
+    fi
+  elif [[ ! -f "$PANTRY_DIR/Caddyfile.tunnel" || ! -f "$PANTRY_DIR/docker-compose.tunnel.yml" ]]; then
+    fatal "Tunnel mode files are missing from $PANTRY_DIR. Re-run setup from a current deploy/ directory."
   fi
   return 0
 }
@@ -352,7 +367,9 @@ report_lan_access() {
     fi
   fi
   public_host=$(env_value PUBLIC_HOST)
-  if [[ -n "$public_host" ]]; then
+  # Tunnel mode reaches Cloudflare from inside the house, so the public name
+  # does not depend on the router sending its own WAN address back to the Pi.
+  if [[ -n "$public_host" && "${publish_mode:-acme}" == acme ]]; then
     log_warn "Home Wi-Fi cannot open https://${public_host} when the router does not hairpin NAT back to itself. That connection hangs. Use the LAN address on this network. Cellular data still uses the public name and the shared password."
   fi
 }
@@ -451,7 +468,9 @@ cmd_apply() {
 
   # --with-updates opts into automatic updates. The timer stays as it is
   # unless this flag is passed, so a routine re-run does not disable it.
-  local with_updates=false
+  # --tunnel selects Cloudflare Tunnel for this run. A token already in .env
+  # selects it too, including on a later run without the flag.
+  local with_updates=false tunnel_requested=
   if [[ $# -gt 0 ]]; then
     case "$1" in
       apply|install|publish|firewall) shift ;;
@@ -460,6 +479,7 @@ cmd_apply() {
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --with-updates) with_updates=true ;;
+      --tunnel) tunnel_requested=tunnel ;;
       *) log_warn "Ignoring unknown option: $1" ;;
     esac
     shift
@@ -523,18 +543,36 @@ cmd_apply() {
   local rule_mode=optional
   cmd_rule
 
+  local publish_mode mode_rc=0
+  publish_mode=$(publish_mode_from_env "$tunnel_requested") || mode_rc=$?
+  if [[ "$mode_rc" -eq 2 ]]; then
+    fatal "Tunnel mode needs CLOUDFLARE_TUNNEL_TOKEN in ${PANTRY_DIR}/.env. Create a tunnel in Cloudflare Zero Trust (Networks, then Tunnels), copy its token, and re-run: sudo ./setup.sh publish --tunnel"
+  elif [[ "$mode_rc" -ne 0 ]]; then
+    fatal "Could not decide how to publish Pantry"
+  fi
+
   local use_public=false
   if prepare_public_profile; then
     use_public=true
   fi
 
   local -a compose
+  local proxy_service=caddy
   compose=(docker compose --project-directory "$PANTRY_DIR" -f "$PANTRY_DIR/docker-compose.yml")
-  if [[ "$use_public" == true ]]; then
+  if [[ "$use_public" == true && "$publish_mode" == tunnel ]]; then
+    proxy_service=caddy-tunnel
+    compose+=(-f "$PANTRY_DIR/docker-compose.tunnel.yml" --profile tunnel)
+    log_info "Starting Pantry and Cloudflare Tunnel for https://$(env_value PUBLIC_HOST)"
+  elif [[ "$use_public" == true ]]; then
     compose+=(--profile public)
     log_info "Starting Pantry and the public HTTPS proxy for https://$(env_value PUBLIC_HOST)"
   else
     log_info "Starting Pantry on the LAN"
+  fi
+  # Pull is the update script's job. Here, drop a proxy container left over
+  # from the other mode before Compose tries to reuse the name pantry-caddy.
+  if [[ "$use_public" == true || "$publish_mode" != tunnel ]]; then
+    drop_other_publish_containers "$publish_mode"
   fi
   if ! "${compose[@]}" up -d; then
     fatal "Failed to start Pantry"
@@ -554,13 +592,29 @@ cmd_apply() {
     done
     if [[ "$running" != true ]]; then
       log_error "The proxy container exited. Recent logs:"
-      docker compose --project-directory "$PANTRY_DIR" -f "$PANTRY_DIR/docker-compose.yml" --profile public logs --tail=80 caddy || true
+      "${compose[@]}" logs --tail=80 "$proxy_service" || true
       fatal "Public proxy did not stay running"
     fi
     log_info "Restarting the public proxy so the current Caddyfile is loaded"
     if ! docker restart pantry-caddy >/dev/null; then
-      docker compose --project-directory "$PANTRY_DIR" -f "$PANTRY_DIR/docker-compose.yml" --profile public logs --tail=80 caddy || true
+      "${compose[@]}" logs --tail=80 "$proxy_service" || true
       fatal "Could not restart the public proxy"
+    fi
+    if [[ "$publish_mode" == tunnel ]]; then
+      local tunnel_deadline=$((SECONDS + 20))
+      running=false
+      while [[ $SECONDS -lt $tunnel_deadline ]]; do
+        if docker inspect -f '{{.State.Running}}' pantry-cloudflared 2>/dev/null | grep -qx true; then
+          running=true
+          break
+        fi
+        sleep 1
+      done
+      if [[ "$running" != true ]]; then
+        log_error "Cloudflare Tunnel exited. Recent logs:"
+        "${compose[@]}" logs --tail=80 cloudflared || true
+        fatal "Cloudflare Tunnel did not stay running. Check CLOUDFLARE_TUNNEL_TOKEN in ${PANTRY_DIR}/.env."
+      fi
     fi
   fi
 
@@ -612,11 +666,31 @@ cmd_apply() {
   fi
 
   publish_lan_name "$host_port"
-  apply_split_dns
+  if [[ "$use_public" == true && "$publish_mode" == tunnel ]]; then
+    # An answer that points the public name at the Pi bypasses Cloudflare,
+    # and Caddy is not listening on the LAN address in this mode.
+    local split_flag
+    split_flag=$(env_value PANTRY_SPLIT_DNS)
+    split_flag=$(printf '%s' "$split_flag" | tr '[:upper:]' '[:lower:]')
+    case "$split_flag" in
+      on|true|yes|1)
+        log_warn "PANTRY_SPLIT_DNS is on. Tunnel mode needs $(env_value PUBLIC_HOST) to resolve to Cloudflare on home Wi-Fi too. Split-horizon DNS was removed. Set PANTRY_SPLIT_DNS=off in ${PANTRY_DIR}/.env."
+        ;;
+    esac
+    if [[ -f "$PANTRY_DIR/dns/pantry-split-dns.sh" ]]; then
+      "$PANTRY_DIR/dns/pantry-split-dns.sh" --remove || log_warn "Could not remove split-horizon DNS. Clients that use this Pi for DNS may still miss the tunnel."
+    fi
+  else
+    apply_split_dns
+  fi
 
   log_success "Pantry setup complete"
   report_lan_access "$host_port"
-  if [[ "$use_public" == true ]]; then
+  if [[ "$use_public" == true && "$publish_mode" == tunnel ]]; then
+    log_info "Public: https://$(env_value PUBLIC_HOST) through Cloudflare Tunnel (shared password; the LAN address does not ask for it). Nothing on this Pi is listening on ports 80 or 443."
+    log_info "In Zero Trust, the public hostname service URL is ${PANTRY_TUNNEL_ORIGIN}"
+    log_info "Open that https URL on home Wi-Fi and on cellular, then remove the router's forwards for ports 80 and 443."
+  elif [[ "$use_public" == true ]]; then
     log_info "Public: https://$(env_value PUBLIC_HOST) (shared password; the LAN address does not ask for it)"
   fi
   if [[ "$firewall_applied" == true ]]; then
@@ -891,7 +965,31 @@ cmd_status() {
   fi
 
   # 8. Public proxy. Empty PUBLIC_HOST is the LAN-only default, not a failure.
-  if [[ -n "$public_host" ]]; then
+  local publish_mode mode_rc=0
+  if [[ -f ${PANTRY_DIR}/.env ]]; then
+    publish_mode=$(publish_mode_from_env) || mode_rc=$?
+  else
+    publish_mode=none
+  fi
+  if [[ "$mode_rc" -eq 2 ]]; then
+    log_error "Tunnel mode is selected but CLOUDFLARE_TUNNEL_TOKEN is empty. Put the token in ${PANTRY_DIR}/.env and run: sudo ./setup.sh publish --tunnel"
+    failed=$((failed + 1))
+    publish_mode=tunnel
+  elif [[ "$mode_rc" -ne 0 ]]; then
+    log_error "PUBLISH_MODE must be acme or tunnel"
+    failed=$((failed + 1))
+    publish_mode=none
+  fi
+  if [[ "$publish_mode" == tunnel ]]; then
+    if [[ ! -f ${PANTRY_DIR}/auth.caddy ]]; then
+      log_warn "CLOUDFLARE_TUNNEL_TOKEN is set but ${PANTRY_DIR}/auth.caddy is missing, so the tunnel will not start. Set BASIC_AUTH_PASSWORD and run: sudo ./setup.sh publish --tunnel"
+    elif docker inspect -f '{{.State.Running}}' pantry-caddy 2>/dev/null | grep -qx true \
+      && docker inspect -f '{{.State.Running}}' pantry-cloudflared 2>/dev/null | grep -qx true; then
+      log_success "Cloudflare Tunnel is running for https://$public_host (shared password required). Service URL: ${PANTRY_TUNNEL_ORIGIN}. Ports 80 and 443 are not published."
+    else
+      log_warn "CLOUDFLARE_TUNNEL_TOKEN is set but the tunnel is not running. Start it with: sudo ./setup.sh publish --tunnel"
+    fi
+  elif [[ -n "$public_host" ]]; then
     if [[ ! -f ${PANTRY_DIR}/auth.caddy ]]; then
       log_warn "PUBLIC_HOST=$public_host but ${PANTRY_DIR}/auth.caddy is missing, so the proxy will not start. Set BASIC_AUTH_PASSWORD and run: sudo ./setup.sh"
     elif docker inspect -f '{{.State.Running}}' pantry-caddy 2>/dev/null | grep -qx true; then
@@ -922,11 +1020,16 @@ cmd_unpublish() {
   if [[ ! -f ${PANTRY_DIR}/docker-compose.yml ]]; then
     fatal "Nothing installed at ${PANTRY_DIR}. Run 'sudo ./setup.sh' first"
   fi
-  log_info "Stopping the public HTTPS proxy. Pantry keeps running on the LAN."
+  log_info "Stopping the public HTTPS proxy and Cloudflare Tunnel. Pantry keeps running on the LAN."
   docker compose --project-directory "${PANTRY_DIR}" -f "${PANTRY_DIR}/docker-compose.yml" --profile public stop caddy || true
   docker compose --project-directory "${PANTRY_DIR}" -f "${PANTRY_DIR}/docker-compose.yml" --profile public rm -f caddy || true
+  if [[ -f "${PANTRY_DIR}/docker-compose.tunnel.yml" ]]; then
+    docker compose --project-directory "${PANTRY_DIR}" -f "${PANTRY_DIR}/docker-compose.yml" -f "${PANTRY_DIR}/docker-compose.tunnel.yml" --profile tunnel stop caddy-tunnel cloudflared || true
+    docker compose --project-directory "${PANTRY_DIR}" -f "${PANTRY_DIR}/docker-compose.yml" -f "${PANTRY_DIR}/docker-compose.tunnel.yml" --profile tunnel rm -f caddy-tunnel cloudflared || true
+  fi
+  docker rm -f pantry-cloudflared >/dev/null 2>&1 || true
   log_success "Public proxy stopped. The certificate volume was kept so a later setup can reuse it."
-  log_info "Clear PUBLIC_HOST in ${PANTRY_DIR}/.env if automatic updates should not start the proxy again."
+  log_info "Clear PUBLIC_HOST and CLOUDFLARE_TUNNEL_TOKEN in ${PANTRY_DIR}/.env if automatic updates should not start the proxy again."
 }
 
 cmd_firewall_off() {
@@ -996,7 +1099,9 @@ After git pull, from deploy/:
 That syncs this folder to /opt/pantry, starts the containers (including the
 public HTTPS proxy when PUBLIC_HOST is set and auth.caddy already exists),
 restarts Caddy so the current Caddyfile is loaded, and applies the LAN
-firewall on the published Pantry port. It is safe to re-run.
+firewall on the published Pantry port. It is safe to re-run. When
+CLOUDFLARE_TUNNEL_TOKEN is set, the same command publishes through
+Cloudflare Tunnel instead of ports 80 and 443.
 
 COMMANDS:
   apply            Same as running setup.sh with no command.
@@ -1007,6 +1112,8 @@ COMMANDS:
   install          Alias of apply.
   publish          Alias of apply. Does not rewrite /opt/pantry/auth.caddy when
                    that file already exists, and does not prompt for a password.
+                   Pass --tunnel to publish through Cloudflare Tunnel. A token
+                   already in .env selects tunnel without the flag.
   firewall         Alias of apply. The LAN port rule is part of apply.
   unpublish        Stop the HTTPS proxy. Pantry keeps running on the LAN.
   firewall-off     Remove the LAN port rule until the next setup. To leave it
@@ -1029,6 +1136,11 @@ EXAMPLES:
   sudo rm /opt/pantry/auth.caddy
   sudo ./setup.sh
 
+  # Publish https://pantry.rhionin.com through Cloudflare Tunnel.
+  # Put CLOUDFLARE_TUNNEL_TOKEN in /opt/pantry/.env first. The service URL
+  # saved on the tunnel hostname is http://caddy:80
+  sudo ./setup.sh publish --tunnel
+
   # Iterate on configuration
   sudo ./setup.sh freeze          # Pause auto-updates
   # ... make changes to /opt/pantry/.env ...
@@ -1045,6 +1157,9 @@ NOTES:
   - On home Wi-Fi, https://PUBLIC_HOST hangs when the router does not
     hairpin NAT. Use the LAN address or http://pantry.local:8080.
     Cellular data still uses the public name and the shared password.
+  - `sudo ./setup.sh publish --tunnel` avoids that hang. Caddy listens only
+    for cloudflared, at http://caddy:80, and ports 80 and 443 stay closed.
+    Empty CLOUDFLARE_TUNNEL_TOKEN to return to the certificate path.
 EOF
 }
 

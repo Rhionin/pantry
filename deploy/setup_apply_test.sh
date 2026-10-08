@@ -13,6 +13,8 @@ bash -n "$ROOT/deploy/systemd/pantry-update.sh"
 bash -n "$ROOT/deploy/mdns/pantry-mdns.sh"
 bash -n "$ROOT/deploy/mdns/lan-ipv4.sh"
 bash -n "$ROOT/deploy/dns/pantry-split-dns.sh"
+bash -n "$ROOT/deploy/publish-mode.sh"
+bash -n "$ROOT/deploy/check-publish-modes.sh"
 
 fail() {
   echo "FAIL: $*" >&2
@@ -175,6 +177,7 @@ run_setup "$lan"
 [[ "$LAST_RC" -eq 0 ]] || fail "LAN setup exited $LAST_RC: $LAST_OUT"
 have "$LAST_DOCKER" "up -d" "LAN compose up"
 lack "$LAST_DOCKER" "--profile public" "LAN must not start the public proxy"
+lack "$LAST_DOCKER" "docker-compose.tunnel.yml" "LAN must not select the tunnel file"
 lack "$LAST_DOCKER" "hash-password" "LAN must not hash a password"
 lack "$LAST_DOCKER" "restart pantry-caddy" "LAN must not restart Caddy"
 have "$LAST_IPTABLES" "--dport 9090" "firewall uses HOST_PORT"
@@ -202,6 +205,7 @@ run_setup "$pub"
 cmp "$pub/auth.caddy" "$pub/auth.caddy.before" || fail "auth.caddy was regenerated"
 grep -q '^BASIC_AUTH_PASSWORD=$' "$pub/.env" || fail "empty BASIC_AUTH_PASSWORD was rewritten"
 have "$LAST_DOCKER" "--profile public" "public profile"
+lack "$LAST_DOCKER" "docker-compose.tunnel.yml" "certificate mode must not select the tunnel file"
 have "$LAST_DOCKER" "restart pantry-caddy" "Caddyfile restart"
 lack "$LAST_DOCKER" "hash-password" "must not hash when auth.caddy exists"
 lack "$LAST_DOCKER" "stop caddy" "must not disable public HTTPS"
@@ -412,5 +416,132 @@ mdns_rc=$?
 set -e
 [[ "$mdns_rc" -ne 0 ]] || fail "publisher accepted a public address"
 
-rm -rf "$lan" "$pub" "$first" "$bad" "$incomplete" "$opt" "$mdns" "$split" "$badip" "$mdns_bin"
+# A token selects the tunnel even when ACME_EMAIL is empty and --tunnel is omitted.
+# The certificate profile stays off, and the token is not printed.
+tun=$(mktemp -d)
+write_env "$tun" \
+  "PUBLIC_HOST=pantry.rhionin.com" \
+  "ACME_EMAIL=" \
+  "BASIC_AUTH_USER=pantry" \
+  "BASIC_AUTH_PASSWORD=" \
+  "HOST_PORT=8080" \
+  "PUBLISH_MODE=" \
+  "CLOUDFLARE_TUNNEL_TOKEN=test-tunnel-token"
+printf '%s\n' 'basic_auth bcrypt Pantry {' '	pantry ORIGINAL-HASH' '}' > "$tun/auth.caddy"
+cp "$tun/auth.caddy" "$tun/auth.caddy.before"
+run_setup "$tun"
+[[ "$LAST_RC" -eq 0 ]] || fail "tunnel setup exited $LAST_RC: $LAST_OUT"
+have "$LAST_DOCKER" "docker-compose.tunnel.yml" "tunnel compose file"
+have "$LAST_DOCKER" "--profile tunnel" "tunnel profile"
+lack "$LAST_DOCKER" "--profile public" "tunnel must not publish the certificate profile"
+have "$LAST_DOCKER" "restart pantry-caddy" "tunnel restarts Caddy"
+have "$LAST_OUT" "http://caddy:80" "service URL is printed"
+have "$LAST_OUT" "Nothing on this Pi is listening on ports 80 or 443" "tunnel closes host 80/443"
+lack "$LAST_OUT" "Home Wi-Fi cannot open" "tunnel must not warn about hairpin"
+lack "$LAST_OUT" "test-tunnel-token" "token must not be logged"
+lack "$LAST_DOCKER" "test-tunnel-token" "token must not be a docker argument"
+cmp "$tun/auth.caddy" "$tun/auth.caddy.before" || fail "tunnel setup regenerated auth.caddy"
+lack "$LAST_DOCKER" "hash-password" "tunnel must not hash when auth.caddy exists"
+# publish --tunnel is the same switch once the token is already in .env.
+run_setup "$tun" publish --tunnel
+[[ "$LAST_RC" -eq 0 ]] || fail "publish --tunnel exited $LAST_RC: $LAST_OUT"
+have "$LAST_DOCKER" "--profile tunnel" "publish --tunnel"
+cmp "$tun/auth.caddy" "$tun/auth.caddy.before" || fail "publish --tunnel regenerated auth.caddy"
+
+# PUBLISH_MODE=acme does not override a token that is still set.
+write_env "$tun" \
+  "PUBLIC_HOST=pantry.rhionin.com" \
+  "ACME_EMAIL=you@example.com" \
+  "BASIC_AUTH_USER=pantry" \
+  "BASIC_AUTH_PASSWORD=" \
+  "HOST_PORT=8080" \
+  "PUBLISH_MODE=acme" \
+  "CLOUDFLARE_TUNNEL_TOKEN=test-tunnel-token"
+printf '%s\n' 'basic_auth bcrypt Pantry {' '	pantry ORIGINAL-HASH' '}' > "$tun/auth.caddy"
+run_setup "$tun"
+[[ "$LAST_RC" -eq 0 ]] || fail "token overrides acme mode, exited $LAST_RC: $LAST_OUT"
+have "$LAST_DOCKER" "--profile tunnel" "token wins over PUBLISH_MODE=acme"
+lack "$LAST_DOCKER" "--profile public" "token must not open the certificate profile"
+
+# Tunnel without a token fails before containers start, and does not fall through to ACME.
+notoken=$(mktemp -d)
+write_env "$notoken" \
+  "PUBLIC_HOST=pantry.example.com" \
+  "ACME_EMAIL=you@example.com" \
+  "BASIC_AUTH_USER=pantry" \
+  "BASIC_AUTH_PASSWORD=" \
+  "HOST_PORT=8080" \
+  "PUBLISH_MODE=tunnel" \
+  "CLOUDFLARE_TUNNEL_TOKEN="
+printf '%s\n' 'basic_auth bcrypt Pantry {' '	pantry ORIGINAL-HASH' '}' > "$notoken/auth.caddy"
+run_setup "$notoken" publish --tunnel
+[[ "$LAST_RC" -ne 0 ]] || fail "tunnel without a token should fail"
+lack "$LAST_DOCKER" "up -d" "missing token must not start containers"
+have "$LAST_OUT" "CLOUDFLARE_TUNNEL_TOKEN" "missing token names the variable"
+lack "$LAST_DOCKER" "--profile public" "missing token must not start the certificate proxy"
+
+# Token set, password not ready: LAN still comes up, tunnel stays off.
+unready=$(mktemp -d)
+write_env "$unready" \
+  "PUBLIC_HOST=pantry.rhionin.com" \
+  "BASIC_AUTH_USER=pantry" \
+  "BASIC_AUTH_PASSWORD=" \
+  "HOST_PORT=8080" \
+  "CLOUDFLARE_TUNNEL_TOKEN=test-tunnel-token"
+run_setup "$unready"
+[[ "$LAST_RC" -eq 0 ]] || fail "unready tunnel exited $LAST_RC: $LAST_OUT"
+lack "$LAST_DOCKER" "--profile tunnel" "unready tunnel must not start cloudflared"
+lack "$LAST_DOCKER" "--profile public" "unready tunnel must not start the certificate proxy"
+have "$LAST_OUT" "The tunnel was not started" "unready tunnel explains why"
+[[ ! -e "$unready/auth.caddy" ]] || fail "empty password created auth.caddy"
+
+# Split-horizon DNS would point the public name at the Pi. Tunnel mode removes it.
+tunsplit=$(mktemp -d)
+write_env "$tunsplit" \
+  "PUBLIC_HOST=pantry.rhionin.com" \
+  "BASIC_AUTH_USER=pantry" \
+  "BASIC_AUTH_PASSWORD=" \
+  "HOST_PORT=8080" \
+  "PANTRY_LAN_IPV4=192.168.1.203" \
+  "PANTRY_SPLIT_DNS=on" \
+  "CLOUDFLARE_TUNNEL_TOKEN=test-tunnel-token"
+printf '%s\n' 'basic_auth bcrypt Pantry {' '	pantry ORIGINAL-HASH' '}' > "$tunsplit/auth.caddy"
+run_setup "$tunsplit"
+[[ "$LAST_RC" -eq 0 ]] || fail "tunnel split-dns exited $LAST_RC: $LAST_OUT"
+have "$LAST_OUT" "PANTRY_SPLIT_DNS is on" "tunnel warns about split-horizon"
+have "$LAST_OUT" "Split-horizon DNS was removed" "tunnel removes split-horizon"
+lack "$LAST_DNSMASQ" "address=/pantry.rhionin.com/192.168.1.203" "tunnel must not install dnsmasq"
+have "$LAST_DOCKER" "--profile tunnel" "split-horizon removal keeps the tunnel"
+
+# publish_mode_from_env
+# shellcheck disable=SC1091
+source "$ROOT/deploy/publish-mode.sh"
+mode_dir=$(mktemp -d)
+write_env "$mode_dir" "PUBLIC_HOST=" "CLOUDFLARE_TUNNEL_TOKEN=" "PUBLISH_MODE="
+PANTRY_DIR="$mode_dir"
+got=$(publish_mode_from_env)
+[[ "$got" == none ]] || fail "empty env mode, got $got"
+write_env "$mode_dir" "PUBLIC_HOST=pantry.example.com" "CLOUDFLARE_TUNNEL_TOKEN=" "PUBLISH_MODE="
+got=$(publish_mode_from_env)
+[[ "$got" == acme ]] || fail "host without token should be acme, got $got"
+write_env "$mode_dir" "PUBLIC_HOST=pantry.example.com" "CLOUDFLARE_TUNNEL_TOKEN=tok" "PUBLISH_MODE=acme"
+got=$(publish_mode_from_env)
+[[ "$got" == tunnel ]] || fail "token should win, got $got"
+write_env "$mode_dir" "PUBLIC_HOST=pantry.example.com" "CLOUDFLARE_TUNNEL_TOKEN=" "PUBLISH_MODE=tunnel"
+set +e
+got=$(publish_mode_from_env)
+mode_rc=$?
+set -e
+[[ "$mode_rc" -eq 2 ]] || fail "tunnel mode without token rc=$mode_rc"
+write_env "$mode_dir" "PUBLIC_HOST=" "CLOUDFLARE_TUNNEL_TOKEN=" "PUBLISH_MODE=sideways"
+set +e
+got=$(publish_mode_from_env)
+mode_rc=$?
+set -e
+[[ "$mode_rc" -eq 1 ]] || fail "bad PUBLISH_MODE rc=$mode_rc"
+write_env "$mode_dir" "PUBLIC_HOST=pantry.example.com" "CLOUDFLARE_TUNNEL_TOKEN=tok" "PUBLISH_MODE="
+got=$(publish_mode_from_env tunnel)
+[[ "$got" == tunnel ]] || fail "--tunnel request, got $got"
+
+rm -rf "$lan" "$pub" "$first" "$bad" "$incomplete" "$opt" "$mdns" "$split" "$badip" "$mdns_bin" "$tun" "$notoken" "$unready" "$tunsplit" "$mode_dir"
 echo "setup_apply_test ok"

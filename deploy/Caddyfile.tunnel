@@ -1,18 +1,18 @@
-# Public HTTPS entrypoint for a hostname you own (PUBLIC_HOST).
-# Caddy obtains and renews a Let's Encrypt certificate over HTTP-01,
-# which requires TCP port 80 to reach this container from the internet.
-# The admin API stays off so it is not another listener on the Pi.
+# Internal HTTP entrypoint for Cloudflare Tunnel.
 #
-# Home Wi-Fi clients that look up PUBLIC_HOST get the router's WAN address.
-# If that router does not NAT-hairpin, the connection hangs and never
-# reaches this process. Do not publish port 8080 to paper over that: the
-# Pantry listener has no password. Those clients use http://<lan-ip>:8080
-# or http://pantry.local:8080. See deploy/README.md.
-# Caddyfile.tunnel is the no-forward path. setup selects it when
-# CLOUDFLARE_TUNNEL_TOKEN is set. This file stays the certificate path.
+# cloudflared is the only client. It connects over the compose network to
+# http://caddy:80 and sends the visitor's scheme and address. Caddy must
+# trust those headers from that one address: otherwise it tells Pantry the
+# request was plain HTTP, and a redirect or the Kroger callback is built
+# as http://. Nothing here listens on the Pi's ports 80 or 443, and there
+# is no Let's Encrypt client. The route list below is the same one as
+# deploy/Caddyfile. Keep the two site blocks identical.
 {
-	email {$ACME_EMAIL}
 	admin off
+	servers {
+		trusted_proxies static 10.77.77.2/32
+		client_ip_headers CF-Connecting-IP
+	}
 }
 
 # Same browser headers on the public paths and on the password-protected site.
@@ -28,7 +28,7 @@
 	}
 }
 
-{$PUBLIC_HOST} {
+http://{$PUBLIC_HOST} {
 	# handle is first-match. This matcher is exact: /api/telemetry and
 	# /api/telemetry/client only. The snapshot has no barcodes, product names,
 	# or user ids, and the page posts timings here, so both stay reachable

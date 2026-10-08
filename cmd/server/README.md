@@ -58,7 +58,7 @@ For Raspberry Pi deployment with a USB barcode scanner:
 
 Public HTTPS, for a hostname you own, is an optional step on top of that LAN install. See `deploy/README.md` (Public Internet access). The public site asks for one shared password. A few exact paths stay open: the timing snapshot at `https://<your-host>/api/telemetry`, plus `https://<your-host>/brand/logo.png`, `https://<your-host>/terms`, and `https://<your-host>/privacy`.
 
-On the same LAN as the Pi, that public hostname hangs when the router does not hairpin traffic aimed at its own WAN address. Cellular data is outside that path, so the same URL loads there. From home Wi-Fi, open `http://<pi-ip>:8080` (or `http://pantry.local:8080` after setup publishes it). That LAN listener has no password. Details and the Gryphon steps are in `deploy/README.md`.
+On the same LAN as the Pi, that public hostname hangs when the router does not hairpin traffic aimed at its own WAN address. Cellular data is outside that path, so the same URL loads there. From home Wi-Fi, open `http://<pi-ip>:8080` (or `http://pantry.local:8080` after setup publishes it). That LAN listener has no password. Cloudflare Tunnel is the supported way to make the public hostname work on home Wi-Fi without a port forward. Details and the Gryphon steps are in `deploy/README.md`.
 
 ### Health Endpoint
 
