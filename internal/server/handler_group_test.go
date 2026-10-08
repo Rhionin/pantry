@@ -260,6 +260,34 @@ func TestGroupHandlers(t *testing.T) {
 			},
 		},
 		{
+			name: "opening suggestions creates one look-alike card",
+			setup: func(env testEnv) {
+				mustGroupProduct(env, "gv", "Great Value Cut Green Beans")
+				mustGroupProduct(env, "kr", "Kroger Cut Green Beans")
+				mustGroupProduct(env, "dm", "Del Monte Cut Green Beans")
+			},
+			httpExchange: httpExchange{
+				method:         http.MethodGet,
+				path:           "/api/group-suggestions",
+				expectedStatus: http.StatusOK,
+				assertions: []assertion{
+					{path: "$[0].kind", value: "looks_alike"},
+					{path: "$[0].title", value: "Cut green beans"},
+					{path: "$[0].members[2].productId", value: "kr"},
+					{path: "$[1]", absent: true},
+				},
+			},
+			afterRequest: exchanges(httpExchange{
+				method:         http.MethodGet,
+				path:           "/api/group-suggestions",
+				expectedStatus: http.StatusOK,
+				assertions: []assertion{
+					{path: "$[0].title", value: "Cut green beans"},
+					{path: "$[1]", absent: true},
+				},
+			}),
+		},
+		{
 			name: "default rule is copied onto a new group",
 			httpExchange: httpExchange{
 				method:         http.MethodPut,

@@ -303,6 +303,61 @@ export interface BuildInfo {
 }
 
 // Matches batchCommitResponse in internal/server/handler_scan_batch_commit.go.
+export type GroupRule = 'same_as_ran_out' | 'favorite' | 'best_deal';
+
+export type SuggestionKind = 'looks_alike' | 'from_scan' | 'from_old_plan';
+
+export interface GroupMember {
+  productId: string;
+  name: string;
+  onHand: number;
+}
+
+export interface ProductGroup {
+  id: string;
+  name: string;
+  rule: GroupRule | string;
+  ruleConfirmed: boolean;
+  pinnedProductId?: string;
+  windowMonths?: number;
+  quantity?: number;
+  dimension?: NetDimension;
+  members: GroupMember[];
+  runningLow: boolean;
+}
+
+export interface SuggestionMember {
+  productId: string;
+  name: string;
+  included: boolean;
+  caution: string;
+}
+
+export interface GroupSuggestion {
+  id: string;
+  kind: SuggestionKind | string;
+  title: string;
+  proposedRule?: string;
+  pinnedProductId?: string;
+  existingGroupId?: string;
+  status: string;
+  members: SuggestionMember[];
+}
+
+export interface GroupTarget {
+  windowMonths?: number;
+  quantity?: number;
+  dimension?: NetDimension;
+  clear?: boolean;
+}
+
+export interface TargetConflictMember {
+  productId: string;
+  name: string;
+  windowMonths?: number;
+  quantity?: number;
+}
+
 export interface BatchCommitResponse {
   updatedCount: number;
   committedIds?: string[];

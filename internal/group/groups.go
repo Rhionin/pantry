@@ -66,6 +66,7 @@ type Group struct {
 	Quantity        *float64 `json:"quantity,omitempty"`
 	Dimension       string   `json:"dimension,omitempty"`
 	Members         []Member `json:"members"`
+	RunningLow      bool     `json:"runningLow"`
 
 	hasQuantity  bool
 	quantityBase float64
@@ -83,6 +84,20 @@ func (g Group) BuyTarget(accountMonths int) BuyTarget {
 	return BuyTarget{WindowMonths: months}
 }
 
+// IsLow reports whether this group would buy something today.
+// A month window with no measured rate is not low.
+func (g Group) IsLow(accountMonths int) bool {
+	if len(g.Members) == 0 {
+		return false
+	}
+	picked, err := Pick(Kind(g.Rule), Input{Members: g.Members, PinnedProductID: g.PinnedProductID})
+	if err != nil || picked.ProductID == "" {
+		return false
+	}
+	buy, _ := BuyCount(g.BuyTarget(accountMonths), g.Members, picked.ProductID, UsageRate{})
+	return buy > 0
+}
+
 // Suggestion is one stored inbox card. Generation is separate.
 type Suggestion struct {
 	ID              string             `json:"id"`
@@ -98,6 +113,7 @@ type Suggestion struct {
 // SuggestionMember is one product on a card.
 type SuggestionMember struct {
 	ProductID string `json:"productId"`
+	Name      string `json:"name"`
 	Included  bool   `json:"included"`
 	Caution   string `json:"caution"`
 }
@@ -422,8 +438,11 @@ func (g *Groups) SetDefaultRule(ctx context.Context, rule string) error {
 	return nil
 }
 
-// ListSuggestions returns open cards only.
+// ListSuggestions refreshes look-alike cards, then returns the open ones.
 func (g *Groups) ListSuggestions(ctx context.Context) ([]Suggestion, error) {
+	if err := g.RefreshSuggestions(ctx); err != nil {
+		return nil, err
+	}
 	rows, err := g.db.QueryContext(ctx, `
 		SELECT id, kind, title, proposed_rule, pinned_product_id, existing_group_id, status
 		FROM group_suggestions
@@ -460,7 +479,7 @@ func (g *Groups) ListSuggestions(ctx context.Context) ([]Suggestion, error) {
 // Accept creates a group or adds to the card's existing group.
 // A nil productIDs uses the checked rows. Pairs between a checked product and an
 // unchecked one are dismissed. The card stays open when a target is still required.
-func (g *Groups) Accept(ctx context.Context, suggestionID string, productIDs []string, target *TargetInput) (Group, error) {
+func (g *Groups) Accept(ctx context.Context, suggestionID string, productIDs []string, target *TargetInput, name string) (Group, error) {
 	if err := ValidateTarget(target); err != nil {
 		return Group{}, err
 	}
@@ -508,7 +527,11 @@ func (g *Groups) Accept(ctx context.Context, suggestionID string, productIDs []s
 		if s.PinnedProductID != "" && contains(included, s.PinnedProductID) {
 			pin = s.PinnedProductID
 		}
-		groupID, err = insertGroup(ctx, tx, s.Title, rule, pin, included, target)
+		title := s.Title
+		if strings.TrimSpace(name) != "" {
+			title = name
+		}
+		groupID, err = insertGroup(ctx, tx, title, rule, pin, included, target)
 		if err != nil {
 			return Group{}, err
 		}
@@ -1276,10 +1299,11 @@ func loadSuggestion(ctx context.Context, q querier, id string) (Suggestion, erro
 
 func suggestionMembers(ctx context.Context, q querier, id string) ([]SuggestionMember, error) {
 	rows, err := q.QueryContext(ctx, `
-		SELECT product_id, included, caution
-		FROM group_suggestion_members
-		WHERE suggestion_id = ?
-		ORDER BY product_id`, id)
+		SELECT m.product_id, COALESCE(p.name, ''), m.included, m.caution
+		FROM group_suggestion_members m
+		LEFT JOIN products p ON p.id = m.product_id
+		WHERE m.suggestion_id = ?
+		ORDER BY m.product_id`, id)
 	if err != nil {
 		return nil, fmt.Errorf("could not load suggestions: %w", err)
 	}
@@ -1288,7 +1312,7 @@ func suggestionMembers(ctx context.Context, q querier, id string) ([]SuggestionM
 	for rows.Next() {
 		var m SuggestionMember
 		var included int
-		if err := rows.Scan(&m.ProductID, &included, &m.Caution); err != nil {
+		if err := rows.Scan(&m.ProductID, &m.Name, &included, &m.Caution); err != nil {
 			return nil, fmt.Errorf("could not load suggestions: %w", err)
 		}
 		m.Included = included != 0
