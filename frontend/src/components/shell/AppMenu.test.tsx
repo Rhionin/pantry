@@ -23,11 +23,16 @@ const provider = (overrides: Partial<ProviderInfo> = {}): ProviderInfo => ({
 const jsonResponse = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
 
-const renderMenu = (rows: ProviderInfo[], onCredentialsChanged: () => void = () => undefined) => {
+const renderMenu = (
+  rows: ProviderInfo[],
+  onCredentialsChanged: () => void = () => undefined,
+  suggestions: { id: string }[] = [],
+) => {
   vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL) => {
     const url = String(input);
     if (url === '/api/providers') return Promise.resolve(jsonResponse(rows));
     if (url === '/api/build') return Promise.resolve(jsonResponse({ commit: 'abc123def456' }));
+    if (url === '/api/group-suggestions') return Promise.resolve(jsonResponse(suggestions));
     return Promise.reject(new Error(`Unexpected request: ${url}`));
   }));
   return render(
@@ -36,6 +41,7 @@ const renderMenu = (rows: ProviderInfo[], onCredentialsChanged: () => void = () 
         <Routes>
           <Route path="/shopping" element={<AppMenu onCredentialsChanged={onCredentialsChanged} />} />
           <Route path="/diagnostics" element={<h1>Diagnostics</h1>} />
+          <Route path="/groups" element={<h1>Product groups</h1>} />
         </Routes>
       </MemoryRouter>
     </MantineProvider>,
@@ -150,6 +156,14 @@ describe('AppMenu', () => {
     expect(screen.getByRole('dialog', { name: 'Kroger connection' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Disconnect Kroger' })).toBeInTheDocument();
     expect(screen.getByLabelText('Client ID')).toBeInTheDocument();
+  });
+
+  it('shows the open suggestion count on the menu and opens product groups', async () => {
+    renderMenu([provider()], () => undefined, [{ id: 'a' }, { id: 'b' }]);
+    expect(await screen.findByText('2')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Menu' }));
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Product groups' }));
+    expect(await screen.findByRole('heading', { name: 'Product groups' })).toBeInTheDocument();
   });
 
   it('opens diagnostics from the menu', async () => {

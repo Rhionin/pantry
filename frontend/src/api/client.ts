@@ -24,6 +24,10 @@ import type {
   ShoppingListEntry,
   SupplyOverride,
   SupplySettings,
+  ProductGroup,
+  GroupSuggestion,
+  GroupTarget,
+  TargetConflictMember,
 } from '../types';
 
 const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? '';
@@ -32,11 +36,15 @@ const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? '';
 // {"error": "..."} body shape (see internal/server/handler_wrapper.go writeError).
 export class ApiError extends Error {
   readonly status: number;
+  readonly code: string;
+  readonly members: TargetConflictMember[];
 
-  constructor(status: number, message: string) {
+  constructor(status: number, message: string, code = '', members: TargetConflictMember[] = []) {
     super(message);
     this.name = 'ApiError';
     this.status = status;
+    this.code = code;
+    this.members = members;
   }
 }
 
@@ -59,11 +67,14 @@ async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
   if (!res.ok) {
     let message = res.statusText;
     try {
-      const body = (await res.json()) as { error?: string };
+      const body = (await res.json()) as { error?: string; code?: string; members?: TargetConflictMember[] };
       if (body.error) {
         message = body.error;
       }
-    } catch {
+      reportApiResult(route, res.status, performance.now() - started, started);
+      throw new ApiError(res.status, message, body.code ?? '', body.members ?? []);
+    } catch (err) {
+      if (err instanceof ApiError) throw err;
       // Response body was not JSON; fall back to statusText.
     }
     reportApiResult(route, res.status, performance.now() - started, started);
@@ -381,6 +392,79 @@ export function saveItemDeal(itemId: string, priceCents: number, label: string):
 
 export function clearItemDeal(itemId: string): Promise<void> {
   return apiFetch(`/api/shopping-list/deals/${itemId}`, { method: 'DELETE' });
+}
+
+// --- Build identity ---
+
+export function listGroups(): Promise<ProductGroup[]> {
+  return apiFetch('/api/groups');
+}
+
+export function getGroup(id: string): Promise<ProductGroup> {
+  return apiFetch(`/api/groups/${id}`);
+}
+
+export function createGroup(name: string, productIds: string[] = [], target?: GroupTarget): Promise<ProductGroup> {
+  return apiFetch('/api/groups', {
+    method: 'POST',
+    body: JSON.stringify({ name, productIds, ...(target ? { target } : {}) }),
+  });
+}
+
+export function renameGroup(id: string, name: string): Promise<ProductGroup> {
+  return apiFetch(`/api/groups/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ name }),
+  });
+}
+
+export function deleteGroup(id: string): Promise<void> {
+  return apiFetch(`/api/groups/${id}`, { method: 'DELETE' });
+}
+
+export function addGroupMembers(id: string, productIds: string[], fromGroupId = '', target?: GroupTarget): Promise<ProductGroup> {
+  return apiFetch(`/api/groups/${id}/members`, {
+    method: 'POST',
+    body: JSON.stringify({
+      productIds,
+      ...(fromGroupId ? { fromGroupId } : {}),
+      ...(target ? { target } : {}),
+    }),
+  });
+}
+
+export function removeGroupMember(id: string, productId: string): Promise<{ deleted: boolean; group?: ProductGroup }> {
+  return apiFetch(`/api/groups/${id}/members/${productId}`, { method: 'DELETE' });
+}
+
+export function setGroupTarget(id: string, target: GroupTarget): Promise<ProductGroup> {
+  return apiFetch(`/api/groups/${id}/target`, {
+    method: 'PUT',
+    body: JSON.stringify(target),
+  });
+}
+
+export function listSuggestions(): Promise<GroupSuggestion[]> {
+  return apiFetch('/api/group-suggestions');
+}
+
+export function acceptSuggestion(id: string, productIds: string[], name?: string, target?: GroupTarget): Promise<ProductGroup> {
+  return apiFetch(`/api/group-suggestions/${id}/accept`, {
+    method: 'POST',
+    body: JSON.stringify({
+      productIds,
+      ...(name ? { name } : {}),
+      ...(target ? { target } : {}),
+    }),
+  });
+}
+
+export function dismissSuggestion(id: string): Promise<void> {
+  return apiFetch(`/api/group-suggestions/${id}/dismiss`, { method: 'POST' });
+}
+
+export function skipSuggestion(id: string): Promise<void> {
+  return apiFetch(`/api/group-suggestions/${id}/skip`, { method: 'POST' });
 }
 
 // --- Build identity ---

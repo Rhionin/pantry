@@ -124,7 +124,7 @@ func TestAcceptDismissesOnlyExcludedPairs(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if _, err := groups.Accept(ctx, "sug", []string{"a", "b"}, nil); err != nil {
+	if _, err := groups.Accept(ctx, "sug", []string{"a", "b"}, nil, ""); err != nil {
 		t.Fatal(err)
 	}
 	rows, err := db.Query(`SELECT product_id_a, product_id_b FROM group_suggestion_dismissals ORDER BY product_id_a, product_id_b`)

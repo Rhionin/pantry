@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Burger, Menu } from '@mantine/core';
+import { Burger, Indicator, Menu } from '@mantine/core';
 import { useNavigate } from 'react-router-dom';
-import { disconnectProvider, listProviders } from '../../api/client';
+import { disconnectProvider, listProviders, listSuggestions } from '../../api/client';
 import type { ProviderInfo } from '../../types';
 import { BuildStamp } from '../build/BuildStamp';
 import { CredentialsDialog } from '../shopping/CredentialsDialog';
@@ -27,12 +27,19 @@ export const AppMenu = ({ onCredentialsChanged }: AppMenuProps) => {
   const [disconnectError, setDisconnectError] = useState('');
   const [disconnectingId, setDisconnectingId] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [suggestionCount, setSuggestionCount] = useState(0);
 
   const reload = useCallback(async () => {
     try {
       const rows = await listProviders();
       setProviders(rows);
       setLoadError('');
+      try {
+        const cards = await listSuggestions();
+        setSuggestionCount(cards.length);
+      } catch {
+        setSuggestionCount(0);
+      }
     } catch (requestError) {
       setLoadError(requestError instanceof Error ? requestError.message : 'Unable to load store settings.');
     } finally {
@@ -79,7 +86,9 @@ export const AppMenu = ({ onCredentialsChanged }: AppMenuProps) => {
         withinPortal
       >
         <Menu.Target>
-          <Burger className="app-menu-button" opened={opened} size="sm" aria-label="Menu" />
+          <Indicator disabled={suggestionCount === 0} label={suggestionCount} size={16} color="red" offset={4}>
+            <Burger className="app-menu-button" opened={opened} size="sm" aria-label="Menu" />
+          </Indicator>
         </Menu.Target>
         <Menu.Dropdown>
           {editable.map((provider) => (
@@ -99,6 +108,7 @@ export const AppMenu = ({ onCredentialsChanged }: AppMenuProps) => {
           {loaded && loadError !== '' && editable.length === 0 && (
             <Menu.Item disabled>{loadError}</Menu.Item>
           )}
+          <Menu.Item onClick={() => navigate('/groups')}>Product groups</Menu.Item>
           <Menu.Item onClick={() => navigate('/diagnostics')}>Diagnostics</Menu.Item>
           <div className="app-menu-about">
             <Menu.Divider />

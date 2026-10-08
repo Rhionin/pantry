@@ -55,6 +55,12 @@
   flex: none;
 }
 
+a.group-row {
+  color: inherit;
+  text-decoration: none;
+  display: block;
+}
+
 .app-menu-button {
   width: 42px;
   height: 42px;

@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"errors"
 	"time"
 
@@ -64,6 +65,7 @@ type defaultRuleResponse struct {
 
 type acceptSuggestionBody struct {
 	ProductIDs *[]string   `json:"productIds"`
+	Name       string      `json:"name"`
 	Target     *targetBody `json:"target"`
 }
 
@@ -123,6 +125,13 @@ func (h *GroupHandler) List(req Request[struct{}, struct{}]) ([]group.Group, err
 	}
 	if rows == nil {
 		rows = []group.Group{}
+	}
+	account, err := h.accountMonths(req.Context)
+	if err != nil {
+		return nil, InternalError(err)
+	}
+	for i := range rows {
+		rows[i].RunningLow = rows[i].IsLow(account)
 	}
 	return rows, nil
 }
@@ -225,7 +234,7 @@ func (h *GroupHandler) AcceptSuggestion(req Request[acceptSuggestionBody, groupI
 	if req.Body.ProductIDs != nil {
 		productIDs = *req.Body.ProductIDs
 	}
-	view, err := h.Groups.Accept(req.Context, req.PathParams.ID, productIDs, target)
+	view, err := h.Groups.Accept(req.Context, req.PathParams.ID, productIDs, target, req.Body.Name)
 	if err != nil {
 		return nil, groupErr(err)
 	}
@@ -347,13 +356,9 @@ func (h *GroupHandler) previewTarget(req Request[previewBody, struct{}], body pr
 	if body.Rate != nil {
 		rate = group.UsageRate{PerDay: body.Rate.PerDay, OK: body.Rate.OK, ItemCount: body.Rate.ItemCount}
 	}
-	account := int(supply.DefaultMonths)
-	if h.Supply != nil {
-		settings, err := h.Supply.Settings(req.Context)
-		if err != nil {
-			return group.BuyTarget{}, rate, InternalError(err)
-		}
-		account = int(settings.Months)
+	account, monthsErr := h.accountMonths(req.Context)
+	if monthsErr != nil {
+		return group.BuyTarget{}, rate, InternalError(monthsErr)
 	}
 	if body.Target != nil {
 		in, err := targetFromBody(body.Target)
@@ -387,6 +392,17 @@ func unitForDimension(dimension string) string {
 		return "fl oz"
 	}
 	return "oz"
+}
+
+func (h *GroupHandler) accountMonths(ctx context.Context) (int, error) {
+	if h.Supply == nil {
+		return int(supply.DefaultMonths), nil
+	}
+	settings, err := h.Supply.Settings(ctx)
+	if err != nil {
+		return 0, err
+	}
+	return int(settings.Months), nil
 }
 
 func memberProductIDs(members []group.Member) []string {
