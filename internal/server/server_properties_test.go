@@ -106,7 +106,8 @@ func isRegisteredGetPath(path string) bool {
 	case "/api/products", "/api/products/lookup", "/api/scans", "/api/scans/history",
 		"/api/inventory", "/api/shopping-list", "/api/events", "/api/build",
 		"/api/scanner/config", "/api/telemetry",
-		"/api/contributions", "/api/settings/contribution", "/api/settings/supply":
+		"/api/contributions", "/api/settings/contribution", "/api/settings/supply",
+		"/api/groups", "/api/group-suggestions", "/api/settings/group-rule":
 		return true
 	}
 	// Wildcard GET routes: /api/inventory/{itemId}/instances, /api/products/{id},
@@ -121,6 +122,9 @@ func isRegisteredGetPath(path string) bool {
 		return true
 	}
 	if regexp.MustCompile(`^/api/products/[^/]+/contributions$`).MatchString(path) {
+		return true
+	}
+	if regexp.MustCompile(`^/api/groups/[^/]+$`).MatchString(path) {
 		return true
 	}
 	return false

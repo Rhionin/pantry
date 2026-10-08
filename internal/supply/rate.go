@@ -10,13 +10,21 @@ import (
 type gap struct {
 	open   time.Time
 	close  time.Time
-	qty    Units
+	qty    float64
 	perDay float64
 }
 
-// derive is the only rate. plan is the only caller.
-// Returns units per day. ok is false unless every gate passes.
-func derive(now, started time.Time, ins []time.Time, outs []Withdrawal) (perDay float64, ok bool) {
+// AmountWithdrawal is one consumption moment.
+// Qty is an item count or a measured amount in one unit. Rows at the same time are summed.
+type AmountWithdrawal struct {
+	At  time.Time
+	Qty float64
+}
+
+// DeriveAmount is the household rate in Qty's unit per day.
+// ok is false until 30 days after opening, and unless there is a stock-in,
+// at least two gaps, a 21-day span, and the burst check passes.
+func DeriveAmount(now, started time.Time, ins []time.Time, outs []AmountWithdrawal) (perDay float64, ok bool) {
 	if started.IsZero() || now.Before(started.Add(30*24*time.Hour)) {
 		return 0, false
 	}
@@ -24,13 +32,13 @@ func derive(now, started time.Time, ins []time.Time, outs []Withdrawal) (perDay 
 		return 0, false
 	}
 	firstIn := ins[0]
-	var counted []Withdrawal
+	var counted []AmountWithdrawal
 	for _, o := range outs {
 		if o.At.After(firstIn) && o.Qty > 0 {
 			counted = append(counted, o)
 		}
 	}
-	counted = mergeWithdrawals(counted)
+	counted = mergeAmounts(counted)
 
 	prev := firstIn
 	var gaps []gap
@@ -43,7 +51,7 @@ func derive(now, started time.Time, ins []time.Time, outs []Withdrawal) (perDay 
 			open:   prev,
 			close:  o.At,
 			qty:    o.Qty,
-			perDay: float64(o.Qty) / days,
+			perDay: o.Qty / days,
 		})
 		prev = o.At
 	}
@@ -70,11 +78,20 @@ func derive(now, started time.Time, ins []time.Time, outs []Withdrawal) (perDay 
 	return med, true
 }
 
-func mergeWithdrawals(outs []Withdrawal) []Withdrawal {
+// derive is the item-count rate. plan is the only caller.
+func derive(now, started time.Time, ins []time.Time, outs []Withdrawal) (perDay float64, ok bool) {
+	measured := make([]AmountWithdrawal, len(outs))
+	for i, o := range outs {
+		measured[i] = AmountWithdrawal{At: o.At, Qty: float64(o.Qty)}
+	}
+	return DeriveAmount(now, started, ins, measured)
+}
+
+func mergeAmounts(outs []AmountWithdrawal) []AmountWithdrawal {
 	if len(outs) == 0 {
 		return nil
 	}
-	merged := make([]Withdrawal, 0, len(outs))
+	merged := make([]AmountWithdrawal, 0, len(outs))
 	for _, o := range outs {
 		if n := len(merged); n > 0 && merged[n-1].At.Equal(o.At) {
 			merged[n-1].Qty += o.Qty

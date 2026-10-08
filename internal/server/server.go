@@ -12,6 +12,7 @@ import (
 	"github.com/Rhionin/pantry/internal/cart/appcred"
 	"github.com/Rhionin/pantry/internal/cart/connection"
 	"github.com/Rhionin/pantry/internal/events"
+	"github.com/Rhionin/pantry/internal/group"
 	"github.com/Rhionin/pantry/internal/inventory"
 	"github.com/Rhionin/pantry/internal/product"
 	"github.com/Rhionin/pantry/internal/scan"
@@ -336,6 +337,25 @@ func newAPIMux(
 	apiMux.HandleFunc("GET /api/products/{id}/supply-override", HandleJSON(supplyOverrideGetHandler.Handle))
 	apiMux.HandleFunc("PUT /api/products/{id}/supply-override", HandleJSON(supplyOverridePutHandler.Handle))
 	apiMux.HandleFunc("POST /api/onboarding/complete", HandleJSON(onboardingCompleteHandler.Handle))
+
+	groups := group.NewGroups(db)
+	groupHandler := &GroupHandler{Groups: groups, Supply: supplySvc}
+	apiMux.HandleFunc("GET /api/groups", HandleJSON(groupHandler.List))
+	apiMux.HandleFunc("POST /api/groups", HandleJSON(groupHandler.Create))
+	apiMux.HandleFunc("POST /api/groups/preview", HandleJSON(groupHandler.Preview))
+	apiMux.HandleFunc("GET /api/groups/{id}", HandleJSON(groupHandler.Get))
+	apiMux.HandleFunc("PATCH /api/groups/{id}", HandleJSON(groupHandler.Patch))
+	apiMux.HandleFunc("DELETE /api/groups/{id}", HandleJSON(groupHandler.Delete))
+	apiMux.HandleFunc("POST /api/groups/{id}/members", HandleJSON(groupHandler.AddMembers))
+	apiMux.HandleFunc("DELETE /api/groups/{id}/members/{productId}", HandleJSON(groupHandler.RemoveMember))
+	apiMux.HandleFunc("PUT /api/groups/{id}/rule", HandleJSON(groupHandler.PutRule))
+	apiMux.HandleFunc("PUT /api/groups/{id}/target", HandleJSON(groupHandler.PutTarget))
+	apiMux.HandleFunc("GET /api/group-suggestions", HandleJSON(groupHandler.ListSuggestions))
+	apiMux.HandleFunc("POST /api/group-suggestions/{id}/accept", HandleJSON(groupHandler.AcceptSuggestion))
+	apiMux.HandleFunc("POST /api/group-suggestions/{id}/dismiss", HandleJSON(groupHandler.DismissSuggestion))
+	apiMux.HandleFunc("POST /api/group-suggestions/{id}/skip", HandleJSON(groupHandler.SkipSuggestion))
+	apiMux.HandleFunc("GET /api/settings/group-rule", HandleJSON(groupHandler.GetDefaultRule))
+	apiMux.HandleFunc("PUT /api/settings/group-rule", HandleJSON(groupHandler.PutDefaultRule))
 
 	// Target quantity remains a stored field. It does not decide a shopping line.
 	consumptionLog := suggestion.NewConsumptionLog(db)

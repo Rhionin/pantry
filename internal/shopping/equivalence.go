@@ -94,7 +94,16 @@ func init() {
 // punctuation, and recognized store-brand phrases are removed. An empty result
 // means the name was only a brand, and that product is not grouped with others.
 func GenericProductName(name string) string {
-	tokens := normalizeTokens(name)
+	return strings.Join(StripStoreBrands(normalizeTokens(name)), " ")
+}
+
+// NormalizeTokens splits a name the way replenishment comparison does.
+func NormalizeTokens(s string) []string {
+	return normalizeTokens(s)
+}
+
+// StripStoreBrands removes recognized private-label phrases from tokens.
+func StripStoreBrands(tokens []string) []string {
 	removed := true
 	for removed {
 		removed = false
@@ -108,7 +117,7 @@ func GenericProductName(name string) string {
 			break
 		}
 	}
-	return strings.Join(tokens, " ")
+	return tokens
 }
 
 // ReplenishmentItem is one pantry item that can fill a shared need.

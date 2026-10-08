@@ -30,6 +30,8 @@ type Deal struct {
 	RegularPriceCents *int
 	Label             string
 	Source            string
+	// NotedAt is when the household recorded the sale. It is item_deals.updated_at.
+	NotedAt time.Time `json:"-"`
 }
 
 // OnSale reports whether the deal should be offered against another brand.
@@ -114,7 +116,7 @@ func (s *Store) DeletePreference(ctx context.Context, userID, needKey string) er
 // ListDeals returns noted sales for the user, ordered by item.
 func (s *Store) ListDeals(ctx context.Context, userID string) ([]Deal, error) {
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT item_id, price_cents, regular_price_cents, label, source
+		`SELECT item_id, price_cents, regular_price_cents, label, source, updated_at
 		 FROM item_deals
 		 WHERE user_id = ?
 		 ORDER BY item_id`,
@@ -181,7 +183,7 @@ func (s *Store) DeleteDeal(ctx context.Context, userID, itemID string) error {
 func scanDeal(row scanner) (Deal, error) {
 	var deal Deal
 	var price, regular sql.NullInt64
-	if err := row.Scan(&deal.ItemID, &price, &regular, &deal.Label, &deal.Source); err != nil {
+	if err := row.Scan(&deal.ItemID, &price, &regular, &deal.Label, &deal.Source, &deal.NotedAt); err != nil {
 		return Deal{}, err
 	}
 	deal.PriceCents = intPtrFromNull(price)
