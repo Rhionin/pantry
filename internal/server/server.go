@@ -222,6 +222,9 @@ func newAPIMux(
 
 	eventsHandler := &EventsHandler{Broadcaster: broadcaster, Telemetry: reg}
 	apiMux.HandleFunc("GET /api/events", eventsHandler.Handle)
+	// Caddy serves this exact path without the household password, beside
+	// telemetry. Keep that exemption if the password check moves into the app:
+	// an agent compares commit with master to see that a deploy landed.
 	apiMux.HandleFunc("GET /api/build", HandleJSON(handleBuildInfo))
 
 	telemetryHandler := &TelemetryHandler{Registry: reg}

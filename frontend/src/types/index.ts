@@ -307,10 +307,13 @@ export interface LookupResult {
 
 // Matches buildInfoResponse in internal/server/handler_build.go.
 // commit is the full git SHA the image is tagged with, or "unknown".
-// committedAt and subject are omitted when the build was not stamped.
+// version is "dev" for a local build. committedAt, builtAt, and subject are
+// omitted when the build was not stamped.
 export interface BuildInfo {
   commit: string;
   committedAt?: string;
+  builtAt?: string;
+  version?: string;
   subject?: string;
 }
 

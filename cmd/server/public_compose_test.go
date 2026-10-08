@@ -119,6 +119,7 @@ func TestPublicProxyIsOptIn(t *testing.T) {
 	publicMatchers := pathMatchers(text[:authAt])
 	wantPublic := []string{
 		"path /api/telemetry /api/telemetry/client",
+		"path /api/build",
 		"path /brand/logo.png /terms /privacy",
 		"path /api/deploy-hook",
 	}

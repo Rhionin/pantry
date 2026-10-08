@@ -42,6 +42,20 @@ http://{$PUBLIC_HOST} {
 		}
 	}
 
+	# Exact path: /api/build only. The JSON is the running commit, the commit
+	# time, the image build time, a version tag, and the subject. None of
+	# those are secrets. Keep this handle next to telemetry so it stays
+	# outside the household password, including when that check moves into
+	# the app. Do not add other API paths to this matcher.
+	@build path /api/build
+	handle @build {
+		route {
+			import security_headers
+			encode gzip
+			reverse_proxy pantry:8080
+		}
+	}
+
 	# Exact URLs a grocery developer app stores permanently: the brand mark,
 	# terms of use, and privacy policy. path is exact, so /brand/logo.png
 	# does not open /brand/ and /terms does not open /terms/anything.

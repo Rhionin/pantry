@@ -25,6 +25,7 @@ jobs:
         run: |
           git config user.name "${{ github.actor }}"
           git config user.email "${{ github.actor }}@users.noreply.github.com"
-          VERSION="v$(date +%Y%m%d)-$(git rev-parse --short HEAD)"
+          # Same formula the image stamps into GET /api/build (see ci.yml).
+          VERSION="v$(date -u +%Y%m%d)-$(git rev-parse --short=7 HEAD)"
           git tag -a "$VERSION" -m "Release $VERSION"
           git push origin "$VERSION"

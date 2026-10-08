@@ -29,7 +29,8 @@ evidence, and cleanup mechanics.
   for page-load timings from `GET /api/telemetry`. `Settings` sits immediately
   above the `Build` label and opens `/settings` for the supply length and wipe.
   The same menu's `Manage Kroger connection` item edits credentials and, while
-  connected, disconnects. The build id is in that menu's `Build` section.
+  connected, disconnects. The version and build id are in that menu's `Build`
+  section.
   Diagnostics and Settings are outside the scan, inventory, and shopping flows.
   Drive it with `scripts/drive-diagnostics.mjs`.
 - Prefer ARIA roles and accessible names over CSS selectors or DOM position.

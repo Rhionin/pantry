@@ -1,14 +1,16 @@
 // Quiet copy for the running build. The commit is the image tag suffix
-// (ghcr.io/rhionin/pantry:<commit>). The subject and timestamp tell which
-// change is deployed without opening GitHub.
+// (ghcr.io/rhionin/pantry:<commit>). The version, subject, and timestamp tell
+// which change is deployed without opening GitHub.
 export interface BuildIdentity {
   commit: string;
   committedAt?: string;
+  version?: string;
   subject?: string;
 }
 
 export interface BuildLabel {
   subject: string;
+  version: string;
   detail: string;
   accessibleName: string;
   title: string;
@@ -33,14 +35,15 @@ function collapseWhitespace(value: string): string {
   return value.replace(/\s+/g, ' ').trim();
 }
 
-// formatBuildLabel turns a build identity into footer copy. An identity with
-// no commit, time, or subject renders nothing. Empty time and subject are
-// left out rather than shown as blanks.
+// formatBuildLabel turns a build identity into menu copy. An identity with
+// no commit, time, version, or subject renders nothing. Empty time and
+// subject are left out rather than shown as blanks.
 export function formatBuildLabel(info: BuildIdentity): BuildLabel | null {
   const commit = info.commit ?? '';
   const subject = collapseWhitespace(info.subject ?? '');
+  const version = collapseWhitespace(info.version ?? '');
   const time = formatCommitTime(info.committedAt ?? '');
-  if (commit === '' && subject === '' && time === '') return null;
+  if (commit === '' && subject === '' && time === '' && version === '') return null;
 
   const detail = commit !== '' && time === ''
     ? `build ${commit}`
@@ -52,10 +55,12 @@ export function formatBuildLabel(info: BuildIdentity): BuildLabel | null {
   if (subject !== '') nameParts.push(subject);
   if (time !== '') nameParts.push(time);
   if (commit !== '') nameParts.push(`build ${commit}`);
+  if (version !== '') nameParts.push(`version ${version}`);
 
   const accessibleName = nameParts.join(', ');
   return {
     subject,
+    version,
     detail,
     accessibleName,
     title: accessibleName,

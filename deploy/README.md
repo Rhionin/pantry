@@ -32,7 +32,7 @@ New to this? Follow these steps in order on your Raspberry Pi and you'll have Pa
    sudo ./setup.sh status
    ```
 
-6. **Optional: open it to the public internet.** The steps above stay on your home network. To serve the same UI at a hostname you own, such as `https://pantry.rhionin.com`, follow [Public Internet access](#public-internet-access). The Gryphon router does not hairpin, so that name hangs on home Wi-Fi when it is reached through a port forward. [Cloudflare Tunnel](#cloudflare-tunnel) is the path that works on home Wi-Fi and on cellular without forwarding ports. The public site asks for one shared password. The timing snapshot at `/api/telemetry` is public on that hostname.
+6. **Optional: open it to the public internet.** The steps above stay on your home network. To serve the same UI at a hostname you own, such as `https://pantry.rhionin.com`, follow [Public Internet access](#public-internet-access). The Gryphon router does not hairpin, so that name hangs on home Wi-Fi when it is reached through a port forward. [Cloudflare Tunnel](#cloudflare-tunnel) is the path that works on home Wi-Fi and on cellular without forwarding ports. The public site asks for one shared password. The timing snapshot at `/api/telemetry` and the running build at `/api/build` are public on that hostname.
 
 ## Updating
 
@@ -42,7 +42,7 @@ After `git pull` on the Pi, from `deploy/`:
 sudo ./setup.sh
 ```
 
-That one command is the whole update. It copies `deploy/` to `/opt/pantry`, starts the containers from the compose file you just pulled (including the public HTTPS proxy when `PUBLIC_HOST` is set and `/opt/pantry/auth.caddy` is already there), restarts Caddy so the current `Caddyfile` is what is serving, applies the LAN firewall for the published Pantry port, and republishes `pantry.local` when Avahi is installed. When `CLOUDFLARE_TUNNEL_TOKEN` is set, the same command keeps the tunnel profile instead of ports 80 and 443. That Caddyfile leaves `GET /api/telemetry`, `POST /api/telemetry/client`, `GET /brand/logo.png`, `GET /terms`, and `GET /privacy` public. Run it again any time. Existing `.env` values stay, an existing `auth.caddy` is not regenerated, and a site that is already on the public internet stays there. LAN `http://<pi-ip>:8080` stays up. On the certificate path, the public name still hangs on home Wi-Fi until the router hairpins or you use the LAN address; see [Home Wi-Fi hangs on the public name](#home-wi-fi-hangs-on-the-public-name). Tunnel mode does not have that hang.
+That one command is the whole update. It copies `deploy/` to `/opt/pantry`, starts the containers from the compose file you just pulled (including the public HTTPS proxy when `PUBLIC_HOST` is set and `/opt/pantry/auth.caddy` is already there), restarts Caddy so the current `Caddyfile` is what is serving, applies the LAN firewall for the published Pantry port, and republishes `pantry.local` when Avahi is installed. When `CLOUDFLARE_TUNNEL_TOKEN` is set, the same command keeps the tunnel profile instead of ports 80 and 443. That Caddyfile leaves `GET /api/telemetry`, `POST /api/telemetry/client`, `GET /api/build`, `GET /brand/logo.png`, `GET /terms`, and `GET /privacy` public. Run it again any time. Existing `.env` values stay, an existing `auth.caddy` is not regenerated, and a site that is already on the public internet stays there. LAN `http://<pi-ip>:8080` stays up. On the certificate path, the public name still hangs on home Wi-Fi until the router hairpins or you use the LAN address; see [Home Wi-Fi hangs on the public name](#home-wi-fi-hangs-on-the-public-name). Tunnel mode does not have that hang.
 
 `sudo ./setup.sh firewall-off` removes the port rule until the next setup. To leave it off, set `PANTRY_LAN_FIREWALL=off` in `/opt/pantry/.env` and run `sudo ./setup.sh` again.
 
@@ -135,7 +135,25 @@ This puts the Pantry UI on a hostname you already own, with HTTPS, using the sam
 
 The Gryphon in this house does not hairpin, so `https://pantry.rhionin.com` hangs on home Wi-Fi when DNS points at the router's WAN address. [Cloudflare Tunnel](#cloudflare-tunnel) is how that URL works on home Wi-Fi and on cellular without forwarding ports 80 and 443. The steps in this section are the certificate and port-forward path. Leave those forwards in place until the tunnel has been tested on both networks.
 
-The public site asks for one shared password before it serves the UI, the API, and the live scan stream. That stops scanners and other bots that do not have the password. It is not separate accounts, and anyone who has the password can change the pantry. These exact paths stay open without that password: `GET /api/telemetry`, `POST /api/telemetry/client`, `GET /brand/logo.png`, `GET /terms`, `GET /privacy`, and `POST /api/deploy-hook`. The snapshot is counters and durations only — no barcodes, product names, or user ids — so an agent can `curl` it. The brand mark and the two legal pages are public because a grocery login stores those URLs. The deploy hook does not use the household password; it rejects any request whose HMAC signature or timestamp does not check out. See [Deploy when the image is published](#deploy-when-the-image-is-published). The home-network address `http://<pi-ip>:8080` does not ask for the password, so do not forward port 8080 on the router.
+The public site asks for one shared password before it serves the UI, the API, and the live scan stream. That stops scanners and other bots that do not have the password. It is not separate accounts, and anyone who has the password can change the pantry. These exact paths stay open without that password: `GET /api/telemetry`, `POST /api/telemetry/client`, `GET /api/build`, `GET /brand/logo.png`, `GET /terms`, `GET /privacy`, and `POST /api/deploy-hook`. The snapshot is counters and durations only — no barcodes, product names, or user ids — so an agent can `curl` it. `GET /api/build` is the running commit, build time, and version, also with no secrets. The brand mark and the two legal pages are public because a grocery login stores those URLs. The deploy hook does not use the household password; it rejects any request whose HMAC signature or timestamp does not check out. See [Deploy when the image is published](#deploy-when-the-image-is-published). The home-network address `http://<pi-ip>:8080` does not ask for the password, so do not forward port 8080 on the router.
+
+### Which build is running
+
+`GET /api/build` needs no password on the public hostname. Compare `commit` with the `master` SHA to confirm a deploy landed. A local binary returns `commit` `unknown` and `version` `dev`, and omits the other fields.
+
+| Field | Meaning |
+| --- | --- |
+| `commit` | Full git SHA, or `unknown` when the binary was not stamped |
+| `committedAt` | Commit time, ISO 8601. Omitted when unset |
+| `builtAt` | Image build time, ISO 8601 UTC. Omitted on a local build |
+| `version` | `dev` locally. CI stamps `v<UTC yyyymmdd>-<7 character sha>`, the same formula as the annotated release tag |
+| `subject` | Commit subject. Omitted when unset |
+
+```bash
+curl -fsS https://pantry.rhionin.com/api/build
+```
+
+The menu's Build section shows the same version and commit. The document has no environment values, hostnames, or paths.
 
 The path below is Caddy in the `public` Compose profile, a Let's Encrypt certificate, and the Dynu A record for `pantry.rhionin.com`. It needs a public IPv4 address and the ability to forward TCP ports 80 and 443. If your ISP uses CGNAT, skip to [When port forwarding cannot work](#when-port-forwarding-cannot-work). With `CLOUDFLARE_TUNNEL_TOKEN` empty, these steps are unchanged, and `setup.sh` does not call Dynu or stop its update client.
 
@@ -335,12 +353,12 @@ sudo docker compose --profile public logs --tail=80 caddy
 | Browser warning, certificate name mismatch | `PUBLIC_HOST` and the Squarespace host are not the same name. They must match exactly. |
 | `https://` works at home but not on cellular | The phone is still using the LAN address, or the forward is wrong. Test on cellular. |
 | `https://` hangs on home Wi-Fi and loads on cellular | The router is not hairpinning. Pantry is reachable at `http://<pi-ip>:8080` and, when Avahi is installed, `http://pantry.local:8080`. See [Home Wi-Fi hangs on the public name](#home-wi-fi-hangs-on-the-public-name). |
-| Browser or curl gets `401` | The shared password is missing or does not match `.env`. A request with no password is supposed to be rejected, except `GET /api/telemetry`, `POST /api/telemetry/client`, `GET /brand/logo.png`, `GET /terms`, and `GET /privacy`, which are public. Edit `BASIC_AUTH_PASSWORD`, remove `/opt/pantry/auth.caddy`, and run `sudo ./setup.sh`. |
+| Browser or curl gets `401` | The shared password is missing or does not match `.env`. A request with no password is supposed to be rejected, except `GET /api/telemetry`, `POST /api/telemetry/client`, `GET /api/build`, `GET /brand/logo.png`, `GET /terms`, and `GET /privacy`, which are public. Edit `BASIC_AUTH_PASSWORD`, remove `/opt/pantry/auth.caddy`, and run `sudo ./setup.sh`. |
 | UI loads, but the scan queue never updates live | `/api/events` is being buffered. `deploy/Caddyfile` must keep `flush_interval -1` on that path. Run `sudo ./setup.sh` after pulling a fresh `Caddyfile`. |
 
 ### Cloudflare Tunnel
 
-This is the way `https://pantry.rhionin.com` works on home Wi-Fi and on cellular when the Gryphon does not hairpin, without forwarding ports 80 or 443. The Pi opens an outbound connection to Cloudflare. The tunnel **pantry-pi** (`9e158cce-4d31-4881-82f3-d905af6164e7`) already exists and is remotely managed, so the Pi only runs `cloudflared` with `CLOUDFLARE_TUNNEL_TOKEN`. Do not create a second tunnel, and do not add a local ingress file. An empty token leaves Let's Encrypt, the Gryphon forwards, and the Dynu dynamic DNS client exactly as they are. Caddy still asks for the same household password, and the same paths stay public: `GET /api/telemetry`, `POST /api/telemetry/client`, `GET /brand/logo.png`, `GET /terms`, and `GET /privacy`. Do not point the tunnel at port 8080. That port has no password. Do not turn on Cloudflare Access for this hostname. Caddy already asks for the password, and Access would be a second login.
+This is the way `https://pantry.rhionin.com` works on home Wi-Fi and on cellular when the Gryphon does not hairpin, without forwarding ports 80 or 443. The Pi opens an outbound connection to Cloudflare. The tunnel **pantry-pi** (`9e158cce-4d31-4881-82f3-d905af6164e7`) already exists and is remotely managed, so the Pi only runs `cloudflared` with `CLOUDFLARE_TUNNEL_TOKEN`. Do not create a second tunnel, and do not add a local ingress file. An empty token leaves Let's Encrypt, the Gryphon forwards, and the Dynu dynamic DNS client exactly as they are. Caddy still asks for the same household password, and the same paths stay public: `GET /api/telemetry`, `POST /api/telemetry/client`, `GET /api/build`, `GET /brand/logo.png`, `GET /terms`, and `GET /privacy`. Do not point the tunnel at port 8080. That port has no password. Do not turn on Cloudflare Access for this hostname. Caddy already asks for the password, and Access would be a second login.
 
 LAN `http://192.168.1.203:8080` and `http://pantry.local:8080` keep working the whole time, with no password. Use them if the public name is down during the cutover.
 
@@ -435,7 +453,7 @@ curl -fsS -u 'pantry:replace-with-a-long-passphrase' https://pantry.rhionin.com/
 curl -fsS https://pantry.rhionin.com/api/telemetry
 ```
 
-`/health` without the password is `401`. `/api/telemetry` without the password is JSON. The brand mark, terms, and privacy URLs are still public. The Kroger callback stays behind the household password, same as before: the browser already has that password for this host when Kroger sends it back.
+`/health` without the password is `401`. `/api/telemetry` and `/api/build` without the password are JSON. The brand mark, terms, and privacy URLs are still public. The Kroger callback stays behind the household password, same as before: the browser already has that password for this host when Kroger sends it back.
 
 `http://192.168.1.203:8080` still does not ask for the password. Do not forward it.
 
@@ -471,7 +489,7 @@ To move DNS back to Dynu, after the smaller rollback is working, copy every reco
 
 Forwarding 80 and 443 to a computer in the house is a different risk from a VPN or a tunnel. The Pi is on your LAN. Anyone who gets past the shared password is on a process that can read the pantry database, change inventory, and, if you connected Kroger, use the refresh token stored in that database. A bug or a guessed password is not confined to a cloud VM. A tunnel or Tailscale does not put a listening port on the home router; the router path does.
 
-The shared password is one secret for the whole household. Caddy applies it to every path on the public hostname except `GET /api/telemetry`, `POST /api/telemetry/client`, `GET /brand/logo.png`, `GET /terms`, `GET /privacy`, and `POST /api/deploy-hook`. The telemetry paths are public so the timing snapshot can be read without credentials. The snapshot has no barcodes, product names, or user ids. The brand mark and the legal pages are public because a grocery developer app fetches those exact URLs. The deploy hook is public so GitHub Actions can reach it through the tunnel; the app still rejects a request that fails the HMAC check. Inventory, scans, shopping, other static files, `/health`, and `/api/events` stay behind the password. There is no lockout and no rate limit in this Caddy build, so the password needs to be long (12 to 72 characters, and longer is better). The LAN address `http://<pi-ip>:8080` never asks for it. That is deliberate. Do not publish that port.
+The shared password is one secret for the whole household. Caddy applies it to every path on the public hostname except `GET /api/telemetry`, `POST /api/telemetry/client`, `GET /api/build`, `GET /brand/logo.png`, `GET /terms`, `GET /privacy`, and `POST /api/deploy-hook`. The telemetry paths are public so the timing snapshot can be read without credentials. The snapshot has no barcodes, product names, or user ids. `GET /api/build` is public so an agent can read the running commit, build time, and version; see [Which build is running](#which-build-is-running). The brand mark and the legal pages are public because a grocery developer app fetches those exact URLs. The deploy hook is public so GitHub Actions can reach it through the tunnel; the app still rejects a request that fails the HMAC check. Inventory, scans, shopping, other static files, `/health`, and `/api/events` stay behind the password. There is no lockout and no rate limit in this Caddy build, so the password needs to be long (12 to 72 characters, and longer is better). The LAN address `http://<pi-ip>:8080` never asks for it. That is deliberate. Do not publish that port.
 
 Kroger client secrets and refresh tokens are stored in `pantry.db` as plain text. The HTTP API does not return them. A copy of the database (a backup, or the Docker volume) does. Treat `pantry.db` like a password file. The app has no login of its own: if Caddy is stopped or mis-mounted and something else forwards port 8080, every route is open, including wiping inventory (the body must contain `WIPE INVENTORY`) and saving a Kroger client secret.
 

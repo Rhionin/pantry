@@ -19,7 +19,7 @@ that external lookup and seeds products locally instead.
 **Primary surface: the web UI.** Three routes cover everyday inventory work:
 `/` (Scan Queue), `/inventory` (Inventory), `/shopping` (Shopping List). The
 header menu opens `/diagnostics` for page-load timings, manages the Kroger
-connection, and shows the build id under a Build heading. `Settings` sits
+connection, and shows the version and build id under a Build heading. `Settings` sits
 immediately above that Build label and opens `/settings` for the default supply
 length and the wipe dialog.
 There is also a headless

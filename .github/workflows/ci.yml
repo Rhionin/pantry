@@ -193,9 +193,13 @@ jobs:
           # Same commit the image is tagged with (github.sha / the checkout).
           # Base64 keeps the subject a single build-arg: quotes and spaces
           # never reach the Dockerfile, where $$ would be the shell PID.
+          # version matches the annotated tag in release.yml: v<UTC date>-<7 char sha>.
+          short=$(git rev-parse --short=7 HEAD)
           {
             echo "time=$(git log -1 --format=%cI)"
             echo "subject_b64=$(git log -1 --format=%s | tr -d '\r\n' | base64 -w 0)"
+            echo "built_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            echo "version=v$(date -u +%Y%m%d)-${short}"
           } >> "$GITHUB_OUTPUT"
 
       - name: Build and push container image
@@ -212,6 +216,8 @@ jobs:
             COMMIT_HASH=${{ github.sha }}
             COMMIT_TIME=${{ steps.commit.outputs.time }}
             COMMIT_SUBJECT_B64=${{ steps.commit.outputs.subject_b64 }}
+            BUILD_TIME=${{ steps.commit.outputs.built_at }}
+            VERSION=${{ steps.commit.outputs.version }}
 
       # The image is already in the registry. This asks the Pi to pull it now.
       # The step is a no-op until DEPLOY_HOOK_SECRET exists, so a repo without

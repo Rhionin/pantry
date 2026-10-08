@@ -313,16 +313,20 @@ func normalizeBody(body []byte) []byte {
 }
 
 // TestBuildEndpointReportsStampedCommit checks that GET /api/build echoes the
-// commit, timestamp, and subject the binary was stamped with. Empty time and
-// subject are omitted so an unstamped build does not invent them. The body is
-// JSON, never the SPA document.
+// commit, timestamps, version, and subject the binary was stamped with. Empty
+// times and subject are omitted. An empty version is reported as dev. The
+// body is JSON, never the SPA document.
 func TestBuildEndpointReportsStampedCommit(t *testing.T) {
 	originalCommit := buildinfo.Commit
 	originalTime := buildinfo.CommittedAt
+	originalBuilt := buildinfo.BuiltAt
+	originalVersion := buildinfo.Version
 	originalSubject := buildinfo.Subject
 	t.Cleanup(func() {
 		buildinfo.Commit = originalCommit
 		buildinfo.CommittedAt = originalTime
+		buildinfo.BuiltAt = originalBuilt
+		buildinfo.Version = originalVersion
 		buildinfo.Subject = originalSubject
 	})
 
@@ -331,9 +335,13 @@ func TestBuildEndpointReportsStampedCommit(t *testing.T) {
 	rapid.Check(t, func(t *rapid.T) {
 		commit := rapid.String().Draw(t, "commit")
 		committedAt := rapid.String().Draw(t, "committedAt")
+		builtAt := rapid.String().Draw(t, "builtAt")
+		version := rapid.String().Draw(t, "version")
 		subject := rapid.String().Draw(t, "subject")
 		buildinfo.Commit = commit
 		buildinfo.CommittedAt = committedAt
+		buildinfo.BuiltAt = builtAt
+		buildinfo.Version = version
 		buildinfo.Subject = subject
 
 		req := httptest.NewRequest(http.MethodGet, "/api/build", nil)
@@ -355,6 +363,8 @@ func TestBuildEndpointReportsStampedCommit(t *testing.T) {
 		var decoded struct {
 			Commit      string  `json:"commit"`
 			CommittedAt *string `json:"committedAt"`
+			BuiltAt     *string `json:"builtAt"`
+			Version     string  `json:"version"`
 			Subject     *string `json:"subject"`
 		}
 		if err := json.Unmarshal(body, &decoded); err != nil {
@@ -363,7 +373,11 @@ func TestBuildEndpointReportsStampedCommit(t *testing.T) {
 		if decoded.Commit != commit {
 			t.Fatalf("commit = %q, want %q", decoded.Commit, commit)
 		}
+		if decoded.Version != buildinfo.VisibleVersion() {
+			t.Fatalf("version = %q, want %q", decoded.Version, buildinfo.VisibleVersion())
+		}
 		assertOptionalStamp(t, "committedAt", committedAt, decoded.CommittedAt)
+		assertOptionalStamp(t, "builtAt", builtAt, decoded.BuiltAt)
 		assertOptionalStamp(t, "subject", subject, decoded.Subject)
 	})
 }
