@@ -483,6 +483,29 @@ refresh_update_unit() {
   log_success "Refreshed pantry-update units so automatic updates keep the public proxy and the deploy hook"
 }
 
+# verify_public_sign_in asks Pantry on the LAN port, with the public-entry
+# header Caddy would add. A password file the container cannot read makes
+# GET /api/session return 503. A visitor who simply has not signed in gets 401.
+verify_public_sign_in() {
+  local port="$1"
+  local body code
+  body=$(mktemp)
+  if ! code=$(curl -sS -o "$body" -w '%{http_code}' --max-time 10 \
+    -H 'X-Pantry-Entry: public' \
+    "http://127.0.0.1:${port}/api/session"); then
+    rm -f "$body"
+    fatal "Could not check whether the public site can sign in."
+  fi
+  if [[ "$code" == "503" ]] || grep -q -F 'Sign-in is unavailable' "$body"; then
+    log_error "The public site cannot read ${PANTRY_DIR}/auth/household."
+    log_error "The pantry container runs as distroless nonroot (uid 65532) and cannot open a root-owned password file."
+    log_error "GET /api/session with X-Pantry-Entry: public returned ${code}: $(tr '\n' ' ' < "$body")"
+    rm -f "$body"
+    fatal "Sign-in is unavailable. The public site is up, but login will not work until that file is readable by uid 65532."
+  fi
+  rm -f "$body"
+}
+
 # prepare_deploy_trigger_dir is the host directory mounted into the container.
 # uid 65532 is the distroless nonroot user. If the directory is missing, Docker
 # creates it as root and the hook cannot write the trigger file.
@@ -748,6 +771,10 @@ cmd_apply() {
     fatal "Health check timeout"
   fi
   log_success "Pantry is healthy"
+
+  if [[ "$use_public" == true ]]; then
+    verify_public_sign_in "$host_port"
+  fi
 
   local firewall_applied=false
   apply_lan_firewall

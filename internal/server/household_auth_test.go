@@ -524,7 +524,7 @@ func TestHouseholdAuthCredentialEdges(t *testing.T) {
 	unavailable.Header.Set(entryHeader, entryPublic)
 	unavailableRec := httptest.NewRecorder()
 	closedHandler.ServeHTTP(unavailableRec, unavailable)
-	if unavailableRec.Code != http.StatusUnauthorized {
+	if unavailableRec.Code != http.StatusServiceUnavailable || !strings.Contains(unavailableRec.Body.String(), "Sign-in is unavailable") {
 		t.Fatalf("session without a hash = %d %s", unavailableRec.Code, unavailableRec.Body.String())
 	}
 	closedLogin := httptest.NewRequest(http.MethodPost, "/api/login", strings.NewReader(`{"username":"pantry","password":"x"}`))

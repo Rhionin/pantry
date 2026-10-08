@@ -4,6 +4,28 @@
 # auth.caddy is never rewritten. A secret that is already set is never rotated,
 # so a redeploy does not sign phones out or require a new password.
 
+# pantry_runtime_uid is the distroless nonroot account. The runtime image is
+# gcr.io/distroless/static-debian12:nonroot and Dockerfile sets
+# USER nonroot:nonroot. That account is uid 65532. The pantry process drops
+# every capability, so a root-owned 0700 directory is unreadable and the
+# public site fails closed.
+pantry_runtime_uid=65532
+
+# give_auth_to_pantry matches prepare_deploy_trigger_dir: a failed chown stops
+# setup, except the no-sudo test seam, which warns and continues.
+give_auth_to_pantry() {
+  local path="$1"
+  if chown "${pantry_runtime_uid}:${pantry_runtime_uid}" "$path"; then
+    return 0
+  fi
+  if [[ "${PANTRY_SETUP_SKIP_ROOT:-}" == 1 ]]; then
+    echo "[warn] Could not give ${path} to uid ${pantry_runtime_uid}" >&2
+    return 0
+  fi
+  echo "Could not give ${path} to uid ${pantry_runtime_uid}" >&2
+  return 1
+}
+
 sync_household_credential() {
   local dir dest tmp
   if [[ -z "${PANTRY_DIR:-}" ]]; then
@@ -14,16 +36,21 @@ sync_household_credential() {
   dest="${dir}/household"
   mkdir -p "$dir" || return 1
   chmod 700 "$dir" || return 1
-  if [[ ! -f "${PANTRY_DIR}/auth.caddy" ]]; then
-    return 0
+  # Every run, including one that finds a root-owned file from a partial setup.
+  give_auth_to_pantry "$dir" || return 1
+  if [[ -f "${PANTRY_DIR}/auth.caddy" ]]; then
+    tmp=$(mktemp "${dir}/household.XXXXXX") || return 1
+    if ! cp "${PANTRY_DIR}/auth.caddy" "$tmp"; then
+      rm -f "$tmp"
+      return 1
+    fi
+    chmod 600 "$tmp" || { rm -f "$tmp"; return 1; }
+    mv "$tmp" "$dest" || { rm -f "$tmp"; return 1; }
   fi
-  tmp=$(mktemp "${dir}/household.XXXXXX") || return 1
-  if ! cp "${PANTRY_DIR}/auth.caddy" "$tmp"; then
-    rm -f "$tmp"
-    return 1
+  if [[ -f "$dest" ]]; then
+    chmod 600 "$dest" || return 1
+    give_auth_to_pantry "$dest" || return 1
   fi
-  chmod 600 "$tmp" || { rm -f "$tmp"; return 1; }
-  mv "$tmp" "$dest" || { rm -f "$tmp"; return 1; }
 }
 
 ensure_session_secret() {

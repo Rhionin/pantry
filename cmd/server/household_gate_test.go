@@ -68,6 +68,14 @@ func assertPublicEntryRefused(t *testing.T, gate *server.HouseholdAuth) {
 		t.Fatalf("public login = %d %s, want a login that cannot succeed", loginRec.Code, loginRec.Body.String())
 	}
 
+	session := httptest.NewRequest(http.MethodGet, "/api/session", nil)
+	session.Header.Set("X-Pantry-Entry", "public")
+	sessionRec := httptest.NewRecorder()
+	handler.ServeHTTP(sessionRec, session)
+	if sessionRec.Code != http.StatusServiceUnavailable || !strings.Contains(sessionRec.Body.String(), "Sign-in is unavailable") {
+		t.Fatalf("public session = %d %s, want sign-in unavailable", sessionRec.Code, sessionRec.Body.String())
+	}
+
 	lan := httptest.NewRequest(http.MethodGet, "/health", nil)
 	lanRec := httptest.NewRecorder()
 	handler.ServeHTTP(lanRec, lan)

@@ -137,6 +137,13 @@ func (a *HouseholdAuth) Middleware(next http.Handler) http.Handler {
 				next.ServeHTTP(w, r)
 				return
 			}
+			// Session is the one API call that says sign-in is unavailable.
+			// A 401 is what a visitor who has not signed in also gets, so
+			// setup could not tell an unreadable password file from that.
+			if r.URL.Path == "/api/session" && r.Method == http.MethodGet {
+				next.ServeHTTP(w, r)
+				return
+			}
 			writeAuthError(w, http.StatusUnauthorized, "Sign in required.")
 			return
 		}

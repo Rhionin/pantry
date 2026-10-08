@@ -219,7 +219,7 @@ BASIC_AUTH_USER=pantry
 BASIC_AUTH_PASSWORD=replace-with-a-long-passphrase
 ```
 
-`PUBLIC_HOST` is the hostname only. `ACME_EMAIL` is where Let's Encrypt sends expiry notices. Replace `BASIC_AUTH_PASSWORD` with a passphrase of 12 to 72 characters, and do not wrap it in quotes. The first `sudo ./setup.sh` after that hashes it into `/opt/pantry/auth.caddy` (mode `0600`) and restricts `.env` to its owner. The password itself stays in `.env`. It is not written into the image or the repository. A later run keeps the existing `auth.caddy` and does not ask for the password again. Setup copies that hash to `/opt/pantry/auth/household` for the login page and, the first time, adds `PANTRY_SESSION_SECRET` to `.env`. Later runs keep both. You do not pick a new password for the login page.
+`PUBLIC_HOST` is the hostname only. `ACME_EMAIL` is where Let's Encrypt sends expiry notices. Replace `BASIC_AUTH_PASSWORD` with a passphrase of 12 to 72 characters, and do not wrap it in quotes. The first `sudo ./setup.sh` after that hashes it into `/opt/pantry/auth.caddy` (mode `0600`) and restricts `.env` to its owner. The password itself stays in `.env`. It is not written into the image or the repository. A later run keeps the existing `auth.caddy` and does not ask for the password again. Setup copies that hash to `/opt/pantry/auth/household` for the login page and, the first time, adds `PANTRY_SESSION_SECRET` to `.env`. Later runs keep both. The `auth` directory is mode `0700` and the hash file is mode `0600`, both owned by uid 65532, the distroless `nonroot` user in the image. A root-owned file cannot be read by the container, and the public site then refuses to sign in. You do not pick a new password for the login page.
 
 ```bash
 sudo ./setup.sh
