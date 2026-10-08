@@ -443,6 +443,7 @@ func newAPIMux(
 	apiMux.HandleFunc("POST /api/shopping-list/items", HandleJSON(shoppingListItemCreateHandler.Handle))
 	apiMux.HandleFunc("DELETE /api/shopping-list/items/{id}", HandleJSON(shoppingListItemDeleteHandler.Handle))
 	apiMux.HandleFunc("PATCH /api/shopping-list/items/{id}", HandleJSON(shoppingListItemUpdateHandler.Handle))
+	apiMux.HandleFunc("POST /api/shopping-list/items/{id}/swap", HandleJSON((&ShoppingListSwapHandler{ShoppingList: shoppingList}).Handle))
 	apiMux.HandleFunc("PUT /api/shopping-list/preferences", HandleJSON(shoppingPreferencePutHandler.Handle))
 	apiMux.HandleFunc("DELETE /api/shopping-list/preferences/{itemId}", HandleJSON(shoppingPreferenceDeleteHandler.Handle))
 	apiMux.HandleFunc("PUT /api/shopping-list/deals", HandleJSON(shoppingDealPutHandler.Handle))

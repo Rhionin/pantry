@@ -50,6 +50,11 @@ func RunMigrations(db *sql.DB) error {
 		if count > 0 {
 			continue
 		}
+		if name == shoppingChangeMigration {
+			if err := snapshotShoppingDB(db); err != nil {
+				return fmt.Errorf("apply migration %q: %w", name, err)
+			}
+		}
 
 		// Read the embedded SQL file.
 		sqlBytes, err := migrationsFS.ReadFile("migrations/" + name)

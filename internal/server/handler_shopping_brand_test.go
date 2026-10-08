@@ -17,7 +17,7 @@ func TestShoppingBrandChoice(t *testing.T) {
 
 	tests := []handlerTestCase{
 		{
-			name:  "saved brand becomes the shopping line",
+			name:  "a saved brand does not combine ungrouped products",
 			setup: beans,
 			httpExchange: httpExchange{
 				method:         "PUT",
@@ -35,8 +35,8 @@ func TestShoppingBrandChoice(t *testing.T) {
 				path:           "/api/shopping-list/fill",
 				expectedStatus: http.StatusOK,
 				assertions: []assertion{
-					{path: "$[0].itemId", value: "item-kr"},
-					{path: "$[0].quantity", value: float64(1)},
+					{path: "$[0].itemId", value: "item-gv"},
+					{path: "$[0].quantity", value: float64(3)},
 					{path: "$[0].source", value: "auto"},
 					{path: "$[1]", absent: true},
 				},
@@ -86,7 +86,7 @@ func TestShoppingBrandChoice(t *testing.T) {
 						// planned line is still the usual brand.
 						{path: "$.exported", value: float64(0)},
 						{path: "$.items[0].itemId", value: "item-gv"},
-						{path: "$.items[0].quantity", value: float64(1)},
+						{path: "$.items[0].quantity", value: float64(3)},
 					},
 				},
 				httpExchange{
@@ -128,7 +128,7 @@ func TestShoppingBrandChoice(t *testing.T) {
 					path:           "/api/shopping-list/considerations",
 					expectedStatus: http.StatusOK,
 					assertions: []assertion{
-						{path: "$.considerations[0].chosenItemId", value: "item-kr"},
+						{path: "$.considerations[0].chosenItemId", value: "item-gv"},
 						{path: "$.considerations[0].preferredItemId", value: "item-kr"},
 						{path: "$.considerations[0].ignorePrice", value: true},
 						{path: "$.considerations[0].offer", value: nil},

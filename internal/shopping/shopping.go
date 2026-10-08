@@ -14,17 +14,35 @@ import (
 // ErrItemNotFound is returned when a shopping list item does not exist.
 var ErrItemNotFound = errors.New("shopping list item not found")
 
+// GroupChoice is one member a shopper can buy for a group line this trip.
+type GroupChoice struct {
+	ItemID    string
+	ProductID string
+	Name      string
+}
+
 // ShoppingListItem represents a single entry on a user's shopping list.
 type ShoppingListItem struct {
-	ID          string
-	UserID      string
-	ItemID      string
-	Quantity    int
-	Source      string // "manual" or "auto"
-	Note        string
-	PurchasedAt *time.Time
-	CreatedAt   time.Time
+	ID            string
+	UserID        string
+	ItemID        string
+	Quantity      int
+	Source        string // "manual" or "auto"
+	Note          string
+	PurchasedAt   *time.Time
+	CreatedAt     time.Time
+	GroupID       string
+	GroupName     string
+	GroupRule     string
+	RuleConfirmed bool
+	GroupMembers  []GroupChoice
 }
+
+const shoppingListSelect = `
+	SELECT s.id, s.user_id, s.item_id, s.quantity, s.source, s.purchased_at, s.created_at, s.note,
+		COALESCE(s.group_id, ''), COALESCE(g.name, ''), COALESCE(g.rule, ''), COALESCE(g.rule_confirmed, 0)
+	FROM shopping_list_items s
+	LEFT JOIN product_groups g ON g.id = s.group_id`
 
 // Store provides data access for shopping list items.
 type Store struct {
@@ -80,10 +98,14 @@ func (s *Store) RemoveItem(ctx context.Context, id string) error {
 	}
 	defer tx.Rollback()
 	if item.Source == "auto" {
+		var groupID any
+		if item.GroupID != "" {
+			groupID = item.GroupID
+		}
 		if _, err := tx.ExecContext(ctx,
-			`INSERT INTO staged_cart_skips (user_id, item_id) VALUES (?, ?)
-			 ON CONFLICT(user_id, item_id) DO NOTHING`,
-			item.UserID, item.ItemID,
+			`INSERT INTO staged_cart_skips (user_id, item_id, group_id) VALUES (?, ?, ?)
+			 ON CONFLICT(user_id, item_id) DO UPDATE SET group_id = COALESCE(excluded.group_id, staged_cart_skips.group_id)`,
+			item.UserID, item.ItemID, groupID,
 		); err != nil {
 			return fmt.Errorf("failed to remove shopping list item: %w", err)
 		}
@@ -130,10 +152,9 @@ func (s *Store) MarkPurchased(ctx context.Context, id string) error {
 // ordered by created_at ascending.
 func (s *Store) ListManualItems(ctx context.Context, userID string) ([]ShoppingListItem, error) {
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT id, user_id, item_id, quantity, source, purchased_at, created_at, note
-		 FROM shopping_list_items
-		 WHERE user_id = ? AND source = 'manual' AND purchased_at IS NULL
-		 ORDER BY created_at ASC`,
+		shoppingListSelect+`
+		 WHERE s.user_id = ? AND s.source = 'manual' AND s.purchased_at IS NULL
+		 ORDER BY s.created_at ASC`,
 		userID,
 	)
 	if err != nil {
@@ -152,7 +173,10 @@ func (s *Store) ListManualItems(ctx context.Context, userID string) ([]ShoppingL
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("failed to iterate shopping list items: %w", err)
 	}
-	return items, nil
+	if err := rows.Close(); err != nil {
+		return nil, fmt.Errorf("failed to list shopping list items: %w", err)
+	}
+	return s.fillGroupMembers(ctx, userID, items)
 }
 
 // ListUnpurchased returns every unpurchased shopping list row for the user,
@@ -160,10 +184,9 @@ func (s *Store) ListManualItems(ctx context.Context, userID string) ([]ShoppingL
 // manual row when both exist.
 func (s *Store) ListUnpurchased(ctx context.Context, userID string) ([]ShoppingListItem, error) {
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT id, user_id, item_id, quantity, source, purchased_at, created_at, note
-		 FROM shopping_list_items
-		 WHERE user_id = ? AND purchased_at IS NULL
-		 ORDER BY created_at ASC`,
+		shoppingListSelect+`
+		 WHERE s.user_id = ? AND s.purchased_at IS NULL
+		 ORDER BY s.created_at ASC`,
 		userID,
 	)
 	if err != nil {
@@ -182,7 +205,10 @@ func (s *Store) ListUnpurchased(ctx context.Context, userID string) ([]ShoppingL
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("failed to iterate shopping list items: %w", err)
 	}
-	return items, nil
+	if err := rows.Close(); err != nil {
+		return nil, fmt.Errorf("failed to list shopping list items: %w", err)
+	}
+	return s.fillGroupMembers(ctx, userID, items)
 }
 
 // GetItemByID retrieves a single shopping list item by its ID.
@@ -193,11 +219,7 @@ func (s *Store) GetItemByID(ctx context.Context, id string) (*ShoppingListItem, 
 
 // getByID retrieves a single shopping list item by its ID.
 func (s *Store) getByID(ctx context.Context, id string) (*ShoppingListItem, error) {
-	row := s.db.QueryRowContext(ctx,
-		`SELECT id, user_id, item_id, quantity, source, purchased_at, created_at, note
-		 FROM shopping_list_items WHERE id = ?`,
-		id,
-	)
+	row := s.db.QueryRowContext(ctx, shoppingListSelect+` WHERE s.id = ?`, id)
 	item, err := scanShoppingListItem(row)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -205,7 +227,11 @@ func (s *Store) getByID(ctx context.Context, id string) (*ShoppingListItem, erro
 		}
 		return nil, fmt.Errorf("failed to get shopping list item: %w", err)
 	}
-	return item, nil
+	filled, err := s.fillGroupMembers(ctx, item.UserID, []ShoppingListItem{*item})
+	if err != nil {
+		return nil, err
+	}
+	return &filled[0], nil
 }
 
 // scanner is a common interface for *sql.Row and *sql.Rows.
@@ -218,6 +244,7 @@ func scanShoppingListItem(row scanner) (*ShoppingListItem, error) {
 	var item ShoppingListItem
 	var purchasedAt sql.NullTime
 
+	var confirmed int
 	err := row.Scan(
 		&item.ID,
 		&item.UserID,
@@ -227,6 +254,10 @@ func scanShoppingListItem(row scanner) (*ShoppingListItem, error) {
 		&purchasedAt,
 		&item.CreatedAt,
 		&item.Note,
+		&item.GroupID,
+		&item.GroupName,
+		&item.GroupRule,
+		&confirmed,
 	)
 	if err != nil {
 		return nil, err
@@ -235,7 +266,7 @@ func scanShoppingListItem(row scanner) (*ShoppingListItem, error) {
 	if purchasedAt.Valid {
 		item.PurchasedAt = &purchasedAt.Time
 	}
-
+	item.RuleConfirmed = confirmed != 0
 	return &item, nil
 }
 
@@ -290,6 +321,120 @@ func (s *Store) ClearAdjustmentTx(ctx context.Context, tx *sql.Tx, entryID, prov
 		`DELETE FROM shopping_list_entry_adjustments WHERE entry_id = ? AND provider_id = ?`,
 		entryID, providerID)
 	return err
+}
+
+// ErrNotGroupLine means the shopping line was not planned for a product group.
+var ErrNotGroupLine = errors.New("That shopping line is not a group.")
+
+// ErrNotGroupMember means the chosen product is not in the line's group.
+var ErrNotGroupMember = errors.New("Choose a product in this group.")
+
+// SwapAutoLine keeps this trip's line on a different member of the same group.
+// The next fill leaves the line where it is.
+func (s *Store) SwapAutoLine(ctx context.Context, userID, lineID, itemID string) error {
+	item, err := s.getByID(ctx, lineID)
+	if err != nil {
+		return err
+	}
+	if item == nil || item.UserID != userID {
+		return ErrItemNotFound
+	}
+	if item.Source != "auto" || item.GroupID == "" {
+		return ErrNotGroupLine
+	}
+	var n int
+	if err := s.db.QueryRowContext(ctx, `
+		SELECT COUNT(*)
+		FROM product_group_members m
+		JOIN items i ON i.product_id = m.product_id
+		WHERE m.group_id = ? AND i.id = ? AND i.user_id = ?`,
+		item.GroupID, itemID, userID,
+	).Scan(&n); err != nil {
+		return fmt.Errorf("could not change the product on this line: %w", err)
+	}
+	if n == 0 {
+		return ErrNotGroupMember
+	}
+	if _, err := s.db.ExecContext(ctx,
+		`UPDATE shopping_list_items SET item_id = ?, touched = 1 WHERE id = ?`,
+		itemID, lineID,
+	); err != nil {
+		return fmt.Errorf("could not change the product on this line: %w", err)
+	}
+	return nil
+}
+
+// ItemGroups maps each pantry item to its product group, when it has one.
+func (s *Store) ItemGroups(ctx context.Context, userID string) (map[string]string, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT i.id, m.group_id
+		FROM items i
+		JOIN product_group_members m ON m.product_id = i.product_id
+		JOIN product_groups g ON g.id = m.group_id AND g.user_id = i.user_id
+		WHERE i.user_id = ?`, userID)
+	if err != nil {
+		return nil, fmt.Errorf("could not read product groups: %w", err)
+	}
+	defer rows.Close()
+	out := map[string]string{}
+	for rows.Next() {
+		var itemID, groupID string
+		if err := rows.Scan(&itemID, &groupID); err != nil {
+			return nil, fmt.Errorf("could not read product groups: %w", err)
+		}
+		out[itemID] = groupID
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("could not read product groups: %w", err)
+	}
+	return out, nil
+}
+
+func (s *Store) fillGroupMembers(ctx context.Context, userID string, items []ShoppingListItem) ([]ShoppingListItem, error) {
+	needed := false
+	for _, item := range items {
+		if item.GroupID != "" {
+			needed = true
+			break
+		}
+	}
+	if !needed {
+		return items, nil
+	}
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT m.group_id, i.id, p.id, p.name
+		FROM product_group_members m
+		JOIN product_groups g ON g.id = m.group_id
+		JOIN items i ON i.product_id = m.product_id AND i.user_id = ?
+		JOIN products p ON p.id = m.product_id
+		WHERE g.user_id = ?
+		ORDER BY p.name, i.id`, userID, userID)
+	if err != nil {
+		return nil, fmt.Errorf("could not read product groups: %w", err)
+	}
+	defer rows.Close()
+	choices := map[string][]GroupChoice{}
+	for rows.Next() {
+		var groupID string
+		var choice GroupChoice
+		if err := rows.Scan(&groupID, &choice.ItemID, &choice.ProductID, &choice.Name); err != nil {
+			return nil, fmt.Errorf("could not read product groups: %w", err)
+		}
+		choices[groupID] = append(choices[groupID], choice)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("could not read product groups: %w", err)
+	}
+	for i := range items {
+		if items[i].GroupID == "" {
+			continue
+		}
+		items[i].GroupMembers = choices[items[i].GroupID]
+		if items[i].GroupMembers == nil {
+			items[i].GroupMembers = []GroupChoice{}
+		}
+	}
+	return items, nil
 }
 
 // RemoveAdjustment removes the adjustment for one entry and provider.

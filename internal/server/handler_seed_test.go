@@ -12,7 +12,7 @@ import (
 func TestSeededSuggestionsLeaveShoppingCombined(t *testing.T) {
 	runHandlerTests(t, []handlerTestCase{
 		{
-			name: "seeded inbox card does not split the shopping line",
+			name: "a seeded suggestion does not keep the shopping plan combined",
 			setup: func(env testEnv) {
 				createItemViaStockIn(env.T, env.DB, env.ProductStore, "user-1", "gv", "Great Value Cut Green Beans", "item-gv")
 				createItemViaStockIn(env.T, env.DB, env.ProductStore, "user-1", "kr", "Kroger Cut Green Beans", "item-kr")
@@ -25,6 +25,7 @@ func TestSeededSuggestionsLeaveShoppingCombined(t *testing.T) {
 				mustExec(env, `INSERT INTO brand_preferences (user_id, need_key, item_id, ignore_price) VALUES ('user-1', ?, 'item-gv', 1)`, key)
 				beginUsing(env.T, env.DB, time.Now())
 				setSupplyQuantity(env.T, env.DB, "gv", 4)
+				setSupplyQuantity(env.T, env.DB, "kr", 4)
 				if err := group.NewGroups(env.DB).Seed(env.T.Context()); err != nil {
 					env.T.Fatal(err)
 				}
@@ -47,7 +48,8 @@ func TestSeededSuggestionsLeaveShoppingCombined(t *testing.T) {
 				expectedStatus: http.StatusOK,
 				assertions: []assertion{
 					{path: "$[0].itemId", value: "item-gv"},
-					{path: "$[1]", absent: true},
+					{path: "$[1].itemId", value: "item-kr"},
+					{path: "$[2]", absent: true},
 				},
 			}),
 		},

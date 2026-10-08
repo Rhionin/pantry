@@ -195,13 +195,18 @@ func wipeHousehold(ctx context.Context, db *sql.DB) error {
 
 func loadFacts(ctx context.Context, tx *sql.Tx, phase Phase) ([]Fact, error) {
 	rows, err := tx.QueryContext(ctx, `
-		SELECT i.product_id, p.name, COALESCE(p.unit_of_measure, ''),
+		SELECT i.id, i.product_id, p.name,
+			p.net_base_value, COALESCE(p.net_dimension, ''),
+			g.id, COALESCE(g.rule, ''), COALESCE(g.pinned_product_id, ''),
+			g.window_months, g.quantity_base_value, COALESCE(g.quantity_dimension, ''),
 			(SELECT COUNT(*) FROM item_instances inst
 			 WHERE inst.item_id = i.id AND inst.removed_at IS NULL)
 		FROM items i
 		JOIN products p ON p.id = i.product_id
+		LEFT JOIN product_group_members gm ON gm.product_id = i.product_id
+		LEFT JOIN product_groups g ON g.id = gm.group_id AND g.user_id = i.user_id
 		WHERE i.user_id = ?
-		ORDER BY i.product_id`, householdUser)
+		ORDER BY i.product_id, i.id`, householdUser)
 	if err != nil {
 		return nil, fmt.Errorf("could not read supply: %w", err)
 	}
@@ -210,19 +215,41 @@ func loadFacts(ctx context.Context, tx *sql.Tx, phase Phase) ([]Fact, error) {
 	facts := map[ProductID]*Fact{}
 	var order []ProductID
 	for rows.Next() {
-		var id, name, unit string
+		var itemID, id, name, netDimension, rule, pin, qtyDimension string
 		var onHand int
-		if err := rows.Scan(&id, &name, &unit, &onHand); err != nil {
+		var netBase, qtyBase sql.NullFloat64
+		var groupID sql.NullString
+		var window sql.NullInt64
+		if err := rows.Scan(
+			&itemID, &id, &name,
+			&netBase, &netDimension,
+			&groupID, &rule, &pin,
+			&window, &qtyBase, &qtyDimension,
+			&onHand,
+		); err != nil {
 			return nil, fmt.Errorf("could not read supply: %w", err)
 		}
 		product := ProductID(id)
 		fact := facts[product]
 		if fact == nil {
-			group := GroupID("")
-			if key, ok := shopping.NeedKey(name, unit); ok {
-				group = GroupID(key)
+			fact = &Fact{Product: product, Name: name, ItemID: itemID, NetDimension: netDimension}
+			if netBase.Valid {
+				value := netBase.Float64
+				fact.NetBase = &value
 			}
-			fact = &Fact{Product: product, Group: group}
+			if groupID.Valid {
+				fact.Group = GroupID(groupID.String)
+				fact.Rule = rule
+				fact.Pinned = pin
+				if window.Valid {
+					fact.GroupWindow = int(window.Int64)
+				}
+				if qtyBase.Valid {
+					fact.GroupHasQty = true
+					fact.GroupBase = qtyBase.Float64
+					fact.GroupDimension = qtyDimension
+				}
+			}
 			facts[product] = fact
 			order = append(order, product)
 		}
@@ -239,6 +266,9 @@ func loadFacts(ctx context.Context, tx *sql.Tx, phase Phase) ([]Fact, error) {
 		return nil, err
 	}
 	if err := attachManuals(ctx, tx, facts); err != nil {
+		return nil, err
+	}
+	if err := attachGroupSignals(ctx, tx, facts); err != nil {
 		return nil, err
 	}
 	if started, ok := phase.StartedAt(); ok {
@@ -267,7 +297,7 @@ func attachOverrides(ctx context.Context, tx *sql.Tx, facts map[ProductID]*Fact)
 			return fmt.Errorf("could not read supply: %w", err)
 		}
 		fact := facts[ProductID(id)]
-		if fact == nil {
+		if fact == nil || fact.Group != "" {
 			continue
 		}
 		switch {
@@ -362,6 +392,128 @@ func attachEvents(ctx context.Context, tx *sql.Tx, facts map[ProductID]*Fact, st
 		}
 	}
 	return outs.Err()
+}
+
+func attachGroupSignals(ctx context.Context, tx *sql.Tx, facts map[ProductID]*Fact) error {
+	stocked, err := tx.QueryContext(ctx, `
+		SELECT product_id, MAX(at) FROM stock_in_events
+		WHERE product_id IN (SELECT product_id FROM items WHERE user_id = ?)
+		GROUP BY product_id`, householdUser)
+	if err != nil {
+		return fmt.Errorf("could not read supply: %w", err)
+	}
+	defer stocked.Close()
+	for stocked.Next() {
+		var id, raw string
+		if err := stocked.Scan(&id, &raw); err != nil {
+			return fmt.Errorf("could not read supply: %w", err)
+		}
+		at, err := parseSQLiteTime(raw)
+		if err != nil {
+			return fmt.Errorf("could not read supply: %w", err)
+		}
+		if fact := facts[ProductID(id)]; fact != nil {
+			fact.LastStocked = at
+		}
+	}
+	if err := stocked.Err(); err != nil {
+		return fmt.Errorf("could not read supply: %w", err)
+	}
+	if err := stocked.Close(); err != nil {
+		return fmt.Errorf("could not read supply: %w", err)
+	}
+
+	used, err := tx.QueryContext(ctx, `
+		SELECT i.product_id, MAX(c.consumed_at)
+		FROM consumption_events c
+		JOIN items i ON i.id = c.item_id
+		WHERE i.user_id = ?
+		GROUP BY i.product_id`, householdUser)
+	if err != nil {
+		return fmt.Errorf("could not read supply: %w", err)
+	}
+	defer used.Close()
+	for used.Next() {
+		var id, raw string
+		if err := used.Scan(&id, &raw); err != nil {
+			return fmt.Errorf("could not read supply: %w", err)
+		}
+		at, err := parseSQLiteTime(raw)
+		if err != nil {
+			return fmt.Errorf("could not read supply: %w", err)
+		}
+		if fact := facts[ProductID(id)]; fact != nil {
+			fact.LastConsumed = at
+		}
+	}
+	if err := used.Err(); err != nil {
+		return fmt.Errorf("could not read supply: %w", err)
+	}
+	if err := used.Close(); err != nil {
+		return fmt.Errorf("could not read supply: %w", err)
+	}
+
+	deals, err := tx.QueryContext(ctx, `
+		SELECT item_id, price_cents, regular_price_cents, label, updated_at
+		FROM item_deals WHERE user_id = ?`, householdUser)
+	if err != nil {
+		return fmt.Errorf("could not read supply: %w", err)
+	}
+	defer deals.Close()
+	byItem := map[string]*Fact{}
+	for _, fact := range facts {
+		if fact.ItemID != "" {
+			byItem[fact.ItemID] = fact
+		}
+	}
+	for deals.Next() {
+		var itemID, label string
+		var price, regular sql.NullInt64
+		var noted time.Time
+		if err := deals.Scan(&itemID, &price, &regular, &label, &noted); err != nil {
+			return fmt.Errorf("could not read supply: %w", err)
+		}
+		fact := byItem[itemID]
+		if fact == nil {
+			continue
+		}
+		deal := shoppingDeal(itemID, label, noted, price, regular)
+		fact.Deal = &deal
+	}
+	return deals.Err()
+}
+
+func parseSQLiteTime(raw string) (time.Time, error) {
+	layouts := []string{
+		time.RFC3339Nano,
+		time.RFC3339,
+		"2006-01-02 15:04:05.999999999 -0700 MST",
+		"2006-01-02 15:04:05 -0700 MST",
+		"2006-01-02 15:04:05.999999999-07:00",
+		"2006-01-02 15:04:05",
+	}
+	var last error
+	for _, layout := range layouts {
+		parsed, err := time.Parse(layout, raw)
+		if err == nil {
+			return parsed.UTC(), nil
+		}
+		last = err
+	}
+	return time.Time{}, last
+}
+
+func shoppingDeal(itemID, label string, noted time.Time, price, regular sql.NullInt64) shopping.Deal {
+	deal := shopping.Deal{ItemID: itemID, Label: label, NotedAt: noted.UTC(), Source: shopping.DealSourceRecorded}
+	if price.Valid {
+		cents := int(price.Int64)
+		deal.PriceCents = &cents
+	}
+	if regular.Valid {
+		cents := int(regular.Int64)
+		deal.RegularPriceCents = &cents
+	}
+	return deal
 }
 
 type queryer interface {

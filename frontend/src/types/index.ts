@@ -252,6 +252,20 @@ export interface ShoppingListBasis {
 // Auto-derived entries have an empty string id (no backing shopping_list_items row).
 // quantity is the provision quantity: an adjustment when one is set, otherwise
 // the computed quantity.
+export interface ShoppingListGroupMember {
+  itemId: string;
+  productId: string;
+  name: string;
+}
+
+export interface ShoppingListGroup {
+  id: string;
+  name: string;
+  rule: GroupRule;
+  ruleConfirmed: boolean;
+  members: ShoppingListGroupMember[];
+}
+
 export interface ShoppingListEntry {
   id: string;
   itemId: string;
@@ -264,6 +278,7 @@ export interface ShoppingListEntry {
   computedQuantity?: number;
   adjustment?: number;
   basis?: ShoppingListBasis;
+  group?: ShoppingListGroup;
 }
 
 export interface ProvisionEntryResult {

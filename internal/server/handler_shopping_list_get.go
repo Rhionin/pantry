@@ -91,6 +91,7 @@ func presentShoppingList(req Request[struct{}, struct{}], provision shoppingProv
 			Provider:         providerID,
 			ComputedQuantity: computed,
 			Adjustment:       adjustment,
+			Group:            shoppingGroupResponse(&row),
 		}
 		resp = append(resp, entry)
 	}
