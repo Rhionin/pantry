@@ -27,6 +27,43 @@ lack() {
   fi
 }
 
+# assert_only_cloudflared_on_trusted_ip walks `docker compose config`.
+# Service names are indented two spaces. 10.77.77.2 is the address
+# Caddyfile.tunnel trusts, so no other cf-tunnel service may be given it.
+# caddy-tunnel must keep a fixed address of its own.
+assert_only_cloudflared_on_trusted_ip() {
+  local cfg="$1" svc="" bad="" saw_cf=0 saw_caddy=0 line
+  while IFS= read -r line; do
+    if [[ "$line" =~ ^[[:space:]]{2}([A-Za-z0-9_-]+):[[:space:]]*$ ]]; then
+      svc="${BASH_REMATCH[1]}"
+      continue
+    fi
+    if [[ "$line" =~ ^[^[:space:]] ]]; then
+      svc=""
+      continue
+    fi
+    if [[ -n "$svc" && "$line" == *'ipv4_address: 10.77.77.2'* ]]; then
+      if [[ "$svc" != cloudflared ]]; then
+        bad="$svc"
+      else
+        saw_cf=1
+      fi
+    fi
+    if [[ "$svc" == caddy-tunnel && "$line" == *'ipv4_address: 10.77.77.3'* ]]; then
+      saw_caddy=1
+    fi
+  done <<< "$cfg"
+  if [[ -n "$bad" ]]; then
+    fail "$bad must not use 10.77.77.2; only cloudflared may"
+  fi
+  if [[ "$saw_cf" -ne 1 ]]; then
+    fail "cloudflared must be pinned to 10.77.77.2"
+  fi
+  if [[ "$saw_caddy" -ne 1 ]]; then
+    fail "caddy-tunnel must be pinned to 10.77.77.3"
+  fi
+}
+
 if command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1; then
   compose() { docker compose "$@"; }
 elif command -v docker-compose >/dev/null 2>&1; then
@@ -93,6 +130,10 @@ lack "$tunnel_cfg" 'published: "443"' "tunnel mode must not publish port 443"
 have "$tunnel_cfg" 'cloudflare/cloudflared:2026.10.0' "tunnel mode pins cloudflared"
 have "$tunnel_cfg" 'caddy:2.11.4-alpine' "tunnel mode pins Caddy"
 have "$tunnel_cfg" 'ipv4_address: 10.77.77.2' "cloudflared has the trusted address"
+have "$tunnel_cfg" 'ipv4_address: 10.77.77.3' "caddy has a fixed address"
+have "$tunnel_cfg" 'ip_range: 10.77.77.4/30' "dynamic addresses cannot take .2 or .3"
+have "$tunnel_cfg" 'gateway: 10.77.77.1' "cf-tunnel gateway stays .1"
+assert_only_cloudflared_on_trusted_ip "$tunnel_cfg"
 have "$tunnel_cfg" 'Caddyfile.tunnel' "tunnel mode mounts Caddyfile.tunnel"
 have "$tunnel_cfg" 'target: /etc/caddy/Caddyfile' "tunnel Caddyfile is what Caddy loads"
 have "$tunnel_cfg" 'container_name: pantry-cloudflared' "cloudflared container name"

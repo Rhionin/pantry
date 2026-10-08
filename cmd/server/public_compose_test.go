@@ -281,7 +281,20 @@ func TestPublicProxyIsOptIn(t *testing.T) {
 			Command       []string          `yaml:"command"`
 			Environment   map[string]string `yaml:"environment"`
 			ContainerName string            `yaml:"container_name"`
+			Networks      map[string]struct {
+				IPv4Address string   `yaml:"ipv4_address"`
+				Aliases     []string `yaml:"aliases"`
+			} `yaml:"networks"`
 		} `yaml:"services"`
+		Networks map[string]struct {
+			IPAM struct {
+				Config []struct {
+					Subnet  string `yaml:"subnet"`
+					IPRange string `yaml:"ip_range"`
+					Gateway string `yaml:"gateway"`
+				} `yaml:"config"`
+			} `yaml:"ipam"`
+		} `yaml:"networks"`
 	}
 	if err := yaml.Unmarshal(tunnelComposeRaw, &tunnelCompose); err != nil {
 		t.Fatalf("parse tunnel compose: %v", err)
@@ -324,10 +337,37 @@ func TestPublicProxyIsOptIn(t *testing.T) {
 	if cloudflared.ContainerName != "pantry-cloudflared" {
 		t.Fatalf("cloudflared container = %q", cloudflared.ContainerName)
 	}
-	tunnelYAML := string(tunnelComposeRaw)
-	if !strings.Contains(tunnelYAML, "ipv4_address: 10.77.77.2") {
-		t.Fatal("cloudflared must use the address Caddyfile.tunnel trusts")
+	caddyNet, ok := caddyTunnel.Networks["cf-tunnel"]
+	if !ok {
+		t.Fatal("caddy-tunnel must join cf-tunnel")
 	}
+	if caddyNet.IPv4Address != "10.77.77.3" {
+		t.Fatalf("caddy-tunnel address = %q, want 10.77.77.3", caddyNet.IPv4Address)
+	}
+	if !hasExactPort(caddyNet.Aliases, "caddy") {
+		t.Fatalf("caddy-tunnel aliases = %v, want caddy", caddyNet.Aliases)
+	}
+	cfNet, ok := cloudflared.Networks["cf-tunnel"]
+	if !ok || cfNet.IPv4Address != "10.77.77.2" {
+		t.Fatalf("cloudflared cf-tunnel = %+v, want 10.77.77.2", cfNet)
+	}
+	for name, svc := range tunnelCompose.Services {
+		net, joined := svc.Networks["cf-tunnel"]
+		if !joined {
+			continue
+		}
+		if net.IPv4Address == "10.77.77.2" && name != "cloudflared" {
+			t.Fatalf("%s must not use 10.77.77.2", name)
+		}
+		if net.IPv4Address == "" {
+			t.Fatalf("%s joins cf-tunnel without a fixed address", name)
+		}
+	}
+	ipam := tunnelCompose.Networks["cf-tunnel"].IPAM.Config
+	if len(ipam) != 1 || ipam[0].Subnet != "10.77.77.0/29" || ipam[0].IPRange != "10.77.77.4/30" || ipam[0].Gateway != "10.77.77.1" {
+		t.Fatalf("cf-tunnel ipam = %+v", ipam)
+	}
+	tunnelYAML := string(tunnelComposeRaw)
 	if !strings.Contains(tunnelYAML, "http://caddy:80") {
 		t.Fatal("tunnel compose must document the public-hostname service URL")
 	}
@@ -341,6 +381,7 @@ func TestPublicProxyIsOptIn(t *testing.T) {
 		"docker-compose.tunnel.yml",
 		"http://caddy:80",
 		"publish_mode_from_env",
+		"drop_stale_cloudflared",
 	} {
 		if !strings.Contains(setupText, want) {
 			t.Fatalf("setup.sh missing %q", want)
@@ -351,6 +392,9 @@ func TestPublicProxyIsOptIn(t *testing.T) {
 	}
 	if !strings.Contains(updaterText, "docker-compose.tunnel.yml") || !strings.Contains(updaterText, "--profile tunnel") {
 		t.Fatal("automatic updates must select the tunnel profile when the token is set")
+	}
+	if !strings.Contains(updaterText, "drop_stale_cloudflared") {
+		t.Fatal("automatic updates must drop a cloudflared container left Created before tunnel up")
 	}
 	for _, want := range []string{
 		"CLOUDFLARE_TUNNEL_TOKEN",

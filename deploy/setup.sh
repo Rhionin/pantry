@@ -574,6 +574,9 @@ cmd_apply() {
   if [[ "$use_public" == true || "$publish_mode" != tunnel ]]; then
     drop_other_publish_containers "$publish_mode"
   fi
+  if [[ "$use_public" == true && "$publish_mode" == tunnel ]]; then
+    drop_stale_cloudflared
+  fi
   if ! "${compose[@]}" up -d; then
     fatal "Failed to start Pantry"
   fi

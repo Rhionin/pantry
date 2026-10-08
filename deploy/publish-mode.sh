@@ -61,3 +61,37 @@ drop_other_publish_containers() {
     docker rm -f pantry-cloudflared >/dev/null 2>&1 || true
   fi
 }
+
+# drop_stale_cloudflared removes pantry-cloudflared when a later
+# `compose up` would not place it at 10.77.77.2.
+#
+# Compose recreates cf-tunnel when the IPAM config changes, so a network
+# left by a failed start does not have to be deleted here. It does not
+# recreate a cloudflared container whose service spec is unchanged. A
+# container left Created ("Address already in use") is reconnected with
+# a dynamic address instead of the pin. A running connector already on
+# 10.77.77.2 is left alone. If inspect cannot show an address, a running
+# container is left alone rather than interrupting a live tunnel.
+drop_stale_cloudflared() {
+  local running ips
+  running=$(docker inspect -f '{{.State.Running}}' pantry-cloudflared 2>/dev/null || true)
+  running=${running//$'\r'/}
+  running=${running//$'\n'/}
+  if [[ -z "$running" ]]; then
+    return 0
+  fi
+  if [[ "$running" == true ]]; then
+    ips=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{"\n"}}{{end}}' pantry-cloudflared 2>/dev/null || true)
+    if printf '%s\n' "$ips" | grep -qx '10.77.77.2'; then
+      return 0
+    fi
+    if ! printf '%s\n' "$ips" | grep -q '^[0-9]'; then
+      return 0
+    fi
+    echo "[info] Removing pantry-cloudflared so it can take 10.77.77.2"
+    docker rm -f pantry-cloudflared >/dev/null
+    return 0
+  fi
+  echo "[info] Removing pantry-cloudflared left from a failed start so it can take 10.77.77.2"
+  docker rm -f pantry-cloudflared >/dev/null
+}
