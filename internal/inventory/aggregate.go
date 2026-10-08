@@ -2,18 +2,48 @@ package inventory
 
 import (
 	"context"
+	"database/sql"
+	"fmt"
 	"strings"
 	"time"
+
+	"github.com/Rhionin/pantry/internal/product"
 )
 
 // InventoryItem represents an aggregated inventory item with instance counts
 // and attention flags derived from expiry status.
 type InventoryItem struct {
-	Item            Item `json:"item"`
-	InstanceCount   int  `json:"instanceCount"`
-	NearExpiryCount int  `json:"nearExpiryCount"`
-	ExpiredCount    int  `json:"expiredCount"`
-	NeedsAttention  bool `json:"needsAttention"`
+	Item            Item          `json:"item"`
+	InstanceCount   int           `json:"instanceCount"`
+	NearExpiryCount int           `json:"nearExpiryCount"`
+	ExpiredCount    int           `json:"expiredCount"`
+	NeedsAttention  bool          `json:"needsAttention"`
+	Group           *GroupSummary `json:"group,omitempty"`
+}
+
+// GroupMemberView is one product inside the group summary on an inventory row.
+type GroupMemberView struct {
+	ProductID string   `json:"productId"`
+	Name      string   `json:"name"`
+	OnHand    int      `json:"onHand"`
+	ItemID    string   `json:"itemId,omitempty"`
+	Barcodes  []string `json:"barcodes,omitempty"`
+}
+
+// GroupSummary is the shared group attached to every member row.
+// OnHand is the sum of those members, counted in SQL with the list.
+type GroupSummary struct {
+	ID              string            `json:"id"`
+	Name            string            `json:"name"`
+	Rule            string            `json:"rule"`
+	RuleConfirmed   bool              `json:"ruleConfirmed"`
+	PinnedProductID string            `json:"pinnedProductId,omitempty"`
+	OnHand          int               `json:"onHand"`
+	WindowMonths    *int              `json:"windowMonths,omitempty"`
+	Quantity        *float64          `json:"quantity,omitempty"`
+	Dimension       string            `json:"dimension,omitempty"`
+	MemberCount     int               `json:"memberCount"`
+	Members         []GroupMemberView `json:"members"`
 }
 
 // DefaultWarningDays is the near-expiry window GetInventoryList and
@@ -49,6 +79,9 @@ func (r *Pantry) GetInventoryList(ctx context.Context, userID string, now time.T
 		result = append(result, invItem)
 	}
 
+	if err := r.attachGroups(ctx, userID, result); err != nil {
+		return nil, err
+	}
 	return result, nil
 }
 
@@ -67,7 +100,11 @@ func (r *Pantry) GetInventoryItem(ctx context.Context, itemID string, now time.T
 	if err != nil {
 		return nil, err
 	}
-	return &invItem, nil
+	rows := []InventoryItem{invItem}
+	if err := r.attachGroups(ctx, item.UserID, rows); err != nil {
+		return nil, err
+	}
+	return &rows[0], nil
 }
 
 // aggregateItem computes the InstanceCount, NearExpiryCount, ExpiredCount,
@@ -110,4 +147,139 @@ func matchesQuery(item Item, query string) bool {
 	lowerCategory := strings.ToLower(item.Product.Category)
 
 	return strings.Contains(lowerName, lowerQuery) || strings.Contains(lowerCategory, lowerQuery)
+}
+
+func (r *Pantry) attachGroups(ctx context.Context, userID string, items []InventoryItem) error {
+	if len(items) == 0 {
+		return nil
+	}
+	byProduct, err := r.groupSummaries(ctx, userID)
+	if err != nil {
+		return err
+	}
+	for i := range items {
+		if summary, ok := byProduct[items[i].Item.ProductID]; ok {
+			items[i].Group = summary
+		}
+	}
+	return nil
+}
+
+func (r *Pantry) groupSummaries(ctx context.Context, userID string) (map[string]*GroupSummary, error) {
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT g.id, g.name, g.rule, g.rule_confirmed, g.pinned_product_id,
+		       g.window_months, g.quantity_base_value, g.quantity_dimension,
+		       p.id, p.name,
+		       COALESCE((SELECT i.id FROM items i WHERE i.product_id = p.id AND i.user_id = ? LIMIT 1), ''),
+		       COALESCE((SELECT COUNT(*) FROM item_instances ii
+		                  JOIN items i ON i.id = ii.item_id
+		                  WHERE i.product_id = p.id AND i.user_id = ? AND ii.removed_at IS NULL), 0)
+		FROM product_group_members m
+		JOIN product_groups g ON g.id = m.group_id
+		JOIN products p ON p.id = m.product_id
+		WHERE g.user_id = ?
+		ORDER BY g.name, p.name, p.id`, userID, userID, userID)
+	if err != nil {
+		return nil, fmt.Errorf("could not load groups for inventory: %w", err)
+	}
+	defer rows.Close()
+
+	byID := map[string]*GroupSummary{}
+	var order []string
+	for rows.Next() {
+		var (
+			id, name, rule, productID, productName, itemID string
+			confirmed, onHand                              int
+			pin, dim                                       sql.NullString
+			window                                         sql.NullInt64
+			qty                                            sql.NullFloat64
+		)
+		if err := rows.Scan(&id, &name, &rule, &confirmed, &pin, &window, &qty, &dim, &productID, &productName, &itemID, &onHand); err != nil {
+			return nil, fmt.Errorf("could not load groups for inventory: %w", err)
+		}
+		summary := byID[id]
+		if summary == nil {
+			summary = &GroupSummary{
+				ID:            id,
+				Name:          name,
+				Rule:          rule,
+				RuleConfirmed: confirmed != 0,
+				Members:       []GroupMemberView{},
+			}
+			if pin.Valid {
+				summary.PinnedProductID = pin.String
+			}
+			if window.Valid {
+				n := int(window.Int64)
+				summary.WindowMonths = &n
+			}
+			if qty.Valid && dim.Valid {
+				if amount, _, ok := product.DisplayNetSize(qty.Float64, dim.String); ok {
+					summary.Quantity = &amount
+					summary.Dimension = dim.String
+				}
+			}
+			byID[id] = summary
+			order = append(order, id)
+		}
+		member := GroupMemberView{ProductID: productID, Name: productName, OnHand: onHand, Barcodes: []string{}}
+		if itemID != "" {
+			member.ItemID = itemID
+		}
+		summary.Members = append(summary.Members, member)
+		summary.OnHand += onHand
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("could not load groups for inventory: %w", err)
+	}
+	for _, id := range order {
+		summary := byID[id]
+		summary.MemberCount = len(summary.Members)
+	}
+	if err := r.attachBarcodes(ctx, byID); err != nil {
+		return nil, err
+	}
+
+	byProduct := map[string]*GroupSummary{}
+	for _, summary := range byID {
+		for i := range summary.Members {
+			byProduct[summary.Members[i].ProductID] = summary
+		}
+	}
+	return byProduct, nil
+}
+
+func (r *Pantry) attachBarcodes(ctx context.Context, groups map[string]*GroupSummary) error {
+	if len(groups) == 0 {
+		return nil
+	}
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT b.product_id, b.barcode
+		FROM barcodes b
+		JOIN product_group_members m ON m.product_id = b.product_id
+		JOIN product_groups g ON g.id = m.group_id
+		ORDER BY b.barcode`)
+	if err != nil {
+		return fmt.Errorf("could not load group barcodes: %w", err)
+	}
+	defer rows.Close()
+	codes := map[string][]string{}
+	for rows.Next() {
+		var productID, barcode string
+		if err := rows.Scan(&productID, &barcode); err != nil {
+			return fmt.Errorf("could not load group barcodes: %w", err)
+		}
+		codes[productID] = append(codes[productID], barcode)
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("could not load group barcodes: %w", err)
+	}
+	for _, summary := range groups {
+		for i := range summary.Members {
+			if list := codes[summary.Members[i].ProductID]; len(list) > 0 {
+				summary.Members[i].Barcodes = list
+			}
+		}
+	}
+	return nil
 }

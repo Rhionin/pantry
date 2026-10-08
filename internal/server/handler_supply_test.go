@@ -437,6 +437,48 @@ type completeBody struct {
 	StartedAt string `json:"startedAt"`
 }
 
+func TestSupplyOverrideRefusesGroupedProduct(t *testing.T) {
+	tests := []handlerTestCase{
+		{
+			name: "get and put return the group id",
+			setup: func(env testEnv) {
+				if _, err := env.DB.Exec(`INSERT INTO products (id, name, unit_of_measure) VALUES ('prod-grouped', 'Kroger Cut Green Beans', 'can')`); err != nil {
+					env.T.Fatal(err)
+				}
+				if _, err := env.DB.Exec(`
+					INSERT INTO product_groups (id, user_id, name, name_key, rule)
+					VALUES ('g-beans', 'user-1', 'Cut green beans', 'cut green beans', 'same_as_ran_out')`); err != nil {
+					env.T.Fatal(err)
+				}
+				if _, err := env.DB.Exec(`
+					INSERT INTO product_group_members (product_id, group_id) VALUES ('prod-grouped', 'g-beans')`); err != nil {
+					env.T.Fatal(err)
+				}
+			},
+			httpExchange: httpExchange{
+				method:         "GET",
+				path:           "/api/products/prod-grouped/supply-override",
+				expectedStatus: http.StatusConflict,
+				assertions: []assertion{
+					{path: "$.code", value: "in_group"},
+					{path: "$.members.groupId", value: "g-beans"},
+				},
+			},
+			afterRequest: exchanges(httpExchange{
+				method:         "PUT",
+				path:           "/api/products/prod-grouped/supply-override",
+				body:           `{"quantity":4}`,
+				expectedStatus: http.StatusConflict,
+				assertions: []assertion{
+					{path: "$.code", value: "in_group"},
+					{path: "$.members.groupId", value: "g-beans"},
+				},
+			}),
+		},
+	}
+	runHandlerTests(t, tests)
+}
+
 func postComplete(t *testing.T, handler http.Handler) completeBody {
 	t.Helper()
 	req := httptest.NewRequest(http.MethodPost, "/api/onboarding/complete", nil)

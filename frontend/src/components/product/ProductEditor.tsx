@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Alert, Button, Stack, TextInput } from '@mantine/core';
+import { Alert, Anchor, Button, Stack, Text, TextInput } from '@mantine/core';
 import { getProduct, updateProduct } from '../../api/client';
 import type { ProductDetail, ProductWriteInput } from '../../types';
 import { ContributeFields, type ContributeChoice } from './ContributeFields';
@@ -11,6 +11,7 @@ import { SupplyOverride } from './SupplyOverride';
 export interface ProductEditorProps {
   productId: string;
   onSaved: () => void;
+  group?: { id: string; name: string } | null;
 }
 
 const emptyChoice: ContributeChoice = {
@@ -18,7 +19,7 @@ const emptyChoice: ContributeChoice = {
   contributeTo: 'openfoodfacts',
 };
 
-export const ProductEditor = ({ productId, onSaved }: ProductEditorProps) => {
+export const ProductEditor = ({ productId, onSaved, group = null }: ProductEditorProps) => {
   const [open, setOpen] = useState(false);
   const [product, setProduct] = useState<ProductDetail | null>(null);
   const [name, setName] = useState('');
@@ -130,12 +131,18 @@ export const ProductEditor = ({ productId, onSaved }: ProductEditorProps) => {
           setSize(next);
         }}
       />
-      <details
-        onToggle={(event) => setSupplyOpen(event.currentTarget.open)}
-      >
-        <summary>Supply</summary>
-        {supplyOpen && <SupplyOverride productId={productId} />}
-      </details>
+      {group ? (
+        <Text size="sm">
+          This product is in <Anchor href={`/groups/${group.id}`}>{group.name}</Anchor>. Change what the group keeps on hand.
+        </Text>
+      ) : (
+        <details
+          onToggle={(event) => setSupplyOpen(event.currentTarget.open)}
+        >
+          <summary>Supply</summary>
+          {supplyOpen && <SupplyOverride productId={productId} />}
+        </details>
+      )}
       <ContributeFields allowProductOptIn={!upstream} onChange={setShare} />
       {share.contribute && (
         <TextInput
