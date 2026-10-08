@@ -5,7 +5,7 @@ import {
 } from '@mantine/core';
 import { ApiError, acceptSuggestion, dismissSuggestion, listSuggestions, skipSuggestion } from '../../api/client';
 import type { GroupSuggestion, GroupTarget, TargetConflictMember } from '../../types';
-import { conflictLine } from './copy';
+import { conflictLine, kindPhrase } from './copy';
 
 export const InboxPage = () => {
   const [cards, setCards] = useState<GroupSuggestion[]>([]);
@@ -108,6 +108,7 @@ export const InboxPage = () => {
         <Stack gap="xs">
           <Text size="sm" c="dimmed">{index + 1} of {cards.length}</Text>
           <Title order={2} size="h4">{card.title}</Title>
+          <Text size="sm" c="dimmed">{kindPhrase(card.kind)}</Text>
           {card.members.map((member) => (
             <Stack key={member.productId} gap={2}>
               <Checkbox

@@ -17,6 +17,7 @@ import (
 	"github.com/Rhionin/pantry/internal/cart/appcred"
 	"github.com/Rhionin/pantry/internal/cart/kroger"
 	"github.com/Rhionin/pantry/internal/events"
+	"github.com/Rhionin/pantry/internal/group"
 	"github.com/Rhionin/pantry/internal/product"
 	"github.com/Rhionin/pantry/internal/scan"
 	"github.com/Rhionin/pantry/internal/scanlistener"
@@ -174,6 +175,9 @@ func main() {
 
 	if _, err := product.BackfillNetSizes(context.Background(), sqlDB); err != nil {
 		log.Fatalf("backfill product sizes: %v", err)
+	}
+	if err := group.NewGroups(sqlDB).Seed(context.Background()); err != nil {
+		log.Fatalf("seed group suggestions: %v", err)
 	}
 
 	catalog := product.NewCatalog(sqlDB)
