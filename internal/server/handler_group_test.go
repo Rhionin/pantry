@@ -87,14 +87,14 @@ func TestGroupHandlers(t *testing.T) {
 				httpExchange{
 					method:         http.MethodGet,
 					path:           "/api/products/p1/supply-override",
-					expectedStatus: http.StatusOK,
-					assertions:     []assertion{{path: "$.quantity", absent: true}},
+					expectedStatus: http.StatusConflict,
+					bodyContains:   []string{`"code":"in_group"`, `"groupId"`},
 				},
 				httpExchange{
 					method:         http.MethodGet,
 					path:           "/api/products/p2/supply-override",
-					expectedStatus: http.StatusOK,
-					assertions:     []assertion{{path: "$.windowMonths", absent: true}},
+					expectedStatus: http.StatusConflict,
+					bodyContains:   []string{`"code":"in_group"`, `"groupId"`},
 				},
 			),
 		},

@@ -354,4 +354,116 @@ describe('InventoryPage', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Hide instances' }));
     expect(within(article).queryByText(/Barcode:/)).not.toBeInTheDocument();
   });
+
+  it('expands one group row and previews the rule', async () => {
+    const group = {
+      id: 'g-beans',
+      name: 'Cut green beans',
+      rule: 'same_as_ran_out',
+      ruleConfirmed: false,
+      onHand: 5,
+      memberCount: 2,
+      members: [
+        { productId: 'product-gv', name: 'Great Value Cut Green Beans', onHand: 3, barcodes: ['111'] },
+        { productId: 'product-kr', name: 'Kroger Cut Green Beans', onHand: 2 },
+      ],
+    };
+    const gv = inventoryItem('gv', 'Great Value Cut Green Beans', 'Canned', false);
+    const kr = inventoryItem('kr', 'Kroger Cut Green Beans', 'Canned', false);
+    gv.group = group;
+    kr.group = group;
+    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      const method = init?.method ?? 'GET';
+      if (url === '/api/groups/preview' && method === 'POST') {
+        return Promise.resolve(jsonResponse({
+          productId: 'product-gv',
+          because: 'Same as what ran out',
+          buy: 1,
+          explain: 'Buy the can that ran out.',
+        }));
+      }
+      if (url === '/api/settings/supply') {
+        return Promise.resolve(jsonResponse({ months: 3, opening: false, wipePhrase: 'WIPE INVENTORY' }));
+      }
+      return Promise.resolve(jsonResponse([gv, kr]));
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<MantineProvider><InventoryPage /></MantineProvider>);
+    expect(await screen.findByRole('heading', { name: 'Cut green beans' })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Great Value Cut Green Beans' })).not.toBeInTheDocument();
+    expect(screen.getByText('Still using Same as what ran out until you pick a rule.')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Show products' }));
+    expect(await screen.findByText('Great Value Cut Green Beans · 3 on hand')).toBeInTheDocument();
+    expect(screen.getByText('Barcode: 111')).toBeInTheDocument();
+    expect(screen.getByText('5 on hand · Account window · 2 products')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Edit rule' }));
+    expect(await screen.findByText('Next trip: Buy the can that ran out.')).toBeInTheDocument();
+  });
+
+  it('groups two selected products', async () => {
+    const milk = inventoryItem('milk', 'Whole Milk', 'Dairy', false);
+    const oats = inventoryItem('oats', 'Oats', 'Cereal', false);
+    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      const method = init?.method ?? 'GET';
+      if (url === '/api/groups' && method === 'GET') {
+        return Promise.resolve(jsonResponse([]));
+      }
+      if (url === '/api/groups' && method === 'POST') {
+        return Promise.resolve(jsonResponse({ id: 'g-new', name: 'Breakfast', members: [] }));
+      }
+      if (url === '/api/settings/supply') {
+        return Promise.resolve(jsonResponse({ months: 3, opening: false, wipePhrase: 'WIPE INVENTORY' }));
+      }
+      return Promise.resolve(jsonResponse([milk, oats]));
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<MantineProvider><InventoryPage /></MantineProvider>);
+    await screen.findByText('Whole Milk');
+    fireEvent.click(screen.getByRole('button', { name: 'Select' }));
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Select Whole Milk' }));
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Select Oats' }));
+    fireEvent.change(screen.getByLabelText('New group'), { target: { value: 'Breakfast' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Group these' }));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/groups', expect.objectContaining({
+      method: 'POST',
+      body: JSON.stringify({ name: 'Breakfast', productIds: ['product-milk', 'product-oats'] }),
+    })));
+  });
+
+  it('reloads when a grouped product changes', async () => {
+    const group = {
+      id: 'g-beans',
+      name: 'Cut green beans',
+      rule: 'same_as_ran_out',
+      ruleConfirmed: true,
+      onHand: 1,
+      memberCount: 1,
+      members: [{ productId: 'product-gv', name: 'Great Value Cut Green Beans', onHand: 1 }],
+    };
+    const gv = inventoryItem('gv', 'Great Value Cut Green Beans', 'Canned', false);
+    gv.group = group;
+    let inventoryCalls = 0;
+    const fetchMock = vi.fn((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === '/api/inventory') inventoryCalls += 1;
+      if (url === '/api/settings/supply') {
+        return Promise.resolve(jsonResponse({ months: 3, opening: false, wipePhrase: 'WIPE INVENTORY' }));
+      }
+      return Promise.resolve(jsonResponse([gv]));
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<MantineProvider><InventoryPage /></MantineProvider>);
+    await screen.findByText('Cut green beans');
+    const before = inventoryCalls;
+    FakeEventSource.instances[0]?.dispatch('inventory', gv);
+    await waitFor(() => expect(inventoryCalls).toBeGreaterThan(before));
+  });
 });

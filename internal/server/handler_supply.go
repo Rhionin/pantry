@@ -1,9 +1,11 @@
 package server
 
 import (
+	"context"
 	"errors"
 	"time"
 
+	"github.com/Rhionin/pantry/internal/group"
 	"github.com/Rhionin/pantry/internal/supply"
 )
 
@@ -72,11 +74,15 @@ func (h *SupplySettingsPutHandler) Handle(req Request[supplyMonthsRequest, struc
 // SupplyOverrideGetHandler handles GET /api/products/{id}/supply-override.
 type SupplyOverrideGetHandler struct {
 	Supply *supply.Service
+	Groups *group.Groups
 }
 
 func (h *SupplyOverrideGetHandler) Handle(req Request[struct{}, productIDParams]) (*supplyOverrideResponse, error) {
 	if req.PathParams.ID == "" {
 		return nil, BadRequest("missing product id")
+	}
+	if err := refuseGroupedOverride(req.Context, h.Groups, req.PathParams.ID); err != nil {
+		return nil, err
 	}
 	override, err := h.Supply.Override(req.Context, supply.ProductID(req.PathParams.ID))
 	if err != nil {
@@ -88,11 +94,15 @@ func (h *SupplyOverrideGetHandler) Handle(req Request[struct{}, productIDParams]
 // SupplyOverridePutHandler handles PUT /api/products/{id}/supply-override.
 type SupplyOverridePutHandler struct {
 	Supply *supply.Service
+	Groups *group.Groups
 }
 
 func (h *SupplyOverridePutHandler) Handle(req Request[supplyOverrideRequest, productIDParams]) (*supplyOverrideResponse, error) {
 	if req.PathParams.ID == "" {
 		return nil, BadRequest("missing product id")
+	}
+	if err := refuseGroupedOverride(req.Context, h.Groups, req.PathParams.ID); err != nil {
+		return nil, err
 	}
 	override, err := parseSupplyOverride(req.Body)
 	if err != nil {
@@ -123,6 +133,24 @@ func (h *OnboardingCompleteHandler) Handle(req Request[struct{}, struct{}]) (*on
 		return nil, InternalError(errors.New("could not save the supply start date"))
 	}
 	return &onboardingCompleteResponse{StartedAt: started.UTC().Format(time.RFC3339)}, nil
+}
+
+func refuseGroupedOverride(ctx context.Context, groups *group.Groups, productID string) error {
+	if groups == nil {
+		return nil
+	}
+	groupID, err := groups.MemberGroupID(ctx, productID)
+	if err != nil {
+		return InternalError(err)
+	}
+	if groupID == "" {
+		return nil
+	}
+	return ConflictDetails(
+		"This product is in a group. Change what the group keeps on hand.",
+		"in_group",
+		map[string]string{"groupId": groupID},
+	)
 }
 
 func settingsResponse(settings supply.Settings) *supplySettingsResponse {

@@ -322,8 +322,9 @@ func newAPIMux(
 	inventoryWipeHandler := &InventoryWipeHandler{Supply: supplySvc}
 	supplySettingsGetHandler := &SupplySettingsGetHandler{Supply: supplySvc}
 	supplySettingsPutHandler := &SupplySettingsPutHandler{Supply: supplySvc}
-	supplyOverrideGetHandler := &SupplyOverrideGetHandler{Supply: supplySvc}
-	supplyOverridePutHandler := &SupplyOverridePutHandler{Supply: supplySvc}
+	groups := group.NewGroups(db)
+	supplyOverrideGetHandler := &SupplyOverrideGetHandler{Supply: supplySvc, Groups: groups}
+	supplyOverridePutHandler := &SupplyOverridePutHandler{Supply: supplySvc, Groups: groups}
 	onboardingCompleteHandler := &OnboardingCompleteHandler{Supply: supplySvc}
 
 	apiMux.HandleFunc("GET /api/inventory", HandleJSON(inventoryListHandler.Handle))
@@ -338,7 +339,6 @@ func newAPIMux(
 	apiMux.HandleFunc("PUT /api/products/{id}/supply-override", HandleJSON(supplyOverridePutHandler.Handle))
 	apiMux.HandleFunc("POST /api/onboarding/complete", HandleJSON(onboardingCompleteHandler.Handle))
 
-	groups := group.NewGroups(db)
 	groupHandler := &GroupHandler{Groups: groups, Supply: supplySvc}
 	apiMux.HandleFunc("GET /api/groups", HandleJSON(groupHandler.List))
 	apiMux.HandleFunc("POST /api/groups", HandleJSON(groupHandler.Create))

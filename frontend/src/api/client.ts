@@ -27,6 +27,7 @@ import type {
   ProductGroup,
   GroupSuggestion,
   GroupTarget,
+  GroupPreview,
   TargetConflictMember,
 } from '../types';
 
@@ -435,6 +436,35 @@ export function addGroupMembers(id: string, productIds: string[], fromGroupId = 
 
 export function removeGroupMember(id: string, productId: string): Promise<{ deleted: boolean; group?: ProductGroup }> {
   return apiFetch(`/api/groups/${id}/members/${productId}`, { method: 'DELETE' });
+}
+
+export function setGroupRule(id: string, rule: string, pinnedProductId = '', confirm = true): Promise<ProductGroup> {
+  return apiFetch(`/api/groups/${id}/rule`, {
+    method: 'PUT',
+    body: JSON.stringify({ rule, pinnedProductId, confirm }),
+  });
+}
+
+export function previewGroup(input: { groupId: string; rule: string; pinnedProductId?: string }): Promise<GroupPreview> {
+  return apiFetch('/api/groups/preview', {
+    method: 'POST',
+    body: JSON.stringify({
+      groupId: input.groupId,
+      rule: input.rule,
+      pinnedProductId: input.pinnedProductId ?? '',
+    }),
+  });
+}
+
+export function getDefaultGroupRule(): Promise<{ rule: string }> {
+  return apiFetch('/api/settings/group-rule');
+}
+
+export function setDefaultGroupRule(rule: string): Promise<{ rule: string }> {
+  return apiFetch('/api/settings/group-rule', {
+    method: 'PUT',
+    body: JSON.stringify({ rule }),
+  });
 }
 
 export function setGroupTarget(id: string, target: GroupTarget): Promise<ProductGroup> {

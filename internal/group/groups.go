@@ -419,6 +419,21 @@ func (g *Groups) SetTarget(ctx context.Context, id string, target *TargetInput) 
 	return g.load(ctx, g.db, id)
 }
 
+// MemberGroupID returns the group a product belongs to.
+// An empty id means the product is not in a group.
+func (g *Groups) MemberGroupID(ctx context.Context, productID string) (string, error) {
+	var id string
+	err := g.db.QueryRowContext(ctx, `
+		SELECT group_id FROM product_group_members WHERE product_id = ?`, productID).Scan(&id)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", nil
+	}
+	if err != nil {
+		return "", fmt.Errorf("could not check the group: %w", err)
+	}
+	return id, nil
+}
+
 // DefaultRule is the account rule. A missing setting means same as what ran out.
 func (g *Groups) DefaultRule(ctx context.Context) (Kind, error) {
 	return readDefault(ctx, g.db)

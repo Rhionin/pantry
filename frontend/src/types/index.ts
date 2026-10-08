@@ -144,12 +144,42 @@ export type ExpiryStatus = 'ok' | 'near_expiry' | 'expired';
 
 export type ItemInstanceWithStatus = ItemInstance & { expiryStatus: ExpiryStatus };
 
+export interface InventoryGroupMember {
+  productId: string;
+  name: string;
+  onHand: number;
+  itemId?: string;
+  barcodes?: string[];
+}
+
+export interface InventoryGroup {
+  id: string;
+  name: string;
+  rule: string;
+  ruleConfirmed: boolean;
+  pinnedProductId?: string;
+  onHand: number;
+  windowMonths?: number;
+  quantity?: number;
+  dimension?: NetDimension;
+  memberCount: number;
+  members: InventoryGroupMember[];
+}
+
 export interface InventoryItem {
   item: Item;
   instanceCount: number;
   nearExpiryCount: number;
   expiredCount: number;
   needsAttention: boolean;
+  group?: InventoryGroup;
+}
+
+export interface GroupPreview {
+  productId: string;
+  because: string;
+  buy: number;
+  explain: string;
 }
 
 export interface TargetQuantitySuggestion {

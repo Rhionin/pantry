@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Alert, NumberInput, Stack, Text, Title } from '@mantine/core';
-import { getSupplySettings, setSupplyMonths } from '../../api/client';
+import { Alert, NumberInput, Select, Stack, Text, Title } from '@mantine/core';
+import { getDefaultGroupRule, getSupplySettings, setDefaultGroupRule, setSupplyMonths } from '../../api/client';
+import { ruleLabels } from '../groups/copy';
 import { WipeInventoryDialog } from '../inventory/WipeInventoryDialog';
 
 export const SettingsPage = () => {
   const [months, setMonths] = useState<number | string>(3);
   const monthsRef = useRef(months);
+  const [rule, setRule] = useState('same_as_ran_out');
   const [phrase, setPhrase] = useState('WIPE INVENTORY');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -14,10 +16,14 @@ export const SettingsPage = () => {
     setLoading(true);
     setError('');
     try {
-      const settings = await getSupplySettings();
+      const [settings, defaultRule] = await Promise.all([
+        getSupplySettings(),
+        getDefaultGroupRule().catch(() => ({ rule: 'same_as_ran_out' })),
+      ]);
       monthsRef.current = settings.months;
       setMonths(settings.months);
       setPhrase(settings.wipePhrase);
+      setRule(defaultRule.rule);
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : 'Unable to load settings.');
     } finally {
@@ -60,6 +66,22 @@ export const SettingsPage = () => {
         }}
         onBlur={() => void commitMonths()}
         w={180}
+      />
+      <Select
+        label="Default group rule"
+        description="A new group starts here. It still asks you to pick a rule, including when this is Same as what ran out."
+        data={Object.entries(ruleLabels).map(([value, label]) => ({ value, label }))}
+        value={rule}
+        disabled={loading}
+        allowDeselect={false}
+        onChange={(value) => {
+          if (!value) return;
+          setRule(value);
+          void setDefaultGroupRule(value).catch((requestError: unknown) => {
+            setError(requestError instanceof Error ? requestError.message : 'Unable to save the default rule.');
+          });
+        }}
+        w={280}
       />
       {error !== '' && <Alert color="red" py="xs">{error}</Alert>}
       <Stack gap="xs" mt="xl">

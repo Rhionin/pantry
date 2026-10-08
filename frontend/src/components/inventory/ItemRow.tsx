@@ -1,5 +1,5 @@
-import { memo, type ReactNode } from 'react';
-import { Avatar, Badge, Button, Card, Divider, Group, Stack, Text, Title } from '@mantine/core';
+import { memo, useRef, type ReactNode } from 'react';
+import { Avatar, Badge, Button, Card, Checkbox, Divider, Group, Stack, Text, Title } from '@mantine/core';
 import type { InventoryItem } from '../../types';
 import { ProvenanceBadge } from '../product/ProvenanceBadge';
 import { visibleCategory } from './inventoryUtils';
@@ -9,6 +9,10 @@ export interface ItemRowProps {
   selected: boolean;
   controlsId: string;
   onSelect: () => void;
+  selecting?: boolean;
+  checked?: boolean;
+  onChecked?: (checked: boolean) => void;
+  onLongPress?: () => void;
   children?: ReactNode;
 }
 
@@ -17,15 +21,47 @@ export const ItemRow = memo(({
   selected,
   controlsId,
   onSelect,
+  selecting = false,
+  checked = false,
+  onChecked,
+  onLongPress,
   children,
 }: ItemRowProps) => {
   const { item, instanceCount, nearExpiryCount, expiredCount } = inventoryItem;
   const category = visibleCategory(item.product.category);
+  const hold = useRef<number | null>(null);
+
+  const startHold = () => {
+    if (!onLongPress) return;
+    hold.current = window.setTimeout(() => onLongPress(), 500);
+  };
+  const clearHold = () => {
+    if (hold.current !== null) {
+      window.clearTimeout(hold.current);
+      hold.current = null;
+    }
+  };
 
   return (
-    <Card component="article" withBorder padding="sm" style={selected ? { gridColumn: '1 / -1' } : undefined}>
+    <Card
+      component="article"
+      withBorder
+      padding="sm"
+      onPointerDown={startHold}
+      onPointerUp={clearHold}
+      onPointerLeave={clearHold}
+      onPointerCancel={clearHold}
+    >
       <Stack gap="xs">
         <Group gap="xs" wrap="nowrap" align="flex-start">
+          {selecting && (
+            <Checkbox
+              aria-label={`Select ${item.product.name}`}
+              checked={checked}
+              onChange={(event) => onChecked?.(event.currentTarget.checked)}
+              mt={4}
+            />
+          )}
           <Avatar src={item.product.imageUrl} name={item.product.name} radius="sm" size="lg" />
           <Stack gap={2} style={{ flex: 1, minWidth: 0 }}>
             <Title order={3} size="h5">{item.product.name}</Title>

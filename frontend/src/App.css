@@ -55,6 +55,15 @@
   flex: none;
 }
 
+.group-select-bar {
+  position: sticky;
+  bottom: 0;
+  z-index: 5;
+  background: var(--mantine-color-body);
+  border: 1px solid var(--mantine-color-default-border);
+  border-radius: var(--mantine-radius-sm);
+}
+
 a.group-row {
   color: inherit;
   text-decoration: none;
