@@ -42,6 +42,7 @@ const renderMenu = (
           <Route path="/shopping" element={<AppMenu onCredentialsChanged={onCredentialsChanged} />} />
           <Route path="/diagnostics" element={<h1>Diagnostics</h1>} />
           <Route path="/groups" element={<h1>Product groups</h1>} />
+          <Route path="/groups/suggestions" element={<h1>Group suggestions</h1>} />
         </Routes>
       </MemoryRouter>
     </MantineProvider>,
@@ -164,6 +165,59 @@ describe('AppMenu', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Menu' }));
     fireEvent.click(await screen.findByRole('menuitem', { name: 'Product groups' }));
     expect(await screen.findByRole('heading', { name: 'Product groups' })).toBeInTheDocument();
+  });
+
+  it('reviews pending group suggestions from the first menu item', async () => {
+    vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === '/api/providers') return Promise.resolve(jsonResponse([provider()]));
+      if (url === '/api/build') return Promise.resolve(jsonResponse({ commit: 'abc123def456' }));
+      if (url === '/api/group-suggestions') return Promise.resolve(jsonResponse([{ id: 'a' }, { id: 'b' }]));
+      return Promise.reject(new Error(`Unexpected request: ${url}`));
+    }));
+    render(
+      <MantineProvider>
+        <MemoryRouter initialEntries={['/shopping']}>
+          <AppMenu onCredentialsChanged={() => undefined} />
+          <Routes>
+            <Route path="/groups/suggestions" element={<h1>Group suggestions</h1>} />
+          </Routes>
+        </MemoryRouter>
+      </MantineProvider>,
+    );
+
+    expect(await screen.findByText('2')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Menu' }));
+    const review = await screen.findByRole('menuitem', { name: 'Review 2 group suggestions' });
+    const items = screen.getAllByRole('menuitem');
+    expect(items[0]).toBe(review);
+    expect(review).toHaveTextContent('2');
+    expect(screen.getAllByText('2')).toHaveLength(2);
+    expect(screen.getByRole('menuitem', { name: 'Product groups' })).toBeInTheDocument();
+
+    fireEvent.click(review);
+    expect(await screen.findByRole('heading', { name: 'Group suggestions' })).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.queryByRole('menuitem', { name: 'Product groups' })).not.toBeInTheDocument();
+    });
+    expect(screen.getByRole('button', { name: 'Menu' })).toBeInTheDocument();
+  });
+
+  it('uses a singular label for one group suggestion', async () => {
+    renderMenu([provider()], () => undefined, [{ id: 'only' }]);
+    fireEvent.click(screen.getByRole('button', { name: 'Menu' }));
+    const review = await screen.findByRole('menuitem', { name: 'Review 1 group suggestion' });
+    expect(review).toHaveTextContent('1');
+    expect(screen.getAllByText('1')).toHaveLength(2);
+    expect(screen.getAllByRole('menuitem')[0]).toBe(review);
+  });
+
+  it('hides the suggestion review when nothing is pending', async () => {
+    renderMenu([provider()]);
+    fireEvent.click(screen.getByRole('button', { name: 'Menu' }));
+    await screen.findByRole('menuitem', { name: 'Product groups' });
+    expect(screen.queryByRole('menuitem', { name: /group suggestion/i })).not.toBeInTheDocument();
+    expect(screen.queryByText('0')).not.toBeInTheDocument();
   });
 
   it('opens diagnostics from the menu', async () => {

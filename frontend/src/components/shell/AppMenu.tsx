@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Burger, Indicator, Menu } from '@mantine/core';
+import { Badge, Burger, Indicator, Menu } from '@mantine/core';
 import { useNavigate } from 'react-router-dom';
 import { disconnectProvider, listProviders, listSuggestions } from '../../api/client';
 import type { ProviderInfo } from '../../types';
@@ -17,6 +17,9 @@ const canDisconnect = (provider: ProviderInfo) =>
   canEditCredentials(provider)
   && provider.credentialsConfigured
   && provider.connectionState === 'connected';
+
+const suggestionReviewLabel = (count: number) =>
+  `Review ${count} group ${count === 1 ? 'suggestion' : 'suggestions'}`;
 
 export const AppMenu = ({ onCredentialsChanged }: AppMenuProps) => {
   const navigate = useNavigate();
@@ -81,16 +84,33 @@ export const AppMenu = ({ onCredentialsChanged }: AppMenuProps) => {
           }
         }}
         position="bottom-end"
-        width={280}
+        width={320}
         shadow="md"
         withinPortal
       >
         <Menu.Target>
-          <Indicator disabled={suggestionCount === 0} label={suggestionCount} size={16} color="red" offset={4}>
+          {/* A smaller offset hangs a two-digit count off the corner and clips it on a phone. */}
+          <Indicator disabled={suggestionCount === 0} label={suggestionCount} size={16} color="red" offset={12}>
             <Burger className="app-menu-button" opened={opened} size="sm" aria-label="Menu" />
           </Indicator>
         </Menu.Target>
         <Menu.Dropdown>
+          {suggestionCount > 0 && (
+            <Menu.Item
+              className="app-menu-suggestions"
+              rightSection={(
+                <Badge className="app-menu-suggestion-count" color="red" variant="filled" size="sm" aria-hidden>
+                  {suggestionCount}
+                </Badge>
+              )}
+              onClick={() => {
+                setOpened(false);
+                navigate('/groups/suggestions');
+              }}
+            >
+              {suggestionReviewLabel(suggestionCount)}
+            </Menu.Item>
+          )}
           {editable.map((provider) => (
             <Menu.Item
               key={provider.id}

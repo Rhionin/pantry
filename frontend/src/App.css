@@ -77,6 +77,34 @@ a.group-row {
   -webkit-tap-highlight-color: transparent;
 }
 
+.mantine-Menu-dropdown .app-menu-suggestions {
+  flex-wrap: nowrap;
+}
+
+.mantine-Menu-dropdown .app-menu-suggestions .mantine-Menu-itemLabel {
+  white-space: nowrap;
+  overflow: visible;
+  text-overflow: clip;
+}
+
+.mantine-Menu-dropdown .app-menu-suggestions .mantine-Menu-itemSection {
+  flex: none;
+}
+
+.app-menu-suggestion-count {
+  flex: none;
+  width: max-content;
+  min-width: var(--badge-height);
+  max-width: none;
+  overflow: visible;
+  text-overflow: clip;
+}
+
+.app-menu-suggestion-count .mantine-Badge-label {
+  overflow: visible;
+  text-overflow: clip;
+}
+
 .app-nav {
   --nav-muted: var(--mantine-color-gray-7);
   --nav-current: var(--mantine-color-black);
