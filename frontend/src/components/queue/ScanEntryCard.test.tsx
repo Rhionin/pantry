@@ -1207,10 +1207,13 @@ describe('ScanEntryCard stock-in confirmation', () => {
 
     renderStockIn();
     fireEvent.click(screen.getByRole('button', { name: 'Increase unit count' }));
+    expect(screen.getByLabelText('Unit count')).toHaveValue('2');
     fireEvent.click(screen.getByRole('button', { name: 'Increase unit count' }));
+    expect(screen.getByLabelText('Unit count')).toHaveValue('3');
+    expect(bodies).toEqual([]);
 
     await waitFor(() => {
-      expect(bodies).toEqual([{ unitCount: 2 }, { unitCount: 3 }]);
+      expect(bodies).toEqual([{ unitCount: 3 }]);
     });
 
     const input = screen.getByLabelText('Unit count');

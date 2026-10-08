@@ -83,8 +83,6 @@ export const ScanQueuePage = ({ userId = DEFAULT_USER_ID }: ScanQueuePageProps) 
   );
 
   const loadQueue = useCallback(async () => {
-    setLoading(true);
-    setError('');
     try {
       const [pending, flagged] = await Promise.all([
         listScanEntries(userId, 'pending'),
@@ -92,6 +90,7 @@ export const ScanQueuePage = ({ userId = DEFAULT_USER_ID }: ScanQueuePageProps) 
       ]);
       setEntries(sortScansNewestFirst([...pending, ...flagged]));
       setSelectedIds((current) => current.filter((id) => pending.some((entry) => entry.id === id)));
+      setError('');
       void getInventoryList().then(setInventory).catch(() => setInventory([]));
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : 'Unable to load scan queue.');
@@ -264,6 +263,9 @@ export const ScanQueuePage = ({ userId = DEFAULT_USER_ID }: ScanQueuePageProps) 
   };
 
   const modeLabel = scannerMode === 'stock_in' ? 'STOCK IN' : 'STOCK OUT';
+  // Later refreshes keep the rows on screen. A loader is only for the first
+  // paint, when there is nothing to shift under the user's finger.
+  const showInitialLoader = loading && entries.length === 0;
 
   return (
     <Stack gap={6} className="scan-page">
@@ -338,13 +340,13 @@ export const ScanQueuePage = ({ userId = DEFAULT_USER_ID }: ScanQueuePageProps) 
         )}
       </div>
       <Stack gap={8} className="scan-page-queue" aria-label="Scan queue entries">
-        {loading && <Loader size="sm" aria-label="Loading scan queue" />}
+        {showInitialLoader && <Loader size="sm" aria-label="Loading scan queue" />}
         {error !== '' && (
           <Alert color="red" py={4}>
             {error}
           </Alert>
         )}
-        {!loading && error === '' && viewEntries.length === 0 && processingForView.length === 0 && (
+        {!showInitialLoader && error === '' && viewEntries.length === 0 && processingForView.length === 0 && (
           <Text c="dimmed" size="sm">No pending scans.</Text>
         )}
         {processingForView.map((notice) => (

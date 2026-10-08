@@ -2032,4 +2032,128 @@ describe('ScanQueuePage', () => {
       expect(posts).not.toContain('STOCK_IN');
     });
   });
+
+  describe('quantity changes', () => {
+    const oats = scanEntry({
+      id: 'oats',
+      barcode: '111',
+      direction: 'stock_in',
+      unitCount: 1,
+      productId: 'oats',
+      product: { id: 'oats', name: 'Oats', category: 'Grocery', unitOfMeasure: 'bag' },
+    });
+    const milk = scanEntry({
+      id: 'milk',
+      barcode: '222',
+      direction: 'stock_out',
+      unitCount: 1,
+      productId: 'milk',
+      product: { id: 'milk', name: 'Milk', category: 'Dairy', unitOfMeasure: 'carton' },
+    });
+
+    it('shows the queue loader only before the first load returns', async () => {
+      let releasePending: (response: Response) => void = () => {};
+      const pending = new Promise<Response>((resolve) => {
+        releasePending = resolve;
+      });
+      vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url.includes('status=pending')) return pending;
+        if (url.includes('status=flagged')) return Promise.resolve(jsonResponse([]));
+        if (url === '/api/inventory' || url === '/api/products') return Promise.resolve(jsonResponse([]));
+        if (url.endsWith('/api/scanner/config')) {
+          return Promise.resolve(jsonResponse({ stockInBarcode: 'STOCK_IN', stockOutBarcode: 'STOCK_OUT', currentMode: 'stock_in' }));
+        }
+        throw new Error(`Unexpected request: ${url}`);
+      }));
+
+      render(<MantineProvider><ScanQueuePage /></MantineProvider>);
+
+      expect(screen.getByLabelText('Loading scan queue')).toBeInTheDocument();
+      await act(async () => {
+        releasePending(jsonResponse([]));
+      });
+      expect(await screen.findByText('No pending scans.')).toBeInTheDocument();
+      expect(screen.queryByLabelText('Loading scan queue')).not.toBeInTheDocument();
+    });
+
+    const renderQueue = (entry: ScanEntry, mode: 'stock_in' | 'stock_out') => {
+      let pendingLoads = 0;
+      let releaseRefresh: (response: Response) => void = () => {};
+      const refresh = new Promise<Response>((resolve) => {
+        releaseRefresh = resolve;
+      });
+      const patches: unknown[] = [];
+      const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (url === `/api/scans/${entry.id}` && init?.method === 'PATCH') {
+          const body = JSON.parse(String(init.body)) as { unitCount: number };
+          patches.push(body);
+          return Promise.resolve(jsonResponse({ ...entry, unitCount: body.unitCount }));
+        }
+        if (url.includes('status=pending')) {
+          pendingLoads += 1;
+          if (pendingLoads === 1) return Promise.resolve(jsonResponse([entry]));
+          return refresh;
+        }
+        if (url.includes('status=flagged')) return Promise.resolve(jsonResponse([]));
+        if (url === '/api/inventory' || url === '/api/products') return Promise.resolve(jsonResponse([]));
+        if (url.endsWith('/api/scanner/config')) {
+          return Promise.resolve(jsonResponse({ stockInBarcode: 'STOCK_IN', stockOutBarcode: 'STOCK_OUT', currentMode: mode }));
+        }
+        throw new Error(`Unexpected request: ${url}`);
+      });
+      vi.stubGlobal('fetch', fetchMock);
+      render(<MantineProvider><ScanQueuePage /></MantineProvider>);
+      return { patches, releaseRefresh, pendingLoads: () => pendingLoads };
+    };
+
+    it('updates a stock-in count on tap without showing the queue loader', async () => {
+      const { patches, releaseRefresh, pendingLoads } = renderQueue(oats, 'stock_in');
+      const card = await screen.findByRole('article', { name: 'Scan 111' });
+      expect(screen.queryByLabelText('Loading scan queue')).not.toBeInTheDocument();
+      expect(screen.getByRole('region', { name: /Scan session/ })).toBeInTheDocument();
+
+      fireEvent.click(within(card).getByRole('button', { name: 'Increase unit count' }));
+
+      expect(within(card).getByLabelText('Unit count')).toHaveValue('2');
+      expect(screen.queryByLabelText('Loading scan queue')).not.toBeInTheDocument();
+
+      await vi.waitFor(() => expect(patches).toEqual([{ unitCount: 2 }]));
+      await vi.waitFor(() => expect(pendingLoads()).toBeGreaterThan(1));
+      expect(within(card).getByLabelText('Unit count')).toHaveValue('2');
+      expect(screen.queryByLabelText('Loading scan queue')).not.toBeInTheDocument();
+      expect(screen.getByRole('article', { name: 'Scan 111' })).toBeInTheDocument();
+
+      await act(async () => {
+        releaseRefresh(jsonResponse([{ ...oats, unitCount: 2 }]));
+      });
+      expect(screen.queryByLabelText('Loading scan queue')).not.toBeInTheDocument();
+      expect(within(card).getByLabelText('Unit count')).toHaveValue('2');
+    });
+
+    it('updates a stock-out count without showing the queue loader', async () => {
+      const { patches, releaseRefresh, pendingLoads } = renderQueue(milk, 'stock_out');
+      const card = await screen.findByRole('article', { name: 'Scan 222' });
+      const input = within(card).getByLabelText('Unit count');
+      expect(screen.queryByLabelText('Loading scan queue')).not.toBeInTheDocument();
+
+      fireEvent.change(input, { target: { value: '4' } });
+      expect(input).toHaveValue('4');
+      expect(screen.queryByLabelText('Loading scan queue')).not.toBeInTheDocument();
+      fireEvent.blur(input);
+
+      await vi.waitFor(() => expect(patches).toEqual([{ unitCount: 4 }]));
+      await vi.waitFor(() => expect(pendingLoads()).toBeGreaterThan(1));
+      expect(input).toHaveValue('4');
+      expect(screen.queryByLabelText('Loading scan queue')).not.toBeInTheDocument();
+      expect(screen.getByRole('region', { name: /Scan session/ })).toBeInTheDocument();
+
+      await act(async () => {
+        releaseRefresh(jsonResponse([{ ...milk, unitCount: 4 }]));
+      });
+      expect(screen.queryByLabelText('Loading scan queue')).not.toBeInTheDocument();
+      expect(within(card).getByLabelText('Unit count')).toHaveValue('4');
+    });
+  });
 });
