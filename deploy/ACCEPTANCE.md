@@ -218,12 +218,14 @@ systemctl is-enabled pantry-update.timer || echo "disabled (expected after plain
 
 sudo ./setup.sh freeze
 systemctl is-enabled pantry-update.timer   # masked
+systemctl is-enabled pantry-update.path    # masked, once the path unit is installed
 
 sudo ./setup.sh thaw
 systemctl is-enabled pantry-update.timer   # unmasked/enabled
+systemctl is-enabled pantry-update.path    # unmasked/enabled
 ```
 
-**Expected:** A plain `install` leaves `pantry-update.timer` disabled. `freeze` masks it; `thaw` restores it.
+**Expected:** A plain `install` leaves `pantry-update.timer` disabled. `freeze` masks the timer and the deploy-hook path unit; `thaw` restores them.
 
 ---
 

@@ -12,15 +12,16 @@ set -euo pipefail
 # Usage:
 #   sudo ./setup.sh                  # Sync files, containers, Caddy, and firewall
 #   sudo ./setup.sh apply            # Same command, explicit name
-#   sudo ./setup.sh --with-updates   # ...and enable the auto-update timer
+#   sudo ./setup.sh --with-updates   # ...and enable the auto-update timer and deploy hook
 #   sudo ./setup.sh publish --tunnel # Publish https://PUBLIC_HOST through Cloudflare Tunnel
 #   sudo ./setup.sh unpublish        # Stop the public proxy; LAN pantry keeps running
 #   sudo ./setup.sh firewall-off     # Remove the LAN port rule until the next setup
 #   sudo ./setup.sh rule             # Regenerate udev rule for a new scanner
 #   sudo ./setup.sh status           # Diagnose the full chain from udev to health
 #   sudo ./setup.sh logs             # Follow container logs
-#   sudo ./setup.sh freeze           # Mask pantry-update.timer during iteration
-#   sudo ./setup.sh thaw             # Unmask pantry-update.timer when done
+#   sudo ./setup.sh freeze           # Mask timer and deploy hook during iteration
+#   sudo ./setup.sh thaw             # Unmask timer and deploy hook when done
+#   sudo ./setup.sh deploy-secret    # Print DEPLOY_HOOK_SECRET
 #   sudo ./setup.sh help             # Show this message
 #
 # install, publish, and firewall are aliases of apply so older scripts keep working.
@@ -448,16 +449,90 @@ apply_split_dns() {
   fi
 }
 
-# refresh_update_unit copies the update unit when it is already installed so
-# a timer pull keeps using the script that includes the public profile.
+# refresh_update_unit copies the update units when they are already installed
+# so a timer pull keeps the public profile, the 1-minute interval, and the
+# deploy-hook path unit. The timer is restarted only when its file changed:
+# OnBootSec is already in the past on a running Pi, so a restart elapses once.
 refresh_update_unit() {
   local unit_dir
   unit_dir=$(systemd_unit_dir)
-  if [[ -f "$unit_dir/pantry-update.service" && -f "$PANTRY_DIR/systemd/pantry-update.service" ]]; then
-    cp "$PANTRY_DIR/systemd/pantry-update.service" "$unit_dir/pantry-update.service"
-    systemctl daemon-reload
-    log_success "Refreshed pantry-update.service so automatic updates keep the public proxy"
+  if [[ ! -f "$unit_dir/pantry-update.service" && ! -f "$unit_dir/pantry-update.timer" ]]; then
+    return 0
   fi
+  if [[ ! -f "$PANTRY_DIR/systemd/pantry-update.service" || ! -f "$PANTRY_DIR/systemd/pantry-update.timer" || ! -f "$PANTRY_DIR/systemd/pantry-update.path" ]]; then
+    log_warn "systemd unit files not found under $PANTRY_DIR/systemd; leaving automatic updates as they are"
+    return 0
+  fi
+  local timer_changed=false
+  if [[ -f "$unit_dir/pantry-update.timer" ]] && ! cmp -s "$PANTRY_DIR/systemd/pantry-update.timer" "$unit_dir/pantry-update.timer"; then
+    timer_changed=true
+  fi
+  cp "$PANTRY_DIR/systemd/pantry-update.service" "$unit_dir/pantry-update.service"
+  cp "$PANTRY_DIR/systemd/pantry-update.timer" "$unit_dir/pantry-update.timer"
+  cp "$PANTRY_DIR/systemd/pantry-update.path" "$unit_dir/pantry-update.path"
+  systemctl daemon-reload
+  if systemctl is-enabled pantry-update.timer &>/dev/null; then
+    systemctl enable --now pantry-update.path
+    if [[ "$timer_changed" == true ]]; then
+      systemctl restart pantry-update.timer
+      log_info "Update timer now checks every minute. One check may run immediately."
+    fi
+  fi
+  log_success "Refreshed pantry-update units so automatic updates keep the public proxy and the deploy hook"
+}
+
+# prepare_deploy_trigger_dir is the host directory mounted into the container.
+# uid 65532 is the distroless nonroot user. If the directory is missing, Docker
+# creates it as root and the hook cannot write the trigger file.
+prepare_deploy_trigger_dir() {
+  local dir="${PANTRY_DIR}/deploy-trigger"
+  mkdir -p "$dir"
+  chmod 755 "$dir"
+  if ! chown 65532:65532 "$dir"; then
+    if [[ "${PANTRY_SETUP_SKIP_ROOT:-}" == 1 ]]; then
+      log_warn "Could not give ${dir} to uid 65532"
+      return 0
+    fi
+    fatal "Could not prepare ${dir} for the deploy hook"
+  fi
+}
+
+# ensure_deploy_hook_secret fills DEPLOY_HOOK_SECRET once. A value already
+# in .env is kept, including across later setup runs.
+ensure_deploy_hook_secret() {
+  local current secret tmp
+  current=$(env_value DEPLOY_HOOK_SECRET)
+  if [[ -n "$current" ]]; then
+    log_success "DEPLOY_HOOK_SECRET already set"
+    return 0
+  fi
+  if ! command_exists openssl; then
+    fatal "openssl is required to generate DEPLOY_HOOK_SECRET"
+  fi
+  secret=$(openssl rand -hex 32)
+  if [[ ! "$secret" =~ ^[0-9a-f]{64}$ ]]; then
+    fatal "Could not generate DEPLOY_HOOK_SECRET"
+  fi
+  tmp=$(mktemp)
+  if [[ -f ${PANTRY_DIR}/.env ]] && grep -q '^DEPLOY_HOOK_SECRET=' "${PANTRY_DIR}/.env"; then
+    awk -v secret="$secret" '
+      BEGIN { done = 0 }
+      /^DEPLOY_HOOK_SECRET=/ && done == 0 {
+        print "DEPLOY_HOOK_SECRET=" secret
+        done = 1
+        next
+      }
+      { print }
+      END { if (done == 0) print "DEPLOY_HOOK_SECRET=" secret }
+    ' "${PANTRY_DIR}/.env" > "$tmp"
+  else
+    if [[ -f ${PANTRY_DIR}/.env ]]; then
+      cat "${PANTRY_DIR}/.env" > "$tmp"
+    fi
+    printf 'DEPLOY_HOOK_SECRET=%s\n' "$secret" >> "$tmp"
+  fi
+  mv "$tmp" "${PANTRY_DIR}/.env"
+  log_success "Generated DEPLOY_HOOK_SECRET (print it with: sudo ./setup.sh deploy-secret)"
 }
 
 # ============================================================================
@@ -521,9 +596,11 @@ cmd_apply() {
 
   copy_deploy_files
   cmd_reconcile_env
+  ensure_deploy_hook_secret
   if [[ -f "$PANTRY_DIR/.env" ]]; then
     chmod 600 "$PANTRY_DIR/.env"
   fi
+  prepare_deploy_trigger_dir
 
   if [[ ! -d /dev/input ]]; then
     log_warn "/dev/input does not exist, creating it (scanner nodes will not appear inside container otherwise)"
@@ -654,13 +731,15 @@ cmd_apply() {
     log_info "Installing automatic-update systemd units (--with-updates)..."
     local unit_dir
     unit_dir=$(systemd_unit_dir)
-    if [[ -f "$PANTRY_DIR/systemd/pantry-update.service" && -f "$PANTRY_DIR/systemd/pantry-update.timer" ]]; then
+    if [[ -f "$PANTRY_DIR/systemd/pantry-update.service" && -f "$PANTRY_DIR/systemd/pantry-update.timer" && -f "$PANTRY_DIR/systemd/pantry-update.path" ]]; then
       mkdir -p "$unit_dir"
       cp "$PANTRY_DIR/systemd/pantry-update.service" "$unit_dir/"
       cp "$PANTRY_DIR/systemd/pantry-update.timer" "$unit_dir/"
+      cp "$PANTRY_DIR/systemd/pantry-update.path" "$unit_dir/"
       systemctl daemon-reload
       systemctl enable --now pantry-update.timer
-      log_success "pantry-update.timer enabled (updates will run automatically)"
+      systemctl enable --now pantry-update.path
+      log_success "pantry-update.timer and pantry-update.path enabled (updates will run automatically)"
     else
       log_warn "systemd unit files not found under $PANTRY_DIR/systemd; skipping update timer"
     fi
@@ -1054,16 +1133,33 @@ cmd_logs() {
 # ============================================================================
 # freeze: Mask the update timer
 # ============================================================================
+# freeze_unit masks and stops one update unit. A running path unit would
+# still deploy when a hook arrives, so freeze has to stop it, not only mask it.
+freeze_unit() {
+  local unit="$1"
+  if [[ ! -f "/etc/systemd/system/${unit}" ]]; then
+    return 1
+  fi
+  if systemctl is-enabled "$unit" &>/dev/null; then
+    systemctl mask "$unit"
+    systemctl stop "$unit" || true
+    log_success "Masked ${unit} (updates frozen during iteration)"
+  else
+    log_success "${unit} already masked or disabled"
+  fi
+  return 0
+}
+
 cmd_freeze() {
   require_root
-  if [[ -f /etc/systemd/system/pantry-update.timer ]]; then
-    if systemctl is-enabled pantry-update.timer &>/dev/null; then
-      systemctl mask pantry-update.timer
-      log_success "Masked pantry-update.timer (updates frozen during iteration)"
-    else
-      log_success "pantry-update.timer already masked or disabled"
-    fi
-  else
+  local found=false
+  if freeze_unit pantry-update.timer; then
+    found=true
+  fi
+  if freeze_unit pantry-update.path; then
+    found=true
+  fi
+  if [[ "$found" == false ]]; then
     log_warn "pantry-update.timer not installed"
   fi
 }
@@ -1071,18 +1167,53 @@ cmd_freeze() {
 # ============================================================================
 # thaw: Unmask the update timer
 # ============================================================================
+# thaw_unit undoes freeze. Only a masked unit is started again, so a timer
+# that was never enabled stays off.
+thaw_unit() {
+  local unit="$1" state
+  if [[ ! -f "/etc/systemd/system/${unit}" ]]; then
+    return 1
+  fi
+  state=$(systemctl is-enabled "$unit" 2>/dev/null || true)
+  if [[ "$state" == enabled ]]; then
+    log_success "${unit} already enabled"
+  elif [[ "$state" == masked ]]; then
+    systemctl unmask "$unit"
+    systemctl start "$unit"
+    log_success "Unmasked ${unit} (updates will resume)"
+  else
+    log_success "${unit} is not enabled"
+  fi
+  return 0
+}
+
 cmd_thaw() {
   require_root
-  if [[ -f /etc/systemd/system/pantry-update.timer ]]; then
-    if systemctl is-enabled pantry-update.timer &>/dev/null; then
-      log_success "pantry-update.timer already enabled"
-    else
-      systemctl unmask pantry-update.timer
-      log_success "Unmasked pantry-update.timer (updates will resume)"
-    fi
-  else
+  local found=false
+  if thaw_unit pantry-update.timer; then
+    found=true
+  fi
+  if thaw_unit pantry-update.path; then
+    found=true
+  fi
+  if [[ "$found" == false ]]; then
     log_warn "pantry-update.timer not installed"
   fi
+}
+
+# cmd_deploy_secret prints the hook secret and nothing else, so it can be
+# copied into the DEPLOY_HOOK_SECRET GitHub Actions secret.
+cmd_deploy_secret() {
+  require_root
+  if [[ ! -f ${PANTRY_DIR}/.env ]]; then
+    fatal "No ${PANTRY_DIR}/.env. Run sudo ./setup.sh first."
+  fi
+  local secret
+  secret=$(env_value DEPLOY_HOOK_SECRET)
+  if [[ -z "$secret" ]]; then
+    fatal "DEPLOY_HOOK_SECRET is empty. Run sudo ./setup.sh to generate it."
+  fi
+  printf '%s\n' "$secret"
 }
 
 # ============================================================================
@@ -1109,9 +1240,9 @@ Cloudflare Tunnel instead of ports 80 and 443.
 COMMANDS:
   apply            Same as running setup.sh with no command.
                    Pass --with-updates to enable the automatic-update timer
-                   (left unchanged otherwise). The timer fires every 5 minutes,
-                   pulls 'latest', and recreates the container, so leave it off
-                   while iterating.
+                   and the deploy-hook path unit (left unchanged otherwise).
+                   The timer fires every minute, and a signed hook starts the
+                   same update immediately. Leave both off while iterating.
   install          Alias of apply.
   publish          Alias of apply. Does not rewrite /opt/pantry/auth.caddy when
                    that file already exists, and does not prompt for a password.
@@ -1124,8 +1255,9 @@ COMMANDS:
   rule             Regenerate and install udev rule for current scanner
   status           Diagnose the deployment chain and report issues
   logs             Follow container logs (Ctrl+C to stop)
-  freeze           Mask pantry-update.timer to prevent automatic updates during iteration
-  thaw             Unmask pantry-update.timer to resume automatic updates
+  freeze           Mask the update timer and the deploy hook during iteration
+  thaw             Unmask them to resume automatic updates
+  deploy-secret    Print DEPLOY_HOOK_SECRET for the GitHub Actions secret
   help             Show this message
 
 EXAMPLES:
@@ -1187,6 +1319,7 @@ main() {
     logs)     cmd_logs ;;
     freeze)   cmd_freeze ;;
     thaw)     cmd_thaw ;;
+    deploy-secret) cmd_deploy_secret ;;
     *)        fatal "Unknown command: $cmd (try 'help')" ;;
   esac
 }

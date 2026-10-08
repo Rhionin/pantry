@@ -120,6 +120,7 @@ func TestPublicProxyIsOptIn(t *testing.T) {
 	wantPublic := []string{
 		"path /api/telemetry /api/telemetry/client",
 		"path /brand/logo.png /terms /privacy",
+		"path /api/deploy-hook",
 	}
 	if strings.Join(publicMatchers, "\n") != strings.Join(wantPublic, "\n") {
 		t.Fatalf("public path matchers = %#v, want %#v", publicMatchers, wantPublic)

@@ -11,6 +11,7 @@ import (
 	"github.com/Rhionin/pantry/internal/cart"
 	"github.com/Rhionin/pantry/internal/cart/appcred"
 	"github.com/Rhionin/pantry/internal/cart/connection"
+	"github.com/Rhionin/pantry/internal/deployhook"
 	"github.com/Rhionin/pantry/internal/events"
 	"github.com/Rhionin/pantry/internal/group"
 	"github.com/Rhionin/pantry/internal/inventory"
@@ -35,15 +36,17 @@ const (
 
 // config holds the optional configuration for NewHandler.
 type config struct {
-	broadcaster   *events.Broadcaster
-	statusFn      func() scanlistener.Status
-	scannerConfig ScannerConfig
-	registry      *cart.Registry
-	ledger        *cart.Ledger
-	providerEnv   ProviderEnv
-	retailer      shopping.RetailerDealConfig
-	contributor   product.UpstreamContributor
-	scannerMode   *scannerMode
+	broadcaster      *events.Broadcaster
+	statusFn         func() scanlistener.Status
+	scannerConfig    ScannerConfig
+	registry         *cart.Registry
+	ledger           *cart.Ledger
+	providerEnv      ProviderEnv
+	retailer         shopping.RetailerDealConfig
+	contributor      product.UpstreamContributor
+	scannerMode      *scannerMode
+	deployHookSecret string
+	deployHookPath   string
 }
 
 // Option is a functional option for NewHandler.
@@ -111,6 +114,16 @@ func WithContributor(contributor product.UpstreamContributor) Option {
 func WithScannerMode(mode *scannerMode) Option {
 	return func(c *config) {
 		c.scannerMode = mode
+	}
+}
+
+// WithDeployHook enables POST /api/deploy-hook. An empty secret leaves the
+// route in place and rejecting requests, so a missing key cannot be used as
+// an unsigned deploy. path is the trigger file; empty uses the container default.
+func WithDeployHook(secret, path string) Option {
+	return func(c *config) {
+		c.deployHookSecret = secret
+		c.deployHookPath = path
 	}
 }
 
@@ -214,6 +227,15 @@ func newAPIMux(
 	telemetryHandler := &TelemetryHandler{Registry: reg}
 	apiMux.HandleFunc("GET /api/telemetry", telemetryHandler.Get)
 	apiMux.HandleFunc("POST /api/telemetry/client", telemetryHandler.PostClient)
+
+	// The household password is enforced by Caddy, which exempts this path.
+	// The signature check is what keeps an unsigned request from deploying.
+	var deploySecret, deployPath string
+	if cfg != nil {
+		deploySecret = cfg.deployHookSecret
+		deployPath = cfg.deployHookPath
+	}
+	apiMux.HandleFunc("POST /api/deploy-hook", deployhook.New(deploySecret, deployPath).ServeHTTP)
 
 	// Scanner mode + config handlers. The mode handler publishes through the
 	// same broadcaster GET /api/events uses, so a browser-initiated mode switch

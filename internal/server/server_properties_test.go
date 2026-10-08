@@ -106,6 +106,8 @@ func isRegisteredGetPath(path string) bool {
 	case "/api/products", "/api/products/lookup", "/api/scans", "/api/scans/history",
 		"/api/inventory", "/api/shopping-list", "/api/events", "/api/build",
 		"/api/scanner/config", "/api/telemetry",
+		// POST-only. GET is 405 from the method pattern, not an unmatched path.
+		"/api/deploy-hook",
 		"/api/contributions", "/api/settings/contribution", "/api/settings/supply",
 		"/api/groups", "/api/group-suggestions", "/api/settings/group-rule":
 		return true
