@@ -47,6 +47,8 @@ fi
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck disable=SC1091
 source "$SCRIPT_DIR/mdns/lan-ipv4.sh"
+# shellcheck disable=SC1091
+source "$SCRIPT_DIR/auth-migrate.sh"
 
 # Deploy root. Tests point this at a temp directory; the Pi uses /opt/pantry.
 PANTRY_DIR="${PANTRY_DIR:-/opt/pantry}"
@@ -149,7 +151,7 @@ copy_deploy_files() {
   log_info "Copying deployment files to ${PANTRY_DIR}..."
   mkdir -p "${PANTRY_DIR}"
   local item src dest
-  for item in docker-compose.yml docker-compose.tunnel.yml .env.example Caddyfile Caddyfile.tunnel publish-mode.sh udev systemd firewall mdns dns; do
+  for item in docker-compose.yml docker-compose.tunnel.yml .env.example Caddyfile Caddyfile.tunnel publish-mode.sh auth-migrate.sh udev systemd firewall mdns dns; do
     src="$SCRIPT_DIR/$item"
     dest="${PANTRY_DIR}/$item"
     if [[ ! -e "$src" ]]; then
@@ -633,6 +635,20 @@ cmd_apply() {
     use_public=true
   fi
 
+  # The hash Caddy already checked becomes the login password. An existing
+  # auth.caddy is copied, not regenerated, and a saved session secret stays.
+  if ! sync_household_credential; then
+    fatal "Could not copy the household password hash. The running site was left unchanged."
+  fi
+  if [[ -f "${PANTRY_DIR}/auth.caddy" ]]; then
+    if ! ensure_session_secret; then
+      fatal "Could not save the session secret. The running site was left unchanged."
+    fi
+    if [[ ! -s "${PANTRY_DIR}/auth/household" ]]; then
+      fatal "The public site needs the password hash in ${PANTRY_DIR}/auth/household. The running site was left unchanged."
+    fi
+  fi
+
   local -a compose
   local proxy_service=caddy
   compose=(docker compose --project-directory "$PANTRY_DIR" -f "$PANTRY_DIR/docker-compose.yml")
@@ -653,6 +669,15 @@ cmd_apply() {
   fi
   if [[ "$use_public" == true && "$publish_mode" == tunnel ]]; then
     drop_stale_cloudflared
+  fi
+  # Pull before recreating so the image that checks the password is what
+  # starts when Caddy stops showing its own prompt. A failed pull leaves
+  # the running containers alone.
+  if [[ "$use_public" == true ]]; then
+    log_info "Pulling the Pantry image before reloading the public site"
+    if ! "${compose[@]}" pull pantry; then
+      fatal "Could not pull the Pantry image. The running site was left unchanged."
+    fi
   fi
   if ! "${compose[@]}" up -d; then
     fatal "Failed to start Pantry"

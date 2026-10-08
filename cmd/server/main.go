@@ -252,6 +252,16 @@ func main() {
 	if listenerOK {
 		opts = append(opts, server.WithScannerStatus(listener.Status))
 	}
+	if authFile := strings.TrimSpace(os.Getenv("PANTRY_AUTH_FILE")); authFile != "" {
+		household, err := server.LoadHouseholdAuth(authFile, os.Getenv("PANTRY_SESSION_SECRET"))
+		if err != nil {
+			log.Printf("household login: %s", err.Error())
+		}
+		if household != nil && household.Configured {
+			log.Printf("household login: the public site signs in as %s", household.Username)
+		}
+		opts = append(opts, server.WithHouseholdAuth(household))
+	}
 	handler, scanQueue := server.NewHandler(catalog, lookupService, refresher, sqlDB, opts...)
 
 	if listenerOK {
@@ -281,8 +291,8 @@ func main() {
 }
 
 // unauthenticatedListenWarning reports when addr is reachable beyond this
-// process's loopback interface. The application has no login of its own;
-// the LAN listener is intentional, and a router forward of this port is not.
+// process's loopback interface. The LAN listener has no login of its own;
+// that is intentional, and a router forward of this port is not.
 func unauthenticatedListenWarning(addr string) string {
 	host, _, err := net.SplitHostPort(addr)
 	if err != nil {

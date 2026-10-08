@@ -32,6 +32,13 @@ import type {
 
 const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? '';
 
+let onUnauthorized: (() => void) | null = null;
+
+// The login gate registers this so an expired session returns to the login page.
+export function setUnauthorizedHandler(handler: (() => void) | null) {
+  onUnauthorized = handler;
+}
+
 // Thrown for any non-2xx response. message is read from the backend's
 // {"error": "..."} body shape (see internal/server/handler_wrapper.go writeError).
 export class ApiError extends Error {
@@ -58,13 +65,16 @@ async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
   const route = path.split('?')[0] ?? path;
   let res: Response;
   try {
-    res = await fetch(`${BASE_URL}${path}`, { ...options, headers });
+    res = await fetch(`${BASE_URL}${path}`, { ...options, headers, credentials: 'same-origin' });
   } catch (err) {
     reportApiResult(route, 0, performance.now() - started, started);
     throw err;
   }
 
   if (!res.ok) {
+    if (res.status === 401) {
+      onUnauthorized?.();
+    }
     let message = res.statusText;
     try {
       const body = (await res.json()) as { error?: string; code?: string; members?: TargetConflictMember[] };
@@ -498,4 +508,58 @@ export function skipSuggestion(id: string): Promise<void> {
 
 export function getBuildInfo(): Promise<BuildInfo> {
   return apiFetch('/api/build');
+}
+
+export interface HouseholdSession {
+  required: boolean;
+  username: string;
+  error: string;
+}
+
+// getSession uses fetch directly so a 401 can mean "show the login page"
+// without also tripping the signed-in handler.
+export async function getSession(): Promise<HouseholdSession> {
+  const res = await fetch(`${BASE_URL}/api/session`, { credentials: 'same-origin' });
+  if (res.status === 401) {
+    return { required: true, username: '', error: '' };
+  }
+  let body: { required?: boolean; username?: string; error?: string };
+  try {
+    body = (await res.json()) as { required?: boolean; username?: string; error?: string };
+  } catch {
+    body = {};
+  }
+  if (!res.ok) {
+    return { required: true, username: '', error: body.error || 'Sign-in is unavailable right now.' };
+  }
+  if (!body.required) {
+    return { required: false, username: '', error: '' };
+  }
+  return { required: true, username: body.username ?? '', error: '' };
+}
+
+export async function login(username: string, password: string): Promise<void> {
+  const res = await fetch(`${BASE_URL}/api/login`, {
+    method: 'POST',
+    credentials: 'same-origin',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username, password }),
+  });
+  if (!res.ok) {
+    let message = 'The username or password is incorrect.';
+    try {
+      const body = (await res.json()) as { error?: string };
+      if (body.error) message = body.error;
+    } catch {
+      // The status is enough when the body is empty.
+    }
+    throw new ApiError(res.status, message);
+  }
+}
+
+export async function logout(): Promise<void> {
+  const res = await fetch(`${BASE_URL}/api/logout`, { method: 'POST', credentials: 'same-origin' });
+  if (!res.ok) {
+    throw new ApiError(res.status, 'Could not sign out.');
+  }
 }

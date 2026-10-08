@@ -16,6 +16,7 @@ bash -n "$ROOT/deploy/dns/pantry-split-dns.sh"
 bash -n "$ROOT/deploy/publish-mode.sh"
 bash -n "$ROOT/deploy/check-publish-modes.sh"
 bash -n "$ROOT/deploy/check-deploy-hook.sh"
+bash -n "$ROOT/deploy/auth-migrate.sh"
 
 fail() {
   echo "FAIL: $*" >&2
@@ -189,6 +190,10 @@ printed=$(PANTRY_DIR="$lan" PANTRY_SETUP_SKIP_ROOT=1 bash "$SETUP" deploy-secret
 [[ "$printed" == "$secret1" ]] || fail "deploy-secret printed [$printed], want [$secret1]"
 lack "$LAST_DOCKER" "docker-compose.tunnel.yml" "LAN must not select the tunnel file"
 lack "$LAST_DOCKER" "hash-password" "LAN must not hash a password"
+lack "$LAST_DOCKER" "pull pantry" "LAN must not pull before the public site exists"
+[[ -d "$lan/auth" ]] || fail "LAN setup did not create the auth directory"
+[[ ! -e "$lan/auth/household" ]] || fail "LAN setup invented a password hash"
+grep -q '^PANTRY_SESSION_SECRET=$' "$lan/.env" || fail "LAN setup filled a session secret"
 lack "$LAST_DOCKER" "restart pantry-caddy" "LAN must not restart Caddy"
 have "$LAST_IPTABLES" "--dport 9090" "firewall uses HOST_PORT"
 have "$LAST_OUT" "Pantry setup complete" "LAN success"
@@ -220,6 +225,10 @@ have "$LAST_DOCKER" "restart pantry-caddy" "Caddyfile restart"
 lack "$LAST_DOCKER" "hash-password" "must not hash when auth.caddy exists"
 lack "$LAST_DOCKER" "stop caddy" "must not disable public HTTPS"
 have "$LAST_OUT" "Keeping existing" "kept auth.caddy"
+cmp "$pub/auth.caddy" "$pub/auth/household" || fail "household hash was not copied from auth.caddy"
+pub_secret=$(grep '^PANTRY_SESSION_SECRET=' "$pub/.env" | cut -d= -f2-)
+[[ ${#pub_secret} -eq 64 ]] || fail "session secret was not saved (len ${#pub_secret})"
+have "$LAST_DOCKER" "pull pantry" "public setup pulls the image before dropping basic auth"
 have "$LAST_IPTABLES" "--dport 8080" "public setup still firewalls the LAN port"
 have "$LAST_OUT" "Home Wi-Fi cannot open https://pantry.example.com" "hairpin warning names the public host"
 have "$LAST_OUT" "shared password" "public summary still mentions the password"
@@ -229,6 +238,9 @@ lack "$LAST_DOCKER" "stop caddy" "hairpin warning must not stop the public proxy
 run_setup "$pub"
 [[ "$LAST_RC" -eq 0 ]] || fail "second setup exited $LAST_RC: $LAST_OUT"
 cmp "$pub/auth.caddy" "$pub/auth.caddy.before" || fail "second run regenerated auth.caddy"
+cmp "$pub/auth.caddy" "$pub/auth/household" || fail "second run changed the household hash"
+pub_secret_again=$(grep '^PANTRY_SESSION_SECRET=' "$pub/.env" | cut -d= -f2-)
+[[ "$pub_secret_again" == "$pub_secret" ]] || fail "second run rotated the session secret"
 lack "$LAST_DOCKER" "hash-password" "second run hashed a password"
 
 # A different password in .env does not replace an existing hash.
@@ -258,6 +270,8 @@ run_setup "$first"
 grep -q 'basic_auth bcrypt Pantry' "$first/auth.caddy" || fail "auth.caddy missing basic_auth block"
 grep -q 'abcdefghijklmnopqrstuu' "$first/auth.caddy" || fail "auth.caddy missing the hashed password"
 grep -q '^BASIC_AUTH_PASSWORD=correct-horse-battery$' "$first/.env" || fail "password was not kept in .env"
+cmp "$first/auth.caddy" "$first/auth/household" || fail "first public setup did not copy the new hash"
+[[ $(grep '^PANTRY_SESSION_SECRET=' "$first/.env" | cut -d= -f2- | wc -c) -eq 65 ]] || fail "first public setup did not save a session secret"
 have "$LAST_DOCKER" "hash-password" "first public setup should hash"
 have "$LAST_DOCKER" "--profile public" "first public profile"
 

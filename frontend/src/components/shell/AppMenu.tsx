@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Badge, Burger, Indicator, Menu } from '@mantine/core';
 import { useNavigate } from 'react-router-dom';
 import { disconnectProvider, listProviders, listSuggestions } from '../../api/client';
+import { useHouseholdSession } from '../auth/householdSession';
 import type { ProviderInfo } from '../../types';
 import { BuildStamp } from '../build/BuildStamp';
 import { CredentialsDialog } from '../shopping/CredentialsDialog';
@@ -23,6 +24,7 @@ const suggestionReviewLabel = (count: number) =>
 
 export const AppMenu = ({ onCredentialsChanged }: AppMenuProps) => {
   const navigate = useNavigate();
+  const session = useHouseholdSession();
   const [opened, setOpened] = useState(false);
   const [providers, setProviders] = useState<ProviderInfo[]>([]);
   const [loaded, setLoaded] = useState(false);
@@ -138,6 +140,16 @@ export const AppMenu = ({ onCredentialsChanged }: AppMenuProps) => {
               <BuildStamp />
             </div>
           </div>
+          {session.required && (
+            <Menu.Item
+              onClick={() => {
+                setOpened(false);
+                session.logout();
+              }}
+            >
+              Log out
+            </Menu.Item>
+          )}
         </Menu.Dropdown>
       </Menu>
       <CredentialsDialog

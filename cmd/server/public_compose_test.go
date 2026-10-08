@@ -76,8 +76,17 @@ func TestPublicProxyIsOptIn(t *testing.T) {
 	if caddy.Environment["PUBLIC_HOST"] == "" || caddy.Environment["ACME_EMAIL"] == "" {
 		t.Fatal("caddy must receive PUBLIC_HOST and ACME_EMAIL from the deployment .env")
 	}
-	if !hasExactPort(caddy.Volumes, "./auth.caddy:/etc/caddy/auth.caddy:ro") {
-		t.Fatalf("caddy must mount the generated password hash, got %v", caddy.Volumes)
+	if hasExactPort(caddy.Volumes, "./auth.caddy:/etc/caddy/auth.caddy:ro") {
+		t.Fatal("caddy must not mount auth.caddy; the login page reads the hash inside pantry")
+	}
+	if pantry.Environment["PANTRY_AUTH_FILE"] != "/etc/pantry/auth/household" {
+		t.Fatalf("PANTRY_AUTH_FILE = %q", pantry.Environment["PANTRY_AUTH_FILE"])
+	}
+	if !strings.Contains(pantry.Environment["PANTRY_SESSION_SECRET"], "PANTRY_SESSION_SECRET") {
+		t.Fatalf("pantry must receive PANTRY_SESSION_SECRET from .env, got %q", pantry.Environment["PANTRY_SESSION_SECRET"])
+	}
+	if !hasExactPort(pantry.Volumes, "./auth:/etc/pantry/auth:ro") {
+		t.Fatalf("pantry must mount the household password directory, got %v", pantry.Volumes)
 	}
 	if !hasExactPort(caddy.SecurityOpt, "no-new-privileges:true") {
 		t.Fatalf("caddy security_opt = %v", caddy.SecurityOpt)
@@ -91,7 +100,8 @@ func TestPublicProxyIsOptIn(t *testing.T) {
 	for _, want := range []string{
 		"{$PUBLIC_HOST}",
 		"{$ACME_EMAIL}",
-		"import auth.caddy",
+		"X-Pantry-Entry public",
+		"X-Pantry-Client-IP {client_ip}",
 		"path /api/telemetry /api/telemetry/client",
 		"path /brand/logo.png /terms /privacy",
 		"path /api/events",
@@ -109,13 +119,17 @@ func TestPublicProxyIsOptIn(t *testing.T) {
 			t.Fatalf("Caddyfile missing %q", want)
 		}
 	}
-	authAt := strings.Index(text, "import auth.caddy")
-	if authAt < 0 {
-		t.Fatal("Caddyfile must import auth.caddy")
+	if strings.Contains(text, "import auth.caddy") || strings.Contains(text, "basic_auth") {
+		t.Fatal("Caddyfile must not challenge the browser with basic auth")
 	}
-	// Only these exact paths are reachable before basic auth. Anything else,
-	// including /favicon.ico, /health, and the rest of /brand, stays in the
-	// password handle.
+	const householdSite = "# Everything else is the household site."
+	authAt := strings.Index(text, householdSite)
+	if authAt < 0 {
+		t.Fatal("Caddyfile must mark the household site handle")
+	}
+	// Only these exact paths are reachable before the household login.
+	// Anything else, including /favicon.ico, /health, and the rest of /brand,
+	// stays in the login handle.
 	publicMatchers := pathMatchers(text[:authAt])
 	wantPublic := []string{
 		"path /api/telemetry /api/telemetry/client",
@@ -138,12 +152,12 @@ func TestPublicProxyIsOptIn(t *testing.T) {
 	}
 	authedMatchers := pathMatchers(text[authAt:])
 	if strings.Join(authedMatchers, "\n") != "path /api/events" {
-		t.Fatalf("path matchers after basic auth = %#v, want only /api/events", authedMatchers)
+		t.Fatalf("path matchers after the login handle = %#v, want only /api/events", authedMatchers)
 	}
 	beforeAuth := text[:authAt]
 	for _, closed := range []string{"/api/inventory", "/api/scans", "/api/events", "/health", "/favicon.ico"} {
 		if strings.Contains(beforeAuth, closed) {
-			t.Fatalf("path %s is outside basic auth", closed)
+			t.Fatalf("path %s is outside the login handle", closed)
 		}
 	}
 
@@ -157,6 +171,9 @@ func TestPublicProxyIsOptIn(t *testing.T) {
 	}
 	if !strings.Contains(envText, "\nBASIC_AUTH_USER=pantry\n") || !strings.Contains(envText, "\nBASIC_AUTH_PASSWORD=\n") {
 		t.Fatal(".env.example must set the public username and leave the shared password empty")
+	}
+	if !strings.Contains(envText, "\nPANTRY_SESSION_SECRET=\n") {
+		t.Fatal(".env.example must leave PANTRY_SESSION_SECRET empty so setup can fill it once")
 	}
 
 	setup, err := os.ReadFile(filepath.Join("..", "..", "deploy", "setup.sh"))
@@ -175,6 +192,9 @@ func TestPublicProxyIsOptIn(t *testing.T) {
 		"caddy hash-password",
 		"basic_auth bcrypt Pantry",
 		"Keeping existing",
+		"sync_household_credential",
+		"ensure_session_secret",
+		"pull pantry",
 		"PANTRY_LAN_FIREWALL",
 		"${1:-apply}",
 		"pantry.local",
@@ -209,6 +229,9 @@ func TestPublicProxyIsOptIn(t *testing.T) {
 	}
 	if !strings.Contains(updaterText, "-f /opt/pantry/auth.caddy") {
 		t.Fatal("automatic updates must not start the public proxy without the password hash file")
+	}
+	if !strings.Contains(updaterText, "auth-migrate.sh") || !strings.Contains(updaterText, "ensure_session_secret") {
+		t.Fatal("automatic updates must copy the existing password hash and keep the session secret")
 	}
 
 	ignore, err := os.ReadFile(filepath.Join("..", "..", ".gitignore"))
@@ -259,7 +282,7 @@ func TestPublicProxyIsOptIn(t *testing.T) {
 		"admin off",
 		"trusted_proxies static 10.77.77.2/32",
 		"client_ip_headers CF-Connecting-IP",
-		"import auth.caddy",
+		"X-Pantry-Entry public",
 		"(security_headers)",
 	} {
 		if !strings.Contains(tunnelText, want) {
