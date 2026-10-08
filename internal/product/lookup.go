@@ -30,6 +30,7 @@ type LookupService struct {
 		LookupByBarcode(ctx context.Context, barcode, userID string) (*ProductSummary, error)
 		GetProductByID(ctx context.Context, id string) (*Product, error)
 		CreateProduct(ctx context.Context, product Product) error
+		SaveNetSize(ctx context.Context, product Product) error
 		UpsertBarcodeMapping(ctx context.Context, barcode, productID, source, userID string) error
 		GetBarcodeMiss(ctx context.Context, barcode string) (*time.Time, error)
 		RecordBarcodeMiss(ctx context.Context, barcode string, checkedAt time.Time) error
@@ -176,7 +177,7 @@ func (s *LookupService) persistExternalProduct(ctx context.Context, product *Pro
 	}
 	if existing == nil {
 		now := s.now()
-		err = s.Catalog.CreateProduct(ctx, Product{
+		created := Product{
 			ID:             product.ID,
 			Name:           product.Name,
 			Category:       product.Category,
@@ -185,9 +186,18 @@ func (s *LookupService) persistExternalProduct(ctx context.Context, product *Pro
 			Source:         SourceExternal,
 			ExternalSource: source,
 			RefreshedAt:    &now,
-		})
+		}
+		applyUpstreamSize(&created, product)
+		err = s.Catalog.CreateProduct(ctx, created)
 		if err != nil {
 			return fmt.Errorf("could not save product: %w", err)
+		}
+	} else if existing.NetSizeOrigin == "" {
+		applyUpstreamSize(existing, product)
+		if existing.NetSizeOrigin == OriginOff {
+			if err := s.Catalog.SaveNetSize(ctx, *existing); err != nil {
+				return fmt.Errorf("could not save product size: %w", err)
+			}
 		}
 	}
 
@@ -205,4 +215,21 @@ func (s *LookupService) persistExternalProduct(ctx context.Context, product *Pro
 	}
 
 	return nil
+}
+
+// applyUpstreamSize copies a parsed Open Food Facts size onto a product and
+// marks the origin off. An empty upstream size leaves the product alone.
+func applyUpstreamSize(p *Product, summary *ProductSummary) {
+	if p == nil || summary == nil || summary.NetBaseValue == nil || summary.NetDimension == "" {
+		return
+	}
+	base := *summary.NetBaseValue
+	p.NetBaseValue = &base
+	p.NetDimension = summary.NetDimension
+	p.NetSizeOrigin = OriginOff
+	if p.PackCount == nil && summary.PackCount != nil && *summary.PackCount >= 1 {
+		pack := *summary.PackCount
+		p.PackCount = &pack
+	}
+	p.fillDisplay()
 }

@@ -24,6 +24,17 @@ type Product struct {
 	ExternalSource ExternalSource `json:"externalSource,omitempty"`
 	RefreshedAt    *time.Time     `json:"refreshedAt,omitempty"`
 	NameOverridden bool           `json:"nameOverridden,omitempty"`
+	// Net size is grams or milliliters. All three stay empty together when the
+	// size is unknown. A cleared size keeps origin manual and leaves the value empty.
+	NetBaseValue  *float64 `json:"netBaseValue,omitempty"`
+	NetDimension  string   `json:"netDimension,omitempty"`
+	NetSizeOrigin string   `json:"netSizeOrigin,omitempty"`
+	// NetAmount and NetUnit are the ounce or fluid-ounce reading of NetBaseValue.
+	NetAmount *float64 `json:"netAmount,omitempty"`
+	NetUnit   string   `json:"netUnit,omitempty"`
+	// PackCount is how many individual units one scan of this barcode adds.
+	// Empty means it has not been remembered yet.
+	PackCount *int `json:"packCount,omitempty"`
 }
 
 // ProductSummary is a lightweight projection of Product used by API responses
@@ -35,6 +46,9 @@ type ProductSummary struct {
 	UnitOfMeasure  string         `json:"unitOfMeasure"`
 	ImageURL       string         `json:"imageUrl,omitempty"`
 	ExternalSource ExternalSource `json:"externalSource,omitempty"`
+	NetBaseValue   *float64       `json:"netBaseValue,omitempty"`
+	NetDimension   string         `json:"netDimension,omitempty"`
+	PackCount      *int           `json:"packCount,omitempty"`
 }
 
 // Catalog provides database operations for products and barcodes.
@@ -74,11 +88,16 @@ func (r *Catalog) CreateProduct(ctx context.Context, product Product) error {
 	if !product.ExternalSource.Valid() {
 		return fmt.Errorf("CreateProduct: invalid external_source %q", product.ExternalSource)
 	}
+	if err := product.validateNetSize(); err != nil {
+		return err
+	}
 	_, err := r.db.ExecContext(ctx,
-		`INSERT INTO products (id, name, category, unit_of_measure, image_url, source, external_source, refreshed_at, name_overridden)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		`INSERT INTO products (id, name, category, unit_of_measure, image_url, source, external_source, refreshed_at, name_overridden,
+		        net_base_value, net_dimension, net_size_origin, pack_count)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		product.ID, product.Name, nullableString(product.Category), nullableString(product.UnitOfMeasure),
 		nullableString(product.ImageURL), source, nullableString(string(product.ExternalSource)), nullableTime(product.RefreshedAt), product.NameOverridden,
+		nullableFloat(product.NetBaseValue), nullableString(product.NetDimension), nullableString(product.NetSizeOrigin), nullableIntPtr(product.PackCount),
 	)
 	if err != nil {
 		return fmt.Errorf("CreateProduct: %w", err)
@@ -89,34 +108,20 @@ func (r *Catalog) CreateProduct(ctx context.Context, product Product) error {
 // GetProductByID returns the product with the given ID, or nil if no such row
 // exists.
 func (r *Catalog) GetProductByID(ctx context.Context, id string) (*Product, error) {
-	row := r.db.QueryRowContext(ctx,
-		`SELECT id, name, COALESCE(category, ''), COALESCE(unit_of_measure, ''), COALESCE(image_url, ''), created_at,
-		        source, COALESCE(external_source, ''), refreshed_at, COALESCE(name_overridden, 0)
-		 FROM products WHERE id = ?`, id)
-
-	var p Product
-	var refreshedAt sql.NullTime
-	var externalSource string
-	if err := row.Scan(&p.ID, &p.Name, &p.Category, &p.UnitOfMeasure, &p.ImageURL, &p.CreatedAt,
-		&p.Source, &externalSource, &refreshedAt, &p.NameOverridden); err != nil {
+	row := r.db.QueryRowContext(ctx, `SELECT `+productSelectColumns+` FROM products WHERE id = ?`, id)
+	p, err := scanProduct(row)
+	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, nil
 		}
 		return nil, fmt.Errorf("GetProductByID: %w", err)
 	}
-	if refreshedAt.Valid {
-		p.RefreshedAt = &refreshedAt.Time
-	}
-	p.ExternalSource = ExternalSource(externalSource)
 	return &p, nil
 }
 
 // ListProducts returns all products, ordered by name.
 func (r *Catalog) ListProducts(ctx context.Context) ([]Product, error) {
-	rows, err := r.db.QueryContext(ctx,
-		`SELECT id, name, COALESCE(category, ''), COALESCE(unit_of_measure, ''), COALESCE(image_url, ''), created_at,
-		        source, COALESCE(external_source, ''), refreshed_at, COALESCE(name_overridden, 0)
-		 FROM products ORDER BY name`)
+	rows, err := r.db.QueryContext(ctx, `SELECT `+productSelectColumns+` FROM products ORDER BY name`)
 	if err != nil {
 		return nil, fmt.Errorf("ListProducts: %w", err)
 	}
@@ -124,17 +129,10 @@ func (r *Catalog) ListProducts(ctx context.Context) ([]Product, error) {
 
 	var products []Product
 	for rows.Next() {
-		var p Product
-		var refreshedAt sql.NullTime
-		var externalSource string
-		if err := rows.Scan(&p.ID, &p.Name, &p.Category, &p.UnitOfMeasure, &p.ImageURL, &p.CreatedAt,
-			&p.Source, &externalSource, &refreshedAt, &p.NameOverridden); err != nil {
+		p, err := scanProduct(rows)
+		if err != nil {
 			return nil, fmt.Errorf("ListProducts scan: %w", err)
 		}
-		if refreshedAt.Valid {
-			p.RefreshedAt = &refreshedAt.Time
-		}
-		p.ExternalSource = ExternalSource(externalSource)
 		products = append(products, p)
 	}
 	if err := rows.Err(); err != nil {
@@ -146,15 +144,21 @@ func (r *Catalog) ListProducts(ctx context.Context) ([]Product, error) {
 // UpdateProduct updates the name, category, unit_of_measure, and image_url of
 // an existing product identified by product.ID. It does not change created_at.
 func (r *Catalog) UpdateProduct(ctx context.Context, product Product) error {
+	if err := product.validateNetSize(); err != nil {
+		return err
+	}
 	res, err := r.db.ExecContext(ctx,
 		`UPDATE products SET name = ?, category = ?, unit_of_measure = ?, image_url = ?,
+		        net_base_value = ?, net_dimension = ?, net_size_origin = ?, pack_count = ?,
 		        name_overridden = CASE
 		            WHEN source = 'external' AND name <> ? THEN 1
 		            ELSE name_overridden
 		        END
 		 WHERE id = ?`,
 		product.Name, nullableString(product.Category), nullableString(product.UnitOfMeasure),
-		nullableString(product.ImageURL), product.Name, product.ID,
+		nullableString(product.ImageURL),
+		nullableFloat(product.NetBaseValue), nullableString(product.NetDimension), nullableString(product.NetSizeOrigin), nullableIntPtr(product.PackCount),
+		product.Name, product.ID,
 	)
 	if err != nil {
 		return fmt.Errorf("UpdateProduct: %w", err)
@@ -175,13 +179,44 @@ func (r *Catalog) UpdateProduct(ctx context.Context, product Product) error {
 // and it does not write the barcodes table, so every mapping keeps its barcode,
 // source, and user_id.
 func (r *Catalog) SaveRefresh(ctx context.Context, product Product, refreshedAt time.Time) error {
+	if err := product.validateNetSize(); err != nil {
+		return err
+	}
 	_, err := r.db.ExecContext(ctx,
-		`UPDATE products SET name = ?, category = ?, unit_of_measure = ?, image_url = ?, external_source = ?, refreshed_at = ? WHERE id = ?`,
+		`UPDATE products SET name = ?, category = ?, unit_of_measure = ?, image_url = ?, external_source = ?, refreshed_at = ?,
+		        net_base_value = ?, net_dimension = ?, net_size_origin = ?, pack_count = ?
+		 WHERE id = ?`,
 		product.Name, nullableString(product.Category), nullableString(product.UnitOfMeasure),
-		nullableString(product.ImageURL), nullableString(string(product.ExternalSource)), refreshedAt, product.ID,
+		nullableString(product.ImageURL), nullableString(string(product.ExternalSource)), refreshedAt,
+		nullableFloat(product.NetBaseValue), nullableString(product.NetDimension), nullableString(product.NetSizeOrigin), nullableIntPtr(product.PackCount),
+		product.ID,
 	)
 	if err != nil {
 		return fmt.Errorf("SaveRefresh: %w", err)
+	}
+	return nil
+}
+
+// SaveNetSize writes the net-size columns and pack count for one product.
+// It does not change the name or the package word.
+func (r *Catalog) SaveNetSize(ctx context.Context, product Product) error {
+	if err := product.validateNetSize(); err != nil {
+		return err
+	}
+	res, err := r.db.ExecContext(ctx,
+		`UPDATE products SET net_base_value = ?, net_dimension = ?, net_size_origin = ?, pack_count = ? WHERE id = ?`,
+		nullableFloat(product.NetBaseValue), nullableString(product.NetDimension), nullableString(product.NetSizeOrigin), nullableIntPtr(product.PackCount),
+		product.ID,
+	)
+	if err != nil {
+		return fmt.Errorf("could not save product size: %w", err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("could not save product size: %w", err)
+	}
+	if n == 0 {
+		return fmt.Errorf("could not save product size: product %q not found", product.ID)
 	}
 	return nil
 }
@@ -335,4 +370,60 @@ func nullableTime(t *time.Time) sql.NullTime {
 		return sql.NullTime{}
 	}
 	return sql.NullTime{Time: *t, Valid: true}
+}
+
+func nullableFloat(v *float64) sql.NullFloat64 {
+	if v == nil {
+		return sql.NullFloat64{}
+	}
+	return sql.NullFloat64{Float64: *v, Valid: true}
+}
+
+func nullableIntPtr(v *int) sql.NullInt64 {
+	if v == nil {
+		return sql.NullInt64{}
+	}
+	return sql.NullInt64{Int64: int64(*v), Valid: true}
+}
+
+const productSelectColumns = `id, name, COALESCE(category, ''), COALESCE(unit_of_measure, ''), COALESCE(image_url, ''), created_at,
+		        source, COALESCE(external_source, ''), refreshed_at, COALESCE(name_overridden, 0),
+		        net_base_value, net_dimension, net_size_origin, pack_count`
+
+type rowScanner interface {
+	Scan(dest ...any) error
+}
+
+func scanProduct(row rowScanner) (Product, error) {
+	var p Product
+	var refreshedAt sql.NullTime
+	var externalSource string
+	var base sql.NullFloat64
+	var dimension, origin sql.NullString
+	var pack sql.NullInt64
+	if err := row.Scan(&p.ID, &p.Name, &p.Category, &p.UnitOfMeasure, &p.ImageURL, &p.CreatedAt,
+		&p.Source, &externalSource, &refreshedAt, &p.NameOverridden,
+		&base, &dimension, &origin, &pack); err != nil {
+		return Product{}, err
+	}
+	if refreshedAt.Valid {
+		p.RefreshedAt = &refreshedAt.Time
+	}
+	p.ExternalSource = ExternalSource(externalSource)
+	if base.Valid {
+		value := base.Float64
+		p.NetBaseValue = &value
+	}
+	if dimension.Valid {
+		p.NetDimension = dimension.String
+	}
+	if origin.Valid {
+		p.NetSizeOrigin = origin.String
+	}
+	if pack.Valid {
+		n := int(pack.Int64)
+		p.PackCount = &n
+	}
+	p.fillDisplay()
+	return p, nil
 }

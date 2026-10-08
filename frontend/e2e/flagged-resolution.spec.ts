@@ -12,7 +12,7 @@ test('unknown barcode can be resolved to a new product and committed', async ({ 
   await expect(scanCard.getByText('Flagged', { exact: true })).toBeVisible()
   await scanCard.getByLabel('Product name').fill(productName)
   await scanCard.getByLabel('Category').fill('Canned goods')
-  await scanCard.getByLabel('Unit of measure').fill('can')
+  await scanCard.getByLabel('Package').fill('can')
   await scanCard.getByRole('button', { name: 'Create and use product' }).click()
 
   await expect(scanCard.getByText('Flagged', { exact: true })).toHaveCount(0)

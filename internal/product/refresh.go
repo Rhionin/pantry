@@ -117,6 +117,19 @@ func mergeRefresh(cached Product, upstream ProductSummary) Product {
 	if upstream.ImageURL != "" {
 		merged.ImageURL = upstream.ImageURL
 	}
+	// A size the person typed stays. Open Food Facts replaces an unknown size
+	// and a backfill, because the upstream measure is the one they did not type.
+	if merged.NetSizeOrigin != OriginManual && upstream.NetBaseValue != nil && upstream.NetDimension != "" {
+		base := *upstream.NetBaseValue
+		merged.NetBaseValue = &base
+		merged.NetDimension = upstream.NetDimension
+		merged.NetSizeOrigin = OriginOff
+		merged.fillDisplay()
+	}
+	if merged.NetSizeOrigin != OriginManual && merged.PackCount == nil && upstream.PackCount != nil && *upstream.PackCount >= 1 {
+		pack := *upstream.PackCount
+		merged.PackCount = &pack
+	}
 	return merged
 }
 
@@ -127,10 +140,28 @@ func classify(before, after Product) RefreshOutcome {
 	if before.Name != after.Name ||
 		before.Category != after.Category ||
 		before.UnitOfMeasure != after.UnitOfMeasure ||
-		before.ImageURL != after.ImageURL {
+		before.ImageURL != after.ImageURL ||
+		!sameOptionalFloat(before.NetBaseValue, after.NetBaseValue) ||
+		before.NetDimension != after.NetDimension ||
+		before.NetSizeOrigin != after.NetSizeOrigin ||
+		!sameOptionalInt(before.PackCount, after.PackCount) {
 		return OutcomeUpdated
 	}
 	return OutcomeUnchanged
+}
+
+func sameOptionalFloat(a, b *float64) bool {
+	if a == nil || b == nil {
+		return a == nil && b == nil
+	}
+	return *a == *b
+}
+
+func sameOptionalInt(a, b *int) bool {
+	if a == nil || b == nil {
+		return a == nil && b == nil
+	}
+	return *a == *b
 }
 
 // Refresh revalidates a single product row against its upstream database. It is

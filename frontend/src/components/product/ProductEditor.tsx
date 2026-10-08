@@ -3,6 +3,8 @@ import { Alert, Button, Stack, TextInput } from '@mantine/core';
 import { getProduct, updateProduct } from '../../api/client';
 import type { ProductDetail, ProductWriteInput } from '../../types';
 import { ContributeFields, type ContributeChoice } from './ContributeFields';
+import { NetSizeFields } from './NetSizeFields';
+import { emptyNetSizeDraft, sizeWrite, type NetSizeDraft } from './netSize';
 import { showShareNotice } from './shareNotice';
 import { SupplyOverride } from './SupplyOverride';
 
@@ -21,7 +23,9 @@ export const ProductEditor = ({ productId, onSaved }: ProductEditorProps) => {
   const [product, setProduct] = useState<ProductDetail | null>(null);
   const [name, setName] = useState('');
   const [category, setCategory] = useState('');
-  const [unitOfMeasure, setUnitOfMeasure] = useState('');
+  const [size, setSize] = useState<NetSizeDraft>(emptyNetSizeDraft);
+  const [sizeTouched, setSizeTouched] = useState(false);
+  const [packTouched, setPackTouched] = useState(false);
   const [barcode, setBarcode] = useState('');
   const [share, setShare] = useState<ContributeChoice>(emptyChoice);
   const [error, setError] = useState('');
@@ -42,7 +46,14 @@ export const ProductEditor = ({ productId, onSaved }: ProductEditorProps) => {
         setProduct(loaded);
         setName(loaded.name);
         setCategory(loaded.category);
-        setUnitOfMeasure(loaded.unitOfMeasure);
+        setSize({
+          amount: loaded.netAmount === undefined ? '' : String(loaded.netAmount),
+          unit: loaded.netUnit ?? '',
+          packageWord: loaded.unitOfMeasure,
+          packCount: loaded.packCount === undefined ? '' : String(loaded.packCount),
+        });
+        setSizeTouched(false);
+        setPackTouched(false);
         setBarcode(loaded.barcodes[0] ?? '');
       })
       .catch((requestError: unknown) => {
@@ -72,7 +83,7 @@ export const ProductEditor = ({ productId, onSaved }: ProductEditorProps) => {
     const input: ProductWriteInput = {
       name: name.trim(),
       category,
-      unitOfMeasure,
+      ...sizeWrite(size, { size: sizeTouched, pack: packTouched }),
     };
     if (share.contribute) {
       input.contribute = true;
@@ -110,12 +121,13 @@ export const ProductEditor = ({ productId, onSaved }: ProductEditorProps) => {
           setCategory(event.currentTarget.value);
         }}
       />
-      <TextInput
-        label="Unit of measure"
-        value={unitOfMeasure}
-        onChange={(event) => {
+      <NetSizeFields
+        draft={size}
+        onChange={(next) => {
           draftDirty.current = true;
-          setUnitOfMeasure(event.currentTarget.value);
+          if (next.amount !== size.amount || next.unit !== size.unit) setSizeTouched(true);
+          if (next.packCount !== size.packCount) setPackTouched(true);
+          setSize(next);
         }}
       />
       <details

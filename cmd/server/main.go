@@ -172,6 +172,10 @@ func main() {
 	}
 	log.Println("migrations applied")
 
+	if _, err := product.BackfillNetSizes(context.Background(), sqlDB); err != nil {
+		log.Fatalf("backfill product sizes: %v", err)
+	}
+
 	catalog := product.NewCatalog(sqlDB)
 	externalLookupEnabled := os.Getenv("DISABLE_EXTERNAL_PRODUCT_LOOKUP") != "true"
 	var upstream product.UpstreamDatabases = product.NewExternalLookup(product.DefaultProductOpenerClients())

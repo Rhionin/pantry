@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	stdjson "encoding/json"
 
 	"github.com/Rhionin/pantry/internal/product"
 	"github.com/google/uuid"
@@ -13,12 +14,59 @@ type CreateHandler struct {
 }
 
 type productWriteBody struct {
-	Name          string `json:"name"`
-	Category      string `json:"category"`
-	UnitOfMeasure string `json:"unitOfMeasure"`
-	Contribute    bool   `json:"contribute"`
-	ContributeTo  string `json:"contributeTo"`
-	Barcode       string `json:"barcode"`
+	Name          string   `json:"name"`
+	Category      string   `json:"category"`
+	UnitOfMeasure string   `json:"unitOfMeasure"`
+	Contribute    bool     `json:"contribute"`
+	ContributeTo  string   `json:"contributeTo"`
+	Barcode       string   `json:"barcode"`
+	NetAmount     *float64 `json:"netAmount"`
+	NetUnit       string   `json:"netUnit"`
+	PackCount     *int     `json:"packCount"`
+	NetSizeSet    bool     `json:"-"`
+	PackCountSet  bool     `json:"-"`
+}
+
+func (b *productWriteBody) UnmarshalJSON(data []byte) error {
+	var raw map[string]stdjson.RawMessage
+	if err := stdjson.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	var plain struct {
+		Name          string   `json:"name"`
+		Category      string   `json:"category"`
+		UnitOfMeasure string   `json:"unitOfMeasure"`
+		Contribute    bool     `json:"contribute"`
+		ContributeTo  string   `json:"contributeTo"`
+		Barcode       string   `json:"barcode"`
+		NetAmount     *float64 `json:"netAmount"`
+		NetUnit       string   `json:"netUnit"`
+		PackCount     *int     `json:"packCount"`
+	}
+	if err := stdjson.Unmarshal(data, &plain); err != nil {
+		return err
+	}
+	*b = productWriteBody{
+		Name:          plain.Name,
+		Category:      plain.Category,
+		UnitOfMeasure: plain.UnitOfMeasure,
+		Contribute:    plain.Contribute,
+		ContributeTo:  plain.ContributeTo,
+		Barcode:       plain.Barcode,
+		NetAmount:     plain.NetAmount,
+		NetUnit:       plain.NetUnit,
+		PackCount:     plain.PackCount,
+	}
+	if _, ok := raw["netAmount"]; ok {
+		b.NetSizeSet = true
+	}
+	if _, ok := raw["netUnit"]; ok {
+		b.NetSizeSet = true
+	}
+	if _, ok := raw["packCount"]; ok {
+		b.PackCountSet = true
+	}
+	return nil
 }
 
 type productWriteResponse struct {
@@ -40,8 +88,11 @@ func (h *CreateHandler) Handle(req Request[productWriteBody, struct{}]) (Created
 		Category:      req.Body.Category,
 		UnitOfMeasure: req.Body.UnitOfMeasure,
 	}
-	if err := h.Catalog.CreateProduct(req.Context, prod); err != nil {
+	if err := applyWrittenSize(&prod, req.Body, true); err != nil {
 		return Created{}, err
+	}
+	if err := h.Catalog.CreateProduct(req.Context, prod); err != nil {
+		return Created{}, inputOrInternal(err)
 	}
 
 	stored, err := h.Catalog.GetProductByID(req.Context, prod.ID)
@@ -73,6 +124,7 @@ func recordWriteContribution(ctx context.Context, catalog *product.Catalog, cont
 		Name:                  prod.Name,
 		Category:              prod.Category,
 		UnitOfMeasure:         prod.UnitOfMeasure,
+		Quantity:              prod.UpstreamQuantity(),
 		Barcode:               body.Barcode,
 		Database:              product.ExternalSource(body.ContributeTo),
 		ProductSource:         prod.Source,

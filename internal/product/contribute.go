@@ -45,6 +45,7 @@ type ShareRequest struct {
 	Name                  string
 	Category              string
 	UnitOfMeasure         string
+	Quantity              string
 	Barcode               string
 	Database              ExternalSource
 	ProductSource         string
@@ -57,7 +58,10 @@ type Contribution struct {
 	Name          string
 	Category      string
 	UnitOfMeasure string
-	Database      ExternalSource
+	// Quantity is the net size, when it is known. It is what Open Food Facts
+	// stores as quantity. The package word stays in UnitOfMeasure.
+	Quantity string
+	Database ExternalSource
 }
 
 // ContributionRecord is one stored share attempt.
@@ -278,6 +282,7 @@ func RecordShare(ctx context.Context, catalog *Catalog, contributor UpstreamCont
 			Name:          req.Name,
 			Category:      req.Category,
 			UnitOfMeasure: req.UnitOfMeasure,
+			Quantity:      req.Quantity,
 			Database:      req.Database,
 		})
 		if err != nil {
@@ -379,8 +384,12 @@ func (c *ProductOpenerContributor) Contribute(ctx context.Context, contribution 
 	if contribution.Category != "" {
 		form.Set("categories", contribution.Category)
 	}
-	if contribution.UnitOfMeasure != "" {
-		form.Set("quantity", contribution.UnitOfMeasure)
+	quantity := contribution.Quantity
+	if quantity == "" {
+		quantity = contribution.UnitOfMeasure
+	}
+	if quantity != "" {
+		form.Set("quantity", quantity)
 	}
 
 	endpoint := strings.TrimRight(origin, "/") + "/cgi/product_jqm2.pl"

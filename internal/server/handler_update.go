@@ -24,14 +24,24 @@ func (h *UpdateHandler) Handle(req Request[productWriteBody, updateProductPathPa
 		return productWriteResponse{}, err
 	}
 
-	prod := product.Product{
-		ID:            req.PathParams.ID,
-		Name:          req.Body.Name,
-		Category:      req.Body.Category,
-		UnitOfMeasure: req.Body.UnitOfMeasure,
+	existing, err := h.Catalog.GetProductByID(req.Context, req.PathParams.ID)
+	if err != nil {
+		return productWriteResponse{}, err
+	}
+
+	var prod product.Product
+	if existing != nil {
+		prod = *existing
+	}
+	prod.ID = req.PathParams.ID
+	prod.Name = req.Body.Name
+	prod.Category = req.Body.Category
+	prod.UnitOfMeasure = req.Body.UnitOfMeasure
+	if err := applyWrittenSize(&prod, req.Body, false); err != nil {
+		return productWriteResponse{}, err
 	}
 	if err := h.Catalog.UpdateProduct(req.Context, prod); err != nil {
-		return productWriteResponse{}, err
+		return productWriteResponse{}, inputOrInternal(err)
 	}
 
 	stored, err := h.Catalog.GetProductByID(req.Context, prod.ID)
@@ -42,18 +52,28 @@ func (h *UpdateHandler) Handle(req Request[productWriteBody, updateProductPathPa
 		return productWriteResponse{}, NotFound("product not found")
 	}
 
-	// The response keeps the fields the request set. Provenance comes from the
-	// stored row so a product already loaded from upstream is not sent again.
-	outcome, err := recordWriteContribution(req.Context, h.Catalog, h.Contributor, req.Body, product.Product{
-		ID:             stored.ID,
-		Name:           prod.Name,
-		Category:       prod.Category,
-		UnitOfMeasure:  prod.UnitOfMeasure,
-		Source:         stored.Source,
-		ExternalSource: stored.ExternalSource,
-	})
+	// Provenance comes from the stored row so a product already loaded from
+	// upstream is not sent again.
+	outcome, err := recordWriteContribution(req.Context, h.Catalog, h.Contributor, req.Body, *stored)
 	if err != nil {
 		return productWriteResponse{}, err
 	}
-	return productWriteResponse{Product: prod, Contribution: outcome}, nil
+	return productWriteResponse{Product: *stored, Contribution: outcome}, nil
+}
+
+func applyWrittenSize(prod *product.Product, body productWriteBody, creating bool) error {
+	if err := prod.ApplyTypedSize(body.NetAmount, body.NetUnit, body.NetSizeSet, creating); err != nil {
+		return BadRequest(err.Error())
+	}
+	if err := prod.ApplyTypedPack(body.PackCount, body.PackCountSet); err != nil {
+		return BadRequest(err.Error())
+	}
+	return nil
+}
+
+func inputOrInternal(err error) error {
+	if product.IsInputError(err) {
+		return BadRequest(err.Error())
+	}
+	return err
 }

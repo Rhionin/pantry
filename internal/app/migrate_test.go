@@ -2,6 +2,7 @@ package app_test
 
 import (
 	"bytes"
+	"context"
 	"database/sql"
 	"log"
 	"os"
@@ -14,6 +15,7 @@ import (
 	_ "modernc.org/sqlite"
 
 	"github.com/Rhionin/pantry/internal/app"
+	"github.com/Rhionin/pantry/internal/product"
 )
 
 // TestMigrationApplies verifies that RunMigrations applies the initial schema
@@ -105,13 +107,13 @@ func TestMigrationIsIdempotent(t *testing.T) {
 
 	// One schema_migrations row per applied .sql file; the second RunMigrations
 	// must not re-apply any file, so the count equals the number of migration
-	// files (001 through 005, both 006 files, both 007 files, 008, and 009).
+	// files (001 through 005, both 006 files, both 007 files, 008, 009, and 010).
 	var count int
 	if err := conn.QueryRow(`SELECT COUNT(*) FROM schema_migrations`).Scan(&count); err != nil {
 		t.Fatalf("count schema_migrations: %v", err)
 	}
-	if count != 11 {
-		t.Errorf("schema_migrations should have 11 rows after two runs, got %d", count)
+	if count != 12 {
+		t.Errorf("schema_migrations should have 12 rows after two runs, got %d", count)
 	}
 }
 
@@ -816,6 +818,100 @@ func TestMigration006PreservesItemsDataAndSetsDefaultMode(t *testing.T) {
 	}
 	if got := countMigrations(t, conn); got != migrationsBefore {
 		t.Errorf("schema_migrations count changed on re-run: before %d, after %d", migrationsBefore, got)
+	}
+}
+
+func TestMigration010NetSizeColumnsAndBackfill(t *testing.T) {
+	conn, err := sql.Open("sqlite", ":memory:")
+	if err != nil {
+		t.Fatalf("open in-memory SQLite: %v", err)
+	}
+	defer conn.Close()
+	if err := app.RunMigrations(conn); err != nil {
+		t.Fatalf("RunMigrations: %v", err)
+	}
+
+	for _, column := range []string{"net_base_value", "net_dimension", "net_size_origin", "pack_count"} {
+		var count int
+		if err := conn.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('products') WHERE name = ?`, column).Scan(&count); err != nil {
+			t.Fatalf("pragma %s: %v", column, err)
+		}
+		if count != 1 {
+			t.Errorf("products.%s missing", column)
+		}
+	}
+	// Recording the file keeps a second RunMigrations from adding the columns again.
+	if err := app.RunMigrations(conn); err != nil {
+		t.Fatalf("RunMigrations again: %v", err)
+	}
+
+	if _, err := conn.Exec(`INSERT INTO products (id, name, unit_of_measure) VALUES
+		('sized', 'Great Value Cut Green Beans 14.5 oz', 'can'),
+		('cleared', 'Kroger Cut Green Beans 14.5 oz', 'can'),
+		('pack', 'Store Brand Seltzer 6 x 12 fl oz', 'pack'),
+		('plain', 'Oats', 'each')`); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	if _, err := conn.Exec(`UPDATE products SET net_size_origin = 'manual' WHERE id = 'cleared'`); err != nil {
+		t.Fatalf("mark cleared: %v", err)
+	}
+
+	filled, err := product.BackfillNetSizes(context.Background(), conn)
+	if err != nil {
+		t.Fatalf("BackfillNetSizes: %v", err)
+	}
+	if filled != 2 {
+		t.Fatalf("filled rows: want 2, got %d", filled)
+	}
+
+	var origin string
+	var base float64
+	var dimension string
+	if err := conn.QueryRow(`SELECT net_size_origin, net_base_value, net_dimension FROM products WHERE id = 'sized'`).Scan(&origin, &base, &dimension); err != nil {
+		t.Fatalf("read sized: %v", err)
+	}
+	if origin != product.OriginBackfill || dimension != product.DimensionMass {
+		t.Fatalf("sized origin/dimension = %s/%s", origin, dimension)
+	}
+	amount, unit, ok := product.DisplayNetSize(base, dimension)
+	if !ok || unit != "oz" || amount != 14.5 {
+		t.Fatalf("sized display = %v %s ok=%v", amount, unit, ok)
+	}
+
+	var clearedOrigin string
+	var clearedBase sql.NullFloat64
+	if err := conn.QueryRow(`SELECT net_size_origin, net_base_value FROM products WHERE id = 'cleared'`).Scan(&clearedOrigin, &clearedBase); err != nil {
+		t.Fatalf("read cleared: %v", err)
+	}
+	if clearedOrigin != product.OriginManual || clearedBase.Valid {
+		t.Fatalf("cleared row was overwritten: origin %s base valid %v", clearedOrigin, clearedBase.Valid)
+	}
+
+	var pack int
+	var packDim string
+	if err := conn.QueryRow(`SELECT pack_count, net_dimension FROM products WHERE id = 'pack'`).Scan(&pack, &packDim); err != nil {
+		t.Fatalf("read pack: %v", err)
+	}
+	if pack != 6 || packDim != product.DimensionVolume {
+		t.Fatalf("pack = %d dimension %s", pack, packDim)
+	}
+
+	if _, err := conn.Exec(`UPDATE products SET name = 'Renamed 29 oz' WHERE id = 'sized'`); err != nil {
+		t.Fatalf("rename: %v", err)
+	}
+	again, err := product.BackfillNetSizes(context.Background(), conn)
+	if err != nil {
+		t.Fatalf("second BackfillNetSizes: %v", err)
+	}
+	if again != 0 {
+		t.Fatalf("second backfill wrote %d rows", again)
+	}
+	var still float64
+	if err := conn.QueryRow(`SELECT net_base_value FROM products WHERE id = 'sized'`).Scan(&still); err != nil {
+		t.Fatalf("reread sized: %v", err)
+	}
+	if still != base {
+		t.Fatalf("second backfill changed the size from %v to %v", base, still)
 	}
 }
 

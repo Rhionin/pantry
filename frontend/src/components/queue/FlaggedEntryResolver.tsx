@@ -16,6 +16,8 @@ import {
 } from '../../api/client';
 import type { Product, ProductWriteInput, ScanEntry } from '../../types';
 import { ContributeFields, type ContributeChoice } from '../product/ContributeFields';
+import { NetSizeFields } from '../product/NetSizeFields';
+import { emptyNetSizeDraft, sizeWrite, type NetSizeDraft } from '../product/netSize';
 import { showShareNotice } from '../product/shareNotice';
 
 export interface FlaggedEntryResolverProps {
@@ -23,7 +25,7 @@ export interface FlaggedEntryResolverProps {
   onResolved: (entry: ScanEntry) => void;
 }
 
-type ProductDraft = Pick<Product, 'name' | 'category' | 'unitOfMeasure'>;
+type ProductDraft = Pick<Product, 'name' | 'category'> & { unitOfMeasure: string };
 
 const productLabel = (product: Product): string => `${product.name} — ${product.category}`;
 
@@ -46,6 +48,9 @@ export const FlaggedEntryResolver = ({ entry, onResolved }: FlaggedEntryResolver
   const [query, setQuery] = useState('');
   const [selectedProductId, setSelectedProductId] = useState('');
   const [draft, setDraft] = useState<ProductDraft>({ name: '', category: '', unitOfMeasure: '' });
+  const [size, setSize] = useState<NetSizeDraft>(emptyNetSizeDraft());
+  const [sizeTouched, setSizeTouched] = useState(false);
+  const [packTouched, setPackTouched] = useState(false);
   const [share, setShare] = useState<ContributeChoice>({
     contribute: false,
     contributeTo: 'openfoodfacts',
@@ -122,7 +127,18 @@ export const FlaggedEntryResolver = ({ entry, onResolved }: FlaggedEntryResolver
     setSubmitting(true);
     setError('');
     try {
-      const input: ProductWriteInput = { ...draft };
+      const written = sizeWrite(
+        { ...size, packageWord: size.packageWord || draft.unitOfMeasure },
+        { size: sizeTouched, pack: packTouched },
+      );
+      const input: ProductWriteInput = {
+        name: draft.name,
+        category: draft.category,
+        unitOfMeasure: written.unitOfMeasure,
+        netAmount: written.netAmount,
+        netUnit: written.netUnit,
+        packCount: written.packCount,
+      };
       if (share.contribute) {
         input.contribute = true;
         input.contributeTo = share.contributeTo;
@@ -206,11 +222,14 @@ export const FlaggedEntryResolver = ({ entry, onResolved }: FlaggedEntryResolver
             value={draft.category}
             onChange={(event) => setDraft({ ...draft, category: event.currentTarget.value })}
           />
-          <TextInput
-            size="xs"
-            label="Unit of measure"
-            value={draft.unitOfMeasure}
-            onChange={(event) => setDraft({ ...draft, unitOfMeasure: event.currentTarget.value })}
+          <NetSizeFields
+            draft={{ ...size, packageWord: size.packageWord }}
+            onChange={(next) => {
+              if (next.amount !== size.amount || next.unit !== size.unit) setSizeTouched(true);
+              if (next.packCount !== size.packCount) setPackTouched(true);
+              setSize(next);
+              setDraft({ ...draft, unitOfMeasure: next.packageWord });
+            }}
           />
           <ContributeFields onChange={setShare} />
           <Button
