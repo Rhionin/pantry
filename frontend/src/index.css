@@ -140,30 +140,22 @@ code {
 }
 
 /* The key string stays first in the DOM so existing drivers can match
-   "Mode: stock_in". Sighted users get the short STOCK IN / STOCK OUT label. */
-.scan-mode-chip {
-  display: inline-flex;
-  align-items: center;
+   "Mode: stock_in". The visible control is the STOCK IN / STOCK OUT switch,
+   on its own row so a thumb can hit it beside the title and camera button. */
+.scan-toolbar-primary > .scan-mode-switch {
   position: relative;
-  flex: none;
-  padding: 4px 10px;
-  border-radius: 999px;
-  line-height: 1.2;
-  white-space: nowrap;
+  flex: 1 0 100%;
+  order: 2;
+  min-width: 0;
 }
 
-.scan-mode-chip--stock_in {
-  background: var(--mantine-color-blue-light);
-  color: var(--mantine-color-blue-light-color);
+.scan-toolbar-primary > .scan-toolbar-title {
+  order: 0;
 }
 
-.scan-mode-chip--stock_out {
-  background: var(--mantine-color-orange-light);
-  color: var(--mantine-color-orange-light-color);
-}
-
-.scan-mode-chip-label {
-  font-size: 0.75rem;
+.scan-mode-switch .mantine-SegmentedControl-label {
+  min-height: 44px;
+  font-size: 0.8rem;
   font-weight: 700;
   letter-spacing: 0.04em;
 }
@@ -181,6 +173,7 @@ code {
 }
 
 .scan-toolbar-primary > .camera-scanner-region {
+  order: 1;
   margin-left: auto;
   flex: none;
   min-width: 0;
@@ -737,6 +730,19 @@ code {
 .camera-preview-status--captured {
   background: rgba(18, 92, 48, 0.92);
   font-weight: 600;
+}
+
+/* Sits under the preview so a thumb can flip stock in / stock out without
+   closing the camera or covering the barcode frame. */
+.camera-mode-switch {
+  width: 100%;
+}
+
+.camera-mode-switch .mantine-SegmentedControl-label {
+  min-height: 48px;
+  font-size: 1rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
 }
 
 .scan-entry-card--just-captured,

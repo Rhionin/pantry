@@ -12,7 +12,9 @@ typed barcode so the item can still be queued.
 - `camera-enqueue` a decoded barcode is posted as a scan in the current mode.
 - `camera-fallback` a blocked camera offers Type a barcode, which posts the same way.
 - `camera-mode` a control barcode read by the camera switches stock in / stock out
-  and does not create a product scan.
+  and does not create a product scan. The same shared mode can be flipped with
+  the stock in / stock out control under the preview, without closing the camera.
+  The scan queue header uses that same control in place of the mode badge.
 - `camera-disconnected` a disconnected hardware scanner points at the camera
   without changing the connection line. That line hides while the camera
   panel is open so the queue can stay on screen.
@@ -20,15 +22,17 @@ typed barcode so the item can still be queued.
 ## How to get to it (user POV)
 
 - Open `Scan Queue` (`/`). The toolbar's `Scan with camera` button (visible
-  label `Camera`) sits on the same row as the mode chip. A one-line hardware
-  status sits under that row and mentions the camera when the scanner is
-  disconnected.
+  label `Camera`) sits on the title row. Under it, a `Scanner mode` control
+  shows STOCK IN / STOCK OUT and writes the shared scanner mode. A one-line
+  hardware status sits under that row and mentions the camera when the scanner
+  is disconnected.
 - Choose `Scan with camera`. Allow the camera prompt on a secure (HTTPS or
   localhost) page. The preview stays short so the queue remains on screen. If
   the picture has not started, tap `Tap to start scanning`. Otherwise the frame
-  says it scans automatically. A captured code flashes the preview, outlines
-  the barcode when the detector reports its location, and highlights the new
-  queue card. Type a barcode if the camera cannot start.
+  says it scans automatically. Under the picture, `Camera scan mode` flips
+  stock in / stock out without closing the camera. A captured code flashes the
+  preview, outlines the barcode when the detector reports its location, and
+  highlights the new queue card. Type a barcode if the camera cannot start.
 - Review and approve the card the same way as a hardware scan.
 
 ## Driving it with Playwright
