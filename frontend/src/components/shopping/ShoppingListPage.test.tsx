@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MantineProvider } from '@mantine/core';
 import { Notifications } from '@mantine/notifications';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { InventoryItem, ShoppingConsiderations, ShoppingListEntry } from '../../types';
 import { ShoppingListPage } from './ShoppingListPage';
 
@@ -33,6 +33,24 @@ const renderPage = () => render(
     <ShoppingListPage />
   </MantineProvider>,
 );
+
+beforeEach(() => {
+  // A real transition timeout can fire after this file's jsdom is gone.
+  vi.stubGlobal(
+    'matchMedia',
+    (query: string) =>
+      ({
+        matches: /prefers-reduced-motion/.test(query),
+        media: query,
+        onchange: null,
+        addListener: () => {},
+        removeListener: () => {},
+        addEventListener: () => {},
+        removeEventListener: () => {},
+        dispatchEvent: () => false,
+      }) as unknown as MediaQueryList,
+  );
+});
 
 describe('ShoppingListPage', () => {
   it('renders derived and manual entries with product details and marks a manual item purchased', async () => {
@@ -312,6 +330,75 @@ describe('ShoppingListPage', () => {
     await waitFor(() => expect(fetchMock).toHaveBeenCalledWith(
       '/api/shopping-list/deals',
       expect.objectContaining({ method: 'PUT', body: JSON.stringify({ itemId: 'kr', priceCents: 89, label: 'Noted sale' }) }),
+    ));
+  });
+
+  it('shows a group line with its rule and swap, and hides brand controls', async () => {
+    const entry: ShoppingListEntry = {
+      id: 'line-1',
+      itemId: 'gv',
+      quantity: 2,
+      source: 'auto',
+      purchasedAt: null,
+      note: 'This is the one with the star.',
+      group: {
+        id: 'beans',
+        name: 'Cut green beans',
+        rule: 'favorite',
+        ruleConfirmed: true,
+        members: [
+          { itemId: 'gv', productId: 'prod-gv', name: 'Great Value Cut Green Beans' },
+          { itemId: 'kr', productId: 'prod-kr', name: 'Kroger Cut Green Beans' },
+        ],
+      },
+    };
+    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      const method = init?.method ?? 'GET';
+      if (url === '/api/providers') return Promise.resolve(jsonResponse([]));
+      if (url === '/api/shopping-list' && method === 'GET') return Promise.resolve(jsonResponse([entry]));
+      if (url === '/api/inventory') {
+        return Promise.resolve(jsonResponse([
+          inventoryItem('gv', 'Great Value Cut Green Beans', null),
+          inventoryItem('kr', 'Kroger Cut Green Beans', null),
+        ]));
+      }
+      if (url === '/api/shopping-list/considerations') {
+        return Promise.resolve(jsonResponse({
+          retailerDeals: 'unavailable',
+          retailerDetail: '',
+          considerations: [{
+            lineItemId: 'gv',
+            needKey: 'cut green beans',
+            genericName: 'cut green beans',
+            chosenItemId: 'gv',
+            preferredItemId: '',
+            ignorePrice: false,
+            members: [],
+            offer: null,
+          }],
+        } satisfies ShoppingConsiderations));
+      }
+      if (url === '/api/shopping-list/items/line-1/swap' && method === 'POST') {
+        expect(init?.body).toBe(JSON.stringify({ itemId: 'kr' }));
+        return Promise.resolve(jsonResponse({ ...entry, itemId: 'kr' }));
+      }
+      throw new Error(`Unexpected request: ${url} ${method}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    renderPage();
+
+    const table = await screen.findByRole('table', { name: 'Shopping plan entries' });
+    expect(within(table).getByText('Cut green beans')).toBeInTheDocument();
+    expect(within(table).getByText('Great Value Cut Green Beans', { selector: 'p' })).toBeInTheDocument();
+    expect(within(table).getByText('Always my favorite')).toBeInTheDocument();
+    expect(within(table).getByText('This is the one with the star.')).toBeInTheDocument();
+    expect(screen.queryByLabelText('Preferred brand for cut green beans')).not.toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText('This trip, buy'), { target: { value: 'kr' } });
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith(
+      '/api/shopping-list/items/line-1/swap',
+      expect.objectContaining({ method: 'POST' }),
     ));
   });
 });

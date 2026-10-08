@@ -54,17 +54,15 @@ func TestShoppingListGet(t *testing.T) {
 			},
 		},
 		{
-			name: "store brands of the same product share one replenishment line",
+			name: "ungrouped store brands are separate shopping lines",
 			setup: func(env testEnv) {
-				// One can of each brand is already in stock. A quantity of 4 on
-				// Great Value is one shared supply, so the group buys 4-3=1.
-				// Corn is a different product and buys 2-1=1.
 				createItemViaStockIn(env.T, env.DB, env.ProductStore, "user-1", "prod-gv", "Great Value Cut Green Beans", "item-gv")
 				createItemViaStockIn(env.T, env.DB, env.ProductStore, "user-1", "prod-kr", "Kroger Cut Green Beans", "item-kr")
 				createItemViaStockIn(env.T, env.DB, env.ProductStore, "user-1", "prod-wf", "Western Family Cut Green Beans", "item-wf")
 				createItemViaStockIn(env.T, env.DB, env.ProductStore, "user-1", "prod-corn", "Kroger Whole Kernel Corn", "item-corn")
 				beginUsing(env.T, env.DB, time.Now())
 				setSupplyQuantity(env.T, env.DB, "prod-gv", 4)
+				setSupplyQuantity(env.T, env.DB, "prod-kr", 4)
 				setSupplyQuantity(env.T, env.DB, "prod-corn", 2)
 			},
 			httpExchange: httpExchange{
@@ -76,9 +74,10 @@ func TestShoppingListGet(t *testing.T) {
 					{path: "$[0].quantity", value: float64(1)},
 					{path: "$[0].source", value: "auto"},
 					{path: "$[1].itemId", value: "item-gv"},
-					{path: "$[1].quantity", value: float64(1)},
-					{path: "$[1].source", value: "auto"},
-					{path: "$[2]", absent: true},
+					{path: "$[1].quantity", value: float64(3)},
+					{path: "$[2].itemId", value: "item-kr"},
+					{path: "$[2].quantity", value: float64(3)},
+					{path: "$[3]", absent: true},
 				},
 			},
 			afterRequest: exchanges(httpExchange{
@@ -93,7 +92,7 @@ func TestShoppingListGet(t *testing.T) {
 			}),
 		},
 		{
-			name: "equivalent stock without a target counts toward the shared supply",
+			name: "ungrouped stock does not count toward another product",
 			setup: func(env testEnv) {
 				createItemViaStockIn(env.T, env.DB, env.ProductStore, "user-1", "prod-gv-notarget", "Great Value Cut Green Beans", "item-gv-notarget")
 				createItemViaStockIn(env.T, env.DB, env.ProductStore, "user-1", "prod-kr-target", "Kroger Cut Green Beans", "item-kr-target")
@@ -106,7 +105,7 @@ func TestShoppingListGet(t *testing.T) {
 				expectedStatus: http.StatusOK,
 				assertions: []assertion{
 					{path: "$[0].itemId", value: "item-kr-target"},
-					{path: "$[0].quantity", value: float64(2)},
+					{path: "$[0].quantity", value: float64(3)},
 					{path: "$[0].source", value: "auto"},
 					{path: "$[1]", absent: true},
 				},

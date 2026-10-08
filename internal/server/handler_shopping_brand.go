@@ -68,6 +68,9 @@ func (h *ShoppingListConsiderationsHandler) Handle(req Request[struct{}, struct{
 
 	lineIDs := make([]string, 0, len(provision.Rows))
 	for _, row := range provision.Rows {
+		if row.GroupID != "" {
+			continue
+		}
 		lineIDs = append(lineIDs, row.ItemID)
 	}
 	notes := shopping.ConsiderationsForLines(lineIDs, provision.Needs, deals, provision.Prefs)

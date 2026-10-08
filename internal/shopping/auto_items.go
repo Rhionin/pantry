@@ -57,11 +57,11 @@ func (s *Store) SavePlannedLines(ctx context.Context, userID string, lines []Pla
 		membersOf[member.GroupKey][member.ItemID] = struct{}{}
 	}
 
-	touched, err := listTouchedAutoItems(ctx, tx, userID)
+	touched, touchedGroups, err := listTouchedAutoItems(ctx, tx, userID)
 	if err != nil {
 		return err
 	}
-	skipped, err := listSkippedItems(ctx, tx, userID)
+	skipped, skippedGroups, err := listSkippedItems(ctx, tx, userID)
 	if err != nil {
 		return err
 	}
@@ -72,7 +72,6 @@ func (s *Store) SavePlannedLines(ctx context.Context, userID string, lines []Pla
 		}
 		groupOf[member.ItemID] = member.GroupKey
 	}
-	touchedGroups := map[string]struct{}{}
 	for itemID := range touched {
 		if key := groupOf[itemID]; key != "" {
 			touchedGroups[key] = struct{}{}
@@ -96,7 +95,7 @@ func (s *Store) SavePlannedLines(ctx context.Context, userID string, lines []Pla
 				}
 			}
 		}
-		if groupSkipped(skipped, key, itemID, membersOf) {
+		if groupSkipped(skipped, skippedGroups, key, itemID, membersOf) {
 			continue
 		}
 		if _, held := touched[itemID]; held {
@@ -107,7 +106,7 @@ func (s *Store) SavePlannedLines(ctx context.Context, userID string, lines []Pla
 				continue
 			}
 		}
-		if err := upsertAutoLine(ctx, tx, userID, itemID, line.Quantity, line.Note); err != nil {
+		if err := upsertAutoLine(ctx, tx, userID, itemID, line.GroupKey, line.Quantity, line.Note); err != nil {
 			return err
 		}
 		keep[itemID] = struct{}{}
@@ -150,7 +149,7 @@ func listPreferences(ctx context.Context, tx *sql.Tx, userID string) ([]Preferen
 	return prefs, nil
 }
 
-func upsertAutoLine(ctx context.Context, tx *sql.Tx, userID, itemID string, quantity int, note string) error {
+func upsertAutoLine(ctx context.Context, tx *sql.Tx, userID, itemID, groupID string, quantity int, note string) error {
 	rows, err := tx.QueryContext(ctx, `
 		SELECT id FROM shopping_list_items
 		WHERE user_id = ? AND item_id = ? AND source = 'auto'
@@ -175,11 +174,15 @@ func upsertAutoLine(ctx context.Context, tx *sql.Tx, userID, itemID string, quan
 		return fmt.Errorf("could not read shopping list item %q: %w", itemID, err)
 	}
 
+	var storedGroup any
+	if groupID != "" {
+		storedGroup = groupID
+	}
 	if len(ids) == 0 {
 		_, err := tx.ExecContext(ctx, `
-			INSERT INTO shopping_list_items (id, user_id, item_id, quantity, source, note, created_at)
-			VALUES (?, ?, ?, ?, 'auto', ?, ?)`,
-			uuid.NewString(), userID, itemID, quantity, note, time.Now().UTC(),
+			INSERT INTO shopping_list_items (id, user_id, item_id, quantity, source, note, created_at, group_id)
+			VALUES (?, ?, ?, ?, 'auto', ?, ?, ?)`,
+			uuid.NewString(), userID, itemID, quantity, note, time.Now().UTC(), storedGroup,
 		)
 		if err != nil {
 			return fmt.Errorf("could not add shopping list item %q: %w", itemID, err)
@@ -191,9 +194,10 @@ func upsertAutoLine(ctx context.Context, tx *sql.Tx, userID, itemID string, quan
 		UPDATE shopping_list_items
 		SET quantity = ?,
 		    note = ?,
+		    group_id = ?,
 		    purchased_at = CASE WHEN quantity = ? AND note = ? THEN purchased_at ELSE NULL END
 		WHERE id = ?`,
-		quantity, note, quantity, note, ids[0],
+		quantity, note, storedGroup, quantity, note, ids[0],
 	)
 	if err != nil {
 		return fmt.Errorf("could not refresh shopping list item %q: %w", itemID, err)
@@ -206,56 +210,67 @@ func upsertAutoLine(ctx context.Context, tx *sql.Tx, userID, itemID string, quan
 	return nil
 }
 
-func listTouchedAutoItems(ctx context.Context, tx *sql.Tx, userID string) (map[string]struct{}, error) {
+func listTouchedAutoItems(ctx context.Context, tx *sql.Tx, userID string) (map[string]struct{}, map[string]struct{}, error) {
 	rows, err := tx.QueryContext(ctx, `
-		SELECT item_id FROM shopping_list_items
+		SELECT item_id, COALESCE(group_id, '') FROM shopping_list_items
 		WHERE user_id = ? AND source = 'auto' AND touched = 1 AND purchased_at IS NULL`,
 		userID)
 	if err != nil {
-		return nil, fmt.Errorf("could not load shopping list edits: %w", err)
+		return nil, nil, fmt.Errorf("could not load shopping list edits: %w", err)
 	}
 	defer rows.Close()
 	touched := map[string]struct{}{}
+	groups := map[string]struct{}{}
 	for rows.Next() {
-		var itemID string
-		if err := rows.Scan(&itemID); err != nil {
-			return nil, fmt.Errorf("could not read shopping list edit: %w", err)
+		var itemID, groupID string
+		if err := rows.Scan(&itemID, &groupID); err != nil {
+			return nil, nil, fmt.Errorf("could not read shopping list edit: %w", err)
 		}
 		touched[itemID] = struct{}{}
+		if groupID != "" {
+			groups[groupID] = struct{}{}
+		}
 	}
 	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("could not read shopping list edits: %w", err)
+		return nil, nil, fmt.Errorf("could not read shopping list edits: %w", err)
 	}
-	return touched, nil
+	return touched, groups, nil
 }
 
-func listSkippedItems(ctx context.Context, tx *sql.Tx, userID string) (map[string]struct{}, error) {
+func listSkippedItems(ctx context.Context, tx *sql.Tx, userID string) (map[string]struct{}, map[string]struct{}, error) {
 	rows, err := tx.QueryContext(ctx, `
-		SELECT item_id FROM staged_cart_skips WHERE user_id = ?`, userID)
+		SELECT item_id, COALESCE(group_id, '') FROM staged_cart_skips WHERE user_id = ?`, userID)
 	if err != nil {
-		return nil, fmt.Errorf("could not load removed shopping list items: %w", err)
+		return nil, nil, fmt.Errorf("could not load removed shopping list items: %w", err)
 	}
 	defer rows.Close()
 	skipped := map[string]struct{}{}
+	groups := map[string]struct{}{}
 	for rows.Next() {
-		var itemID string
-		if err := rows.Scan(&itemID); err != nil {
-			return nil, fmt.Errorf("could not read removed shopping list item: %w", err)
+		var itemID, groupID string
+		if err := rows.Scan(&itemID, &groupID); err != nil {
+			return nil, nil, fmt.Errorf("could not read removed shopping list item: %w", err)
 		}
 		skipped[itemID] = struct{}{}
+		if groupID != "" {
+			groups[groupID] = struct{}{}
+		}
 	}
 	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("could not read removed shopping list items: %w", err)
+		return nil, nil, fmt.Errorf("could not read removed shopping list items: %w", err)
 	}
-	return skipped, nil
+	return skipped, groups, nil
 }
 
-func groupSkipped(skipped map[string]struct{}, key, itemID string, membersOf map[string]map[string]struct{}) bool {
+func groupSkipped(skipped, skippedGroups map[string]struct{}, key, itemID string, membersOf map[string]map[string]struct{}) bool {
 	if _, ok := skipped[itemID]; ok {
 		return true
 	}
 	if key == "" {
 		return false
+	}
+	if _, ok := skippedGroups[key]; ok {
+		return true
 	}
 	for member := range membersOf[key] {
 		if _, ok := skipped[member]; ok {

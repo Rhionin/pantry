@@ -1,10 +1,11 @@
-package group
+package group_test
 
 import (
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/Rhionin/pantry/internal/group"
 	"github.com/Rhionin/pantry/internal/product"
 	"github.com/Rhionin/pantry/internal/supply"
 )
@@ -22,12 +23,12 @@ func TestBuyCountOunceTargetCountsOunces(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	members := []Member{
+	members := []group.Member{
 		{ProductID: "small", Name: "14.5 oz", NetBase: &small, Dimension: product.DimensionMass, OnHand: 1},
 		{ProductID: "large", Name: "29 oz", NetBase: &large, Dimension: product.DimensionMass, OnHand: 0},
 	}
-	target := BuyTarget{HasQuantity: true, Base: goal, Dimension: product.DimensionMass}
-	buy, explain := BuyCount(target, members, "large", UsageRate{})
+	target := group.BuyTarget{HasQuantity: true, Base: goal, Dimension: product.DimensionMass}
+	buy, explain := group.BuyCount(target, members, "large", group.UsageRate{})
 	if buy != 1 {
 		t.Fatalf("buy %d (%s)", buy, explain)
 	}
@@ -41,11 +42,11 @@ func TestBuyCountMissingSizeDoesNotCountItems(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	members := []Member{
+	members := []group.Member{
 		{ProductID: "bare", Name: "Can", OnHand: 1},
 		{ProductID: "other", Name: "Other", OnHand: 0},
 	}
-	buy, explain := BuyCount(BuyTarget{HasQuantity: true, Base: goal, Dimension: product.DimensionMass}, members, "bare", UsageRate{})
+	buy, explain := group.BuyCount(group.BuyTarget{HasQuantity: true, Base: goal, Dimension: product.DimensionMass}, members, "bare", group.UsageRate{})
 	if buy != 0 {
 		t.Fatalf("buy %d", buy)
 	}
@@ -60,12 +61,12 @@ func TestBuyCountMonthWindowUsesDeriveGates(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	members := []Member{{ProductID: "small", NetBase: &base, Dimension: product.DimensionMass}}
+	members := []group.Member{{ProductID: "small", NetBase: &base, Dimension: product.DimensionMass}}
 	startedSoon := now.Add(-10 * 24 * time.Hour)
 	if _, ok := supply.DeriveAmount(now, startedSoon, []time.Time{startedSoon}, nil); ok {
 		t.Fatal("expected the opening gate to fail")
 	}
-	buy, _ := BuyCount(BuyTarget{WindowMonths: 3}, members, "small", UsageRate{})
+	buy, _ := group.BuyCount(group.BuyTarget{WindowMonths: 3}, members, "small", group.UsageRate{})
 	if buy != 0 {
 		t.Fatalf("opening buy %d", buy)
 	}
@@ -80,7 +81,7 @@ func TestBuyCountMonthWindowUsesDeriveGates(t *testing.T) {
 	if !ok {
 		t.Fatal("expected a rate")
 	}
-	buy, explain := BuyCount(BuyTarget{WindowMonths: 3}, members, "small", UsageRate{PerDay: per, OK: true})
+	buy, explain := group.BuyCount(group.BuyTarget{WindowMonths: 3}, members, "small", group.UsageRate{PerDay: per, OK: true})
 	if buy != 3 {
 		t.Fatalf("buy %d explain %q per %v", buy, explain, per)
 	}
@@ -92,8 +93,8 @@ func TestBuyCountMonthWindowUsesDeriveGates(t *testing.T) {
 	if !ok {
 		t.Fatal("expected an item rate")
 	}
-	unsized := []Member{{ProductID: "small", OnHand: 0}}
-	buy, explain = BuyCount(BuyTarget{WindowMonths: 3}, unsized, "small", UsageRate{PerDay: itemPer, OK: true, ItemCount: true})
+	unsized := []group.Member{{ProductID: "small", OnHand: 0}}
+	buy, explain = group.BuyCount(group.BuyTarget{WindowMonths: 3}, unsized, "small", group.UsageRate{PerDay: itemPer, OK: true, ItemCount: true})
 	if buy != 3 || !strings.Contains(explain, "counts items") {
 		t.Fatalf("item buy %d explain %q", buy, explain)
 	}

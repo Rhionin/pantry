@@ -302,6 +302,13 @@ export function removeShoppingListItem(id: string): Promise<void> {
   return apiFetch(`/api/shopping-list/items/${id}`, { method: 'DELETE' });
 }
 
+export function swapShoppingLine(id: string, itemId: string): Promise<ShoppingListEntry> {
+  return apiFetch(`/api/shopping-list/items/${id}/swap`, {
+    method: 'POST',
+    body: JSON.stringify({ itemId }),
+  });
+}
+
 export function markShoppingListItemPurchased(id: string): Promise<ShoppingListEntry> {
   return apiFetch(`/api/shopping-list/items/${id}`, {
     method: 'PATCH',

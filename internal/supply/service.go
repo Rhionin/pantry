@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"sort"
 	"time"
+
+	"github.com/Rhionin/pantry/internal/shopping"
 )
 
 // Months is a supply window. A month is 30 days. Zero is invalid.
@@ -45,8 +47,7 @@ func ParseUnits(n int) (Units, error) {
 // ProductID identifies a catalog product.
 type ProductID string
 
-// GroupID is the store-brand key. Empty means the product is not equivalent
-// to any other product.
+// GroupID is a product group. Empty means the product is planned on its own.
 type GroupID string
 
 // Phase is the onboarding state machine.
@@ -127,15 +128,29 @@ type Withdrawal struct {
 // Fact is one catalog product, already summed across its items.
 // StockIns and StockOuts contain only instants strictly after the start.
 // Opening scans are neither. The provider-ledger timestamp is not an input.
-// Manual nil means no pinned row. Group is the existing store-brand key.
+// Manual nil means no pinned row. Group is set only when the product belongs
+// to a product group. A grouped product's supply override is ignored.
 type Fact struct {
-	Product   ProductID
-	Group     GroupID
-	OnHand    Units
-	Override  Override
-	Manual    *Units
-	StockIns  []time.Time
-	StockOuts []Withdrawal
+	Product        ProductID
+	Group          GroupID
+	Name           string
+	OnHand         Units
+	Override       Override
+	Manual         *Units
+	StockIns       []time.Time
+	StockOuts      []Withdrawal
+	ItemID         string
+	NetBase        *float64
+	NetDimension   string
+	LastConsumed   time.Time
+	LastStocked    time.Time
+	Rule           string
+	Pinned         string
+	GroupWindow    int
+	GroupHasQty    bool
+	GroupBase      float64
+	GroupDimension string
+	Deal           *shopping.Deal
 }
 
 // LineSource names why a shopping line exists.
@@ -155,11 +170,14 @@ const (
 // Product on a collapsed line is the member that supplied the winning par,
 // tie broken by smaller ProductID. Replace ties break by greater unreplaced
 // quantity, then smaller ProductID.
+// GroupID is set when the line was planned for a product group. Note then
+// says why that member was picked.
 type Line struct {
 	Product ProductID
 	Buy     Units
 	Note    string
 	Source  LineSource
+	GroupID string
 }
 
 // Settings is the read model for the banner and the settings page.
@@ -277,7 +295,14 @@ func plan(now time.Time, phase Phase, account Months, facts []Fact) []Line {
 	}
 	if !phase.isOpening() {
 		for _, members := range groups {
-			if line, ok := planGroup(now, phase, account, members); ok {
+			var line Line
+			var ok bool
+			if members[0].Group != "" {
+				line, ok = planProductGroup(now, phase, account, members)
+			} else {
+				line, ok = planGroup(now, phase, account, members)
+			}
+			if ok {
 				lines = append(lines, line)
 			}
 		}

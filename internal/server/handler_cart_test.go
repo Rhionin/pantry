@@ -399,7 +399,7 @@ func TestCartHTTP(t *testing.T) {
 				expectedStatus: http.StatusOK,
 				assertions: []assertion{
 					{path: "$[0].itemId", value: "item-swap-gv"},
-					{path: "$[0].quantity", value: float64(2)},
+					{path: "$[0].quantity", value: float64(3)},
 				},
 			},
 			afterRequest: exchanges(
@@ -421,7 +421,7 @@ func TestCartHTTP(t *testing.T) {
 					expectedStatus: http.StatusOK,
 					assertions: []assertion{
 						{path: "$.entries[0].itemId", value: "item-swap-kr"},
-						{path: "$.entries[0].requested", value: float64(2)},
+						{path: "$.entries[0].requested", value: float64(3)},
 					},
 				},
 			),

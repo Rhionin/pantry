@@ -25,10 +25,12 @@ import {
   markShoppingListItemPurchased,
   removeShoppingListItem,
   saveBrandPreference,
+  swapShoppingLine,
   saveItemDeal,
   setShoppingListAdjustment,
 } from '../../api/client';
 import type { InventoryItem, ProviderInfo, ShoppingConsideration, ShoppingConsiderations, ShoppingListEntry } from '../../types';
+import { ruleLabel } from '../groups/copy';
 import { useCredentialsRevision } from '../../credentialsRefresh';
 import { ProviderPanel } from './ProviderPanel';
 import { ProvisionButton } from './ProvisionButton';
@@ -199,6 +201,17 @@ export const ShoppingListPage = () => {
       setError(requestErrorMessage(requestError, 'Unable to add the shopping list item.'));
     } finally {
       setSaving(false);
+    }
+  };
+
+  const swapLine = async (entry: ShoppingListEntry, itemId: string) => {
+    if (entry.id === '' || itemId === entry.itemId) return;
+    setError('');
+    try {
+      await swapShoppingLine(entry.id, itemId);
+      await refresh();
+    } catch (requestError) {
+      setError(requestErrorMessage(requestError, 'Unable to change the product on this line.'));
     }
   };
 
@@ -400,15 +413,31 @@ export const ShoppingListPage = () => {
               {entries.map((entry) => {
                 const inventoryItem = inventoryByItemId.get(entry.itemId);
                 const productName = inventoryItem?.item.product.name ?? `Item ${entry.itemId}`;
+                const title = entry.group ? entry.group.name : productName;
                 const unit = inventoryItem?.item.product.unitOfMeasure ?? 'units';
-                const note = notesByLine.get(entry.itemId);
+                const note = entry.group ? undefined : notesByLine.get(entry.itemId);
                 return (
                   <Table.Tr key={entry.id === '' ? `auto-${entry.itemId}` : entry.id}>
                     <Table.Td>
                       <Stack gap={2}>
-                        <Text fw={600}>{productName}</Text>
+                        <Text fw={600}>{title}</Text>
+                        {entry.group && <Text size="sm">{productName}</Text>}
+                        {entry.group && (
+                          <Badge variant="light" color={entry.group.ruleConfirmed ? undefined : 'yellow'} w="fit-content">
+                            {entry.group.ruleConfirmed ? ruleLabel(entry.group.rule) : 'Pick a rule'}
+                          </Badge>
+                        )}
                         {entry.note !== undefined && entry.note !== '' && (
                           <Text size="sm" c="dimmed">{entry.note}</Text>
+                        )}
+                        {entry.group && entry.group.members.length > 1 && (
+                          <NativeSelect
+                            size="xs"
+                            label="This trip, buy"
+                            value={entry.itemId}
+                            data={entry.group.members.map((member) => ({ value: member.itemId, label: member.name }))}
+                            onChange={(event) => void swapLine(entry, event.currentTarget.value)}
+                          />
                         )}
                         {note && (
                           <Group gap="xs" align="end" wrap="wrap">

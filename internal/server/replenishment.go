@@ -82,7 +82,16 @@ func stageShoppingPlan(ctx context.Context, userID string, pantry pantryLister, 
 	if err != nil {
 		return shoppingProvision{}, err
 	}
-	if err := list.SavePlannedLines(ctx, userID, plannedLines(planned, snap.Items), shelfMembers(snap.Items)); err != nil {
+	groupOf := map[string]string{}
+	if lookup, ok := list.(interface {
+		ItemGroups(ctx context.Context, userID string) (map[string]string, error)
+	}); ok {
+		groupOf, err = lookup.ItemGroups(ctx, userID)
+		if err != nil {
+			return shoppingProvision{}, err
+		}
+	}
+	if err := list.SavePlannedLines(ctx, userID, plannedLines(planned, snap.Items), shelfMembers(snap.Items, groupOf)); err != nil {
 		return shoppingProvision{}, err
 	}
 	rows, err := list.ListUnpurchased(ctx, userID)
@@ -104,12 +113,10 @@ func plannedLines(lines []supply.Line, items []inventory.Item) []shopping.Planne
 		if !ok {
 			continue
 		}
-		name, unit := productNameUnit(item)
-		key, _ := shopping.NeedKey(name, unit)
 		out = append(out, shopping.PlannedLine{
 			ProductID: string(line.Product),
 			ItemID:    item.ID,
-			GroupKey:  key,
+			GroupKey:  line.GroupID,
 			Quantity:  int(line.Buy),
 			Note:      line.Note,
 			Manual:    line.Source == supply.SourceManual,
@@ -118,12 +125,10 @@ func plannedLines(lines []supply.Line, items []inventory.Item) []shopping.Planne
 	return out
 }
 
-func shelfMembers(items []inventory.Item) []shopping.ShelfMember {
+func shelfMembers(items []inventory.Item, groupOf map[string]string) []shopping.ShelfMember {
 	members := make([]shopping.ShelfMember, 0, len(items))
 	for _, item := range items {
-		name, unit := productNameUnit(item)
-		key, _ := shopping.NeedKey(name, unit)
-		members = append(members, shopping.ShelfMember{ItemID: item.ID, GroupKey: key})
+		members = append(members, shopping.ShelfMember{ItemID: item.ID, GroupKey: groupOf[item.ID]})
 	}
 	return members
 }
