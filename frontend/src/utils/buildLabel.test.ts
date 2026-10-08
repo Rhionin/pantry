@@ -55,11 +55,13 @@ describe('formatBuildLabel', () => {
         fc.string(),
         fc.string(),
         fc.string(),
-        (commit, committedAt, subject) => {
-          const label = formatBuildLabel({ commit, committedAt, subject });
+        fc.string(),
+        (commit, committedAt, subject, version) => {
+          const label = formatBuildLabel({ commit, committedAt, subject, version });
           const collapsedSubject = subject.replace(/\s+/g, ' ').trim();
+          const collapsedVersion = version.replace(/\s+/g, ' ').trim();
           const time = formatCommitTime(committedAt);
-          if (commit === '' && collapsedSubject === '' && time === '') {
+          if (commit === '' && collapsedSubject === '' && time === '' && collapsedVersion === '') {
             expect(label).toBeNull();
             return;
           }
@@ -77,6 +79,12 @@ describe('formatBuildLabel', () => {
           if (time !== '') {
             expect(label?.detail.includes(time)).toBe(true);
             expect(label?.accessibleName.includes(time)).toBe(true);
+          }
+          if (collapsedVersion !== '') {
+            expect(label?.version).toBe(collapsedVersion);
+            expect(label?.accessibleName.includes(`version ${collapsedVersion}`)).toBe(true);
+          } else {
+            expect(label?.version).toBe('');
           }
           expect(label?.title).toBe(label?.accessibleName);
         },

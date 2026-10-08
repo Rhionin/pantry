@@ -2,8 +2,8 @@
 //
 // Release images stamp these strings at link time from the same commit the
 // container is tagged with (ghcr.io/rhionin/pantry:<sha>). Local builds leave
-// the defaults: Commit is "unknown", and the time and subject stay empty so
-// callers can omit them.
+// the defaults: Commit is "unknown", Version is "dev", and the times and
+// subject stay empty so callers can omit them.
 package buildinfo
 
 import "encoding/base64"
@@ -15,6 +15,14 @@ var Commit = "unknown"
 // CommittedAt is the commit timestamp in ISO 8601, or empty when the build
 // was not stamped. It is a variable so -ldflags -X can replace it.
 var CommittedAt = ""
+
+// BuiltAt is when the image was built, in ISO 8601 UTC, or empty for a build
+// that was not stamped. It is a variable so -ldflags -X can replace it.
+var BuiltAt = ""
+
+// Version is the release label. CI stamps vYYYYMMDD plus a 7-character SHA,
+// the same formula as the annotated tag. A local build leaves "dev".
+var Version = "dev"
 
 // Subject is the commit subject line. Tests and callers set it directly.
 // Release images leave it empty and stamp subjectStamp instead, because a
@@ -33,6 +41,15 @@ func VisibleSubject() string {
 		return Subject
 	}
 	return DecodeSubjectStamp(subjectStamp)
+}
+
+// VisibleVersion returns the release label. An empty stamp is "dev" so a
+// local binary still answers instead of omitting the field.
+func VisibleVersion() string {
+	if Version == "" {
+		return "dev"
+	}
+	return Version
 }
 
 // DecodeSubjectStamp decodes a base64 commit subject. Empty and invalid

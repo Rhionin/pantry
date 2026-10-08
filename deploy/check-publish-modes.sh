@@ -152,6 +152,7 @@ rm -rf "$adapt_dir"
 
 have "$acme_json" 'pantry.rhionin.com' "certificate adapt expands PUBLIC_HOST"
 have "$acme_json" '/api/telemetry' "certificate adapt keeps telemetry public"
+have "$acme_json" '/api/build' "certificate adapt keeps the build identity public"
 have "$acme_json" '/api/deploy-hook' "certificate adapt keeps the deploy hook public"
 have "$acme_json" '/brand/logo.png' "certificate adapt keeps the brand mark public"
 have "$acme_json" 'cj@example.com' "certificate adapt keeps the ACME email"
@@ -159,6 +160,7 @@ lack "$acme_json" '10.77.77.2' "certificate adapt must not trust the tunnel addr
 
 have "$tunnel_json" 'pantry.rhionin.com' "tunnel adapt expands PUBLIC_HOST"
 have "$tunnel_json" '/api/telemetry' "tunnel adapt keeps telemetry public"
+have "$tunnel_json" '/api/build' "tunnel adapt keeps the build identity public"
 have "$tunnel_json" '/api/deploy-hook' "tunnel adapt keeps the deploy hook public"
 have "$tunnel_json" '/api/telemetry/client' "tunnel adapt keeps the client report public"
 have "$tunnel_json" '/brand/logo.png' "tunnel adapt keeps the brand mark public"

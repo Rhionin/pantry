@@ -26,6 +26,20 @@ func TestDecodeSubjectStampRejectsEmptyAndInvalid(t *testing.T) {
 	}
 }
 
+func TestVisibleVersionEmptyStampIsDev(t *testing.T) {
+	original := Version
+	t.Cleanup(func() { Version = original })
+
+	Version = ""
+	if got := VisibleVersion(); got != "dev" {
+		t.Fatalf("VisibleVersion() = %q, want dev", got)
+	}
+	Version = "v20261008-0123456"
+	if got := VisibleVersion(); got != "v20261008-0123456" {
+		t.Fatalf("VisibleVersion() = %q", got)
+	}
+}
+
 func TestVisibleSubjectPrefersDirectValue(t *testing.T) {
 	originalSubject := Subject
 	originalStamp := subjectStamp

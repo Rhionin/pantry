@@ -106,12 +106,36 @@ curl -s https://pantry.rhionin.com/api/telemetry
 ```
 
 `POST /api/telemetry/client` is public on that hostname as well, so the page
-can report timings. `GET /brand/logo.png`, `GET /terms`, and `GET /privacy`
-are public too, because a grocery developer app stores those URLs and fetches
-them with no password. Every other path still asks for the shared password. The
-LAN listener on `:8080` is unchanged: it has no password. The footer link
+can report timings. `GET /api/build` is public too, so an agent can see which
+build is running without the household password. `GET /brand/logo.png`,
+`GET /terms`, and `GET /privacy` are public because a grocery developer app
+stores those URLs and fetches them with no password. Every other path still
+asks for the shared password. The LAN listener on `:8080` is unchanged: it
+has no password. The menu's Build section shows the same version and commit.
 Diagnostics renders `pageLoad` for someone at the screen. On a Pi that is
 already public, `sudo ./setup.sh` is what loads the Caddyfile exception.
+
+## Running build
+
+`GET /api/build` names the binary. Compare `commit` with `master` to confirm
+a deploy. CI stamps the values with `-ldflags` (`COMMIT_HASH`, `COMMIT_TIME`,
+`BUILD_TIME`, `VERSION`, and a base64 commit subject). A `go build` with no
+flags returns `commit` `unknown` and `version` `dev`.
+
+| Field | Meaning |
+| --- | --- |
+| `commit` | Full git SHA, or `unknown` |
+| `committedAt` | Commit time, ISO 8601. Omitted when unset |
+| `builtAt` | Image build time, ISO 8601 UTC. Omitted on a local build |
+| `version` | `dev` locally. CI stamps `v<UTC yyyymmdd>-<7 character sha>`, the same formula as the annotated release tag |
+| `subject` | Commit subject. Omitted when unset |
+
+```bash
+curl -s https://pantry.rhionin.com/api/build
+```
+
+The response is that identity only. It has no environment values, hostnames,
+or paths, and `Cache-Control` is `no-store`.
 
 In development the Vite server proxies `/api`, so the same path works against
 the dev UI's origin. The browser posts its own timings and errors to

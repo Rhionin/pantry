@@ -68,6 +68,7 @@ func TestHouseholdAuthPublicPathsAndLAN(t *testing.T) {
 	}{
 		{http.MethodGet, "/api/telemetry"},
 		{http.MethodPost, "/api/telemetry/client"},
+		{http.MethodGet, "/api/build"},
 		{http.MethodGet, "/brand/logo.png"},
 		{http.MethodGet, "/terms"},
 		{http.MethodGet, "/privacy"},
@@ -89,6 +90,7 @@ func TestHouseholdAuthPublicPathsAndLAN(t *testing.T) {
 		"/api/providers/kroger/callback/extra",
 		"/api/providers//callback",
 		"/api/telemetry/other",
+		"/api/build/extra",
 		"/api/scans",
 		"/health",
 	}
@@ -375,6 +377,14 @@ func TestHouseholdAuthFailClosedWithoutHash(t *testing.T) {
 	handler.ServeHTTP(telemetryRec, telemetry)
 	if telemetryRec.Code != http.StatusOK {
 		t.Fatalf("telemetry = %d", telemetryRec.Code)
+	}
+
+	build := httptest.NewRequest(http.MethodGet, "/api/build", nil)
+	withPublicEntry(build)
+	buildRec := httptest.NewRecorder()
+	handler.ServeHTTP(buildRec, build)
+	if buildRec.Code != http.StatusOK {
+		t.Fatalf("build = %d", buildRec.Code)
 	}
 
 	lan := httptest.NewRequest(http.MethodGet, "/api/scans", nil)

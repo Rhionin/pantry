@@ -40,6 +40,43 @@ describe('BuildStamp', () => {
     expect(note).toHaveTextContent(`2026-10-01 04:32 UTC · ${commit}`);
   });
 
+  it('shows the version on its own line', async () => {
+    const commit = '0123456789abcdef0123456789abcdef01234567';
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        jsonResponse({
+          commit,
+          committedAt: '2026-10-01T04:32:19Z',
+          builtAt: '2026-10-08T15:04:00Z',
+          version: 'v20261008-0123456',
+          subject: 'Show the running commit in a quiet footer',
+        }),
+      ),
+    );
+
+    renderStamp();
+
+    const note = await screen.findByRole('note', {
+      name: `Show the running commit in a quiet footer, 2026-10-01 04:32 UTC, build ${commit}, version v20261008-0123456`,
+    });
+    expect(note).toHaveTextContent('v20261008-0123456');
+    expect(note).toHaveTextContent(`2026-10-01 04:32 UTC · ${commit}`);
+  });
+
+  it('shows dev for a local build', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(jsonResponse({ commit: 'unknown', version: 'dev' })),
+    );
+
+    renderStamp();
+
+    const note = await screen.findByRole('note', { name: 'build unknown, version dev' });
+    expect(note).toHaveTextContent('dev');
+    expect(note).toHaveTextContent('build unknown');
+  });
+
   it('shows only the commit when time and subject are absent', async () => {
     const commit = '0123456789abcdef0123456789abcdef01234567';
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse({ commit })));

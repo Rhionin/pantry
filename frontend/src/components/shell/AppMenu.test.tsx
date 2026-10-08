@@ -240,7 +240,12 @@ describe('AppMenu', () => {
       </MantineProvider>,
     );
     fireEvent.click(screen.getByRole('button', { name: 'Menu' }));
-    fireEvent.click(await screen.findByRole('menuitem', { name: 'Log out' }));
+    const build = await screen.findByText('Build');
+    const note = await screen.findByRole('note', { name: 'build abc123def456' });
+    const logOut = await screen.findByRole('menuitem', { name: 'Log out' });
+    expect(note).toBeVisible();
+    expect(build.compareDocumentPosition(logOut) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    fireEvent.click(logOut);
     expect(logout).toHaveBeenCalledTimes(1);
   });
 
