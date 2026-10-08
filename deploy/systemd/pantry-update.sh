@@ -6,8 +6,9 @@
 # `docker compose up` omits profiled services, which would leave certificate
 # renewal and proxy config out of automatic updates. A LAN-only install
 # leaves PUBLIC_HOST empty, so Caddy is never started. Without auth.caddy,
-# starting the profile would make Docker create a directory at that path
-# and the proxy would not be password-protected.
+# starting the profile would publish the hostname with no password file.
+# The hash is copied into auth/household before containers are recreated,
+# and an existing PANTRY_SESSION_SECRET is kept.
 #
 # A non-empty CLOUDFLARE_TUNNEL_TOKEN selects the tunnel profile instead.
 # That profile does not publish ports 80 or 443. The certificate profile
@@ -63,6 +64,23 @@ if ! flock -n 9; then
   flock 9
 fi
 echo "pantry update: lock acquired"
+
+# shellcheck disable=SC1091
+source /opt/pantry/auth-migrate.sh
+if ! sync_household_credential; then
+  echo "Could not copy the household password hash; leaving containers unchanged." >&2
+  exit 1
+fi
+if [[ -f /opt/pantry/auth.caddy ]]; then
+  if ! ensure_session_secret; then
+    echo "Could not save the session secret; leaving containers unchanged." >&2
+    exit 1
+  fi
+  if [[ ! -s /opt/pantry/auth/household ]]; then
+    echo "auth.caddy is present but the login hash was not copied; leaving containers unchanged." >&2
+    exit 1
+  fi
+fi
 
 trigger_digest() {
   if [[ -f /opt/pantry/deploy-trigger/request ]]; then

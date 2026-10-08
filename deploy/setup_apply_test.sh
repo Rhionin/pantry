@@ -16,6 +16,7 @@ bash -n "$ROOT/deploy/dns/pantry-split-dns.sh"
 bash -n "$ROOT/deploy/publish-mode.sh"
 bash -n "$ROOT/deploy/check-publish-modes.sh"
 bash -n "$ROOT/deploy/check-deploy-hook.sh"
+bash -n "$ROOT/deploy/auth-migrate.sh"
 
 fail() {
   echo "FAIL: $*" >&2
@@ -30,6 +31,8 @@ LAST_SYSTEMCTL=""
 LAST_AVAHI_SERVICE=""
 LAST_DNSMASQ=""
 LAST_MDNS_UNIT=""
+LAST_CHOWN=""
+LAST_CURL=""
 
 make_bin() {
   local bin="$1"
@@ -66,8 +69,37 @@ printf '%s\n' "$*" >> "${IPTABLES_LOG:?}"
 exit 0
 EOF
 
+  # Records the public-entry session probe. -o writes the body the way
+  # curl does, and -w '%{http_code}' is printed on stdout.
   cat > "$bin/curl" << 'EOF'
 #!/usr/bin/env bash
+printf '%s\n' "$*" >> "${CURL_LOG:?}"
+out=""
+prev=""
+write_code=false
+for arg in "$@"; do
+  if [[ "$prev" == "-o" ]]; then
+    out=$arg
+  fi
+  if [[ "$arg" == *'%{http_code}'* ]]; then
+    write_code=true
+  fi
+  prev=$arg
+done
+if [[ "$*" == *"/api/session"* ]]; then
+  if [[ -n "$out" ]]; then
+    printf '%s' "${CURL_SESSION_BODY:-}" > "$out"
+  fi
+  if [[ "$write_code" == true ]]; then
+    printf '%s' "${CURL_SESSION_CODE:-200}"
+  fi
+fi
+exit 0
+EOF
+
+  cat > "$bin/chown" << 'EOF'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >> "${CHOWN_LOG:?}"
 exit 0
 EOF
 
@@ -89,7 +121,7 @@ printf '%s\n' "$*" >> "${AVAHI_LOG:?}"
 exit 0
 EOF
 
-  chmod +x "$bin/docker" "$bin/systemctl" "$bin/iptables" "$bin/curl" "$bin/usermod" "$bin/udevadm" "$bin/avahi-publish-address"
+  chmod +x "$bin/docker" "$bin/systemctl" "$bin/iptables" "$bin/curl" "$bin/chown" "$bin/usermod" "$bin/udevadm" "$bin/avahi-publish-address"
 }
 
 run_setup() {
@@ -105,6 +137,8 @@ run_setup() {
   : > "$work/systemctl.log"
   : > "$work/iptables.log"
   : > "$work/avahi.log"
+  : > "$work/chown.log"
+  : > "$work/curl.log"
   mkdir -p "$work/systemd" "$work/avahi" "$work/dnsmasq"
 
   set +e
@@ -112,6 +146,10 @@ run_setup() {
     SYSTEMCTL_LOG="$work/systemctl.log" \
     IPTABLES_LOG="$work/iptables.log" \
     AVAHI_LOG="$work/avahi.log" \
+    CHOWN_LOG="$work/chown.log" \
+    CURL_LOG="$work/curl.log" \
+    CURL_SESSION_CODE="${CURL_SESSION_CODE:-200}" \
+    CURL_SESSION_BODY="${CURL_SESSION_BODY:-}" \
     PANTRY_DIR="$pantry" \
     PANTRY_SYSTEMD_UNIT_DIR="$work/systemd" \
     PANTRY_SETUP_SKIP_ROOT=1 \
@@ -139,6 +177,8 @@ run_setup() {
   if [[ -f "$work/systemd/pantry-mdns.service" ]]; then
     LAST_MDNS_UNIT=$(cat "$work/systemd/pantry-mdns.service")
   fi
+  LAST_CHOWN=$(cat "$work/chown.log")
+  LAST_CURL=$(cat "$work/curl.log")
   rm -rf "$work"
 }
 
@@ -189,6 +229,12 @@ printed=$(PANTRY_DIR="$lan" PANTRY_SETUP_SKIP_ROOT=1 bash "$SETUP" deploy-secret
 [[ "$printed" == "$secret1" ]] || fail "deploy-secret printed [$printed], want [$secret1]"
 lack "$LAST_DOCKER" "docker-compose.tunnel.yml" "LAN must not select the tunnel file"
 lack "$LAST_DOCKER" "hash-password" "LAN must not hash a password"
+lack "$LAST_DOCKER" "pull pantry" "LAN must not pull before the public site exists"
+[[ -d "$lan/auth" ]] || fail "LAN setup did not create the auth directory"
+[[ ! -e "$lan/auth/household" ]] || fail "LAN setup invented a password hash"
+lack "$LAST_CURL" "/api/session" "LAN setup must not probe public sign-in"
+have "$LAST_CHOWN" "65532:65532 $lan/auth" "LAN setup still gives the auth directory to uid 65532"
+grep -q '^PANTRY_SESSION_SECRET=$' "$lan/.env" || fail "LAN setup filled a session secret"
 lack "$LAST_DOCKER" "restart pantry-caddy" "LAN must not restart Caddy"
 have "$LAST_IPTABLES" "--dport 9090" "firewall uses HOST_PORT"
 have "$LAST_OUT" "Pantry setup complete" "LAN success"
@@ -220,6 +266,16 @@ have "$LAST_DOCKER" "restart pantry-caddy" "Caddyfile restart"
 lack "$LAST_DOCKER" "hash-password" "must not hash when auth.caddy exists"
 lack "$LAST_DOCKER" "stop caddy" "must not disable public HTTPS"
 have "$LAST_OUT" "Keeping existing" "kept auth.caddy"
+cmp "$pub/auth.caddy" "$pub/auth/household" || fail "household hash was not copied from auth.caddy"
+pub_mode=$(stat -c '%a' "$pub/auth/household")
+[[ "$pub_mode" == "600" || "$pub_mode" == "640" ]] || fail "household file mode is $pub_mode, want 600 or 640"
+have "$LAST_CHOWN" "65532:65532 $pub/auth" "setup chowns the auth directory to uid 65532"
+have "$LAST_CHOWN" "65532:65532 $pub/auth/household" "setup chowns the household file to uid 65532"
+have "$LAST_CURL" "X-Pantry-Entry: public" "public setup probes sign-in with the public entry header"
+have "$LAST_CURL" "/api/session" "public setup probes /api/session"
+pub_secret=$(grep '^PANTRY_SESSION_SECRET=' "$pub/.env" | cut -d= -f2-)
+[[ ${#pub_secret} -eq 64 ]] || fail "session secret was not saved (len ${#pub_secret})"
+have "$LAST_DOCKER" "pull pantry" "public setup pulls the image before dropping basic auth"
 have "$LAST_IPTABLES" "--dport 8080" "public setup still firewalls the LAN port"
 have "$LAST_OUT" "Home Wi-Fi cannot open https://pantry.example.com" "hairpin warning names the public host"
 have "$LAST_OUT" "shared password" "public summary still mentions the password"
@@ -229,6 +285,10 @@ lack "$LAST_DOCKER" "stop caddy" "hairpin warning must not stop the public proxy
 run_setup "$pub"
 [[ "$LAST_RC" -eq 0 ]] || fail "second setup exited $LAST_RC: $LAST_OUT"
 cmp "$pub/auth.caddy" "$pub/auth.caddy.before" || fail "second run regenerated auth.caddy"
+cmp "$pub/auth.caddy" "$pub/auth/household" || fail "second run changed the household hash"
+have "$LAST_CHOWN" "65532:65532 $pub/auth/household" "second run chowns an existing household file"
+pub_secret_again=$(grep '^PANTRY_SESSION_SECRET=' "$pub/.env" | cut -d= -f2-)
+[[ "$pub_secret_again" == "$pub_secret" ]] || fail "second run rotated the session secret"
 lack "$LAST_DOCKER" "hash-password" "second run hashed a password"
 
 # A different password in .env does not replace an existing hash.
@@ -258,6 +318,10 @@ run_setup "$first"
 grep -q 'basic_auth bcrypt Pantry' "$first/auth.caddy" || fail "auth.caddy missing basic_auth block"
 grep -q 'abcdefghijklmnopqrstuu' "$first/auth.caddy" || fail "auth.caddy missing the hashed password"
 grep -q '^BASIC_AUTH_PASSWORD=correct-horse-battery$' "$first/.env" || fail "password was not kept in .env"
+cmp "$first/auth.caddy" "$first/auth/household" || fail "first public setup did not copy the new hash"
+first_mode=$(stat -c '%a' "$first/auth/household")
+[[ "$first_mode" == "600" || "$first_mode" == "640" ]] || fail "new household file mode is $first_mode"
+[[ $(grep '^PANTRY_SESSION_SECRET=' "$first/.env" | cut -d= -f2- | wc -c) -eq 65 ]] || fail "first public setup did not save a session secret"
 have "$LAST_DOCKER" "hash-password" "first public setup should hash"
 have "$LAST_DOCKER" "--profile public" "first public profile"
 
@@ -575,5 +639,76 @@ run_setup "$updates" --with-updates
 have "$LAST_SYSTEMCTL" "enable --now pantry-update.timer" "timer enabled"
 have "$LAST_SYSTEMCTL" "enable --now pantry-update.path" "path unit enabled"
 
-rm -rf "$lan" "$pub" "$first" "$bad" "$incomplete" "$opt" "$mdns" "$split" "$badip" "$mdns_bin" "$tun" "$notoken" "$unready" "$tunsplit" "$mode_dir" "$custom" "$updates"
+# An unreadable password file is 503 from /api/session. Setup must say so
+# instead of reporting success.
+unavailable=$(mktemp -d)
+write_env "$unavailable" \
+  "PUBLIC_HOST=pantry.example.com" \
+  "ACME_EMAIL=you@example.com" \
+  "BASIC_AUTH_USER=pantry" \
+  "BASIC_AUTH_PASSWORD=" \
+  "HOST_PORT=8080"
+printf '%s\n' 'basic_auth bcrypt Pantry {' '	pantry ORIGINAL-HASH' '}' > "$unavailable/auth.caddy"
+CURL_SESSION_CODE=503 \
+  CURL_SESSION_BODY='{"error":"Sign-in is unavailable right now."}' \
+  run_setup "$unavailable"
+[[ "$LAST_RC" -ne 0 ]] || fail "unavailable sign-in should fail setup"
+have "$LAST_OUT" "Sign-in is unavailable" "unavailable sign-in is a loud error"
+have "$LAST_OUT" "uid 65532" "unavailable sign-in names the container user"
+have "$LAST_CURL" "X-Pantry-Entry: public" "unavailable probe used the public entry header"
+
+# pantry-update.sh copies the hash, via the same function, before compose up.
+updater="$ROOT/deploy/systemd/pantry-update.sh"
+sync_line=$(grep -n 'sync_household_credential' "$updater" | head -1 | cut -d: -f1)
+up_line=$(grep -n 'up -d' "$updater" | head -1 | cut -d: -f1)
+[[ -n "$sync_line" && -n "$up_line" && "$sync_line" -lt "$up_line" ]] || fail "pantry-update.sh must copy the household hash before compose up"
+
+# A file left root-owned by a partial run is chowned again, and tightened to 600.
+# A failed chown stops the copy unless the no-sudo test seam is set.
+owned=$(mktemp -d)
+mkdir -p "$owned/auth"
+printf '%s\n' 'basic_auth bcrypt Pantry {' '	pantry ORIGINAL-HASH' '}' > "$owned/auth.caddy"
+printf '%s\n' 'stale' > "$owned/auth/household"
+chmod 644 "$owned/auth/household"
+own_bin=$(mktemp -d)
+own_log=$(mktemp)
+cat > "$own_bin/chown" << 'EOF'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >> "${CHOWN_LOG:?}"
+exit 0
+EOF
+chmod +x "$own_bin/chown"
+# shellcheck disable=SC1091
+CHOWN_LOG="$own_log" PANTRY_DIR="$owned" PATH="$own_bin:$PATH" \
+  bash -c 'source "$1"; sync_household_credential' _ "$ROOT/deploy/auth-migrate.sh"
+cmp "$owned/auth.caddy" "$owned/auth/household" || fail "direct copy did not replace a stale household file"
+owned_mode=$(stat -c '%a' "$owned/auth/household")
+[[ "$owned_mode" == "600" || "$owned_mode" == "640" ]] || fail "direct copy left mode $owned_mode"
+have "$(cat "$own_log")" "65532:65532 $owned/auth/household" "direct copy chowns an existing household file"
+have "$(cat "$own_log")" "65532:65532 $owned/auth" "direct copy chowns the auth directory"
+
+fail_bin=$(mktemp -d)
+cat > "$fail_bin/chown" << 'EOF'
+#!/usr/bin/env bash
+exit 1
+EOF
+chmod +x "$fail_bin/chown"
+set +e
+PANTRY_DIR="$owned" PATH="$fail_bin:$PATH" \
+  bash -c 'source "$1"; sync_household_credential' _ "$ROOT/deploy/auth-migrate.sh" >/tmp/pantry-chown-fail.out 2>&1
+fail_rc=$?
+set -e
+[[ "$fail_rc" -ne 0 ]] || fail "chown failure should stop the household copy"
+have "$(cat /tmp/pantry-chown-fail.out)" "Could not give" "chown failure names the path"
+set +e
+PANTRY_SETUP_SKIP_ROOT=1 PANTRY_DIR="$owned" PATH="$fail_bin:$PATH" \
+  bash -c 'source "$1"; sync_household_credential' _ "$ROOT/deploy/auth-migrate.sh" >/tmp/pantry-chown-skip.out 2>&1
+skip_rc=$?
+set -e
+[[ "$skip_rc" -eq 0 ]] || fail "PANTRY_SETUP_SKIP_ROOT should warn instead of failing chown, rc=$skip_rc"
+have "$(cat /tmp/pantry-chown-skip.out)" "[warn] Could not give" "skip-root chown failure is a warning"
+unset CURL_SESSION_CODE CURL_SESSION_BODY
+
+rm -rf "$lan" "$pub" "$first" "$bad" "$incomplete" "$opt" "$mdns" "$split" "$badip" "$mdns_bin" "$tun" "$notoken" "$unready" "$tunsplit" "$mode_dir" "$custom" "$updates" "$unavailable" "$owned" "$own_bin" "$fail_bin"
+rm -f /tmp/pantry-chown-fail.out /tmp/pantry-chown-skip.out
 echo "setup_apply_test ok"

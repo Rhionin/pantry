@@ -10,6 +10,7 @@ import { GroupsPage } from './components/groups/GroupsPage';
 import { InboxPage } from './components/groups/InboxPage';
 import { GroupDetailPage } from './components/groups/GroupDetailPage';
 import { AppMenu } from './components/shell/AppMenu';
+import { HouseholdGate } from './components/auth/HouseholdGate';
 import { CredentialsRevisionContext } from './credentialsRefresh';
 import { reportRoute } from './telemetry/client';
 import './App.css';
@@ -22,17 +23,16 @@ function RouteTelemetry() {
   return null;
 }
 
-function App() {
+function SignedInApp() {
   const [credentialsRevision, setCredentialsRevision] = useState(0);
   const notifyCredentialsChanged = useCallback(() => {
     setCredentialsRevision((current) => current + 1);
   }, []);
 
   return (
-    <BrowserRouter>
-      <CredentialsRevisionContext.Provider value={credentialsRevision}>
-        <RouteTelemetry />
-        <AppShell
+    <CredentialsRevisionContext.Provider value={credentialsRevision}>
+      <RouteTelemetry />
+      <AppShell
           className="app-shell"
           header={{ height: 56 }}
           padding={{ base: 'xs', sm: 'md' }}
@@ -65,9 +65,18 @@ function App() {
             </div>
           </AppShell.Main>
         </AppShell>
-      </CredentialsRevisionContext.Provider>
+    </CredentialsRevisionContext.Provider>
+  );
+}
+
+function App() {
+  return (
+    <BrowserRouter>
+      <HouseholdGate>
+        <SignedInApp />
+      </HouseholdGate>
     </BrowserRouter>
-  )
+  );
 }
 
 export default App

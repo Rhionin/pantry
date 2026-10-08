@@ -47,6 +47,8 @@ fi
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck disable=SC1091
 source "$SCRIPT_DIR/mdns/lan-ipv4.sh"
+# shellcheck disable=SC1091
+source "$SCRIPT_DIR/auth-migrate.sh"
 
 # Deploy root. Tests point this at a temp directory; the Pi uses /opt/pantry.
 PANTRY_DIR="${PANTRY_DIR:-/opt/pantry}"
@@ -149,7 +151,7 @@ copy_deploy_files() {
   log_info "Copying deployment files to ${PANTRY_DIR}..."
   mkdir -p "${PANTRY_DIR}"
   local item src dest
-  for item in docker-compose.yml docker-compose.tunnel.yml .env.example Caddyfile Caddyfile.tunnel publish-mode.sh udev systemd firewall mdns dns; do
+  for item in docker-compose.yml docker-compose.tunnel.yml .env.example Caddyfile Caddyfile.tunnel publish-mode.sh auth-migrate.sh udev systemd firewall mdns dns; do
     src="$SCRIPT_DIR/$item"
     dest="${PANTRY_DIR}/$item"
     if [[ ! -e "$src" ]]; then
@@ -481,6 +483,29 @@ refresh_update_unit() {
   log_success "Refreshed pantry-update units so automatic updates keep the public proxy and the deploy hook"
 }
 
+# verify_public_sign_in asks Pantry on the LAN port, with the public-entry
+# header Caddy would add. A password file the container cannot read makes
+# GET /api/session return 503. A visitor who simply has not signed in gets 401.
+verify_public_sign_in() {
+  local port="$1"
+  local body code
+  body=$(mktemp)
+  if ! code=$(curl -sS -o "$body" -w '%{http_code}' --max-time 10 \
+    -H 'X-Pantry-Entry: public' \
+    "http://127.0.0.1:${port}/api/session"); then
+    rm -f "$body"
+    fatal "Could not check whether the public site can sign in."
+  fi
+  if [[ "$code" == "503" ]] || grep -q -F 'Sign-in is unavailable' "$body"; then
+    log_error "The public site cannot read ${PANTRY_DIR}/auth/household."
+    log_error "The pantry container runs as distroless nonroot (uid 65532) and cannot open a root-owned password file."
+    log_error "GET /api/session with X-Pantry-Entry: public returned ${code}: $(tr '\n' ' ' < "$body")"
+    rm -f "$body"
+    fatal "Sign-in is unavailable. The public site is up, but login will not work until that file is readable by uid 65532."
+  fi
+  rm -f "$body"
+}
+
 # prepare_deploy_trigger_dir is the host directory mounted into the container.
 # uid 65532 is the distroless nonroot user. If the directory is missing, Docker
 # creates it as root and the hook cannot write the trigger file.
@@ -633,6 +658,20 @@ cmd_apply() {
     use_public=true
   fi
 
+  # The hash Caddy already checked becomes the login password. An existing
+  # auth.caddy is copied, not regenerated, and a saved session secret stays.
+  if ! sync_household_credential; then
+    fatal "Could not copy the household password hash. The running site was left unchanged."
+  fi
+  if [[ -f "${PANTRY_DIR}/auth.caddy" ]]; then
+    if ! ensure_session_secret; then
+      fatal "Could not save the session secret. The running site was left unchanged."
+    fi
+    if [[ ! -s "${PANTRY_DIR}/auth/household" ]]; then
+      fatal "The public site needs the password hash in ${PANTRY_DIR}/auth/household. The running site was left unchanged."
+    fi
+  fi
+
   local -a compose
   local proxy_service=caddy
   compose=(docker compose --project-directory "$PANTRY_DIR" -f "$PANTRY_DIR/docker-compose.yml")
@@ -653,6 +692,15 @@ cmd_apply() {
   fi
   if [[ "$use_public" == true && "$publish_mode" == tunnel ]]; then
     drop_stale_cloudflared
+  fi
+  # Pull before recreating so the image that checks the password is what
+  # starts when Caddy stops showing its own prompt. A failed pull leaves
+  # the running containers alone.
+  if [[ "$use_public" == true ]]; then
+    log_info "Pulling the Pantry image before reloading the public site"
+    if ! "${compose[@]}" pull pantry; then
+      fatal "Could not pull the Pantry image. The running site was left unchanged."
+    fi
   fi
   if ! "${compose[@]}" up -d; then
     fatal "Failed to start Pantry"
@@ -723,6 +771,10 @@ cmd_apply() {
     fatal "Health check timeout"
   fi
   log_success "Pantry is healthy"
+
+  if [[ "$use_public" == true ]]; then
+    verify_public_sign_in "$host_port"
+  fi
 
   local firewall_applied=false
   apply_lan_firewall

@@ -3,6 +3,7 @@ import { MantineProvider } from '@mantine/core';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { ProviderInfo } from '../../types';
+import { HouseholdSessionContext } from '../auth/householdSession';
 import { AppMenu } from './AppMenu';
 
 const provider = (overrides: Partial<ProviderInfo> = {}): ProviderInfo => ({
@@ -218,6 +219,41 @@ describe('AppMenu', () => {
     await screen.findByRole('menuitem', { name: 'Product groups' });
     expect(screen.queryByRole('menuitem', { name: /group suggestion/i })).not.toBeInTheDocument();
     expect(screen.queryByText('0')).not.toBeInTheDocument();
+  });
+
+  it('offers log out when the public site required a sign-in', async () => {
+    const logout = vi.fn();
+    vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === '/api/providers') return Promise.resolve(jsonResponse([provider()]));
+      if (url === '/api/build') return Promise.resolve(jsonResponse({ commit: 'abc123def456' }));
+      if (url === '/api/group-suggestions') return Promise.resolve(jsonResponse([]));
+      return Promise.reject(new Error(`Unexpected request: ${url}`));
+    }));
+    render(
+      <MantineProvider>
+        <HouseholdSessionContext.Provider value={{ required: true, logout }}>
+          <MemoryRouter>
+            <AppMenu onCredentialsChanged={() => undefined} />
+          </MemoryRouter>
+        </HouseholdSessionContext.Provider>
+      </MantineProvider>,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Menu' }));
+    const build = await screen.findByText('Build');
+    const note = await screen.findByRole('note', { name: 'build abc123def456' });
+    const logOut = await screen.findByRole('menuitem', { name: 'Log out' });
+    expect(note).toBeVisible();
+    expect(build.compareDocumentPosition(logOut) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    fireEvent.click(logOut);
+    expect(logout).toHaveBeenCalledTimes(1);
+  });
+
+  it('hides log out on the LAN listener', async () => {
+    renderMenu([provider()]);
+    fireEvent.click(screen.getByRole('button', { name: 'Menu' }));
+    await screen.findByRole('menuitem', { name: 'Product groups' });
+    expect(screen.queryByRole('menuitem', { name: 'Log out' })).not.toBeInTheDocument();
   });
 
   it('opens diagnostics from the menu', async () => {

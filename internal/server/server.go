@@ -47,6 +47,7 @@ type config struct {
 	scannerMode      *scannerMode
 	deployHookSecret string
 	deployHookPath   string
+	household        *HouseholdAuth
 }
 
 // Option is a functional option for NewHandler.
@@ -168,7 +169,11 @@ func NewHandler(
 	brand.Register(root)
 	root.Handle("/", webui.NewHandler())
 
-	return observeHTTP(reg, secureHeaders(root)), scanQueue
+	var handler http.Handler = root
+	if cfg.household != nil {
+		handler = cfg.household.Middleware(root)
+	}
+	return observeHTTP(reg, secureHeaders(handler)), scanQueue
 }
 
 // newAPIMux creates the API-only mux with all existing route registrations.
@@ -182,6 +187,14 @@ func newAPIMux(
 	cfg *config,
 ) (*http.ServeMux, *scan.Queue, *telemetry.Registry) {
 	apiMux := http.NewServeMux()
+
+	var household *HouseholdAuth
+	if cfg != nil {
+		household = cfg.household
+	}
+	apiMux.HandleFunc("GET /api/session", household.ServeSession)
+	apiMux.HandleFunc("POST /api/login", household.ServeLogin)
+	apiMux.HandleFunc("POST /api/logout", household.ServeLogout)
 
 	reg := telemetry.NewRegistry()
 	broadcaster := events.NewBroadcaster()
@@ -223,16 +236,16 @@ func newAPIMux(
 	eventsHandler := &EventsHandler{Broadcaster: broadcaster, Telemetry: reg}
 	apiMux.HandleFunc("GET /api/events", eventsHandler.Handle)
 	// Caddy serves this exact path without the household password, beside
-	// telemetry. Keep that exemption if the password check moves into the app:
-	// an agent compares commit with master to see that a deploy landed.
+	// telemetry, and isPublicPath leaves it open when X-Pantry-Entry is set.
+	// An agent compares commit with master to see that a deploy landed.
 	apiMux.HandleFunc("GET /api/build", HandleJSON(handleBuildInfo))
 
 	telemetryHandler := &TelemetryHandler{Registry: reg}
 	apiMux.HandleFunc("GET /api/telemetry", telemetryHandler.Get)
 	apiMux.HandleFunc("POST /api/telemetry/client", telemetryHandler.PostClient)
 
-	// The household password is enforced by Caddy, which exempts this path.
-	// The signature check is what keeps an unsigned request from deploying.
+	// Caddy does not put this path behind the household login. The signature
+	// check is what keeps an unsigned request from deploying.
 	var deploySecret, deployPath string
 	if cfg != nil {
 		deploySecret = cfg.deployHookSecret
