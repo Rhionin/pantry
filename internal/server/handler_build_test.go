@@ -121,6 +121,28 @@ func TestBuildInfoEndpoint(t *testing.T) {
 			afterRequest: assertBuildInfoKeys,
 		},
 		{
+			name: "GET /api/build reports a refused setup commit",
+			setup: func(env testEnv) {
+				path := filepath.Join(env.T.TempDir(), "status.json")
+				body := `{"setupCommit":"fedcba9876543210fedcba9876543210fedcba98","setupAppliedAt":"2026-10-09T16:00:00Z","setupStatus":"refused"}`
+				if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+					env.T.Fatalf("write status: %v", err)
+				}
+				env.T.Setenv("PANTRY_SETUP_STATUS", path)
+			},
+			httpExchange: httpExchange{
+				method:         "GET",
+				url:            "/api/build",
+				expectedStatus: http.StatusOK,
+				assertions: []assertion{
+					{path: "$.setupCommit", value: "fedcba9876543210fedcba9876543210fedcba98"},
+					{path: "$.setupAppliedAt", value: "2026-10-09T16:00:00Z"},
+					{path: "$.setupStatus", value: "refused"},
+				},
+			},
+			afterRequest: assertBuildInfoKeys,
+		},
+		{
 			name: "GET /api/build omits a setup record that is not a commit or status",
 			setup: func(env testEnv) {
 				path := filepath.Join(env.T.TempDir(), "status.json")

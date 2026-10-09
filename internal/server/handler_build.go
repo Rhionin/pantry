@@ -77,7 +77,7 @@ func currentSetupStatus() (commit, appliedAt, status string) {
 		appliedAt = doc.SetupAppliedAt
 	}
 	switch doc.SetupStatus {
-	case "applied", "rolled-back", "failed":
+	case "applied", "rolled-back", "failed", "refused":
 		status = doc.SetupStatus
 	}
 	return commit, appliedAt, status

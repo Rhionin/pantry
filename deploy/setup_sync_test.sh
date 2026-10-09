@@ -59,6 +59,21 @@ export PANTRY_SETUP_NOW=2026-10-09T14:00:00Z
 # shellcheck disable=SC1090,SC1091
 source "$UPDATER"
 
+# The real check curls the Pi. Fail only the sha a test names.
+setup_health_ok() {
+  local head
+  if [[ "${PANTRY_SETUP_HEALTH_FAIL:-}" == 1 ]]; then
+    head=$(git -C "${PANTRY_SETUP_CHECKOUT}" rev-parse HEAD 2>/dev/null || true)
+    if [[ -n "${PANTRY_SETUP_HEALTH_FAIL_SHA:-}" && "$head" == "$PANTRY_SETUP_HEALTH_FAIL_SHA" ]]; then
+      return 1
+    fi
+    if [[ -z "${PANTRY_SETUP_HEALTH_FAIL_SHA:-}" ]]; then
+      return 1
+    fi
+  fi
+  return 0
+}
+
 # new_fixture builds master commits A then C, and a side commit B that is
 # not an ancestor of master. The updater's remote is that local bare repo.
 new_fixture() {
@@ -95,6 +110,8 @@ new_fixture() {
   export PANTRY_SETUP_NOW=2026-10-09T14:00:00Z
   export STUB_LOG="$WORK/stub.log"
   unset FAIL_SHA
+  unset PANTRY_SETUP_HEALTH_FAIL
+  unset PANTRY_SETUP_HEALTH_FAIL_SHA
   mkdir -p "$PANTRY_DIR/deploy-trigger" "$PANTRY_SETUP_STATE_DIR"
   : > "$STUB_LOG"
 
@@ -144,11 +161,49 @@ cmp "$PANTRY_SETUP_STATUS_FILE" "$WORK/expect-status" || fail "status file was $
 [[ "$(tr -d '[:space:]' < "$PANTRY_SETUP_STATE_DIR/last-known-good")" == "$SHA_C" ]] || fail "last-known-good was not the applied commit"
 [[ "$(git -C "$PANTRY_SETUP_CHECKOUT" rev-parse HEAD)" == "$SHA_C" ]] || fail "checkout is not the trigger commit"
 
-# An ancestor of origin/master is accepted. The tip is not the only match.
+# The same trigger on the next minute must not run setup.sh again.
+stub_lines=$(wc -l < "$STUB_LOG")
+run_apply
+have "$LAST_OUT" "already applied" "a repeated sha does not re-apply"
+lack "$LAST_OUT" "applying" "a repeated sha does not start setup"
+[[ "$(wc -l < "$STUB_LOG")" -eq "$stub_lines" ]] || fail "setup.sh ran again for an already-applied sha: $(cat "$STUB_LOG")"
+cmp "$PANTRY_SETUP_STATUS_FILE" "$WORK/expect-status" || fail "repeated sha rewrote status: $(cat "$PANTRY_SETUP_STATUS_FILE")"
+[[ ! -f "$PANTRY_SETUP_STATE_DIR/in-progress" ]] || fail "successful apply left the in-progress marker"
+
+# A downgrade behind last-known-good is refused. The container can write the trigger.
+write_trigger "sha=${SHA_A} ref=master"
+: > "$STUB_LOG"
+run_apply
+have "$LAST_OUT" "REFUSING ${SHA_A}" "ancestor of last-known-good is refused"
+have "$LAST_OUT" "ancestor of last-known-good" "downgrade names the reason"
+lack "$LAST_OUT" "applying" "downgrade was applied"
+[[ ! -s "$STUB_LOG" ]] || fail "setup.sh ran for a downgrade: $(cat "$STUB_LOG")"
+[[ "$(git -C "$PANTRY_SETUP_CHECKOUT" rev-parse HEAD)" == "$SHA_C" ]] || fail "downgrade moved the checkout"
+grep -q '"setupStatus":"refused"' "$PANTRY_SETUP_STATUS_FILE" || fail "downgrade did not record refused: $(cat "$PANTRY_SETUP_STATUS_FILE")"
+grep -q "$SHA_A" "$PANTRY_SETUP_STATUS_FILE" || fail "refused status omitted the sha"
+
+# Equality with last-known-good is not a re-apply when last-applied was cleared.
+rm -f "$PANTRY_SETUP_STATE_DIR/last-applied"
+write_trigger "sha=${SHA_C} ref=master"
+: > "$STUB_LOG"
+run_apply
+have "$LAST_OUT" "is last-known-good" "known-good sha is not applied again"
+[[ ! -s "$STUB_LOG" ]] || fail "setup.sh ran for last-known-good: $(cat "$STUB_LOG")"
+
+# An ancestor of origin/master is accepted when nothing is known-good yet.
+new_fixture
 write_trigger "sha=${SHA_A} ref=master"
 run_apply
 have "$LAST_OUT" "pantry setup: applied ${SHA_A}" "ancestor of master is applied"
 [[ "$(git -C "$PANTRY_SETUP_CHECKOUT" rev-parse HEAD)" == "$SHA_A" ]] || fail "checkout did not move to the ancestor"
+
+# A descendant of last-known-good is the forward step the hook is allowed to take.
+new_fixture
+printf '%s\n' "$SHA_A" > "$PANTRY_SETUP_STATE_DIR/last-known-good"
+write_trigger "sha=${SHA_C} ref=master"
+run_apply
+have "$LAST_OUT" "pantry setup: applied ${SHA_C}" "descendant of last-known-good is applied"
+[[ "$(tr -d '[:space:]' < "$PANTRY_SETUP_STATE_DIR/last-known-good")" == "$SHA_C" ]] || fail "forward apply did not advance last-known-good"
 
 # A branch-only commit is refused, including after its objects are present.
 new_fixture
@@ -157,6 +212,7 @@ run_apply
 have "$LAST_OUT" "REFUSING ${SHA_B}" "branch-only sha is refused"
 lack "$LAST_OUT" "applying" "refused sha was applied"
 [[ ! -s "$STUB_LOG" ]] || fail "setup.sh ran for a branch-only sha: $(cat "$STUB_LOG")"
+grep -q '"setupStatus":"refused"' "$PANTRY_SETUP_STATUS_FILE" || fail "branch-only sha did not record refused"
 ensure_setup_checkout
 gitc -C "$PANTRY_SETUP_CHECKOUT" fetch origin 'refs/heads/feature:refs/heads/feature' >/dev/null 2>&1
 write_trigger "sha=${SHA_B} ref=feature"
@@ -230,6 +286,7 @@ write_trigger "sha=${SHA_C} ref=master"
 run_apply
 gitc -C "$PANTRY_SETUP_CHECKOUT" remote set-url origin https://evil.example/pantry.git
 : > "$STUB_LOG"
+rm -f "$PANTRY_SETUP_STATE_DIR/last-applied" "$PANTRY_SETUP_STATE_DIR/last-known-good"
 run_apply
 have "$LAST_OUT" "applied ${SHA_C}" "fetch still uses the configured remote"
 [[ "$(git -C "$PANTRY_SETUP_CHECKOUT" remote get-url origin)" == "$PANTRY_SETUP_REMOTE" ]] || fail "origin URL was left pointing at the tampered remote"
@@ -264,15 +321,91 @@ have "$LAST_OUT" "not applying ${SHA_C}" "refused remote does not apply"
 [[ ! -s "$STUB_LOG" ]] || fail "refused remote ran setup.sh"
 grep -q '"setupStatus":"failed"' "$PANTRY_SETUP_STATUS_FILE" || fail "refused remote did not record failure"
 
-# A dirty checkout cannot block the next apply on a prompt.
+# A dirty checkout cannot block the next forward apply on a prompt.
 new_fixture
-write_trigger "sha=${SHA_C} ref=master"
-run_apply
-printf 'dirty\n' > "$PANTRY_SETUP_CHECKOUT/a"
 write_trigger "sha=${SHA_A} ref=master"
 run_apply
-have "$LAST_OUT" "applied ${SHA_A}" "dirty checkout still applies"
-[[ "$(git -C "$PANTRY_SETUP_CHECKOUT" rev-parse HEAD)" == "$SHA_A" ]] || fail "force checkout did not move off the dirty tree"
+printf 'dirty\n' > "$PANTRY_SETUP_CHECKOUT/a"
+write_trigger "sha=${SHA_C} ref=master"
+run_apply
+have "$LAST_OUT" "applied ${SHA_C}" "dirty checkout still applies"
+[[ "$(git -C "$PANTRY_SETUP_CHECKOUT" rev-parse HEAD)" == "$SHA_C" ]] || fail "force checkout did not move off the dirty tree"
+
+# Health failure rolls back and does not record the bad commit as known-good.
+new_fixture
+printf '%s\n' "$SHA_A" > "$PANTRY_SETUP_STATE_DIR/last-known-good"
+export PANTRY_SETUP_HEALTH_FAIL=1
+export PANTRY_SETUP_HEALTH_FAIL_SHA="$SHA_C"
+write_trigger "sha=${SHA_C} ref=master"
+run_apply
+have "$LAST_OUT" "FAILED health check after ${SHA_C}" "unhealthy apply is loud"
+have "$LAST_OUT" "ROLLING BACK to last-known-good ${SHA_A}" "unhealthy apply rolls back"
+have "$LAST_OUT" "restored last-known-good ${SHA_A}" "unhealthy apply finishes the rollback"
+[[ "$(tr -d '[:space:]' < "$PANTRY_SETUP_STATE_DIR/last-known-good")" == "$SHA_A" ]] || fail "health failure advanced last-known-good"
+printf '{"setupCommit":"%s","setupAppliedAt":"2026-10-09T14:00:00Z","setupStatus":"rolled-back"}\n' "$SHA_A" > "$WORK/expect-status"
+cmp "$PANTRY_SETUP_STATUS_FILE" "$WORK/expect-status" || fail "health rollback status was $(cat "$PANTRY_SETUP_STATUS_FILE")"
+[[ ! -f "$PANTRY_SETUP_STATE_DIR/in-progress" ]] || fail "health rollback left the in-progress marker"
+unset PANTRY_SETUP_HEALTH_FAIL PANTRY_SETUP_HEALTH_FAIL_SHA
+
+# A killed apply leaves the marker. The next run records failure and rolls back.
+new_fixture
+write_trigger "sha=${SHA_A} ref=master"
+run_apply
+printf '%s\n' "$SHA_C" > "$PANTRY_SETUP_STATE_DIR/in-progress"
+write_trigger "ref=master"
+: > "$STUB_LOG"
+run_apply
+have "$LAST_OUT" "previous apply was interrupted" "a leftover marker is an interrupted apply"
+have "$LAST_OUT" "ROLLING BACK to last-known-good ${SHA_A}" "interrupted apply rolls back"
+[[ ! -f "$PANTRY_SETUP_STATE_DIR/in-progress" ]] || fail "interrupted apply left the marker"
+[[ "$(git -C "$PANTRY_SETUP_CHECKOUT" rev-parse HEAD)" == "$SHA_A" ]] || fail "interrupted apply left a different checkout"
+
+# A symlink or an oversized trigger is not read and is not copied into the log.
+new_fixture
+printf 'DEPLOY_HOOK_SECRET=kept-hook-secret\n' > "$PANTRY_DIR/.env"
+rm -f "$PANTRY_TRIGGER_FILE"
+ln -s "$PANTRY_DIR/.env" "$PANTRY_TRIGGER_FILE"
+run_apply
+have "$LAST_OUT" "REFUSING trigger" "symlink trigger is refused"
+lack "$LAST_OUT" "kept-hook-secret" "symlink target was logged"
+[[ ! -s "$STUB_LOG" ]] || fail "setup.sh ran for a symlink trigger"
+rm -f "$PANTRY_TRIGGER_FILE"
+dd if=/dev/zero bs=2048 count=1 2>/dev/null | tr '\0' 'a' > "$PANTRY_TRIGGER_FILE"
+run_apply
+have "$LAST_OUT" "1024" "oversized trigger is refused"
+lack "$LAST_OUT" "aaaa" "oversized trigger body was logged"
+[[ ! -s "$STUB_LOG" ]] || fail "setup.sh ran for an oversized trigger"
+rm -f "$PANTRY_TRIGGER_FILE"
+mkdir "$PANTRY_TRIGGER_FILE"
+run_apply
+have "$LAST_OUT" "REFUSING trigger" "directory trigger is refused"
+
+# Installing deploy files replaces the running updater inode instead of rewriting it.
+inode_dest=$(mktemp -d)
+mkdir -p "$inode_dest/systemd"
+printf 'old-updater\n' > "$inode_dest/systemd/pantry-update.sh"
+inode_before=$(stat -c '%i' "$inode_dest/systemd/pantry-update.sh")
+PANTRY_SETUP_SOURCE_ONLY=1 PANTRY_DIR="$inode_dest" \
+  bash -c 'source "$1"; copy_deploy_files' _ "$ROOT/deploy/setup.sh" >/dev/null
+inode_after=$(stat -c '%i' "$inode_dest/systemd/pantry-update.sh")
+[[ "$inode_before" != "$inode_after" ]] || fail "install rewrote pantry-update.sh in place"
+cmp "$ROOT/deploy/systemd/pantry-update.sh" "$inode_dest/systemd/pantry-update.sh" || fail "installed pantry-update.sh does not match the source"
+cmp "$ROOT/deploy/systemd/pantry-setup.sh" "$inode_dest/systemd/pantry-setup.sh" || fail "installed pantry-setup.sh does not match the source"
+grep -q 'main "$@"' "$inode_dest/systemd/pantry-update.sh" || fail "installed updater is not wrapped in main"
+grep -q 'main "$@"' "$inode_dest/systemd/pantry-setup.sh" || fail "installed setup helper is not wrapped in main"
+rm -rf "$inode_dest"
+
+# A manual setup records last-known-good. The automatic path does not.
+seed_dir=$(mktemp -d)
+PANTRY_SETUP_SOURCE_ONLY=1 PANTRY_DIR="$seed_dir" \
+  bash -c 'source "$1"; seed_known_good_setup' _ "$ROOT/deploy/setup.sh" >/dev/null
+expected_sha=$(git -C "$ROOT" rev-parse HEAD)
+[[ "$(tr -d '[:space:]' < "$seed_dir/setup-state/last-known-good")" == "$expected_sha" ]] || fail "manual setup did not seed last-known-good"
+[[ "$(tr -d '[:space:]' < "$seed_dir/setup-state/last-applied")" == "$expected_sha" ]] || fail "manual setup did not seed last-applied"
+PANTRY_SETUP_SOURCE_ONLY=1 PANTRY_SETUP_SKIP_PACKAGES=1 PANTRY_DIR="$seed_dir" \
+  bash -c 'source "$1"; rm -f "$PANTRY_DIR/setup-state/last-known-good"; seed_known_good_setup' _ "$ROOT/deploy/setup.sh"
+[[ ! -f "$seed_dir/setup-state/last-known-good" ]] || fail "automatic setup seeded last-known-good"
+rm -rf "$seed_dir"
 
 cleanup
 trap - EXIT

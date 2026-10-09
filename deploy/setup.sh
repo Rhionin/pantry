@@ -144,6 +144,52 @@ write_auth_caddy() {
   mv "$tmp" "${PANTRY_DIR}/auth.caddy" || fatal "Could not write the password hash file"
 }
 
+# install_new_file replaces dest with a new inode. cp onto an existing path
+# rewrites the file bash is already executing; mv of a temp file does not.
+install_new_file() {
+  local src="$1" dest="$2" tmp dir
+  dir=$(dirname "$dest")
+  mkdir -p "$dir"
+  tmp=$(mktemp "${dir}/.pantry-install.XXXXXX")
+  if ! cp "$src" "$tmp"; then
+    rm -f "$tmp"
+    return 1
+  fi
+  chmod --reference="$src" "$tmp" || chmod 644 "$tmp"
+  mv -f "$tmp" "$dest"
+}
+
+# install_deploy_path copies a file or directory tree through install_new_file.
+# A symlink in the source tree is skipped so the copy cannot walk outside it.
+install_deploy_path() {
+  local src="$1" dest="$2" child base
+  local nullglob_was=0 dotglob_was=0
+  if [[ -L "$src" ]]; then
+    log_warn "Skipping symlink ${src}"
+    return 0
+  fi
+  if [[ -d "$src" ]]; then
+    mkdir -p "$dest"
+    shopt -q nullglob && nullglob_was=1
+    shopt -q dotglob && dotglob_was=1
+    shopt -s nullglob dotglob
+    for child in "$src"/*; do
+      base=$(basename "$child")
+      install_deploy_path "$child" "${dest}/${base}"
+    done
+    if [[ "$nullglob_was" -eq 0 ]]; then
+      shopt -u nullglob
+    fi
+    if [[ "$dotglob_was" -eq 0 ]]; then
+      shopt -u dotglob
+    fi
+    return 0
+  fi
+  if [[ -f "$src" ]]; then
+    install_new_file "$src" "$dest"
+  fi
+}
+
 # copy_deploy_files refreshes ${PANTRY_DIR} from this script's directory.
 # .env is never copied, so a re-run cannot clobber operator settings.
 # Copying a file onto itself (running the already-installed script) is skipped.
@@ -160,10 +206,10 @@ copy_deploy_files() {
     if [[ "$src" == "$dest" ]]; then
       continue
     fi
-    cp -r "$src" "${PANTRY_DIR}/"
+    install_deploy_path "$src" "$dest"
   done
   if [[ "$SCRIPT_DIR/setup.sh" != "${PANTRY_DIR}/setup.sh" ]]; then
-    cp "$SCRIPT_DIR/setup.sh" "${PANTRY_DIR}/setup.sh"
+    install_new_file "$SCRIPT_DIR/setup.sh" "${PANTRY_DIR}/setup.sh"
   fi
   chmod +x "${PANTRY_DIR}/setup.sh"
   if [[ -f "${PANTRY_DIR}/systemd/pantry-update.sh" ]]; then
@@ -583,6 +629,28 @@ ensure_deploy_hook_secret() {
   log_success "Generated DEPLOY_HOOK_SECRET (print it with: sudo ./setup.sh deploy-secret)"
 }
 
+# seed_known_good_setup records the commit a manual run just applied.
+# The automatic path skips this. A health failure on that path must not
+# become the commit a later rollback restores; the updater records
+# last-known-good only after its own health check.
+seed_known_good_setup() {
+  local sha tree
+  if [[ "${PANTRY_SETUP_SKIP_PACKAGES:-}" == 1 ]]; then
+    return 0
+  fi
+  tree="$SCRIPT_DIR"
+  if ! sha=$(git -C "$tree" rev-parse HEAD 2>/dev/null) || [[ ! "$sha" =~ ^[0-9a-f]{40}$ ]]; then
+    tree="${PANTRY_DIR}/src"
+    if ! sha=$(git -C "$tree" rev-parse HEAD 2>/dev/null) || [[ ! "$sha" =~ ^[0-9a-f]{40}$ ]]; then
+      return 0
+    fi
+  fi
+  mkdir -p "${PANTRY_DIR}/setup-state"
+  printf '%s\n' "$sha" > "${PANTRY_DIR}/setup-state/last-known-good"
+  printf '%s\n' "$sha" > "${PANTRY_DIR}/setup-state/last-applied"
+  log_info "Recorded last-known-good setup ${sha}"
+}
+
 # ============================================================================
 # apply: sync files, containers, Caddy, and the LAN firewall
 # ============================================================================
@@ -807,6 +875,7 @@ cmd_apply() {
     fatal "Health check timeout"
   fi
   log_success "Pantry is healthy"
+  seed_known_good_setup
 
   if [[ "$use_public" == true ]]; then
     verify_public_sign_in "$host_port"
@@ -1416,4 +1485,10 @@ main() {
   esac
 }
 
+# Tests source this file to call copy_deploy_files. A normal run applies
+# and exits so a rewritten copy of this script is not read further.
+if [[ "${PANTRY_SETUP_SOURCE_ONLY:-}" == 1 ]]; then
+  return 0
+fi
 main "$@"
+exit

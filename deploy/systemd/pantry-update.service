@@ -6,6 +6,9 @@ After=network-online.target docker.service
 [Service]
 Type=oneshot
 # One run fetches the setup tree, applies it, and pulls the image.
+# Not sandboxed: no ProtectSystem, DynamicUser, or other confinement.
+# The unit runs as root because it applies setup.sh and talks to Docker.
+# A valid DEPLOY_HOOK_SECRET is root-setup authority for a master commit.
 TimeoutStartSec=30min
 WorkingDirectory=/opt/pantry
 ExecStart=/opt/pantry/systemd/pantry-update.sh

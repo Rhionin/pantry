@@ -737,6 +737,7 @@ grep -q '^PANTRY_SESSION_SECRET=kept-session-secret$' "$auto/.env" || fail "auto
 grep -q '^PANTRY_IMAGE_TAG=pinned-by-operator$' "$auto/.env" || fail "automatic setup replaced PANTRY_IMAGE_TAG"
 grep -q '^BASIC_AUTH_PASSWORD=correct horse battery staple$' "$auto/.env" || fail "automatic setup replaced BASIC_AUTH_PASSWORD"
 [[ -f "$auto/setup-state/status.json" ]] || fail "automatic setup did not create the setup status file"
+[[ ! -f "$auto/setup-state/last-known-good" ]] || fail "automatic setup seeded last-known-good"
 
 # No docker binary: the automatic path stops instead of curling the installer.
 nodocker=$(mktemp -d)
