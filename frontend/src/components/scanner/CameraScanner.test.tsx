@@ -49,19 +49,6 @@ describe('CameraScanner', () => {
     expect(getUserMedia).not.toHaveBeenCalled();
   });
 
-  it('offers the scan mode control when the camera cannot start', () => {
-    Object.defineProperty(window, 'isSecureContext', { configurable: true, value: false });
-    const onModeChange = vi.fn();
-    renderScanner({ onScan: vi.fn(), mode: 'stock_out', onModeChange });
-
-    fireEvent.click(screen.getByRole('button', { name: 'Scan with camera' }));
-
-    expect(screen.getByRole('radio', { name: 'STOCK OUT' })).toBeChecked();
-    fireEvent.click(screen.getByRole('radio', { name: 'STOCK IN' }));
-    expect(onModeChange).toHaveBeenCalledWith('stock_in');
-    expect(screen.getByLabelText('Type a barcode')).toBeInTheDocument();
-  });
-
   it('explains the HTTPS requirement and offers manual entry without opening a camera', () => {
     Object.defineProperty(window, 'isSecureContext', { configurable: true, value: false });
     const getUserMedia = vi.fn();
@@ -296,29 +283,6 @@ describe('CameraScanner', () => {
       });
       expect(polygon).toHaveAttribute('points', '10,20 80,20 80,50 10,50');
       expect(container.querySelector('.camera-preview-boxes')).toHaveAttribute('viewBox', '0 0 200 100');
-    });
-
-    it('switches scan mode from the open preview without closing the camera', async () => {
-      const onModeChange = vi.fn();
-      const onScan = vi.fn();
-      renderScanner({
-        onScan,
-        mode: 'stock_in',
-        onModeChange,
-        createDecoder: async () => decoderReturning([]),
-      });
-
-      expect(screen.queryByRole('radio', { name: 'STOCK IN' })).not.toBeInTheDocument();
-
-      fireEvent.click(screen.getByRole('button', { name: 'Scan with camera' }));
-
-      expect(await screen.findByRole('radio', { name: 'STOCK IN' })).toBeChecked();
-      fireEvent.click(screen.getByRole('radio', { name: 'STOCK OUT' }));
-
-      expect(onModeChange).toHaveBeenCalledWith('stock_out');
-      expect(onScan).not.toHaveBeenCalled();
-      expect(screen.getByLabelText('Camera preview')).toBeInTheDocument();
-      expect(screen.queryByRole('button', { name: 'Scan with camera' })).not.toBeInTheDocument();
     });
 
     it('sizes the picture from a wrapper so a phone can still see the queue', async () => {

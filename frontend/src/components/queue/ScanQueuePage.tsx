@@ -6,7 +6,6 @@ import { createScanEntry, getInventoryList, getScannerConfig, listScanEntries, s
 import type { InventoryItem, ProcessingFailure, ProcessingNotice, ScanEntry, ScannerConfig } from '../../types';
 import { BarcodeInputField } from '../scanner/BarcodeInputField';
 import { CameraScanner } from '../scanner/CameraScanner';
-import { ScannerModeSwitch } from '../scanner/ScannerModeSwitch';
 import { BatchReviewPanel } from './BatchReviewPanel';
 import { ProcessingScanCard } from './ProcessingScanCard';
 import { ScanEntryCard } from './ScanEntryCard';
@@ -26,7 +25,6 @@ export const ScanQueuePage = ({ userId = DEFAULT_USER_ID }: ScanQueuePageProps) 
   const [entries, setEntries] = useState<ScanEntry[]>([]);
   const [inventory, setInventory] = useState<InventoryItem[]>([]);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
-  const [activeView, setActiveView] = useState<QueueView>('stock_in');
   const [scannerMode, setScannerModeState] = useState<QueueView>('stock_in');
   const [scannerConfig, setScannerConfig] = useState<ScannerConfig | null>(null);
   const [scannerConnected, setScannerConnected] = useState<boolean | null>(null);
@@ -43,38 +41,30 @@ export const ScanQueuePage = ({ userId = DEFAULT_USER_ID }: ScanQueuePageProps) 
   // response that started earlier cannot put the previous direction back.
   const modeEpoch = useRef(0);
 
-  // Apply a direction learned from the server. The visible tab follows only
-  // when the direction actually changes, so a refresh that reports the same
-  // mode does not pull the user off the queue they are reviewing.
+  // The selected tab is the scan direction. A refresh that reports the same
+  // direction leaves the queue the user is reviewing in place.
   const acceptRemoteMode = useCallback((mode: QueueView) => {
     if (mode !== 'stock_in' && mode !== 'stock_out') return;
     const changed = scannerModeRef.current !== mode;
     scannerModeRef.current = mode;
     setScannerModeState(mode);
-    if (changed) setActiveView(mode);
+    if (changed) setSelectedIds([]);
   }, []);
 
   const holdLocalMode = useCallback((mode: QueueView) => {
     modeEpoch.current += 1;
     scannerModeRef.current = mode;
     setScannerModeState(mode);
-    setActiveView(mode);
   }, []);
-
-  const handleViewChange = (value: string | null) => {
-    if (value !== 'stock_in' && value !== 'stock_out') return;
-    setActiveView(value);
-    setSelectedIds([]);
-  };
 
   const stockInCount = useMemo(() => getEntriesForView(entries, 'stock_in').length, [entries]);
   const stockOutCount = useMemo(() => getEntriesForView(entries, 'stock_out').length, [entries]);
 
-  const viewEntries = useMemo(() => getEntriesForView(entries, activeView), [entries, activeView]);
+  const viewEntries = useMemo(() => getEntriesForView(entries, scannerMode), [entries, scannerMode]);
   const batches = useMemo(() => groupScansIntoBatches(viewEntries), [viewEntries]);
   const processingForView = useMemo(
-    () => processing.filter((notice) => notice.userId === userId && entryMatchesView(notice.direction, activeView)),
-    [processing, userId, activeView],
+    () => processing.filter((notice) => notice.userId === userId && entryMatchesView(notice.direction, scannerMode)),
+    [processing, userId, scannerMode],
   );
   const viewEntryIds = useMemo(() => new Set(viewEntries.map((entry) => entry.id)), [viewEntries]);
   const eligibleEntries = useMemo(() => viewEntries.filter(isBatchEligible), [viewEntries]);
@@ -210,6 +200,13 @@ export const ScanQueuePage = ({ userId = DEFAULT_USER_ID }: ScanQueuePageProps) 
     }
   }, [holdLocalMode]);
 
+  const handleViewChange = (value: string | null) => {
+    if (value !== 'stock_in' && value !== 'stock_out') return;
+    if (value === scannerModeRef.current) return;
+    setSelectedIds([]);
+    void applyScannerMode(value);
+  };
+
   // Classify a scanned string against the configured control barcodes using the
   // same exact-match rule the backend classify() applies (no trimming or
   // case-folding beyond what BarcodeInputField already trims). Returns the mode
@@ -282,28 +279,20 @@ export const ScanQueuePage = ({ userId = DEFAULT_USER_ID }: ScanQueuePageProps) 
         <BarcodeInputField onScan={(barcode) => void captureBarcode(barcode)} />
         <div className="scan-toolbar-primary">
           <Title order={1} className="scan-toolbar-title">Scan queue</Title>
-          {/* "Mode: stock_…" stays in the DOM for the queue banner matcher.
-              The visible switch hides while the camera's own control is open. */}
+          <Text
+            size="xs"
+            className={`scan-direction-hint scan-direction-hint--${scannerMode}`}
+            role="status"
+          >
+            {scannerMode === 'stock_in' ? 'Scans add to stock' : 'Scans remove from stock'}
+          </Text>
+          {/* "Mode: stock_…" stays in the DOM for the queue banner matcher. */}
           <div role="alert" className={`scan-mode-switch scan-mode-switch--${scannerMode}`}>
             <span className="scan-mode-chip-key" aria-hidden="true">Mode: {scannerMode}</span>
-            {!cameraOpen && (
-              <div className="scan-mode-switch-field">
-                <span className="scan-mode-switch-caption" aria-hidden="true">Scanning mode</span>
-                <ScannerModeSwitch
-                  mode={scannerMode}
-                  onChange={(mode) => { void applyScannerMode(mode); }}
-                  label="Scanning mode"
-                  className="scan-mode-switch-control"
-                  size="sm"
-                />
-              </div>
-            )}
           </div>
           <CameraScanner
             onScan={noteCameraCapture}
             onOpenChange={setCameraOpen}
-            mode={scannerMode}
-            onModeChange={(mode) => { void applyScannerMode(mode); }}
           />
         </div>
         {scanError !== '' && (
@@ -324,7 +313,12 @@ export const ScanQueuePage = ({ userId = DEFAULT_USER_ID }: ScanQueuePageProps) 
             )}
           </Text>
         )}
-        <Tabs value={activeView} onChange={handleViewChange} className="scan-view-tabs">
+        <Tabs
+          value={scannerMode}
+          onChange={handleViewChange}
+          color={scannerMode === 'stock_in' ? 'blue' : 'orange'}
+          className={`scan-view-tabs scan-view-tabs--${scannerMode}`}
+        >
           <Tabs.List>
             <Tabs.Tab
               value="stock_in"
@@ -395,7 +389,7 @@ export const ScanQueuePage = ({ userId = DEFAULT_USER_ID }: ScanQueuePageProps) 
                   [key]: !(current[key] ?? index === 0),
                 }));
               }}
-              directionLabel={activeView === 'stock_in' ? 'stock in' : 'stock out'}
+              directionLabel={scannerMode === 'stock_in' ? 'stock in' : 'stock out'}
               selectedIds={selectedIds}
               onSelectionChange={setSelectedIds}
               flat
