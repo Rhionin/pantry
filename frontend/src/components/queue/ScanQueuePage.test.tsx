@@ -59,16 +59,16 @@ const scanEntry = (overrides: Partial<ScanEntry>): ScanEntry => ({
 const jsonResponse = (body: unknown) =>
   new Response(JSON.stringify(body), { status: 200, headers: { 'Content-Type': 'application/json' } });
 
-// The mode switch always shows both labels. The selected radio is the mode.
+// The selected queue tab is the scan direction, and the hint next to Camera
+// says what a new scan will do.
 async function expectScannerMode(mode: 'stock_in' | 'stock_out') {
-  const selectedName = mode === 'stock_in' ? 'STOCK IN' : 'STOCK OUT';
-  const otherName = mode === 'stock_in' ? 'STOCK OUT' : 'STOCK IN';
+  const selectedName = mode === 'stock_in' ? /^Stock in/ : /^Stock out/;
+  const otherName = mode === 'stock_in' ? /^Stock out/ : /^Stock in/;
+  const hint = mode === 'stock_in' ? 'Scans add to stock' : 'Scans remove from stock';
   await waitFor(() => {
-    const selected = screen.getAllByRole('radio', { name: selectedName });
-    const others = screen.getAllByRole('radio', { name: otherName });
-    expect(selected.length).toBeGreaterThan(0);
-    for (const radio of selected) expect(radio).toBeChecked();
-    for (const radio of others) expect(radio).not.toBeChecked();
+    expect(screen.getByRole('tab', { name: selectedName })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByRole('tab', { name: otherName })).toHaveAttribute('aria-selected', 'false');
+    expect(screen.getByText(hint)).toBeInTheDocument();
   });
 }
 
@@ -739,9 +739,17 @@ describe('ScanQueuePage', () => {
     expect(within(cardsAfterSwitch[0]).getByText('Barcode: 222')).toHaveClass('copyable-barcode');
   });
 
-  it('follows the seeded scanner mode on a fresh mount after a prior instance was switched to Stock_In_View', async () => {
-    const fetchMock = vi.fn((input: RequestInfo | URL) => {
+  it('persists a Stock in tab selection as the scanner mode for the next mount', async () => {
+    let currentMode: 'stock_in' | 'stock_out' = 'stock_out';
+    const modePosts: string[] = [];
+    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
+      if (url.endsWith('/api/scanner/mode') && init?.method === 'POST') {
+        const body = init.body ? (JSON.parse(String(init.body)) as { mode: 'stock_in' | 'stock_out' }) : { mode: 'stock_in' as const };
+        modePosts.push(body.mode);
+        currentMode = body.mode;
+        return Promise.resolve(jsonResponse({ mode: body.mode }));
+      }
       if (url.includes('status=pending')) {
         return Promise.resolve(jsonResponse([
           scanEntry({ id: 'scan-1', barcode: '111', direction: 'stock_out' }),
@@ -751,7 +759,7 @@ describe('ScanQueuePage', () => {
       if (url.includes('status=flagged')) return Promise.resolve(jsonResponse([]));
       if (url === '/api/inventory' || url === '/api/products') return Promise.resolve(jsonResponse([]));
       if (url.endsWith('/api/scanner/config')) {
-        return Promise.resolve(jsonResponse({ stockInBarcode: 'STOCK_IN', stockOutBarcode: 'STOCK_OUT', currentMode: 'stock_out' }));
+        return Promise.resolve(jsonResponse({ stockInBarcode: 'STOCK_IN', stockOutBarcode: 'STOCK_OUT', currentMode }));
       }
       throw new Error(`Unexpected request: ${url}`);
     });
@@ -759,45 +767,23 @@ describe('ScanQueuePage', () => {
 
     const { unmount } = render(<MantineProvider><ScanQueuePage /></MantineProvider>);
 
-    // First mount: let the seeded stock_out view settle, then switch to
-    // Stock_In_View.
     await screen.findByText('Barcode: 111');
-    const stockInTab = screen.getByRole('tab', { name: 'Stock in' });
-    stockInTab.click();
+    await expectScannerMode('stock_out');
+    fireEvent.click(screen.getByRole('tab', { name: 'Stock in' }));
 
-    // Verify we're now showing stock_in entries
     await findScan('222');
-    const cardsAfterSwitch = await screen.findAllByRole('article');
-    expect(cardsAfterSwitch).toHaveLength(1);
-    expect(cardsAfterSwitch[0]).toHaveAttribute('aria-label', 'Scan 222');
-    expect(within(cardsAfterSwitch[0]).getByText('Barcode: 222')).toBeInTheDocument();
+    await expectScannerMode('stock_in');
+    expect(screen.getByText('Scans add to stock')).toBeInTheDocument();
+    await waitFor(() => expect(modePosts).toEqual(['stock_in']));
 
     unmount();
 
-    // Second mount: the prior manual tab switch does not persist, so the
-    // visible tab again follows the seeded scanner mode (stock_out here).
     render(<MantineProvider><ScanQueuePage /></MantineProvider>);
 
-    // Let the seeded stock_out view settle before asserting the active tab.
     const cards2 = await screen.findAllByRole('article');
     expect(cards2).toHaveLength(1);
-    expect(within(cards2[0]).getByText('Barcode: 111')).toBeInTheDocument();
-
-    const stockOutTab2 = screen.getByRole('tab', { name: 'Stock out' });
-    const stockInTab2 = screen.getByRole('tab', { name: 'Stock in' });
-
-    // Verify Stock_Out tab is selected (aria-selected="true" for active, "false" for inactive)
-    expect(stockOutTab2).toHaveAttribute('aria-selected', 'true');
-    expect(stockInTab2).toHaveAttribute('aria-selected', 'false');
-
-    // Verify clicking Stock_In tab still works on the fresh mount
-    stockInTab2.click();
-
-    await findScan('222');
-    const cardsAfterSwitch2 = await screen.findAllByRole('article');
-    expect(cardsAfterSwitch2).toHaveLength(1);
-    expect(cardsAfterSwitch2[0]).toHaveAttribute('aria-label', 'Scan 222');
-    expect(within(cardsAfterSwitch2[0]).getByText('Barcode: 222')).toBeInTheDocument();
+    expect(within(cards2[0]).getByText('Barcode: 222')).toBeInTheDocument();
+    await expectScannerMode('stock_in');
   });
 
   // Regression (FEAT-003): the backend defaults the scanner mode to stock_in,
@@ -2061,7 +2047,7 @@ describe('ScanQueuePage', () => {
       }) as unknown as typeof window.BarcodeDetector;
     }
 
-    it('switches mode from the queue header and tags the next scan with it', async () => {
+    it('selecting the Stock out tab sets the direction and tags the next scan with it', async () => {
       const modes: string[] = [];
       const posts: Array<{ barcode: string; direction?: string; userId?: string }> = [];
       vi.stubGlobal('fetch', queueFetch({
@@ -2079,14 +2065,14 @@ describe('ScanQueuePage', () => {
 
       render(<MantineProvider><ScanQueuePage /></MantineProvider>);
       await expectScannerMode('stock_in');
-      expect(screen.getByText('Scanning mode')).toBeInTheDocument();
-      expect(screen.getAllByRole('radiogroup', { name: 'Scanning mode' })).toHaveLength(1);
+      expect(screen.queryByRole('radiogroup', { name: 'Scanning mode' })).not.toBeInTheDocument();
+      expect(screen.queryByText('Scanning mode')).not.toBeInTheDocument();
 
-      fireEvent.click(screen.getByRole('radio', { name: 'STOCK OUT' }));
+      fireEvent.click(screen.getByRole('tab', { name: 'Stock out' }));
 
       await expectScannerMode('stock_out');
       expect(modes).toEqual(['stock_out']);
-      expect(screen.getByRole('tab', { name: 'Stock out' })).toHaveAttribute('aria-selected', 'true');
+      expect(screen.getByText('Scans remove from stock')).toBeInTheDocument();
       expect(screen.getByText('Mode: stock_out')).toBeInTheDocument();
 
       const input = screen.getByLabelText(/barcode scanner input/i);
@@ -2098,7 +2084,7 @@ describe('ScanQueuePage', () => {
       });
     });
 
-    it('flips mode from the open camera without closing it, and a remote change updates both controls', async () => {
+    it('keeps the camera open while the Stock out tab changes the direction', async () => {
       installIdleCamera();
       const modes: string[] = [];
       vi.stubGlobal('fetch', queueFetch({
@@ -2112,27 +2098,25 @@ describe('ScanQueuePage', () => {
       fireEvent.click(screen.getByRole('button', { name: 'Scan with camera' }));
       expect(await screen.findByLabelText('Camera preview')).toBeInTheDocument();
 
-      const camera = screen.getByRole('region', { name: 'Camera barcode scanner' });
-      fireEvent.click(within(camera).getByRole('radio', { name: 'STOCK OUT' }));
+      fireEvent.click(screen.getByRole('tab', { name: 'Stock out' }));
 
       await expectScannerMode('stock_out');
       expect(modes).toEqual(['stock_out']);
       expect(screen.getByLabelText('Camera preview')).toBeInTheDocument();
       expect(screen.queryByRole('button', { name: 'Scan with camera' })).not.toBeInTheDocument();
-      expect(screen.getAllByRole('radiogroup', { name: 'Scanning mode' })).toHaveLength(1);
-      expect(within(camera).getByRole('radio', { name: 'STOCK OUT' })).toBeChecked();
+      expect(screen.queryByRole('radiogroup', { name: 'Scanning mode' })).not.toBeInTheDocument();
       expect(screen.getByText('Mode: stock_out')).toBeInTheDocument();
 
       FakeEventSource.instances[0].dispatch('scanner_mode', 'stock_in');
 
       await expectScannerMode('stock_in');
-      expect(within(camera).getByRole('radio', { name: 'STOCK IN' })).toBeChecked();
+      expect(screen.getByText('Scans add to stock')).toBeInTheDocument();
       expect(screen.getByLabelText('Camera preview')).toBeInTheDocument();
 
       fireEvent.click(screen.getByRole('button', { name: 'Stop camera' }));
 
       expect(screen.queryByLabelText('Camera preview')).not.toBeInTheDocument();
-      expect(screen.getAllByRole('radiogroup', { name: 'Scanning mode' })).toHaveLength(1);
+      expect(screen.queryByRole('radiogroup', { name: 'Scanning mode' })).not.toBeInTheDocument();
       await expectScannerMode('stock_in');
     });
 
@@ -2162,9 +2146,10 @@ describe('ScanQueuePage', () => {
       render(<MantineProvider><ScanQueuePage /></MantineProvider>);
       await expectScannerMode('stock_in');
 
-      fireEvent.click(screen.getByRole('radio', { name: 'STOCK OUT' }));
+      fireEvent.click(screen.getByRole('tab', { name: 'Stock out' }));
 
       expect(await screen.findByText('The scanner mode could not be saved.')).toBeInTheDocument();
+      expect(screen.getByRole('tab', { name: 'Stock out' })).toHaveAttribute('aria-selected', 'true');
     });
   });
 

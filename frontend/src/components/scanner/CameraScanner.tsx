@@ -17,16 +17,10 @@ import {
 } from './cameraAccess';
 import { outlineAttribute } from './cameraOverlay';
 import { createFrameDecoder, DEFAULT_BARCODE_FORMATS, type DecodedBarcode, type FrameDecoder } from './frameDecoder';
-import { ScannerModeSwitch } from './ScannerModeSwitch';
-import type { ScanDirection } from '../../types';
 
 export interface CameraScannerProps {
   onScan: (barcode: string) => void;
   onOpenChange?: (open: boolean) => void;
-  // Shared scanner direction. When both are set, the open camera shows a
-  // control that writes through the same path as the queue header.
-  mode?: ScanDirection;
-  onModeChange?: (mode: ScanDirection) => void;
   formats?: readonly string[];
   // Test seam. Production uses the native detector, then ZXing.
   createDecoder?: (formats: readonly string[]) => Promise<FrameDecoder | null>;
@@ -48,8 +42,6 @@ function CameraIcon() {
 export function CameraScanner({
   onScan,
   onOpenChange,
-  mode,
-  onModeChange,
   formats = DEFAULT_BARCODE_FORMATS,
   createDecoder = createFrameDecoder,
 }: CameraScannerProps) {
@@ -277,20 +269,6 @@ export function CameraScanner({
     }
   }
 
-  const modeSwitch = mode !== undefined && onModeChange !== undefined ? (
-    <div className="camera-mode-field">
-      <span className="scan-mode-switch-caption" aria-hidden="true">Scanning mode</span>
-      <ScannerModeSwitch
-        mode={mode}
-        onChange={onModeChange}
-        label="Scanning mode"
-        className="camera-mode-switch"
-        size="lg"
-        fullWidth
-      />
-    </div>
-  ) : null;
-
   function submitManualBarcode(event: React.FormEvent) {
     event.preventDefault();
     const trimmed = manualBarcode.trim();
@@ -319,7 +297,6 @@ export function CameraScanner({
   if (block !== null) {
     return (
       <Stack gap="sm" className="camera-scanner-region camera-scanner-fallback" role="region" aria-label="Camera barcode scanner">
-        {modeSwitch}
         <Alert color="yellow" title="Camera scanning unavailable">
           {block.message}
         </Alert>
@@ -393,7 +370,6 @@ export function CameraScanner({
           </p>
         )}
       </Box>
-      {modeSwitch}
       <Group>
         <Button type="button" variant="default" onClick={close}>Stop camera</Button>
         {canSwitch && (
