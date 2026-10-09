@@ -8,9 +8,12 @@
   --bin-fill-ink: var(--mantine-color-dark-9);
   --bin-focus: var(--mantine-color-blue-8);
   --bin-link: var(--mantine-color-blue-8);
+  --bin-row-hover: var(--mantine-color-gray-1);
+  --bin-row-active: var(--mantine-color-gray-2);
   color: var(--bin-ink);
-  /* Mantine dimmed (gray-6) and anchor (blue-6) miss 4.5:1 on white. */
+  /* Mantine dimmed (gray-6), placeholder (gray-5), and anchor (blue-6) miss 4.5:1 on white. */
   --mantine-color-dimmed: var(--bin-muted);
+  --mantine-color-placeholder: var(--bin-muted);
   --mantine-color-anchor: var(--bin-link);
 }
 
@@ -24,12 +27,26 @@
   --bin-fill-ink: var(--mantine-color-dark-9);
   --bin-focus: var(--mantine-color-blue-4);
   --bin-link: var(--mantine-color-blue-4);
+  --bin-row-hover: var(--mantine-color-dark-5);
+  --bin-row-active: var(--mantine-color-dark-4);
 }
 
 .bin-page .bin-action {
   color: var(--bin-ink);
   font-weight: 650;
   text-underline-offset: 0.16em;
+}
+
+.bin-page .bin-list-title {
+  color: var(--bin-ink);
+}
+
+/* Pin the field ink and border. A gray-4 edge is about 1.5:1 on white, and a gray-5 placeholder is about 2:1. */
+.bin-page .mantine-Input-input {
+  --input-bd: var(--bin-line) !important;
+  --input-color: var(--bin-ink) !important;
+  --input-placeholder-color: var(--bin-muted) !important;
+  color: var(--bin-ink);
 }
 
 .bin-hero {
@@ -400,18 +417,28 @@
   max-width: 36rem;
 }
 
-.bin-chip {
+.bin-chip,
+.bin-chip:hover,
+.bin-chip:active,
+.bin-chip:focus {
   font: inherit;
-  color: inherit;
+  color: var(--bin-ink);
+  background: transparent;
   cursor: pointer;
   text-decoration: none;
   line-height: 1.3;
+  padding: 0.2rem 0.45rem;
+  border-radius: var(--mantine-radius-sm);
 }
 
-.bin-chip[aria-pressed='true'] {
+.bin-chip[aria-pressed='true'],
+.bin-chip[aria-pressed='true']:hover,
+.bin-chip[aria-pressed='true']:active {
   font-weight: 650;
   text-decoration: underline;
   text-underline-offset: 0.18em;
+  background: var(--bin-row-hover);
+  border-radius: var(--mantine-radius-sm);
 }
 
 .bin-chip:focus-visible,
@@ -431,13 +458,22 @@
   max-width: 40rem;
 }
 
-.bin-row {
+.bin-row,
+.bin-row:link,
+.bin-row:visited,
+.bin-row:hover,
+.bin-row:active,
+.bin-row:focus {
   display: flex;
   align-items: flex-start;
   gap: 0.85rem;
-  color: inherit;
+  /* Link states must keep the theme ink. A dark hover with the browser's black text is the list-page slab. */
+  color: var(--bin-ink);
+  background: transparent;
   text-decoration: none;
-  padding: 0.1rem;
+  padding: 0.35rem 0.4rem;
+  border-radius: var(--mantine-radius-sm);
+  -webkit-tap-highlight-color: transparent;
 }
 
 .bin-row-copy {
@@ -454,14 +490,16 @@
   display: block;
   margin-top: 0.15rem;
   max-width: 48ch;
+  color: var(--bin-muted);
 }
 
-:where([data-mantine-color-scheme='light']) .bin-row:hover {
-  background: var(--mantine-color-gray-0);
+.bin-row:hover,
+.bin-row:focus-visible {
+  background: var(--bin-row-hover);
 }
 
-:where([data-mantine-color-scheme='dark']) .bin-row:hover {
-  background: var(--mantine-color-dark-5);
+.bin-row:active {
+  background: var(--bin-row-active);
 }
 
 @media (prefers-reduced-motion: reduce) {

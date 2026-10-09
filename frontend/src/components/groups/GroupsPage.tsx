@@ -80,7 +80,7 @@ export const GroupsPage = () => {
     <Stack gap="md" className="page-wide bin-page">
       <Stack gap="sm" className="page-cluster">
         <Group justify="space-between" align="center" wrap="wrap" className="bin-title-row">
-          <Title order={1} size="h3">Product groups</Title>
+          <Title order={1} size="h3" className="bin-list-title">Product groups</Title>
           <Button color="dark" onClick={() => { setError(''); setCreating(true); }}>New group</Button>
         </Group>
         {loading && <Loader aria-label="Loading groups" />}

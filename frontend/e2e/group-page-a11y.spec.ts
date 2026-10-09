@@ -31,6 +31,55 @@ async function expectClean(page: Page) {
   expect(results.violations, violationText(results.violations)).toEqual([])
 }
 
+function channels(color: string): [number, number, number] {
+  const match = color.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/)
+  if (!match) throw new Error(`Unparsed color: ${color}`)
+  return [Number(match[1]), Number(match[2]), Number(match[3])]
+}
+
+function contrast(foreground: string, background: string) {
+  const lin = (channel: number) => {
+    const value = channel / 255
+    return value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4
+  }
+  const lum = (rgb: [number, number, number]) => 0.2126 * lin(rgb[0]) + 0.7152 * lin(rgb[1]) + 0.0722 * lin(rgb[2])
+  const hi = Math.max(lum(channels(foreground)), lum(channels(background)))
+  const lo = Math.min(lum(channels(foreground)), lum(channels(background)))
+  return (hi + 0.05) / (lo + 0.05)
+}
+
+async function expectListColors(page: Page, scheme: 'light' | 'dark') {
+  const row = page.locator('.bin-row').first()
+  await row.hover()
+  const sample = await row.evaluate((el) => {
+    const style = getComputedStyle(el)
+    const summary = el.querySelector('.bin-row-summary')
+    const well = el.querySelector('.bin-well')
+    const input = document.querySelector('.bin-page .mantine-Input-input')
+    return {
+      color: style.color,
+      background: style.backgroundColor,
+      summary: summary ? getComputedStyle(summary).color : '',
+      well: well ? getComputedStyle(well).backgroundColor : '',
+      placeholder: input ? getComputedStyle(input, '::placeholder').color : '',
+      field: input ? getComputedStyle(input).backgroundColor : '',
+      border: input ? getComputedStyle(input).borderTopColor : '',
+    }
+  })
+  expect(contrast(sample.color, sample.background), JSON.stringify(sample)).toBeGreaterThanOrEqual(4.5)
+  expect(contrast(sample.summary, sample.background), JSON.stringify(sample)).toBeGreaterThanOrEqual(4.5)
+  expect(contrast(sample.placeholder, sample.field), JSON.stringify(sample)).toBeGreaterThanOrEqual(4.5)
+  expect(contrast(sample.border, sample.field), JSON.stringify(sample)).toBeGreaterThanOrEqual(3)
+  const well = channels(sample.well)
+  if (scheme === 'light') {
+    expect(well[0], JSON.stringify(sample)).toBeGreaterThan(220)
+  } else {
+    expect(well[0], JSON.stringify(sample)).toBeGreaterThan(30)
+    expect(well[0], JSON.stringify(sample)).toBeLessThan(70)
+  }
+  await expectClean(page)
+}
+
 async function tabTo(page: Page, name: string) {
   const target = page.getByRole('button', { name })
   await page.getByRole('link', { name: 'Product groups' }).focus()
@@ -123,6 +172,26 @@ test('group page meets axe in light and dark', async ({ page, request }) => {
   const unsetTime = await tabTo(page, 'Keep on hand time, pinned, 3 months, household default')
   await unsetTime.press('Enter')
   await expect(page.getByLabel('Months')).toBeVisible()
+
+  await page.goto('/groups')
+  await setScheme(page, 'light')
+  await expect(page.getByRole('heading', { name: 'Product groups' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'All' })).toHaveAttribute('aria-pressed', 'true')
+  await expect(page.getByPlaceholder('Name or product')).toBeVisible()
+  await expectClean(page)
+  await expectListColors(page, 'light')
+
+  await setScheme(page, 'dark')
+  await expect(page.getByRole('heading', { name: 'Product groups' })).toBeVisible()
+  await expectClean(page)
+  await expectListColors(page, 'dark')
+
+  await page.goto('/groups/suggestions')
+  await expect(page.getByRole('heading', { name: 'Suggestions' })).toBeVisible()
+  await expectClean(page)
+  await setScheme(page, 'light')
+  await expect(page.getByRole('heading', { name: 'Suggestions' })).toBeVisible()
+  await expectClean(page)
 
   // Later specs share this database and match the household-default list line.
   expect((await request.delete(`/api/groups/${targetedGroup.id}`)).ok()).toBe(true)

@@ -468,7 +468,8 @@ a.group-row {
 }
 
 .suggestion-member[data-included="false"] {
-  opacity: 0.72;
+  color: var(--bin-muted, var(--mantine-color-gray-7));
+  border-style: dashed;
 }
 
 .suggestion-photo {
@@ -476,7 +477,7 @@ a.group-row {
   height: 132px;
   object-fit: contain;
   border-radius: var(--mantine-radius-sm);
-  background: light-dark(var(--mantine-color-gray-1), var(--mantine-color-dark-6));
+  background: var(--bin-well, var(--mantine-color-gray-1));
 }
 
 .suggestion-photo-empty {
