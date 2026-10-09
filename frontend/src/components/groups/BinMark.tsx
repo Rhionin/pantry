@@ -40,7 +40,6 @@ export function BinMark({
 
   return (
     <div className="bin bin-hero">
-      {well}
       <div className="bin-head">
         <div className="bin-head-name">
           <Title order={1} className="bin-name">{name}</Title>
@@ -52,6 +51,7 @@ export function BinMark({
         </div>
         {caption === undefined && <p className="bin-corner">{view.corner}</p>}
       </div>
+      {well}
       {caption !== undefined
         ? (caption !== '' && <p className="bin-caption">{caption}</p>)
         : (view.level !== '' && <p className="bin-level">{view.level}</p>)}

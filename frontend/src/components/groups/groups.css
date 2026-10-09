@@ -5,7 +5,9 @@
 }
 
 .bin-hero {
-  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
   width: 100%;
 }
 
@@ -19,7 +21,8 @@
 
 .bin-hero .bin-well {
   width: 100%;
-  aspect-ratio: 5 / 4.4;
+  height: 2.75rem;
+  margin-top: var(--mantine-spacing-sm);
 }
 
 .bin-mark {
@@ -50,22 +53,14 @@
 }
 
 .bin-head {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  z-index: 1;
   display: flex;
   justify-content: space-between;
-  align-items: flex-start;
-  gap: 0.75rem;
-  padding: 0.9rem 1rem 0;
-  pointer-events: none;
+  align-items: flex-end;
+  gap: var(--mantine-spacing-sm);
 }
 
 .bin-head-name {
   min-width: 0;
-  pointer-events: auto;
 }
 
 .bin-name {
@@ -87,19 +82,12 @@
 
 .bin-level,
 .bin-caption {
-  position: absolute;
-  z-index: 1;
-  left: var(--mantine-spacing-md);
-  right: var(--mantine-spacing-md);
-  bottom: var(--mantine-spacing-sm);
-  margin: 0;
+  margin: var(--mantine-spacing-xs) 0 0;
   font-weight: 650;
   font-size: var(--mantine-font-size-sm);
   line-height: 1.2;
   white-space: nowrap;
-  color: var(--mantine-color-dark-9);
-  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.7);
-  pointer-events: none;
+  color: light-dark(var(--mantine-color-dark-7), var(--mantine-color-gray-3));
 }
 
 .seesaw {
