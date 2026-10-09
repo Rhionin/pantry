@@ -24,6 +24,8 @@ const provider = (overrides: Partial<ProviderInfo> = {}): ProviderInfo => ({
 const jsonResponse = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
 
+// env="test" skips the menu fade. While that transition runs the dropdown is
+// already in the document at opacity 0, so a visibility check can fail.
 const renderMenu = (
   rows: ProviderInfo[],
   onCredentialsChanged: () => void = () => undefined,
@@ -37,7 +39,7 @@ const renderMenu = (
     return Promise.reject(new Error(`Unexpected request: ${url}`));
   }));
   return render(
-    <MantineProvider>
+    <MantineProvider env="test">
       <MemoryRouter initialEntries={['/shopping']}>
         <Routes>
           <Route path="/shopping" element={<AppMenu onCredentialsChanged={onCredentialsChanged} />} />
@@ -72,8 +74,8 @@ describe('AppMenu', () => {
     expect(settings.compareDocumentPosition(build) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(screen.queryByRole('button', { name: /setup/i })).not.toBeInTheDocument();
     const note = await screen.findByRole('note', { name: 'build abc123def456' });
-    expect(note).toBeVisible();
-    expect(screen.getByText('Build')).toBeVisible();
+    await waitFor(() => expect(note).toBeVisible());
+    await waitFor(() => expect(screen.getByText('Build')).toBeVisible());
     expect(screen.queryByRole('menuitem', { name: 'build abc123def456' })).not.toBeInTheDocument();
     expect(screen.queryByRole('menuitem', { name: 'Build' })).not.toBeInTheDocument();
     expect(screen.queryByLabelText('Client ID')).not.toBeInTheDocument();
@@ -113,7 +115,7 @@ describe('AppMenu', () => {
     });
     vi.stubGlobal('fetch', fetchMock);
     render(
-      <MantineProvider>
+      <MantineProvider env="test">
         <MemoryRouter>
           <AppMenu onCredentialsChanged={onChanged} />
         </MemoryRouter>
@@ -142,7 +144,7 @@ describe('AppMenu', () => {
       return Promise.reject(new Error(`Unexpected request: ${url}`));
     }));
     render(
-      <MantineProvider>
+      <MantineProvider env="test">
         <MemoryRouter>
           <AppMenu onCredentialsChanged={onChanged} />
         </MemoryRouter>
@@ -177,7 +179,7 @@ describe('AppMenu', () => {
       return Promise.reject(new Error(`Unexpected request: ${url}`));
     }));
     render(
-      <MantineProvider>
+      <MantineProvider env="test">
         <MemoryRouter initialEntries={['/shopping']}>
           <AppMenu onCredentialsChanged={() => undefined} />
           <Routes>
@@ -231,7 +233,7 @@ describe('AppMenu', () => {
       return Promise.reject(new Error(`Unexpected request: ${url}`));
     }));
     render(
-      <MantineProvider>
+      <MantineProvider env="test">
         <HouseholdSessionContext.Provider value={{ required: true, logout }}>
           <MemoryRouter>
             <AppMenu onCredentialsChanged={() => undefined} />
@@ -243,7 +245,7 @@ describe('AppMenu', () => {
     const build = await screen.findByText('Build');
     const note = await screen.findByRole('note', { name: 'build abc123def456' });
     const logOut = await screen.findByRole('menuitem', { name: 'Log out' });
-    expect(note).toBeVisible();
+    await waitFor(() => expect(note).toBeVisible());
     expect(build.compareDocumentPosition(logOut) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     fireEvent.click(logOut);
     expect(logout).toHaveBeenCalledTimes(1);
