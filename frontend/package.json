@@ -12,12 +12,9 @@
     "e2e": "playwright test"
   },
   "dependencies": {
-    "@mantine/core": "^7.17.8",
-    "@mantine/dates": "^7.17.8",
-    "@mantine/hooks": "^7.17.8",
-    "@mantine/notifications": "^7.17.8",
+    "@mantine/core": "^9.7.1",
+    "@mantine/notifications": "^9.7.1",
     "@zxing/library": "^0.21.3",
-    "dayjs": "^1.11.23",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "react-router-dom": "^7.18.3"

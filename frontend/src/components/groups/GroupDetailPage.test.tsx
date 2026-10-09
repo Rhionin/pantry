@@ -50,7 +50,9 @@ const renderDetail = (
 ) => {
   vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL, init?: RequestInit) => Promise.resolve(handler(String(input), init))));
   return render(
-    <MantineProvider>
+    // env="test" disables Popover hideDetached. Mantine 8+ turns that on,
+    // and jsdom elements have no box, so the rule sheet's options never open.
+    <MantineProvider env="test">
       <MemoryRouter initialEntries={['/groups/g1']}>
         <Routes>
           <Route path="/groups/:id" element={<GroupDetailPage />} />
@@ -89,9 +91,9 @@ describe('GroupDetailPage', () => {
     expect(await screen.findByRole('dialog', { name: 'Gatorade powder' })).toBeInTheDocument();
     expect(await screen.findByText('Next trip: Buy the powder that ran out.')).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('textbox', { name: 'Rule' }));
+    fireEvent.click(screen.getByRole('combobox', { name: 'Rule' }));
     fireEvent.click(await screen.findByRole('option', { name: 'Always my favorite' }));
-    fireEvent.click(screen.getByRole('textbox', { name: 'Always buy' }));
+    fireEvent.click(screen.getByRole('combobox', { name: 'Always buy' }));
     fireEvent.click(await screen.findByRole('option', { name: 'Fruit punch thirst quencher powder' }));
     fireEvent.click(screen.getByRole('button', { name: 'Save rule' }));
 
