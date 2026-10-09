@@ -90,8 +90,8 @@ describe('GroupDetailPage', () => {
     expect(await screen.findByRole('button', { name: 'Keep on hand time, not set' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Keep on hand amount, not set' })).toBeInTheDocument();
     expect(screen.getByText('Set an amount or time')).toBeInTheDocument();
-    expect(screen.getByText('No sizes listed', { hidden: true })).toBeInTheDocument();
     const emptyMeter = screen.getByRole('meter', { name: 'Stock on hand' });
+    expect(within(emptyMeter).getByText('No sizes listed')).toBeInTheDocument();
     expect(emptyMeter).toHaveAttribute('aria-valuenow', '0');
     expect(emptyMeter).toHaveAttribute('aria-valuemax', '1');
     expect(emptyMeter).toHaveAttribute('aria-valuetext', 'No sizes listed');
@@ -384,13 +384,14 @@ describe('GroupDetailPage', () => {
       throw new Error(`Unexpected ${method} ${url}`);
     });
 
-    expect(await screen.findByText('18.3 oz on hand', { hidden: true })).toBeInTheDocument();
+    const stock = await screen.findByRole('meter', { name: 'Stock on hand' });
+    expect(within(stock).getByText('18.3 oz on hand')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Change rule, Same product' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Keep on hand amount, pinned, 48 ounces' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Keep on hand time, not set' })).toBeInTheDocument();
-    expect(screen.getByRole('meter', { name: 'Stock on hand' })).toHaveAttribute('aria-valuenow', '18.3');
-    expect(screen.getByRole('meter', { name: 'Stock on hand' })).toHaveAttribute('aria-valuemax', '48');
-    expect(screen.getByRole('meter', { name: 'Stock on hand' })).toHaveAttribute('aria-valuetext', '18.3 oz on hand');
+    expect(stock).toHaveAttribute('aria-valuenow', '18.3');
+    expect(stock).toHaveAttribute('aria-valuemax', '48');
+    expect(stock).toHaveAttribute('aria-valuetext', '18.3 oz on hand');
     expect(screen.queryByText(/≈/)).not.toBeInTheDocument();
     expect(document.querySelector('.bin-fill')).not.toBeNull();
     expect(screen.getByText('18.3 oz canister, 1 on hand')).toBeInTheDocument();
@@ -441,7 +442,8 @@ describe('GroupDetailPage', () => {
       throw new Error(`Unexpected ${method} ${url}`);
     });
 
-    expect(await screen.findByText('18.3 oz on hand · ≈ 5 wks', { hidden: true })).toBeInTheDocument();
+    const stock = await screen.findByRole('meter', { name: 'Stock on hand' });
+    expect(within(stock).getByText('18.3 oz on hand · ≈ 5 wks')).toBeInTheDocument();
     expect(screen.getByText('at 16 oz / mo')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Keep on hand amount, pinned, 48 ounces' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Keep on hand time, about 3 months' })).toBeInTheDocument();
