@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <title>Row</title>
+  <desc>Three identical bins. The amber is the only difference, which is why it reads as a chart.</desc>
+  <rect width="512" height="512" rx="118" fill="#1C7C4E"/>
+  <rect x="52" y="118" width="112" height="276" rx="46" fill="#F6F1E6"/>
+  <path fill="#F0B429" d="M68 300h80v56c0 12.1-9.9 22-22 22h-36c-12.1 0-22-9.9-22-22z"/>
+  <rect x="200" y="118" width="112" height="276" rx="46" fill="#F6F1E6"/>
+  <path fill="#F0B429" d="M216 236h80v120c0 12.1-9.9 22-22 22h-36c-12.1 0-22-9.9-22-22z"/>
+  <rect x="348" y="118" width="112" height="276" rx="46" fill="#F6F1E6"/>
+  <path fill="#F0B429" d="M364 173h80v183c0 12.1-9.9 22-22 22h-36c-12.1 0-22-9.9-22-22z"/>
+</svg>
