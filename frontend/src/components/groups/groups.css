@@ -191,8 +191,9 @@
 .seesaw-pin {
   flex: none;
   display: block;
-  width: 1em;
-  height: 1em;
+  /* The keep needle collapses to a hairline below this size. */
+  width: 1.375em;
+  height: 1.375em;
 }
 
 .seesaw-default {

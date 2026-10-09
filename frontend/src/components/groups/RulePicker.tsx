@@ -44,7 +44,14 @@ export const RulePicker = ({
   };
 
   return (
-    <Drawer opened={opened} onClose={onClose} position="bottom" title="When it runs out" size="auto">
+    <Drawer
+      opened={opened}
+      onClose={onClose}
+      position="bottom"
+      title="When it runs out"
+      size="auto"
+      closeButtonProps={{ 'aria-label': 'Close' }}
+    >
       <Stack gap="md" pb="md">
         <Radio.Group value={rule} onChange={setRule}>
           <Stack gap="sm">
