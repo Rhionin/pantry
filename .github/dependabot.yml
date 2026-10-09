@@ -29,6 +29,11 @@ updates:
     # More direct packages than the other ecosystems, so majors can queue
     # without blocking the grouped minor/patch pull request.
     open-pull-requests-limit: 10
+    # @types/node majors track Node majors. frontend/.nvmrc is 24.
+    ignore:
+      - dependency-name: "@types/node"
+        update-types:
+          - "version-update:semver-major"
     groups:
       npm-minor-and-patch:
         patterns:
@@ -49,6 +54,13 @@ updates:
       time: "07:00"
       timezone: America/Denver
     open-pull-requests-limit: 5
+    # Node 24 is the LTS in frontend/.nvmrc and the production image.
+    # Skip major tag bumps (odd current releases, and the next even LTS)
+    # until that pin moves on purpose.
+    ignore:
+      - dependency-name: "node"
+        update-types:
+          - "version-update:semver-major"
     groups:
       docker-minor-and-patch:
         patterns:
