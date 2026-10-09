@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Button, Group, Select, Stack, Text, TextInput } from '@mantine/core';
 import { addGroupMembers, ApiError, createGroup } from '../../api/client';
 import type { GroupTarget, ProductGroup, TargetConflictMember } from '../../types';
-import { conflictLine } from '../groups/copy';
+import { TargetConflictPrompt } from '../groups/TargetConflictPrompt';
 
 export interface GroupSelectBarProps {
   productIds: string[];
@@ -14,6 +14,7 @@ export const GroupSelectBar = ({ productIds, groups, onDone }: GroupSelectBarPro
   const [name, setName] = useState('');
   const [existingId, setExistingId] = useState<string | null>(groups[0]?.id ?? null);
   const [conflict, setConflict] = useState<TargetConflictMember[] | null>(null);
+  const [conflictGroup, setConflictGroup] = useState<ProductGroup | null>(null);
   const [retryKind, setRetryKind] = useState<'new' | 'existing'>('new');
   const [error, setError] = useState('');
 
@@ -29,9 +30,11 @@ export const GroupSelectBar = ({ productIds, groups, onDone }: GroupSelectBarPro
         await addGroupMembers(existingId, productIds, '', target);
       }
       setConflict(null);
+      setConflictGroup(null);
       onDone();
     } catch (requestError) {
       if (requestError instanceof ApiError && requestError.code === 'target_decision_required') {
+        setConflictGroup(kind === 'existing' ? groups.find((item) => item.id === existingId) ?? null : null);
         setConflict(requestError.members);
         return;
       }
@@ -43,14 +46,15 @@ export const GroupSelectBar = ({ productIds, groups, onDone }: GroupSelectBarPro
     <Stack className="group-select-bar page-cluster" gap="xs" p="sm">
       <Text size="sm">{productIds.length} selected</Text>
       {conflict && (
-        <Stack gap={4}>
-          {conflict.map((member) => <Text key={member.productId} size="sm">{conflictLine(member)}</Text>)}
-          <Group gap="xs">
-            <Button size="xs" variant="light" onClick={() => void run(retryKind, { clear: true })}>Use the account window</Button>
-            <Button size="xs" variant="light" onClick={() => void run(retryKind, { quantity: 24, dimension: 'mass' })}>Use ounces</Button>
-            <Button size="xs" variant="light" onClick={() => void run(retryKind, { windowMonths: 3 })}>Use months</Button>
-          </Group>
-        </Stack>
+        <TargetConflictPrompt
+          group={conflictGroup}
+          members={conflict}
+          onChoose={(target) => void run(retryKind, target)}
+          onCancel={() => {
+            setConflict(null);
+            setConflictGroup(null);
+          }}
+        />
       )}
       <Group gap="xs" align="flex-end" wrap="wrap">
         <TextInput label="New group" placeholder="Cut green beans" value={name} onChange={(event) => setName(event.currentTarget.value)} />

@@ -52,7 +52,9 @@ func TestGroupHandlers(t *testing.T) {
 				mustGroupProduct(env, "p1", "Small")
 				mustGroupProduct(env, "p2", "Large")
 				mustExec(env, `INSERT INTO supply_overrides (product_id, quantity) VALUES ('p1', 4)`)
+				mustExec(env, `UPDATE products SET net_dimension = 'volume' WHERE id = 'p1'`)
 				mustExec(env, `INSERT INTO supply_overrides (product_id, window_months) VALUES ('p2', 2)`)
+				mustExec(env, `UPDATE products SET net_dimension = 'mass' WHERE id = 'p2'`)
 			},
 			httpExchange: httpExchange{
 				method:         http.MethodPost,
@@ -63,7 +65,9 @@ func TestGroupHandlers(t *testing.T) {
 					{path: "$.code", value: "target_decision_required"},
 					{path: "$.members[0].productId", value: "p1"},
 					{path: "$.members[0].quantity", value: float64(4)},
+					{path: "$.members[0].dimension", value: "volume"},
 					{path: "$.members[1].windowMonths", value: float64(2)},
+					{path: "$.members[1].dimension", absent: true},
 				},
 			},
 			afterRequest: exchanges(
