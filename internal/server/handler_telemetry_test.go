@@ -125,7 +125,10 @@ func TestTelemetry_ScanReachesSubscriber(t *testing.T) {
 			n, readErr := streamRes.Body.Read(buf)
 			if n > 0 {
 				raw.Write(buf[:n])
-				if strings.Contains(raw.String(), "event: scan") {
+				// The SSE line is "event: scan\n". A prefix match also hits
+				// "event: scan_processing", which is written before the scan
+				// frame and would snapshot telemetry before that delivery.
+				if strings.Contains(raw.String(), "event: scan\n") {
 					frames <- raw.String()
 					return
 				}
@@ -142,7 +145,7 @@ func TestTelemetry_ScanReachesSubscriber(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		t.Fatal("timed out waiting for a scan frame")
 	}
-	if !strings.Contains(frame, "event: scan") || !strings.Contains(frame, "id: ") {
+	if !strings.Contains(frame, "event: scan\n") || !strings.Contains(frame, "id: ") {
 		t.Fatalf("SSE frame = %q", frame)
 	}
 
