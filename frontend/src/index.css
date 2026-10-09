@@ -16,7 +16,9 @@
   --mono: ui-monospace, Consolas, monospace;
 
   font: 15px/1.4 var(--sans);
-  color-scheme: light dark;
+  /* Follow the app theme. `light dark` would make light-dark() track the OS
+     while Mantine stays on its own scheme, so dark tokens paint on a white page. */
+  color-scheme: var(--mantine-color-scheme, light);
   color: var(--text);
   background: var(--bg);
   font-synthesis: none;

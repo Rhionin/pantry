@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState, type CSSProperties } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import {
   ActionIcon, Alert, Anchor, Button, Loader, Menu, Modal, Stack, Text, TextInput, Tooltip,
@@ -11,13 +11,19 @@ import { AddToGroup } from './AddToGroup';
 import { BinMark } from './BinMark';
 import { ungroupedProducts, type AddCandidate } from './candidates';
 import {
-  binColor, binView, memberLine, memberOrder, memberPackage, rulePillLabel, ruleSentence, type MemberPackage,
+  binColor, binView, memberLine, memberOrder, memberPackage, onHandOunces, rulePillLabel, ruleSentence, type MemberPackage,
 } from './copy';
 import { RulePicker } from './RulePicker';
 import { Seesaw } from './Seesaw';
-import { seesawView, type SeesawDraft } from './seesaw';
+import { seesawView, stockMeter, type SeesawDraft } from './seesaw';
 
 const closeButton = { 'aria-label': 'Close' };
+
+const iconInk = {
+  '--ai-color': 'var(--bin-ink)',
+  '--ai-hover-color': 'var(--bin-ink)',
+  color: 'var(--bin-ink)',
+} as CSSProperties;
 
 function KebabIcon() {
   return (
@@ -141,6 +147,7 @@ export const GroupDetailPage = () => {
     : null;
   const ruleName = group ? rulePillLabel(group, members) : '';
   const ruleDetail = group ? ruleSentence(group, members, 'detail') : '';
+  const meter = shown ? stockMeter(shown, onHandOunces(members, shown.dimension)) : null;
 
   return (
     <Stack gap="lg" className="bin-page">
@@ -155,6 +162,7 @@ export const GroupDetailPage = () => {
               size="hero"
               name={group.name}
               caption={shown.caption}
+              meter={meter ?? undefined}
               onRename={() => {
                 setName(group.name);
                 setError('');
@@ -202,6 +210,7 @@ export const GroupDetailPage = () => {
                         variant="subtle"
                         color="dark"
                         className="bin-icon-button"
+                        style={iconInk}
                         aria-label={`Remove or move ${member.name}`}
                       >
                         <KebabIcon />
