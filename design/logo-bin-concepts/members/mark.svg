@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <title>Members</title>
+  <desc>One bin, and a swatch for each product standing in it.</desc>
+  <rect width="512" height="512" rx="118" fill="#1C7C4E"/>
+  <rect x="60" y="112" width="392" height="288" rx="76" fill="#14281C"/>
+  <rect x="108" y="160" width="296" height="192" rx="40" fill="#F6F1E6"/>
+  <rect x="128" y="232" width="80" height="112" rx="24" fill="#F0B429"/>
+  <rect x="216" y="232" width="80" height="112" rx="24" fill="#2C6E97"/>
+  <rect x="304" y="232" width="80" height="112" rx="24" fill="#E15A2D"/>
+</svg>

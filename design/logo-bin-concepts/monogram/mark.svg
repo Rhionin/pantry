@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <title>Monogram</title>
+  <desc>A P whose counter is the bin.</desc>
+  <rect width="512" height="512" rx="118" fill="#1C7C4E"/>
+  <rect x="84" y="64" width="124" height="384" rx="56" fill="#F6F1E6"/>
+  <rect x="156" y="64" width="272" height="252" rx="76" fill="#F6F1E6"/>
+  <rect x="236" y="116" width="140" height="140" rx="48" fill="#1C7C4E"/>
+  <path fill="#F0B429" d="M236 180h140v28c0 26.5-21.5 48-48 48h-44c-26.5 0-48-21.5-48-48z"/>
+</svg>

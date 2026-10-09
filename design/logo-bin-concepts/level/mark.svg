@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <title>Level</title>
+  <desc>One pantry bin. The flat top of the amber is how full it is.</desc>
+  <rect width="512" height="512" rx="118" fill="#1C7C4E"/>
+  <rect x="72" y="88" width="368" height="336" rx="78" fill="#14281C"/>
+  <rect x="128" y="144" width="256" height="224" rx="40" fill="#F6F1E6"/>
+  <path fill="#F0B429" d="M128 268h256v60c0 22.1-17.9 40-40 40h-176c-22.1 0-40-17.9-40-40z"/>
+</svg>

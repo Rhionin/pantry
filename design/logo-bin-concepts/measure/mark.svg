@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <title>Measure</title>
+  <desc>A tall bin used as a gauge. The amber stops short of the brim.</desc>
+  <rect width="512" height="512" rx="118" fill="#1C7C4E"/>
+  <rect x="140" y="112" width="232" height="316" rx="64" fill="#14281C"/>
+  <rect x="96" y="60" width="320" height="92" rx="42" fill="#14281C"/>
+  <rect x="184" y="156" width="144" height="228" rx="36" fill="#F6F1E6"/>
+  <path fill="#F0B429" d="M184 260h144v88c0 19.9-16.1 36-36 36h-72c-19.9 0-36-16.1-36-36z"/>
+</svg>
