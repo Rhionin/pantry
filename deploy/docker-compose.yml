@@ -40,6 +40,9 @@ services:
       # The value stays in /opt/pantry/.env; setup.sh generates it once.
       DEPLOY_HOOK_SECRET: ${DEPLOY_HOOK_SECRET:-}
       DEPLOY_TRIGGER_PATH: /deploy-trigger/request
+      # Host updater writes this. The mount is read-only; the file has the
+      # applied setup commit and status, and no secrets.
+      PANTRY_SETUP_STATUS: /etc/pantry/setup-state/status.json
       # Empty on a LAN-only install. setup.sh copies auth.caddy here when the
       # public site has a password, and leaves the LAN listener alone.
       # The file is mode 0600 and owned by uid 65532, this image's nonroot
@@ -53,6 +56,7 @@ services:
       # the distroless nonroot user. Docker would otherwise create it as root
       # and the hook could not write.
       - ./deploy-trigger:/deploy-trigger
+      - ./setup-state:/etc/pantry/setup-state:ro
       - ./auth:/etc/pantry/auth:ro
       # Bind-mount the /dev/input directory (not a single node) so that device
       # nodes udev creates later become visible inside the container without

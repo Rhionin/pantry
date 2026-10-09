@@ -169,6 +169,9 @@ copy_deploy_files() {
   if [[ -f "${PANTRY_DIR}/systemd/pantry-update.sh" ]]; then
     chmod +x "${PANTRY_DIR}/systemd/pantry-update.sh"
   fi
+  if [[ -f "${PANTRY_DIR}/systemd/pantry-setup.sh" ]]; then
+    chmod +x "${PANTRY_DIR}/systemd/pantry-setup.sh"
+  fi
   if [[ -f "${PANTRY_DIR}/firewall/pantry-lan-only.sh" ]]; then
     chmod +x "${PANTRY_DIR}/firewall/pantry-lan-only.sh"
   fi
@@ -506,6 +509,26 @@ verify_public_sign_in() {
   rm -f "$body"
 }
 
+# ensure_setup_status_file creates the public setup record the container
+# bind-mounts. An existing record is kept, so a routine apply does not wipe
+# the last applied commit. The file is mode 644 because the pantry process
+# reads it and has no other privileges. A directory at this path is the
+# Docker footgun from mounting a missing file; this path is a directory mount.
+ensure_setup_status_file() {
+  local dir="${PANTRY_DIR}/setup-state" status="${PANTRY_DIR}/setup-state/status.json"
+  if [[ -e "$dir" && ! -d "$dir" ]]; then
+    fatal "${dir} exists and is not a directory. Remove it and re-run 'sudo ./setup.sh'"
+  fi
+  if [[ -d "$status" ]]; then
+    fatal "${status} is a directory. Remove it and re-run 'sudo ./setup.sh'"
+  fi
+  mkdir -p "$dir"
+  if [[ ! -f "$status" ]]; then
+    printf '%s\n' '{}' > "$status"
+    chmod 644 "$status"
+  fi
+}
+
 # prepare_deploy_trigger_dir is the host directory mounted into the container.
 # uid 65532 is the distroless nonroot user. If the directory is missing, Docker
 # creates it as root and the hook cannot write the trigger file.
@@ -587,20 +610,32 @@ cmd_apply() {
 
   log_info "Applying Pantry setup..."
 
-  if ! command_exists docker; then
-    log_warn "Docker not found, installing..."
-    if ! curl -fsSL https://get.docker.com | sh; then
-      fatal "Failed to install Docker"
+  # The signed updater sets PANTRY_SETUP_SKIP_PACKAGES. A merge must not
+  # install OS packages or upgrade Docker; the one manual run still can.
+  if [[ "${PANTRY_SETUP_SKIP_PACKAGES:-}" == 1 ]]; then
+    if ! command_exists docker; then
+      fatal "Docker is not installed. Automatic setup does not install packages or upgrade Docker."
     fi
-    log_success "Docker installed"
+    if ! docker compose version &> /dev/null; then
+      fatal "Docker Compose is not installed. Automatic setup does not install packages or upgrade Docker."
+    fi
+    log_success "Docker is already installed; automatic setup leaves it as it is"
   else
-    log_success "Docker already installed"
-  fi
+    if ! command_exists docker; then
+      log_warn "Docker not found, installing..."
+      if ! curl -fsSL https://get.docker.com | sh; then
+        fatal "Failed to install Docker"
+      fi
+      log_success "Docker installed"
+    else
+      log_success "Docker already installed"
+    fi
 
-  if ! docker compose version &> /dev/null; then
-    fatal "Docker Compose plugin not found after Docker installation"
+    if ! docker compose version &> /dev/null; then
+      fatal "Docker Compose plugin not found after Docker installation"
+    fi
+    log_success "Docker Compose plugin available"
   fi
-  log_success "Docker Compose plugin available"
 
   local current_user="${SUDO_USER:-$USER}"
   if [[ -z "$current_user" ]]; then
@@ -626,6 +661,7 @@ cmd_apply() {
     chmod 600 "$PANTRY_DIR/.env"
   fi
   prepare_deploy_trigger_dir
+  ensure_setup_status_file
 
   if [[ ! -d /dev/input ]]; then
     log_warn "/dev/input does not exist, creating it (scanner nodes will not appear inside container otherwise)"
@@ -1311,6 +1347,10 @@ COMMANDS:
   thaw             Unmask them to resume automatic updates
   deploy-secret    Print DEPLOY_HOOK_SECRET for the GitHub Actions secret
   help             Show this message
+
+After one `sudo ./setup.sh` installs the updater, a signed deploy from master
+also runs this apply. Set PANTRY_AUTO_SETUP=off in /opt/pantry/.env to keep
+image pulls only. That path does not install packages or upgrade Docker.
 
 EXAMPLES:
   # First install, and every update after git pull

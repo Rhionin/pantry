@@ -72,6 +72,14 @@ Data-access types are named for *what* they store, not *how* they store it — n
 
 Error messages should be user-friendly without function names. Avoid redundant comments that restate code—keep godoc and WHY comments, remove WHAT comments and numbered steps.
 
+## Pi setup on a signed deploy
+
+`POST /api/deploy-hook` only writes `/opt/pantry/deploy-trigger/request`. The pantry container stays unprivileged (no new privileges, capabilities dropped, read-only root) and has no host socket. `pantry-update.path` starts the existing root `pantry-update.service`.
+
+That service fetches `https://github.com/Rhionin/pantry.git` and runs `deploy/setup.sh apply` only when the trigger names a full commit that is `origin/master` or an ancestor of it. The trigger text is not a command. The fetch does not trust the request's `ref` or a remote URL stored in the checkout. Household `auth.caddy`, existing `.env` values, and the session secret stay as they are. This path does not install OS packages or upgrade Docker. `PANTRY_AUTO_SETUP=off` keeps image pulls only.
+
+One manual `sudo ./setup.sh` on the Pi installs the updater (and `git`, which this path will not install). After that, setup changes ship when they merge to `master`. Turn on branch protection with required checks on `master`: a merge is what the Pi applies. See `deploy/README.md`.
+
 ## UI work
 
 The web UI is React, Vite, and Mantine (`@mantine/core`, plus dates, hooks, and notifications). `frontend/src/main.tsx` wraps the app in `MantineProvider`. Build and revise screens with Mantine components and this repo's existing theme and layout patterns.

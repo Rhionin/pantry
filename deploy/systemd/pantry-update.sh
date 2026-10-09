@@ -18,6 +18,11 @@
 # keeps those from pulling at the same time. If a hook lands while a pull
 # is already running, the running copy sees the new trigger file and pulls
 # again instead of dropping it.
+#
+# A trigger that names a full commit also applies setup from that commit
+# before the pull, when the commit is on origin/master. The same lock covers
+# that apply, so two hooks cannot run setup.sh at once. PANTRY_AUTO_SETUP=off
+# skips the apply and keeps the image pull.
 
 set -euo pipefail
 
@@ -27,6 +32,8 @@ cd /opt/pantry
 PANTRY_DIR=/opt/pantry
 # shellcheck disable=SC1091
 source /opt/pantry/publish-mode.sh
+# shellcheck disable=SC1091
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/pantry-setup.sh"
 
 compose=(docker compose --project-directory /opt/pantry -f /opt/pantry/docker-compose.yml)
 mode_rc=0
@@ -115,6 +122,9 @@ while true; do
   else
     echo "pantry update: scheduled pull"
   fi
+  # Setup runs under the lock acquired above, then the image pull. A setup
+  # failure rolls back inside apply_signed_setup and still reaches this pull.
+  apply_signed_setup
   apply_compose
   after=$(trigger_digest || true)
   if [[ "$after" == "$before" ]]; then

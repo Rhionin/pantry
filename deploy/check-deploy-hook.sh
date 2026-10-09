@@ -51,6 +51,31 @@ have deploy/systemd/pantry-update.path 'PathChanged=/opt/pantry/deploy-trigger/r
 have deploy/systemd/pantry-update.path 'Unit=pantry-update.service' "path unit starts the existing update service"
 have deploy/systemd/pantry-update.sh 'flock' "update script serializes overlapping triggers"
 have deploy/systemd/pantry-update.sh 'trigger changed during the pull' "update script pulls again when a trigger lands mid-run"
+have deploy/systemd/pantry-update.sh 'apply_signed_setup' "update script applies setup from the trigger"
+have deploy/systemd/pantry-setup.sh 'merge-base --is-ancestor' "setup accepts only an ancestor of origin/master"
+have deploy/systemd/pantry-setup.sh 'https://github.com/Rhionin/pantry.git' "setup fetches GitHub, not the request"
+have deploy/systemd/pantry-setup.sh 'apply </dev/null' "setup.sh runs with stdin closed"
+have deploy/systemd/pantry-setup.sh 'PANTRY_SETUP_SKIP_PACKAGES=1' "automatic setup does not install packages"
+have deploy/systemd/pantry-setup.sh 'PANTRY_AUTO_SETUP' "auto setup can be turned off"
+have deploy/docker-compose.yml './setup-state:/etc/pantry/setup-state:ro' "setup status mount is read-only"
+have deploy/setup.sh 'PANTRY_SETUP_SKIP_PACKAGES' "setup.sh honors the no-install path"
+have internal/server/handler_build.go 'setupCommit' "public build info reports the applied setup commit"
+
+setup_line=$(grep -n 'apply_signed_setup' deploy/systemd/pantry-update.sh | tail -1 | cut -d: -f1)
+compose_line=$(grep -n 'apply_compose' deploy/systemd/pantry-update.sh | tail -1 | cut -d: -f1)
+lock_line=$(grep -n 'flock -n 9' deploy/systemd/pantry-update.sh | head -1 | cut -d: -f1)
+[[ -n "$setup_line" && -n "$compose_line" && "$setup_line" -lt "$compose_line" ]] || fail "setup must run before the image pull"
+[[ -n "$lock_line" && "$lock_line" -lt "$setup_line" ]] || fail "setup must run inside the update lock"
+
+if grep -q '"os/exec"' internal/deployhook/hook.go || grep -q 'exec.Command' internal/deployhook/hook.go; then
+  fail "deploy hook must only write the trigger file"
+fi
+if grep -q 'eval ' deploy/systemd/pantry-setup.sh; then
+  fail "setup updater must not eval the trigger"
+fi
+if grep -Eq 'src:|/opt/pantry/src' deploy/docker-compose.yml deploy/docker-compose.tunnel.yml; then
+  fail "compose must not mount the setup checkout into the container"
+fi
 
 # The compose value is a literal ${...} interpolation, not a shell expansion.
 # shellcheck disable=SC2016

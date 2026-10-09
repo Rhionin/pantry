@@ -139,7 +139,7 @@ The public site asks for one shared password before it serves the UI, the API, a
 
 ### Which build is running
 
-`GET /api/build` needs no password on the public hostname. Compare `commit` with the `master` SHA to confirm a deploy landed. A local binary returns `commit` `unknown` and `version` `dev`, and omits the other fields.
+`GET /api/build` needs no password on the public hostname. Compare `commit` with the `master` SHA to confirm a deploy landed. After the Pi applies setup from that deploy, the same document includes `setupCommit`, `setupAppliedAt`, and `setupStatus` (`applied`, `rolled-back`, or `failed`). Those fields are omitted until a setup record exists, and a value that is not a commit, a timestamp, or one of those statuses is omitted too. A local binary returns `commit` `unknown` and `version` `dev`, and omits the other fields.
 
 | Field | Meaning |
 | --- | --- |
@@ -786,7 +786,7 @@ For automatic updates, you can install systemd units that periodically check for
 
 **Before enabling automatic updates, understand:**
 - The service runs as root because it drives the Docker daemon
-- Enabling automatic updates means **every push to master deploys unattended** with no approval step
+- Enabling automatic updates means **every push to master deploys unattended** with no approval step. A signed hook also runs `setup.sh` from that master commit as root. Protect `master` with required checks; a merge is what the Pi applies.
 - Container recreation drops the attached scanner session, but the listener reconnects on its own within 30 seconds
 - If you pin to a specific commit SHA, leave automatic updates disabled (they would run forever finding nothing)
 
@@ -826,6 +826,14 @@ Do this once, after the files from this change are on the Pi:
    ```
 4. On GitHub, open the `Rhionin/pantry` repository, then **Settings → Secrets and variables → Actions → New repository secret**. Name it `DEPLOY_HOOK_SECRET` and paste the printed value. There is no other repository secret to add. The hook URL is `https://pantry.rhionin.com/api/deploy-hook`.
 5. The next push to `master` that publishes `latest` sends the hook. If `DEPLOY_HOOK_SECRET` is not set on the repository, that workflow step skips and the 1-minute timer still deploys.
+
+### Setup changes ship with the hook
+
+The hook does not grow a new network service. The app still only writes the trigger file. `pantry-update.path` starts the same root `pantry-update.service` that already pulls the image. Before that pull, the service fetches `https://github.com/Rhionin/pantry.git` (it does not use the request's `ref`, and it resets `origin` to that URL) and runs `setup.sh apply` from the trigger commit when that commit is a full SHA and is `origin/master` or an ancestor of it. Anything else is logged and skipped. The apply's stdin is closed, so it cannot stop on a prompt. It does not install OS packages or upgrade Docker, and it does not replace `auth.caddy`, existing `.env` values, or the session secret.
+
+A failed apply checks out the last setup commit that succeeded and runs that `setup.sh` again. The image pull still runs afterward. `GET /api/build` then shows `setupCommit`, `setupAppliedAt`, and `setupStatus` with no paths and no secrets. Set `PANTRY_AUTO_SETUP=off` in `/opt/pantry/.env` to keep the image pull and leave setup files alone.
+
+The updater is whatever `sudo ./setup.sh` last copied into `/opt/pantry`. Run that once after this change is on the Pi (the Pi also needs `git` installed; later applies will not install it). Later setup changes ship on merge. The 1-minute timer still only pulls the image when the trigger has no full commit. Because a merge now changes host config, require status checks on `master` before enabling this.
 
 `sudo ./setup.sh freeze` masks both the timer and the path unit so a hook does not change the image while you are iterating. `sudo ./setup.sh thaw` turns them back on.
 
