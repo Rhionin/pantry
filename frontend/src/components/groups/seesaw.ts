@@ -108,6 +108,7 @@ export function seesawView(
 
   const amountEnd = endAmount(pin, amount, unit);
   const timeEnd = endTime(pin, months, isDefault);
+  const explicitTarget = group.quantity !== undefined || group.windowMonths !== undefined || draft !== null;
   const onHand = onHandOunces(members, dimension);
   let caption = '';
   if (onHand !== null) {
@@ -120,7 +121,7 @@ export function seesawView(
   return {
     caption,
     rateLabel: rate ? `at ${formatAmount(rate.perMonth)} ${unit} / mo` : '',
-    unknownHint: rate || (amountEnd.known && timeEnd.known) ? '' : 'Fills in once usage is known',
+    unknownHint: hintFor(rate !== null, amountEnd.known && timeEnd.known, explicitTarget),
     amount: amountEnd,
     time: timeEnd,
     amountValue: amount,
@@ -131,32 +132,89 @@ export function seesawView(
   };
 }
 
+function hintFor(hasRate: boolean, bothKnown: boolean, explicitTarget: boolean): string {
+  if (hasRate || bothKnown) return '';
+  return explicitTarget ? 'Fills in once usage is known' : 'Set an amount or time';
+}
+
+export function stockMeter(
+  view: Pick<SeesawView, 'caption' | 'fillQuantity'>,
+  onHand: number | null,
+): { now: number; max: number; text: string } {
+  const text = view.caption !== '' ? view.caption : 'No sizes listed';
+  if (view.fillQuantity !== undefined && view.fillQuantity > 0) {
+    const raw = onHand !== null && onHand > 0 ? Math.min(onHand, view.fillQuantity) : 0;
+    return { now: Math.round(raw * 10) / 10, max: view.fillQuantity, text };
+  }
+  return { now: 0, max: 1, text };
+}
+
+function speakAmount(shown: string, unit: string): string {
+  const bare = shown.replace(/^≈\s*/, '');
+  const number = bare.endsWith(` ${unit}`) ? bare.slice(0, -(unit.length + 1)) : bare;
+  const one = number === '1';
+  let noun = unit;
+  if (unit === 'oz') noun = one ? 'ounce' : 'ounces';
+  if (unit === 'fl oz') noun = one ? 'fluid ounce' : 'fluid ounces';
+  return `${number} ${noun}`;
+}
+
+function speakSpan(shown: string): string {
+  const bare = shown.replace(/^≈\s*/, '');
+  const month = bare.match(/^(\d+(?:\.\d+)?) mo$/);
+  if (month) return `${month[1]} ${month[1] === '1' ? 'month' : 'months'}`;
+  const week = bare.match(/^(\d+) wks?$/);
+  if (week) return `${week[1]} ${week[1] === '1' ? 'week' : 'weeks'}`;
+  if (bare === '< 1 mo') return 'less than 1 month';
+  if (bare === '< 1 wk') return 'less than 1 week';
+  return bare;
+}
+
 function endAmount(pin: SeesawPin, amount: number | null, unit: string): SeesawEnd {
   const pinned = pin === 'amount';
   if (!positive(amount)) {
-    return { pin: 'amount', pinned, label: '—', known: false, isDefault: false, labelText: 'Amount unknown, fills in once usage is known' };
+    return {
+      pin: 'amount',
+      pinned,
+      label: 'Set amount',
+      known: false,
+      isDefault: false,
+      labelText: 'Keep on hand amount, not set',
+    };
   }
   const shown = `${formatAmount(amount)} ${unit}`;
+  const spoken = speakAmount(shown, unit);
   if (pinned) {
-    return { pin: 'amount', pinned: true, label: shown, known: true, isDefault: false, labelText: `${shown}, pinned` };
+    return {
+      pin: 'amount',
+      pinned: true,
+      label: shown,
+      known: true,
+      isDefault: false,
+      labelText: `Keep on hand amount, pinned, ${spoken}`,
+    };
   }
-  return { pin: 'amount', pinned: false, label: `≈ ${shown}`, known: true, isDefault: false, labelText: `About ${shown}` };
+  return {
+    pin: 'amount',
+    pinned: false,
+    label: `≈ ${shown}`,
+    known: true,
+    isDefault: false,
+    labelText: `Keep on hand amount, about ${spoken}`,
+  };
 }
 
 function endTime(pin: SeesawPin, months: number | null, isDefault: boolean): SeesawEnd {
   const pinned = pin === 'time';
-  if (pinned && isDefault && !positive(months)) {
+  if (!positive(months)) {
     return {
       pin: 'time',
-      pinned: true,
-      label: 'Default',
-      known: true,
+      pinned,
+      label: 'Set time',
+      known: false,
       isDefault: false,
-      labelText: 'Household default, pinned',
+      labelText: 'Keep on hand time, not set',
     };
-  }
-  if (!positive(months)) {
-    return { pin: 'time', pinned, label: '—', known: false, isDefault: false, labelText: 'Time unknown, fills in once usage is known' };
   }
   if (pinned) {
     const shown = `${Math.round(months)} mo`;
@@ -167,9 +225,16 @@ function endTime(pin: SeesawPin, months: number | null, isDefault: boolean): See
       label: shown,
       known: true,
       isDefault,
-      labelText: `${shown}${marker}, pinned`,
+      labelText: `Keep on hand time, pinned, ${speakSpan(shown)}${marker}`,
     };
   }
   const shown = formatDuration(months);
-  return { pin: 'time', pinned: false, label: `≈ ${shown}`, known: true, isDefault: false, labelText: `About ${shown}` };
+  return {
+    pin: 'time',
+    pinned: false,
+    label: `≈ ${shown}`,
+    known: true,
+    isDefault: false,
+    labelText: `Keep on hand time, about ${speakSpan(shown)}`,
+  };
 }

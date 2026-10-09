@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState, type Ref } from 'react';
 import { Button, Group, NumberInput, Text } from '@mantine/core';
 import type { GroupTarget, ProductGroup } from '../../types';
 import { clampMonth, type SeesawDraft, type SeesawEnd, type SeesawPin, type SeesawView } from './seesaw';
@@ -15,9 +15,18 @@ function PinIcon() {
   );
 }
 
-function Pill({ end, onOpen }: { end: SeesawEnd; onOpen: (pin: SeesawPin) => void }) {
+function Pill({
+  end,
+  onOpen,
+  buttonRef,
+}: {
+  end: SeesawEnd;
+  onOpen: (pin: SeesawPin) => void;
+  buttonRef?: Ref<HTMLButtonElement>;
+}) {
   return (
     <button
+      ref={buttonRef}
       type="button"
       className={end.pinned ? 'seesaw-pill is-pinned' : 'seesaw-pill is-inferred'}
       aria-pressed={end.pinned}
@@ -45,8 +54,19 @@ export function Seesaw({
   onSave: (target: GroupTarget) => Promise<void>;
 }) {
   const [error, setError] = useState('');
+  const amountRef = useRef<HTMLButtonElement>(null);
+  const timeRef = useRef<HTMLButtonElement>(null);
+  const restore = useRef<SeesawPin | null>(null);
   const amountUnit = view.dimension === 'volume' ? 'Fluid ounces' : 'Ounces';
   const canClear = group.quantity !== undefined || group.windowMonths !== undefined;
+
+  useEffect(() => {
+    if (draft !== null) return;
+    const pin = restore.current;
+    if (pin === null) return;
+    restore.current = null;
+    (pin === 'amount' ? amountRef : timeRef).current?.focus();
+  }, [draft]);
 
   const open = (pin: SeesawPin) => {
     if (draft?.pin === pin) return;
@@ -57,9 +77,14 @@ export function Seesaw({
     onDraft({ pin, value });
   };
 
-  const cancel = () => {
+  const closeEditor = () => {
+    if (draft) restore.current = draft.pin;
     setError('');
     onDraft(null);
+  };
+
+  const cancel = () => {
+    closeEditor();
   };
 
   const save = async () => {
@@ -81,7 +106,7 @@ export function Seesaw({
         }
         await onSave({ windowMonths: value });
       }
-      onDraft(null);
+      closeEditor();
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : 'Unable to save the target.');
     }
@@ -91,7 +116,7 @@ export function Seesaw({
     setError('');
     try {
       await onSave({ clear: true });
-      onDraft(null);
+      closeEditor();
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : 'Unable to save the target.');
     }
@@ -100,6 +125,7 @@ export function Seesaw({
   const editor = (pin: SeesawPin) => (
     <NumberInput
       className="seesaw-editor"
+      autoFocus
       aria-label={pin === 'amount' ? amountUnit : 'Months'}
       value={draft?.value ?? ''}
       onChange={(value) => onDraft({ pin, value })}
@@ -131,14 +157,14 @@ export function Seesaw({
       <p className="seesaw-caption">KEEP ON HAND</p>
       <div className="seesaw-row">
         <div className="seesaw-end">
-          {draft?.pin === 'amount' ? editor('amount') : <Pill end={view.amount} onOpen={open} />}
+          {draft?.pin === 'amount' ? editor('amount') : <Pill end={view.amount} onOpen={open} buttonRef={amountRef} />}
         </div>
         <div className="seesaw-beam">
           <span className="seesaw-beam-line" />
           {view.rateLabel !== '' && <span className="seesaw-rate">{view.rateLabel}</span>}
         </div>
         <div className="seesaw-end">
-          {draft?.pin === 'time' ? editor('time') : <Pill end={view.time} onOpen={open} />}
+          {draft?.pin === 'time' ? editor('time') : <Pill end={view.time} onOpen={open} buttonRef={timeRef} />}
         </div>
       </div>
       {view.unknownHint !== '' && (

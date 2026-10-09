@@ -142,7 +142,7 @@ export const InboxPage = () => {
   };
 
   return (
-    <Stack gap="sm">
+    <Stack gap="sm" className="bin-page">
       <Anchor component={Link} to="/groups" size="sm">Product groups</Anchor>
       <Title order={1} size="h3">Suggestions</Title>
       {loading && <Loader aria-label="Loading suggestions" />}

@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef, useState } from 'react';
+import { useLayoutEffect, useRef, useState, type CSSProperties } from 'react';
 import { ActionIcon, Title, Tooltip } from '@mantine/core';
 import { binColor, type BinView } from './copy';
 import { placeOnHandLabel, type LabelPlacement } from './placeLabel';
@@ -82,6 +82,7 @@ function OnHandLabel({ text, percent }: { text: string; percent: number }) {
   return (
     <p
       ref={ref}
+      aria-hidden="true"
       className={place ? `bin-caption is-in-${place.region}` : 'bin-caption'}
       style={{
         left: place ? place.left : 0,
@@ -94,6 +95,12 @@ function OnHandLabel({ text, percent }: { text: string; percent: number }) {
   );
 }
 
+const iconInk = {
+  '--ai-color': 'var(--bin-ink)',
+  '--ai-hover-color': 'var(--bin-ink)',
+  color: 'var(--bin-ink)',
+} as CSSProperties;
+
 export function BinMark({
   view,
   members,
@@ -101,6 +108,7 @@ export function BinMark({
   name,
   onRename,
   caption,
+  meter,
 }: {
   view: BinView;
   members: { productId: string }[];
@@ -108,6 +116,7 @@ export function BinMark({
   name?: string;
   onRename?: () => void;
   caption?: string;
+  meter?: { now: number; max: number; text: string };
 }) {
   const percent = view.segments.reduce((sum, segment) => sum + segment.fraction, 0) * 100;
   const across = size === 'hero';
@@ -151,6 +160,7 @@ export function BinMark({
                 variant="subtle"
                 color="dark"
                 className="bin-icon-button"
+                style={iconInk}
                 aria-label="Rename"
                 onClick={onRename}
               >
@@ -161,11 +171,24 @@ export function BinMark({
         </div>
         {caption === undefined && <p className="bin-corner">{view.corner}</p>}
       </div>
-      <div className="bin-well">
+      <div
+        className="bin-well"
+        role="meter"
+        aria-label="Stock on hand"
+        aria-valuemin={0}
+        aria-valuenow={meter?.now ?? 0}
+        aria-valuemax={meter?.max ?? 1}
+        aria-valuetext={meter?.text ?? (caption !== '' && caption !== undefined ? caption : 'No sizes listed')}
+      >
         {fill}
         {caption !== undefined
-          ? (caption !== '' && <OnHandLabel text={caption} percent={percent} />)
-          : (view.level !== '' && <p className="bin-level">{view.level}</p>)}
+          ? (
+            <OnHandLabel
+              text={caption !== '' ? caption : 'No sizes listed'}
+              percent={percent}
+            />
+          )
+          : (view.level !== '' && <p className="bin-level" aria-hidden="true">{view.level}</p>)}
       </div>
     </div>
   );
