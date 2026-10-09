@@ -380,6 +380,7 @@ export interface TargetConflictMember {
   name: string;
   windowMonths?: number;
   quantity?: number;
+  dimension?: NetDimension;
 }
 
 export interface BatchCommitResponse {

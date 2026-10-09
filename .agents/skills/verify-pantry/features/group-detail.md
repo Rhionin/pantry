@@ -12,8 +12,10 @@ here.
   the bottom rule sheet. Saving a rule replaces the yellow badge with the rule
   name.
 - `group-detail-add` search ungrouped products, select one or more, and add
-  them to this group. A supply-setting conflict offers the account window, 24
-  ounces, or 3 months.
+  them to this group. A supply-setting conflict asks which setting the whole
+  group should use: the group's current target (or the household default),
+  or a distinct setting from the products being added. Cancel leaves the
+  selection alone.
 
 ## How to get to it (user POV)
 
@@ -36,13 +38,15 @@ Preconditions:
   `Always buy`, and click `Save rule`. The badge becomes `Always my favorite`
   and `GET /api/groups/:id` reports `ruleConfirmed: true`.
 - **Add a product.** Search `glacier`, check `Gatorade Glacier Freeze`, and
-  click `Add to this group`. The product appears in the member list and leaves
-  the ungrouped list.
+  click `Add to this group`. When that product already has a supply setting,
+  the page asks which target the whole group should use. After a choice, the
+  product appears in the member list and leaves the ungrouped list.
 
 ## Gotchas
 
 - The rule sheet is a bottom drawer. A full-page screenshot can miss it; capture
   the viewport while the dialog is open.
 - `Use the account window` on the page clears the group's target. The add
-  conflict uses `Keep the account window`, `Keep 24 ounces`, and `Keep 3 months`
-  so the two actions stay distinct.
+  conflict uses `Keep the group's …` or `Keep the household default`, plus
+  `Use … (from …)` for each product setting, so it does not invent 24 ounces
+  or 3 months.

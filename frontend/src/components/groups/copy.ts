@@ -1,4 +1,4 @@
-import type { GroupMember, ProductGroup, SuggestionMember, TargetConflictMember } from '../../types';
+import type { GroupMember, GroupTarget, NetDimension, ProductGroup, SuggestionMember, TargetConflictMember } from '../../types';
 
 export const ruleLabels: Record<string, string> = {
   same_as_ran_out: 'Same as what ran out',
@@ -66,10 +66,75 @@ export function memberFacts(members: SuggestionMember[]): MemberFact[] {
   return defs.filter((fact) => members.some((member) => fact.text(member) !== ''));
 }
 
+export type GroupSupply = Pick<ProductGroup, 'quantity' | 'dimension' | 'windowMonths'>;
+
+export interface TargetChoice {
+  label: string;
+  target: GroupTarget;
+}
+
+const quantityUnit = (dimension?: NetDimension) => (dimension === 'volume' ? 'fluid ounces' : 'ounces');
+
+export const conflictAmount = (member: Pick<TargetConflictMember, 'quantity' | 'dimension' | 'windowMonths'>) => {
+  if (member.quantity !== undefined) return `${member.quantity} ${quantityUnit(member.dimension)}`;
+  if (member.windowMonths !== undefined) return `${member.windowMonths} months`;
+  return '';
+};
+
 export const conflictLine = (member: TargetConflictMember) => {
-  if (member.quantity !== undefined) return `${member.name}: keep ${member.quantity}`;
-  if (member.windowMonths !== undefined) return `${member.name}: ${member.windowMonths} months`;
-  return member.name;
+  const amount = conflictAmount(member);
+  if (amount === '') return member.name;
+  return `${member.name}: ${amount}`;
+};
+
+const memberTarget = (member: TargetConflictMember): { key: string; amount: string; target: GroupTarget } | null => {
+  if (member.quantity !== undefined) {
+    const dimension = member.dimension === 'volume' || member.dimension === 'mass' ? member.dimension : undefined;
+    const target: GroupTarget = { quantity: member.quantity };
+    if (dimension) target.dimension = dimension;
+    return { key: `quantity:${member.quantity}:${dimension ?? ''}`, amount: conflictAmount(member), target };
+  }
+  if (member.windowMonths !== undefined) {
+    return {
+      key: `window:${member.windowMonths}`,
+      amount: conflictAmount(member),
+      target: { windowMonths: member.windowMonths },
+    };
+  }
+  return null;
+};
+
+// Clear would wipe a group's own target. It is only the household default.
+export const targetChoices = (group: GroupSupply | null, members: TargetConflictMember[]): TargetChoice[] => {
+  const choices: TargetChoice[] = [];
+  if (group?.quantity !== undefined) {
+    const target: GroupTarget = { quantity: group.quantity };
+    if (group.dimension === 'mass' || group.dimension === 'volume') target.dimension = group.dimension;
+    choices.push({ label: `Keep the group's ${targetLabel(group)}`, target });
+  } else if (group?.windowMonths !== undefined) {
+    choices.push({ label: `Keep the group's ${targetLabel(group)}`, target: { windowMonths: group.windowMonths } });
+  } else {
+    choices.push({ label: 'Keep the household default', target: { clear: true } });
+  }
+
+  const seen = new Map<string, { amount: string; target: GroupTarget; names: string[] }>();
+  for (const member of members) {
+    const built = memberTarget(member);
+    if (!built) continue;
+    const existing = seen.get(built.key);
+    if (existing) {
+      existing.names.push(member.name);
+      continue;
+    }
+    seen.set(built.key, { amount: built.amount, target: built.target, names: [member.name] });
+  }
+  for (const choice of seen.values()) {
+    choices.push({
+      label: `Use ${choice.amount} (from ${choice.names.join(', ')})`,
+      target: choice.target,
+    });
+  }
+  return choices;
 };
 
 export type GroupChip = 'all' | 'low' | 'unconfirmed' | string;

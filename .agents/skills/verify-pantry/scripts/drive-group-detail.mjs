@@ -32,11 +32,30 @@ try {
   await stock(page, '052000340242', 4);
   await stock(page, '052000341111', 1);
 
+  const sized = await page.request.put(`${API_URL}/api/products/${glacier.id}`, {
+    data: {
+      name: 'Gatorade Glacier Freeze',
+      category: 'Drinks',
+      unitOfMeasure: 'canister',
+      netAmount: 12,
+      netUnit: 'oz',
+    },
+  });
+  if (!sized.ok()) throw new Error(`size product failed: ${sized.status()} ${await sized.text()}`);
+  const override = await page.request.put(`${API_URL}/api/products/${glacier.id}/supply-override`, {
+    data: { quantity: 12 },
+  });
+  if (!override.ok()) throw new Error(`supply override failed: ${override.status()} ${await override.text()}`);
+
   const created = await page.request.post(`${API_URL}/api/groups`, {
     data: { name: 'Gatorade powder', productIds: [punch.id, thirst.id] },
   });
   if (!created.ok()) throw new Error(`create group failed: ${created.status()} ${await created.text()}`);
   const group = await created.json();
+  const targeted = await page.request.put(`${API_URL}/api/groups/${group.id}/target`, {
+    data: { windowMonths: 6 },
+  });
+  if (!targeted.ok()) throw new Error(`group target failed: ${targeted.status()} ${await targeted.text()}`);
 
   await page.goto(`/groups/${group.id}`);
   await page.getByRole('heading', { name: 'Gatorade powder' }).waitFor({ state: 'visible', timeout: 10_000 });
@@ -65,6 +84,15 @@ try {
   await page.getByLabel('Search products').fill('glacier');
   await page.getByRole('checkbox', { name: 'Gatorade Glacier Freeze · 1 on hand' }).check();
   await page.getByRole('button', { name: 'Add to this group' }).click();
+  const prompt = page.getByText('These products have their own supply setting. Which should the whole group use?');
+  await prompt.waitFor({ state: 'visible', timeout: 10_000 });
+  await page.getByRole('button', { name: "Keep the group's 6 months" }).waitFor({ state: 'visible' });
+  await page.getByRole('button', { name: 'Use 12 ounces (from Gatorade Glacier Freeze)' }).waitFor({ state: 'visible' });
+  await page.getByRole('button', { name: 'Cancel' }).waitFor({ state: 'visible' });
+  await prompt.scrollIntoViewIfNeeded();
+  await phoneShot(page, 'group-detail-target-conflict', { fullPage: false });
+
+  await page.getByRole('button', { name: 'Use 12 ounces (from Gatorade Glacier Freeze)' }).click();
   await page.getByText('Gatorade Glacier Freeze', { exact: true }).waitFor({ state: 'visible', timeout: 10_000 });
   await page.getByRole('checkbox', { name: /Gatorade Glacier Freeze/ }).waitFor({ state: 'detached' });
   await page.getByText('Gatorade Glacier Freeze', { exact: true }).scrollIntoViewIfNeeded();
@@ -79,6 +107,9 @@ try {
   assert(view.pinnedProductId === punch.id, 'fruit punch is pinned');
   assert(memberIds.includes(glacier.id), 'glacier freeze is a member');
   assert(memberIds.includes(punch.id) && memberIds.includes(thirst.id), 'original members stay');
+  assert(view.quantity === 12, `group keeps 12 ounces (got ${view.quantity})`);
+  assert(view.dimension === 'mass', `group dimension is mass (got ${view.dimension})`);
+  assert(view.windowMonths === undefined, 'the 6 month target was replaced by the chosen quantity');
 
   await captureProof(page, 'group-detail', {
     feature: 'group-detail',

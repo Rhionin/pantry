@@ -168,12 +168,107 @@ describe('GroupDetailPage', () => {
     fireEvent.click(screen.getByRole('checkbox', { name: 'Gatorade Glacier Freeze · 1 on hand' }));
     fireEvent.click(screen.getByRole('button', { name: 'Add to this group' }));
 
-    expect(await screen.findByText('Gatorade Glacier Freeze: keep 12')).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'Keep the account window' }));
+    expect(await screen.findByText('These products have their own supply setting. Which should the whole group use?')).toBeInTheDocument();
+    expect(screen.getByText('Gatorade Glacier Freeze: 12 ounces')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Keep the account window' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Keep 24 ounces' })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Keep the household default' }));
 
     expect(await screen.findByText('Gatorade Glacier Freeze')).toBeInTheDocument();
     await waitFor(() => expect(screen.queryByRole('checkbox', { name: /Gatorade Glacier Freeze/ })).not.toBeInTheDocument());
     expect(membersPosts).toBe(2);
+  });
+
+  it('keeps a 6 month group target instead of clearing it', async () => {
+    let current: ProductGroup = { ...baseGroup(), windowMonths: 6 };
+    const bodies: { productIds: string[]; target?: { windowMonths?: number; clear?: boolean } }[] = [];
+    renderDetail((url, init) => {
+      const method = init?.method ?? 'GET';
+      if (url === '/api/groups/g1' && method === 'GET') return json(current);
+      if (url === '/api/groups' && method === 'GET') return json([current]);
+      if (url === '/api/products' && method === 'GET') return json([product('glacier', 'Gatorade Glacier Freeze')]);
+      if (url === '/api/inventory') return json([inventoryRow('glacier', 'Gatorade Glacier Freeze', 1)]);
+      if (url.startsWith('/api/products/')) return json({ barcodes: [] });
+      if (url === '/api/groups/g1/members' && method === 'POST') {
+        const body = JSON.parse(String(init?.body)) as { productIds: string[]; target?: { windowMonths?: number } };
+        bodies.push(body);
+        if (!body.target) {
+          return json({
+            error: 'Choose what this group should keep on hand.',
+            code: 'target_decision_required',
+            members: [{ productId: 'glacier', name: 'Gatorade Glacier Freeze', quantity: 12, dimension: 'mass' }],
+          }, 409);
+        }
+        current = {
+          ...current,
+          members: [...current.members, member('glacier', 'Gatorade Glacier Freeze', 1)],
+        };
+        return json(current);
+      }
+      throw new Error(`Unexpected ${method} ${url}`);
+    });
+
+    fireEvent.click(await screen.findByRole('checkbox', { name: 'Gatorade Glacier Freeze · 1 on hand' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Add to this group' }));
+
+    expect(await screen.findByRole('button', { name: "Keep the group's 6 months" })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Use 12 ounces (from Gatorade Glacier Freeze)' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: "Keep the group's 6 months" }));
+
+    await waitFor(() => expect(bodies).toHaveLength(2));
+    expect(bodies[1]?.target).toEqual({ windowMonths: 6 });
+  });
+
+  it('sends a member quantity and dimension, and cancel sends nothing', async () => {
+    const current = baseGroup();
+    const posts: { productIds: string[]; target?: { quantity?: number; dimension?: string } }[] = [];
+    renderDetail((url, init) => {
+      const method = init?.method ?? 'GET';
+      if (url === '/api/groups/g1' && method === 'GET') return json(current);
+      if (url === '/api/groups' && method === 'GET') return json([current]);
+      if (url === '/api/products' && method === 'GET') return json([product('glacier', 'Gatorade Glacier Freeze')]);
+      if (url === '/api/inventory') return json([inventoryRow('glacier', 'Gatorade Glacier Freeze', 1)]);
+      if (url.startsWith('/api/products/')) return json({ barcodes: [] });
+      if (url === '/api/groups/g1/members' && method === 'POST') {
+        const body = JSON.parse(String(init?.body)) as { productIds: string[]; target?: { quantity?: number; dimension?: string } };
+        posts.push(body);
+        if (!body.target) {
+          return json({
+            error: 'Choose what this group should keep on hand.',
+            code: 'target_decision_required',
+            members: [{ productId: 'glacier', name: 'Gatorade Glacier Freeze', quantity: 12, dimension: 'mass' }],
+          }, 409);
+        }
+        return json({
+          ...current,
+          quantity: body.target.quantity,
+          dimension: body.target.dimension,
+          members: [...current.members, member('glacier', 'Gatorade Glacier Freeze', 1)],
+        });
+      }
+      throw new Error(`Unexpected ${method} ${url}`);
+    });
+
+    const checkbox = await screen.findByRole('checkbox', { name: 'Gatorade Glacier Freeze · 1 on hand' });
+    fireEvent.click(checkbox);
+    fireEvent.click(screen.getByRole('button', { name: 'Add to this group' }));
+
+    expect(await screen.findByText('Gatorade Glacier Freeze: 12 ounces')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Use 12 ounces (from Gatorade Glacier Freeze)' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+
+    expect(screen.queryByText('These products have their own supply setting. Which should the whole group use?')).not.toBeInTheDocument();
+    expect(screen.getByRole('checkbox', { name: 'Gatorade Glacier Freeze · 1 on hand' })).toBeChecked();
+    expect(posts).toHaveLength(1);
+    expect(posts[0]?.target).toBeUndefined();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Add to this group' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Use 12 ounces (from Gatorade Glacier Freeze)' }));
+
+    await waitFor(() => expect(posts).toHaveLength(3));
+    expect(posts[0]?.target).toBeUndefined();
+    expect(posts[1]?.target).toBeUndefined();
+    expect(posts[2]?.target).toEqual({ quantity: 12, dimension: 'mass' });
   });
 
   it('still renames the group and moves a member', async () => {

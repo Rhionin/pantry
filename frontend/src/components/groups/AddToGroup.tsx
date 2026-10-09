@@ -3,10 +3,12 @@ import { Button, Checkbox, Group, Stack, Text, TextInput } from '@mantine/core';
 import { addGroupMembers, ApiError } from '../../api/client';
 import type { GroupTarget, TargetConflictMember } from '../../types';
 import type { AddCandidate } from './candidates';
-import { conflictLine } from './copy';
+import type { GroupSupply } from './copy';
+import { TargetConflictPrompt } from './TargetConflictPrompt';
 
 export interface AddToGroupProps {
   groupId: string;
+  group: GroupSupply;
   candidates: AddCandidate[];
   onAdded: () => void;
 }
@@ -14,7 +16,7 @@ export interface AddToGroupProps {
 const candidateLabel = (candidate: AddCandidate) =>
   candidate.onHand === undefined ? candidate.name : `${candidate.name} · ${candidate.onHand} on hand`;
 
-export const AddToGroup = ({ groupId, candidates, onAdded }: AddToGroupProps) => {
+export const AddToGroup = ({ groupId, group, candidates, onAdded }: AddToGroupProps) => {
   const [query, setQuery] = useState('');
   const [selected, setSelected] = useState<string[]>([]);
   const [conflict, setConflict] = useState<TargetConflictMember[] | null>(null);
@@ -79,14 +81,12 @@ export const AddToGroup = ({ groupId, candidates, onAdded }: AddToGroupProps) =>
             ))}
           </Stack>
           {conflict && (
-            <Stack gap={4}>
-              {conflict.map((member) => <Text key={member.productId} size="sm">{conflictLine(member)}</Text>)}
-              <Group gap="xs">
-                <Button size="xs" variant="light" onClick={() => void add({ clear: true })}>Keep the account window</Button>
-                <Button size="xs" variant="light" onClick={() => void add({ quantity: 24, dimension: 'mass' })}>Keep 24 ounces</Button>
-                <Button size="xs" variant="light" onClick={() => void add({ windowMonths: 3 })}>Keep 3 months</Button>
-              </Group>
-            </Stack>
+            <TargetConflictPrompt
+              group={group}
+              members={conflict}
+              onChoose={(target) => void add(target)}
+              onCancel={() => setConflict(null)}
+            />
           )}
           <Group gap="xs" align="center">
             <Button size="xs" loading={adding} disabled={selected.length === 0} onClick={() => void add()}>

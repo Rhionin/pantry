@@ -156,7 +156,7 @@ export const GroupDetailPage = () => {
               <Button size="xs" variant="default" onClick={() => void saveTarget({ clear: true })}>Use the account window</Button>
             </Group>
           </Stack>
-          <AddToGroup groupId={group.id} candidates={candidates} onAdded={() => { void load(); }} />
+          <AddToGroup groupId={group.id} group={group} candidates={candidates} onAdded={() => { void load(); }} />
           {group.members.map((member) => (
             <Stack key={member.productId} gap={4}>
               <Text fw={600}>{member.name}</Text>

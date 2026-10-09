@@ -38,11 +38,13 @@ type Error struct {
 func (e *Error) Error() string { return e.Msg }
 
 // OverrideNotice is one product that already has its own supply setting.
+// Dimension is the product's weight or volume when the setting is a quantity.
 type OverrideNotice struct {
 	ProductID    string `json:"productId"`
 	Name         string `json:"name"`
 	WindowMonths *int   `json:"windowMonths,omitempty"`
 	Quantity     *int   `json:"quantity,omitempty"`
+	Dimension    string `json:"dimension,omitempty"`
 }
 
 // TargetInput is a group target from a request.
@@ -847,7 +849,7 @@ func overrideNotices(ctx context.Context, q querier, ids []string) ([]OverrideNo
 		return nil, nil
 	}
 	query := `
-		SELECT o.product_id, p.name, o.window_months, o.quantity
+		SELECT o.product_id, p.name, o.window_months, o.quantity, COALESCE(p.net_dimension, '')
 		FROM supply_overrides o
 		JOIN products p ON p.id = o.product_id
 		WHERE o.product_id IN (` + placeholders(len(ids)) + `)`
@@ -864,7 +866,8 @@ func overrideNotices(ctx context.Context, q querier, ids []string) ([]OverrideNo
 	for rows.Next() {
 		var n OverrideNotice
 		var window, qty sql.NullInt64
-		if err := rows.Scan(&n.ProductID, &n.Name, &window, &qty); err != nil {
+		var dim string
+		if err := rows.Scan(&n.ProductID, &n.Name, &window, &qty, &dim); err != nil {
 			return nil, fmt.Errorf("could not read supply settings: %w", err)
 		}
 		if window.Valid {
@@ -874,6 +877,9 @@ func overrideNotices(ctx context.Context, q querier, ids []string) ([]OverrideNo
 		if qty.Valid {
 			v := int(qty.Int64)
 			n.Quantity = &v
+			if dim == product.DimensionMass || dim == product.DimensionVolume {
+				n.Dimension = dim
+			}
 		}
 		notices = append(notices, n)
 	}
