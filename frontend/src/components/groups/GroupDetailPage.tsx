@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import {
-  Alert, Anchor, Button, Group, Loader, Modal, NativeSelect, Stack, Text, TextInput,
+  ActionIcon, Alert, Anchor, Button, Loader, Menu, Modal, Stack, Text, TextInput, Tooltip,
 } from '@mantine/core';
 import {
   addGroupMembers, getGroup, getInventoryList, getProduct, getSupplySettings, listGroups, listProducts, removeGroupMember, renameGroup, setGroupTarget,
@@ -12,12 +12,22 @@ import { AddToGroup } from './AddToGroup';
 import { BinMark } from './BinMark';
 import { ungroupedProducts, type AddCandidate } from './candidates';
 import {
-  binColor, binView, memberLine, memberOrder, memberPackage, ruleSentence, type MemberPackage,
+  binColor, binView, memberLine, memberOrder, memberPackage, rulePillLabel, ruleSentence, type MemberPackage,
 } from './copy';
 import { Seesaw } from './Seesaw';
 import { seesawView, type SeesawDraft } from './seesaw';
 
 const closeButton = { 'aria-label': 'Close' };
+
+function KebabIcon() {
+  return (
+    <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
+      <circle cx="8" cy="3.1" r="1.35" fill="currentColor" />
+      <circle cx="8" cy="8" r="1.35" fill="currentColor" />
+      <circle cx="8" cy="12.9" r="1.35" fill="currentColor" />
+    </svg>
+  );
+}
 
 export const GroupDetailPage = () => {
   const { id = '' } = useParams();
@@ -28,9 +38,7 @@ export const GroupDetailPage = () => {
   const [householdMonths, setHouseholdMonths] = useState<number | undefined>();
   const [name, setName] = useState('');
   const [renaming, setRenaming] = useState(false);
-  const [moveTo, setMoveTo] = useState('');
   const [moving, setMoving] = useState('');
-  const [actingOn, setActingOn] = useState('');
   const [draft, setDraft] = useState<SeesawDraft | null>(null);
   const [adding, setAdding] = useState(false);
   const [candidates, setCandidates] = useState<AddCandidate[]>([]);
@@ -93,21 +101,17 @@ export const GroupDetailPage = () => {
         navigate('/groups');
         return;
       }
-      setActingOn('');
       await load();
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : 'Unable to remove that product.');
     }
   };
 
-  const move = async (productId: string) => {
-    if (moveTo === '') return;
+  const move = async (productId: string, destination: string) => {
     setMoving(productId);
     setError('');
     try {
-      await addGroupMembers(moveTo, [productId], id);
-      setActingOn('');
-      setMoveTo('');
+      await addGroupMembers(destination, [productId], id);
       await load();
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : 'Unable to move that product.');
@@ -135,12 +139,13 @@ export const GroupDetailPage = () => {
       members,
     )
     : null;
-  const acting = members.find((member) => member.productId === actingOn);
+  const ruleName = group ? rulePillLabel(group, members) : '';
+  const ruleDetail = group ? ruleSentence(group, members, 'detail') : '';
 
   return (
     <Stack gap="lg" className="bin-page">
       <Anchor component={Link} to="/groups" size="sm">Product groups</Anchor>
-      {error !== '' && !renaming && actingOn === '' && <Alert color="red" py="xs">{error}</Alert>}
+      {error !== '' && !renaming && <Alert color="red" py="xs">{error}</Alert>}
       {group && view && shown && (
         <>
           <div className="bin-hero-row">
@@ -166,33 +171,23 @@ export const GroupDetailPage = () => {
               />
             </div>
             <div className="bin-copy">
-              <div className="bin-block">
-                <Text className="bin-rule">{ruleSentence(group, members, 'detail')}</Text>
-                <Anchor component="button" type="button" className="bin-action" onClick={() => setRuleOpen(true)}>
-                  {group.ruleConfirmed ? 'Change rule' : 'Pick a rule'}
-                </Anchor>
-              </div>
+              <Tooltip label={ruleDetail}>
+                <button
+                  type="button"
+                  className="rule-pill"
+                  aria-label={group.ruleConfirmed ? `Change rule, ${ruleName}` : ruleName}
+                  onClick={() => setRuleOpen(true)}
+                >
+                  <span className="rule-pill-mark" aria-hidden="true">⇄</span>
+                  <span className="rule-pill-label">{ruleName}</span>
+                </button>
+              </Tooltip>
             </div>
           </div>
           <div className="bin-members">
             {members.map((member) => (
               <article key={member.productId} className="bin-member">
-                <div className="bin-member-side">
-                  <span className="bin-swatch" style={{ background: binColor(members, member.productId) }} aria-hidden="true" />
-                  <Anchor
-                    component="button"
-                    type="button"
-                    className="bin-action bin-member-action"
-                    aria-label={`Remove or move ${member.name}`}
-                    onClick={() => {
-                      setMoveTo('');
-                      setError('');
-                      setActingOn(member.productId);
-                    }}
-                  >
-                    Remove or move
-                  </Anchor>
-                </div>
+                <span className="bin-swatch" style={{ background: binColor(members, member.productId) }} aria-hidden="true" />
                 <div className="bin-member-copy">
                   <p className="bin-member-name">{member.name}</p>
                   <Text size="sm" c="dimmed">{memberLine(member)}</Text>
@@ -200,6 +195,33 @@ export const GroupDetailPage = () => {
                     <Text size="xs" c="dimmed">Barcode: {(member.barcodes ?? []).join(', ')}</Text>
                   )}
                 </div>
+                <Menu position="bottom-end">
+                  <Menu.Target>
+                    <Tooltip label="Remove or move">
+                      <ActionIcon
+                        variant="subtle"
+                        color="dark"
+                        className="bin-icon-button"
+                        aria-label={`Remove or move ${member.name}`}
+                      >
+                        <KebabIcon />
+                      </ActionIcon>
+                    </Tooltip>
+                  </Menu.Target>
+                  <Menu.Dropdown>
+                    <Menu.Item onClick={() => void remove(member.productId)}>Remove</Menu.Item>
+                    {others.length > 0 && <Menu.Label>Move to</Menu.Label>}
+                    {others.map((item) => (
+                      <Menu.Item
+                        key={item.id}
+                        disabled={moving === member.productId}
+                        onClick={() => void move(member.productId, item.id)}
+                      >
+                        {item.name}
+                      </Menu.Item>
+                    ))}
+                  </Menu.Dropdown>
+                </Menu>
               </article>
             ))}
             {members.length === 0 && <Text c="dimmed">This group has no products yet.</Text>}
@@ -216,39 +238,6 @@ export const GroupDetailPage = () => {
               {error !== '' && <Text size="sm" c="red">{error}</Text>}
               <Button onClick={() => void rename()} disabled={name.trim() === ''}>Rename</Button>
             </Stack>
-          </Modal>
-          <Modal
-            opened={acting !== undefined}
-            onClose={() => setActingOn('')}
-            title="Remove or move"
-            closeButtonProps={closeButton}
-          >
-            {acting && (
-              <Stack gap="sm">
-                <Text fw={650}>{acting.name}</Text>
-                <Button variant="default" onClick={() => void remove(acting.productId)}>Remove</Button>
-                {others.length > 0 && (
-                  <Group align="end" gap="xs">
-                    <NativeSelect
-                      aria-label={`Move ${acting.name}`}
-                      value={moveTo}
-                      onChange={(event) => setMoveTo(event.currentTarget.value)}
-                      data={[{ value: '', label: 'Move to…' }, ...others.map((item) => ({ value: item.id, label: item.name }))]}
-                    />
-                    <Button
-                      size="xs"
-                      variant="light"
-                      loading={moving === acting.productId}
-                      disabled={moveTo === ''}
-                      onClick={() => void move(acting.productId)}
-                    >
-                      Move
-                    </Button>
-                  </Group>
-                )}
-                {error !== '' && <Text size="sm" c="red">{error}</Text>}
-              </Stack>
-            )}
           </Modal>
           <Modal
             opened={adding}

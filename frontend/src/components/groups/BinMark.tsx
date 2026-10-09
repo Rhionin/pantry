@@ -1,5 +1,5 @@
 import { useLayoutEffect, useRef, useState } from 'react';
-import { Anchor, Title } from '@mantine/core';
+import { ActionIcon, Title, Tooltip } from '@mantine/core';
 import { binColor, type BinView } from './copy';
 import { placeOnHandLabel, type LabelPlacement } from './placeLabel';
 import './groups.css';
@@ -14,6 +14,18 @@ function themePadding(): number {
   const root = parseFloat(style.fontSize) || 16;
   const scale = parseFloat(style.getPropertyValue('--mantine-scale')) || 1;
   return 0.625 * root * scale;
+}
+
+function PencilIcon() {
+  return (
+    <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
+      <path
+        fill="currentColor"
+        d="M11.1 1.6a1.5 1.5 0 0 1 2.1 2.1L6.4 10.5l-2.7.8.8-2.7 6.6-7Z"
+      />
+      <path fill="currentColor" d="M2.2 13.1h11.6V14.4H2.2z" />
+    </svg>
+  );
 }
 
 function OnHandLabel({ text, percent }: { text: string; percent: number }) {
@@ -134,9 +146,17 @@ export function BinMark({
         <div className="bin-head-name">
           <Title order={1} className="bin-name">{name}</Title>
           {onRename && (
-            <Anchor component="button" type="button" className="bin-action" onClick={onRename}>
-              Rename
-            </Anchor>
+            <Tooltip label="Rename">
+              <ActionIcon
+                variant="subtle"
+                color="dark"
+                className="bin-icon-button"
+                aria-label="Rename"
+                onClick={onRename}
+              >
+                <PencilIcon />
+              </ActionIcon>
+            </Tooltip>
           )}
         </div>
         {caption === undefined && <p className="bin-corner">{view.corner}</p>}

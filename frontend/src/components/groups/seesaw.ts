@@ -36,8 +36,9 @@ export function clampMonth(months: number): number {
   return Math.min(12, Math.max(1, Math.round(months)));
 }
 
-// Weeks while the span is short, then months. A 30-day month keeps this
-// in step with the supply window.
+// Weeks while the span is short, then months to the nearest tenth. A 30-day
+// month keeps this in step with the supply window, so 40 oz at 16 oz/mo stays
+// 2.5 months instead of rounding up to 3.
 export function formatDuration(months: number): string {
   if (!Number.isFinite(months) || months <= 0) return '';
   const weeks = months * (30 / 7);
@@ -46,9 +47,10 @@ export function formatDuration(months: number): string {
     if (rounded < 1) return '< 1 wk';
     return rounded === 1 ? '1 wk' : `${rounded} wks`;
   }
-  const rounded = Math.round(months);
-  if (rounded < 1) return '< 1 mo';
-  return `${rounded} mo`;
+  const tenths = Math.round(months * 10) / 10;
+  if (tenths < 1) return '< 1 mo';
+  if (Number.isInteger(tenths)) return `${tenths} mo`;
+  return `${tenths.toFixed(1)} mo`;
 }
 
 const positive = (value: number | null | undefined): value is number =>

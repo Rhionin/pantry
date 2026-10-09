@@ -29,6 +29,19 @@ describe('seesawView', () => {
     expect(formatDuration(18.3 / 16)).toBe('5 wks');
   });
 
+  it('infers two and a half months from 40 ounces at 16 a month', () => {
+    const view = seesawView(
+      { quantity: 40, dimension: 'mass', usage: { perMonth: 16, unit: 'oz' } },
+      [lemon],
+      3,
+      null,
+    );
+    expect(formatDuration(40 / 16)).toBe('2.5 mo');
+    expect(view.time).toMatchObject({ label: '≈ 2.5 mo', labelText: 'About 2.5 mo', pinned: false });
+    expect(view.rateLabel).toBe('at 16 oz / mo');
+    expect(view.amount.label).toBe('40 oz');
+  });
+
   it('leaves the other end blank until usage is known', () => {
     const amount = seesawView({ quantity: 48, dimension: 'mass' }, [lemon], 3, null);
     expect(amount.caption).toBe('18.3 oz on hand');

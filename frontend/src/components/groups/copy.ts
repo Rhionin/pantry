@@ -8,6 +8,19 @@ export const ruleLabels: Record<string, string> = {
 
 export const ruleLabel = (rule: string) => ruleLabels[rule] ?? rule;
 
+export function rulePillLabel(
+  group: Pick<ProductGroup, 'rule' | 'ruleConfirmed' | 'pinnedProductId'>,
+  members: { productId: string; name: string }[],
+): string {
+  if (!group.ruleConfirmed) return 'Pick a rule';
+  if (group.rule === 'same_as_ran_out') return 'Same as ran out';
+  if (group.rule === 'favorite') {
+    return members.find((member) => member.productId === group.pinnedProductId)?.name ?? 'Favorite';
+  }
+  if (group.rule === 'best_deal') return 'Best deal';
+  return ruleLabel(group.rule);
+}
+
 export const kindPhrase = (kind: string) => {
   if (kind === 'looks_alike') return 'look alike';
   if (kind === 'from_old_plan') return 'from the old shopping plan';
