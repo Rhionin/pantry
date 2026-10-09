@@ -1,21 +1,33 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import {
-  Alert, Anchor, Button, Group, Loader, Modal, NativeSelect, NumberInput, Stack, Text, TextInput,
+  ActionIcon, Alert, Anchor, Button, Loader, Menu, Modal, Stack, Text, TextInput, Tooltip,
 } from '@mantine/core';
 import {
   addGroupMembers, getGroup, getInventoryList, getProduct, getSupplySettings, listGroups, listProducts, removeGroupMember, renameGroup, setGroupTarget,
 } from '../../api/client';
 import type { GroupTarget, ProductDetail, ProductGroup } from '../../types';
-import { RuleSheet } from '../inventory/RuleSheet';
 import { AddToGroup } from './AddToGroup';
 import { BinMark } from './BinMark';
 import { ungroupedProducts, type AddCandidate } from './candidates';
 import {
-  binColor, binView, detailStockSentence, memberLine, memberOrder, memberPackage, ruleSentence, type MemberPackage,
+  binColor, binView, memberLine, memberOrder, memberPackage, rulePillLabel, ruleSentence, type MemberPackage,
 } from './copy';
+import { RulePicker } from './RulePicker';
+import { Seesaw } from './Seesaw';
+import { seesawView, type SeesawDraft } from './seesaw';
 
 const closeButton = { 'aria-label': 'Close' };
+
+function KebabIcon() {
+  return (
+    <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
+      <circle cx="8" cy="3.1" r="1.35" fill="currentColor" />
+      <circle cx="8" cy="8" r="1.35" fill="currentColor" />
+      <circle cx="8" cy="12.9" r="1.35" fill="currentColor" />
+    </svg>
+  );
+}
 
 export const GroupDetailPage = () => {
   const { id = '' } = useParams();
@@ -26,12 +38,8 @@ export const GroupDetailPage = () => {
   const [householdMonths, setHouseholdMonths] = useState<number | undefined>();
   const [name, setName] = useState('');
   const [renaming, setRenaming] = useState(false);
-  const [moveTo, setMoveTo] = useState('');
   const [moving, setMoving] = useState('');
-  const [actingOn, setActingOn] = useState('');
-  const [months, setMonths] = useState<number | string>('');
-  const [ounces, setOunces] = useState<number | string>('');
-  const [targetOpen, setTargetOpen] = useState(false);
+  const [draft, setDraft] = useState<SeesawDraft | null>(null);
   const [adding, setAdding] = useState(false);
   const [candidates, setCandidates] = useState<AddCandidate[]>([]);
   const [ruleOpen, setRuleOpen] = useState(false);
@@ -93,21 +101,17 @@ export const GroupDetailPage = () => {
         navigate('/groups');
         return;
       }
-      setActingOn('');
       await load();
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : 'Unable to remove that product.');
     }
   };
 
-  const move = async (productId: string) => {
-    if (moveTo === '') return;
+  const move = async (productId: string, destination: string) => {
     setMoving(productId);
     setError('');
     try {
-      await addGroupMembers(moveTo, [productId], id);
-      setActingOn('');
-      setMoveTo('');
+      await addGroupMembers(destination, [productId], id);
       await load();
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : 'Unable to move that product.');
@@ -118,21 +122,7 @@ export const GroupDetailPage = () => {
 
   const saveTarget = async (body: GroupTarget) => {
     if (!group) return;
-    setError('');
-    try {
-      setGroup(await setGroupTarget(group.id, body));
-      setTargetOpen(false);
-    } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : 'Unable to save the target.');
-    }
-  };
-
-  const openTarget = () => {
-    if (!group) return;
-    setOunces(group.quantity ?? '');
-    setMonths(group.windowMonths ?? '');
-    setError('');
-    setTargetOpen(true);
+    setGroup(await setGroupTarget(group.id, body));
   };
 
   if (loading) return <Loader aria-label="Loading group" />;
@@ -140,14 +130,23 @@ export const GroupDetailPage = () => {
   const members: MemberPackage[] = memberOrder((group?.members ?? []).map((member) => (
     memberPackage(member, details[member.productId])
   )));
-  const view = group ? binView(group, members) : null;
-  const acting = members.find((member) => member.productId === actingOn);
+  const shown = group ? seesawView(group, members, householdMonths, draft) : null;
+  const view = group && shown
+    ? binView(
+      shown.fillQuantity !== undefined
+        ? { quantity: shown.fillQuantity, dimension: shown.dimension }
+        : { windowMonths: shown.time.pinned ? group.windowMonths : undefined },
+      members,
+    )
+    : null;
+  const ruleName = group ? rulePillLabel(group, members) : '';
+  const ruleDetail = group ? ruleSentence(group, members, 'detail') : '';
 
   return (
     <Stack gap="lg" className="bin-page">
       <Anchor component={Link} to="/groups" size="sm">Product groups</Anchor>
-      {error !== '' && !renaming && !targetOpen && actingOn === '' && <Alert color="red" py="xs">{error}</Alert>}
-      {group && view && (
+      {error !== '' && !renaming && <Alert color="red" py="xs">{error}</Alert>}
+      {group && view && shown && (
         <>
           <div className="bin-hero-row">
             <BinMark
@@ -155,46 +154,40 @@ export const GroupDetailPage = () => {
               members={members}
               size="hero"
               name={group.name}
+              caption={shown.caption}
               onRename={() => {
                 setName(group.name);
                 setError('');
                 setRenaming(true);
               }}
             />
+            <div className="seesaw-slot">
+              <Seesaw
+                view={shown}
+                group={group}
+                draft={draft}
+                onDraft={setDraft}
+                onSave={saveTarget}
+              />
+            </div>
             <div className="bin-copy">
-              <div className="bin-block">
-                <Text className="bin-stock">{detailStockSentence(group, members, householdMonths)}</Text>
-                <Anchor component="button" type="button" className="bin-action" onClick={openTarget}>
-                  Change target
-                </Anchor>
-              </div>
-              <div className="bin-block">
-                <Text className="bin-rule">{ruleSentence(group, members, 'detail')}</Text>
-                <Anchor component="button" type="button" className="bin-action" onClick={() => setRuleOpen(true)}>
-                  {group.ruleConfirmed ? 'Change rule' : 'Pick a rule'}
-                </Anchor>
-              </div>
+              <Tooltip label={ruleDetail}>
+                <button
+                  type="button"
+                  className="rule-pill"
+                  aria-label={group.ruleConfirmed ? `Change rule, ${ruleName}` : ruleName}
+                  onClick={() => setRuleOpen(true)}
+                >
+                  <span className="rule-pill-mark" aria-hidden="true">⇄</span>
+                  <span className="rule-pill-label">{ruleName}</span>
+                </button>
+              </Tooltip>
             </div>
           </div>
           <div className="bin-members">
             {members.map((member) => (
               <article key={member.productId} className="bin-member">
-                <div className="bin-member-side">
-                  <span className="bin-swatch" style={{ background: binColor(members, member.productId) }} aria-hidden="true" />
-                  <Anchor
-                    component="button"
-                    type="button"
-                    className="bin-action bin-member-action"
-                    aria-label={`Remove or move ${member.name}`}
-                    onClick={() => {
-                      setMoveTo('');
-                      setError('');
-                      setActingOn(member.productId);
-                    }}
-                  >
-                    Remove or move
-                  </Anchor>
-                </div>
+                <span className="bin-swatch" style={{ background: binColor(members, member.productId) }} aria-hidden="true" />
                 <div className="bin-member-copy">
                   <p className="bin-member-name">{member.name}</p>
                   <Text size="sm" c="dimmed">{memberLine(member)}</Text>
@@ -202,6 +195,33 @@ export const GroupDetailPage = () => {
                     <Text size="xs" c="dimmed">Barcode: {(member.barcodes ?? []).join(', ')}</Text>
                   )}
                 </div>
+                <Menu position="bottom-end">
+                  <Menu.Target>
+                    <Tooltip label="Remove or move">
+                      <ActionIcon
+                        variant="subtle"
+                        color="dark"
+                        className="bin-icon-button"
+                        aria-label={`Remove or move ${member.name}`}
+                      >
+                        <KebabIcon />
+                      </ActionIcon>
+                    </Tooltip>
+                  </Menu.Target>
+                  <Menu.Dropdown>
+                    <Menu.Item onClick={() => void remove(member.productId)}>Remove</Menu.Item>
+                    {others.length > 0 && <Menu.Label>Move to</Menu.Label>}
+                    {others.map((item) => (
+                      <Menu.Item
+                        key={item.id}
+                        disabled={moving === member.productId}
+                        onClick={() => void move(member.productId, item.id)}
+                      >
+                        {item.name}
+                      </Menu.Item>
+                    ))}
+                  </Menu.Dropdown>
+                </Menu>
               </article>
             ))}
             {members.length === 0 && <Text c="dimmed">This group has no products yet.</Text>}
@@ -218,88 +238,6 @@ export const GroupDetailPage = () => {
               {error !== '' && <Text size="sm" c="red">{error}</Text>}
               <Button onClick={() => void rename()} disabled={name.trim() === ''}>Rename</Button>
             </Stack>
-          </Modal>
-          <Modal
-            opened={targetOpen}
-            onClose={() => setTargetOpen(false)}
-            title="Change target"
-            closeButtonProps={closeButton}
-          >
-            <Stack gap="sm">
-              <Text size="sm">Choose ounces, a number of months, or the household default.</Text>
-              <Group align="end" gap="xs">
-                <NumberInput
-                  label={group.dimension === 'volume' ? 'Fluid ounces' : 'Ounces'}
-                  value={ounces}
-                  onChange={setOunces}
-                  w={140}
-                />
-                <Button size="xs" onClick={() => {
-                  const value = typeof ounces === 'number' ? ounces : Number(ounces);
-                  if (!Number.isFinite(value) || value <= 0) {
-                    setError('Enter an amount greater than zero.');
-                    return;
-                  }
-                  void saveTarget({ quantity: value, dimension: group.dimension === 'volume' ? 'volume' : 'mass' });
-                }}>Save ounces</Button>
-              </Group>
-              <Group align="end" gap="xs">
-                <NumberInput
-                  label="Months"
-                  min={1}
-                  max={12}
-                  allowDecimal={false}
-                  value={months}
-                  onChange={setMonths}
-                  w={140}
-                />
-                <Button size="xs" variant="light" onClick={() => {
-                  const value = typeof months === 'number' ? months : Number(months);
-                  if (!Number.isInteger(value) || value < 1 || value > 12) {
-                    setError('Enter a whole number of months from 1 to 12.');
-                    return;
-                  }
-                  void saveTarget({ windowMonths: value });
-                }}>Save months</Button>
-              </Group>
-              <Button size="xs" variant="default" onClick={() => void saveTarget({ clear: true })}>
-                Use the household default
-              </Button>
-              {error !== '' && <Text size="sm" c="red">{error}</Text>}
-            </Stack>
-          </Modal>
-          <Modal
-            opened={acting !== undefined}
-            onClose={() => setActingOn('')}
-            title="Remove or move"
-            closeButtonProps={closeButton}
-          >
-            {acting && (
-              <Stack gap="sm">
-                <Text fw={650}>{acting.name}</Text>
-                <Button variant="default" onClick={() => void remove(acting.productId)}>Remove</Button>
-                {others.length > 0 && (
-                  <Group align="end" gap="xs">
-                    <NativeSelect
-                      aria-label={`Move ${acting.name}`}
-                      value={moveTo}
-                      onChange={(event) => setMoveTo(event.currentTarget.value)}
-                      data={[{ value: '', label: 'Move to…' }, ...others.map((item) => ({ value: item.id, label: item.name }))]}
-                    />
-                    <Button
-                      size="xs"
-                      variant="light"
-                      loading={moving === acting.productId}
-                      disabled={moveTo === ''}
-                      onClick={() => void move(acting.productId)}
-                    >
-                      Move
-                    </Button>
-                  </Group>
-                )}
-                {error !== '' && <Text size="sm" c="red">{error}</Text>}
-              </Stack>
-            )}
           </Modal>
           <Modal
             opened={adding}
@@ -321,7 +259,7 @@ export const GroupDetailPage = () => {
             )}
           </Modal>
           {ruleOpen && (
-            <RuleSheet
+            <RulePicker
               group={group}
               opened
               onClose={() => setRuleOpen(false)}

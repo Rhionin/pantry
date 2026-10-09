@@ -148,20 +148,27 @@ func (h *GroupHandler) Create(req Request[createGroupBody, struct{}]) (Created, 
 	return Created{Value: view}, nil
 }
 
-func (h *GroupHandler) Get(req Request[struct{}, groupIDParams]) (*group.Group, error) {
+// groupView is one group plus the computed amount rate. Usage is omitted
+// when the household has not used enough of the group to measure it.
+type groupView struct {
+	group.Group
+	Usage *supply.Usage `json:"usage,omitempty"`
+}
+
+func (h *GroupHandler) Get(req Request[struct{}, groupIDParams]) (*groupView, error) {
 	view, err := h.Groups.Get(req.Context, req.PathParams.ID)
 	if err != nil {
 		return nil, groupErr(err)
 	}
-	return &view, nil
+	return h.withUsage(req.Context, view)
 }
 
-func (h *GroupHandler) Patch(req Request[patchGroupBody, groupIDParams]) (*group.Group, error) {
+func (h *GroupHandler) Patch(req Request[patchGroupBody, groupIDParams]) (*groupView, error) {
 	view, err := h.Groups.Rename(req.Context, req.PathParams.ID, req.Body.Name)
 	if err != nil {
 		return nil, groupErr(err)
 	}
-	return &view, nil
+	return h.withUsage(req.Context, view)
 }
 
 func (h *GroupHandler) Delete(req Request[struct{}, groupIDParams]) (NoContent, error) {
@@ -202,7 +209,7 @@ func (h *GroupHandler) PutRule(req Request[ruleBody, groupIDParams]) (*group.Gro
 	return &view, nil
 }
 
-func (h *GroupHandler) PutTarget(req Request[targetBody, groupIDParams]) (*group.Group, error) {
+func (h *GroupHandler) PutTarget(req Request[targetBody, groupIDParams]) (*groupView, error) {
 	target, err := targetFromBody(&req.Body)
 	if err != nil {
 		return nil, groupErr(err)
@@ -211,7 +218,22 @@ func (h *GroupHandler) PutTarget(req Request[targetBody, groupIDParams]) (*group
 	if err != nil {
 		return nil, groupErr(err)
 	}
-	return &view, nil
+	return h.withUsage(req.Context, view)
+}
+
+func (h *GroupHandler) withUsage(ctx context.Context, view group.Group) (*groupView, error) {
+	usage, err := h.groupUsage(ctx, view.ID)
+	if err != nil {
+		return nil, InternalError(err)
+	}
+	return &groupView{Group: view, Usage: usage}, nil
+}
+
+func (h *GroupHandler) groupUsage(ctx context.Context, id string) (*supply.Usage, error) {
+	if h.Supply == nil {
+		return nil, nil
+	}
+	return h.Supply.GroupUsage(ctx, id, time.Now())
 }
 
 type fromScanBody struct {

@@ -393,7 +393,7 @@ describe('InventoryPage', () => {
     render(<MantineProvider><InventoryPage /></MantineProvider>);
     expect(await screen.findByRole('heading', { name: 'Cut green beans' })).toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: 'Great Value Cut Green Beans' })).not.toBeInTheDocument();
-    expect(screen.getByText('Still using Same as what ran out until you pick a rule.')).toBeInTheDocument();
+    expect(screen.getByText('Still using Same product until you pick a rule.')).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: 'Show products' }));
     expect(await screen.findByText('Great Value Cut Green Beans · 3 on hand')).toBeInTheDocument();
