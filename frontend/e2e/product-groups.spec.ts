@@ -125,7 +125,7 @@ test('product group bin at phone and desktop widths', async ({ page, request }) 
   await expect(page.getByText('18.3 oz canister, 1 on hand')).toBeVisible()
   await expect(page.getByText('50.9 oz canister, none on hand')).toBeVisible()
   await expect(page.getByText('Barcode: 052000338881')).toBeVisible()
-  await expect(page.getByLabel('Ounces')).toHaveCount(0)
+  await expect(page.getByLabel('Ounces', { exact: true })).toHaveCount(0)
   await expect(page.getByRole('button', { name: 'Rename' })).toBeVisible()
 
   const bin = page.locator('.bin-hero')

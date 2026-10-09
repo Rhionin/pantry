@@ -44,43 +44,43 @@ async function tabTo(page: Page, name: string) {
 test('group page meets axe in light and dark', async ({ page, request }) => {
   test.setTimeout(90_000)
   const lemon = await createProduct(request, {
-    name: 'Gatorade Lemon-Lime', category: 'Drinks', unitOfMeasure: 'canister', netAmount: 18.3, netUnit: 'oz',
+    name: 'Contrast lemon', category: 'Drinks', unitOfMeasure: 'canister', netAmount: 18.3, netUnit: 'oz',
   })
   const powder = await createProduct(request, {
-    name: 'Unsized powder', category: 'Drinks', unitOfMeasure: 'canister',
+    name: 'Contrast unsized', category: 'Drinks', unitOfMeasure: 'canister',
   })
   const lemonOverride = await request.post('/api/products/overrides', {
-    data: { barcode: '052000338881', productId: lemon.id },
+    data: { barcode: '052000449901', productId: lemon.id },
   })
   expect(lemonOverride.ok()).toBe(true)
   const powderOverride = await request.post('/api/products/overrides', {
-    data: { barcode: '052000338882', productId: powder.id },
+    data: { barcode: '052000449902', productId: powder.id },
   })
   expect(powderOverride.ok()).toBe(true)
 
   await page.goto('/')
   await resetToStockIn(page)
-  await commitSelectedScan(page, await scanBarcode(page, '052000338881'))
-  await commitSelectedScan(page, await scanBarcode(page, '052000338882'))
+  await commitSelectedScan(page, await scanBarcode(page, '052000449901'))
+  await commitSelectedScan(page, await scanBarcode(page, '052000449902'))
 
   const targeted = await request.post('/api/groups', {
-    data: { name: 'Gatorade powder', productIds: [lemon.id], target: { quantity: 48, dimension: 'mass' } },
+    data: { name: 'Contrast powder', productIds: [lemon.id], target: { quantity: 48, dimension: 'mass' } },
   })
   if (!targeted.ok()) throw new Error(await targeted.text())
   const targetedGroup = await targeted.json() as { id: string }
 
   const empty = await request.post('/api/groups', {
-    data: { name: 'Loose powder', productIds: [powder.id] },
+    data: { name: 'Loose contrast powder', productIds: [powder.id] },
   })
   if (!empty.ok()) throw new Error(await empty.text())
   const emptyGroup = await empty.json() as { id: string }
 
   await page.setViewportSize({ width: 390, height: 844 })
   await page.goto(`/groups/${targetedGroup.id}`)
-  await expect(page.getByRole('heading', { name: 'Gatorade powder' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Contrast powder' })).toBeVisible()
   await expect(page.getByRole('meter', { name: 'Stock on hand' })).toHaveAttribute('aria-valuenow', '18.3')
   await setScheme(page, 'light')
-  await expect(page.getByRole('heading', { name: 'Gatorade powder' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Contrast powder' })).toBeVisible()
   await expectClean(page)
 
   const amount = await tabTo(page, 'Keep on hand amount, pinned, 48 ounces')
@@ -101,11 +101,11 @@ test('group page meets axe in light and dark', async ({ page, request }) => {
   await page.getByRole('button', { name: 'Cancel' }).click()
 
   await setScheme(page, 'dark')
-  await expect(page.getByRole('heading', { name: 'Gatorade powder' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Contrast powder' })).toBeVisible()
   await expectClean(page)
 
   await page.goto(`/groups/${emptyGroup.id}`)
-  await expect(page.getByRole('heading', { name: 'Loose powder' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Loose contrast powder' })).toBeVisible()
   await expect(page.getByRole('button', { name: 'Keep on hand time, pinned, 3 months, household default' })).toBeVisible()
   await expect(page.getByRole('button', { name: 'Keep on hand amount, not set' })).toBeVisible()
   await expect(page.getByText('Set an amount or time')).toBeVisible()
@@ -113,7 +113,7 @@ test('group page meets axe in light and dark', async ({ page, request }) => {
   await expectClean(page)
 
   await setScheme(page, 'light')
-  await expect(page.getByRole('heading', { name: 'Loose powder' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Loose contrast powder' })).toBeVisible()
   await expectClean(page)
 
   const unsetAmount = await tabTo(page, 'Keep on hand amount, not set')
@@ -123,4 +123,8 @@ test('group page meets axe in light and dark', async ({ page, request }) => {
   const unsetTime = await tabTo(page, 'Keep on hand time, pinned, 3 months, household default')
   await unsetTime.press('Enter')
   await expect(page.getByLabel('Months')).toBeVisible()
+
+  // Later specs share this database and match the household-default list line.
+  expect((await request.delete(`/api/groups/${targetedGroup.id}`)).ok()).toBe(true)
+  expect((await request.delete(`/api/groups/${emptyGroup.id}`)).ok()).toBe(true)
 })
