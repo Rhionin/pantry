@@ -1,0 +1,92 @@
+# Version updates run weekly on Tuesday at 07:00 America/Denver (Mountain Time).
+# That is before the local workday and skips Monday's start-of-week backlog.
+# Minor and patch updates are grouped per ecosystem. Major updates stay separate.
+version: 2
+updates:
+  - package-ecosystem: gomod
+    directory: /
+    schedule:
+      interval: weekly
+      day: tuesday
+      time: "07:00"
+      timezone: America/Denver
+    open-pull-requests-limit: 5
+    groups:
+      gomod-minor-and-patch:
+        patterns:
+          - "*"
+        update-types:
+          - minor
+          - patch
+
+  - package-ecosystem: npm
+    directory: /frontend
+    schedule:
+      interval: weekly
+      day: tuesday
+      time: "07:00"
+      timezone: America/Denver
+    # More direct packages than the other ecosystems, so majors can queue
+    # without blocking the grouped minor/patch pull request.
+    open-pull-requests-limit: 10
+    groups:
+      npm-minor-and-patch:
+        patterns:
+          - "*"
+        update-types:
+          - minor
+          - patch
+
+  # Dockerfiles: repo root (Dockerfile, Dockerfile.dev-sandbox) and the
+  # Cloud Agent image at .cursor/Dockerfile.
+  - package-ecosystem: docker
+    directories:
+      - /
+      - /.cursor
+    schedule:
+      interval: weekly
+      day: tuesday
+      time: "07:00"
+      timezone: America/Denver
+    open-pull-requests-limit: 5
+    groups:
+      docker-minor-and-patch:
+        patterns:
+          - "*"
+        update-types:
+          - minor
+          - patch
+
+  # Compose image tags (caddy, cloudflared) live in deploy/. Dependabot
+  # updates those with the docker-compose ecosystem, not docker.
+  - package-ecosystem: docker-compose
+    directory: /deploy
+    schedule:
+      interval: weekly
+      day: tuesday
+      time: "07:00"
+      timezone: America/Denver
+    open-pull-requests-limit: 5
+    groups:
+      compose-minor-and-patch:
+        patterns:
+          - "*"
+        update-types:
+          - minor
+          - patch
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: tuesday
+      time: "07:00"
+      timezone: America/Denver
+    open-pull-requests-limit: 5
+    groups:
+      actions-minor-and-patch:
+        patterns:
+          - "*"
+        update-types:
+          - minor
+          - patch
