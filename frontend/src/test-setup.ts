@@ -28,6 +28,12 @@ if (typeof window.matchMedia !== 'function') {
 // jsdom does not implement ResizeObserver, but Mantine's SegmentedControl
 // uses it (via FloatingIndicator) to position the selected-segment
 // highlight. Stub it so components wrapped in MantineProvider can render.
+// Mantine combobox scrolls the active option into view. jsdom does not
+// implement Element.scrollIntoView, and the call is scheduled on a timer.
+if (typeof Element.prototype.scrollIntoView !== 'function') {
+  Element.prototype.scrollIntoView = () => {};
+}
+
 if (typeof window.ResizeObserver !== 'function') {
   window.ResizeObserver = class {
     observe() {}

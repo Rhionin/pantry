@@ -4,9 +4,12 @@ import {
   Alert, Anchor, Badge, Button, Group, Loader, NativeSelect, NumberInput, Stack, Text, TextInput, Title,
 } from '@mantine/core';
 import {
-  addGroupMembers, getGroup, getProduct, listGroups, removeGroupMember, renameGroup, setGroupTarget,
+  addGroupMembers, getGroup, getInventoryList, getProduct, listGroups, listProducts, removeGroupMember, renameGroup, setGroupTarget,
 } from '../../api/client';
 import type { ProductGroup } from '../../types';
+import { RuleSheet } from '../inventory/RuleSheet';
+import { AddToGroup } from './AddToGroup';
+import { ungroupedProducts, type AddCandidate } from './candidates';
 import { onHandCount, ruleLabel, targetLabel } from './copy';
 
 export const GroupDetailPage = () => {
@@ -20,18 +23,23 @@ export const GroupDetailPage = () => {
   const [moving, setMoving] = useState('');
   const [months, setMonths] = useState<number | string>('');
   const [ounces, setOunces] = useState<number | string>('');
+  const [candidates, setCandidates] = useState<AddCandidate[]>([]);
+  const [ruleOpen, setRuleOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
   const load = useCallback(async () => {
     setError('');
     try {
-      const [view, all] = await Promise.all([getGroup(id), listGroups()]);
+      const [view, all, products, inventory] = await Promise.all([
+        getGroup(id), listGroups(), listProducts(), getInventoryList(),
+      ]);
       setGroup(view);
       setName(view.name);
       setOthers(all.filter((item) => item.id !== view.id));
       setMonths(view.windowMonths ?? '');
       setOunces(view.quantity ?? '');
+      setCandidates(ungroupedProducts(products, inventory, [view, ...all]));
       const codes: Record<string, string[]> = {};
       await Promise.all(view.members.map(async (member) => {
         try {
@@ -112,9 +120,18 @@ export const GroupDetailPage = () => {
         <>
           <Title order={1} size="h3">{group.name}</Title>
           <Text size="sm">{onHandCount(group.members)} on hand · {targetLabel(group)}</Text>
-          {group.ruleConfirmed
-            ? <Badge variant="light" w="fit-content">{ruleLabel(group.rule)}</Badge>
-            : <Badge color="yellow" w="fit-content">Pick a rule</Badge>}
+          <Badge
+            component="button"
+            type="button"
+            variant="light"
+            color={group.ruleConfirmed ? undefined : 'yellow'}
+            w="fit-content"
+            className="rule-badge-button"
+            aria-label={group.ruleConfirmed ? `Edit rule: ${ruleLabel(group.rule)}` : 'Pick a rule'}
+            onClick={() => setRuleOpen(true)}
+          >
+            {group.ruleConfirmed ? ruleLabel(group.rule) : 'Pick a rule'}
+          </Badge>
           <Group align="end" gap="xs">
             <TextInput label="Name" value={name} onChange={(event) => setName(event.currentTarget.value)} style={{ flex: 1 }} />
             <Button size="xs" onClick={() => void rename()}>Rename</Button>
@@ -139,6 +156,7 @@ export const GroupDetailPage = () => {
               <Button size="xs" variant="default" onClick={() => void saveTarget({ clear: true })}>Use the account window</Button>
             </Group>
           </Stack>
+          <AddToGroup groupId={group.id} candidates={candidates} onAdded={() => { void load(); }} />
           {group.members.map((member) => (
             <Stack key={member.productId} gap={4}>
               <Text fw={600}>{member.name}</Text>
@@ -165,6 +183,14 @@ export const GroupDetailPage = () => {
             </Stack>
           ))}
           {group.members.length === 0 && <Text c="dimmed">This group has no products yet.</Text>}
+          {ruleOpen && (
+            <RuleSheet
+              group={group}
+              opened
+              onClose={() => setRuleOpen(false)}
+              onSaved={() => { void load(); }}
+            />
+          )}
         </>
       )}
     </Stack>

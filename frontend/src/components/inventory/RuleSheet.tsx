@@ -1,11 +1,24 @@
 import { useEffect, useState } from 'react';
 import { Button, Drawer, Select, Stack, Text, TextInput } from '@mantine/core';
 import { previewGroup, setGroupRule, setGroupTarget } from '../../api/client';
-import type { GroupTarget, InventoryGroup } from '../../types';
+import type { GroupTarget, NetDimension } from '../../types';
 import { ruleLabel, ruleLabels, targetLabel } from '../groups/copy';
 
+// The fields the drawer reads. Inventory groups and product groups both satisfy this.
+export interface RuleSheetGroup {
+  id: string;
+  name: string;
+  rule: string;
+  ruleConfirmed: boolean;
+  pinnedProductId?: string;
+  windowMonths?: number;
+  quantity?: number;
+  dimension?: NetDimension;
+  members: { productId: string; name: string }[];
+}
+
 export interface RuleSheetProps {
-  group: InventoryGroup;
+  group: RuleSheetGroup;
   opened: boolean;
   onClose: () => void;
   onSaved: () => void;

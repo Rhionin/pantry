@@ -97,6 +97,9 @@ behavior, then uses exactly these four H2 sections in order:
   locked brand preference are proven by `scripts/drive-brand-deals.mjs`.
   `scripts/drive-shopping-connected.mjs` proves the connected phone page keeps
   credential editing and disconnect behind one header-menu connection item.
+- [Group detail](./group-detail.md) — pick a restocking rule and add an
+  ungrouped product on `/groups/:id`. Proven end to end by
+  `scripts/drive-group-detail.mjs`.
 - [Wipe inventory](./wipe-inventory.md) — type `WIPE INVENTORY` to clear stock
   without deleting the product lookup cache. Proven end to end by
   `scripts/drive-wipe-inventory.mjs`.

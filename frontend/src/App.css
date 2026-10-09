@@ -553,3 +553,10 @@ a.group-row {
     grid-column: auto;
   }
 }
+
+button.rule-badge-button {
+  cursor: pointer;
+  font: inherit;
+  appearance: none;
+  min-height: 32px;
+}
