@@ -46,10 +46,25 @@
   transition: height 180ms ease;
 }
 
+.bin-fill-across {
+  top: 0;
+  right: auto;
+  bottom: auto;
+  height: 100%;
+  flex-direction: row;
+  transition: width 180ms ease;
+}
+
 .bin-segment {
   flex: 1 1 auto;
   min-height: 0;
   width: 100%;
+}
+
+.bin-hero .bin-segment {
+  width: auto;
+  height: 100%;
+  min-width: 0;
 }
 
 .bin-head {
@@ -80,14 +95,35 @@
   color: light-dark(var(--mantine-color-dark-9), var(--mantine-color-gray-1));
 }
 
-.bin-level,
-.bin-caption {
+.bin-level {
   margin: var(--mantine-spacing-xs) 0 0;
   font-weight: 650;
   font-size: var(--mantine-font-size-sm);
   line-height: 1.2;
   white-space: nowrap;
   color: light-dark(var(--mantine-color-dark-7), var(--mantine-color-gray-3));
+}
+
+.bin-caption {
+  position: absolute;
+  z-index: 1;
+  top: 0;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  margin: 0;
+  font-weight: 650;
+  line-height: 1;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.bin-caption.is-in-fill {
+  color: var(--mantine-color-dark-9);
+}
+
+.bin-caption.is-in-empty {
+  color: light-dark(var(--mantine-color-dark-9), var(--mantine-color-gray-0));
 }
 
 .seesaw {
