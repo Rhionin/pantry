@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MantineProvider } from '@mantine/core';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { SettingsPage } from './SettingsPage';
 
 const jsonResponse = (body: unknown, status = 200) =>
@@ -12,11 +12,6 @@ const jsonResponse = (body: unknown, status = 200) =>
 const settings = { months: 3, opening: false, wipePhrase: 'WIPE INVENTORY' };
 
 describe('SettingsPage', () => {
-  afterEach(() => {
-    localStorage.clear();
-    vi.unstubAllGlobals();
-  });
-
   it('saves a supply length between 1 and 12 months', async () => {
     const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
@@ -105,22 +100,5 @@ describe('SettingsPage', () => {
 
     expect(await screen.findByText('Type WIPE INVENTORY to confirm wiping the inventory.')).toBeInTheDocument();
     expect(screen.getByLabelText('Months of supply')).toBeInTheDocument();
-  });
-
-  it('shows scan alerts, on by default, and the note when this browser cannot notify', async () => {
-    vi.stubGlobal('Notification', undefined);
-    vi.stubGlobal('fetch', (input: RequestInfo | URL) => {
-      const url = String(input);
-      if (url === '/api/settings/supply') return Promise.resolve(jsonResponse(settings));
-      if (url === '/api/settings/group-rule') return Promise.resolve(jsonResponse({ rule: 'same_as_ran_out' }));
-      throw new Error(`Unexpected request: ${url}`);
-    });
-
-    render(<MantineProvider><SettingsPage /></MantineProvider>);
-
-    expect(await screen.findByRole('switch', { name: 'Scan alerts' })).toBeChecked();
-    expect(screen.getByRole('status')).toHaveTextContent(
-      'This browser cannot show notifications from an open tab.',
-    );
   });
 });

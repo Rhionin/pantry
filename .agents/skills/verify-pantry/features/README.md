@@ -78,10 +78,9 @@ behavior, then uses exactly these four H2 sections in order:
 - [Scan sessions](./scan-sessions.md) — Stock in and Stock out group pending
   scans into session cards with a 5-minute gap. Proven by
   `scripts/drive-scan-sessions.mjs`.
-- [Scan alerts](./scan-alerts.md) — on by default; the first click, key, or
-  scan asks once for permission. Failed and unrecognized scans alert
-  immediately, and an in/out batch alerts after 5 quiet minutes. Turn them off
-  under Settings. Proven by `scripts/drive-scan-alerts.mjs`.
+- [Scan alerts](./scan-alerts.md) — ask before notifying, then alert immediately
+  for a failed or unrecognized scan and once when an in/out batch has been
+  quiet for 5 minutes. Proven by `scripts/drive-scan-alerts.mjs`.
 - [Scan with the device camera](./camera-scan.md) — opt in to the camera (or type
   a barcode when the camera cannot start) and approve the queued scan. Proven
   end to end by `scripts/drive-camera-scan.mjs`. A headless run cannot decode a
