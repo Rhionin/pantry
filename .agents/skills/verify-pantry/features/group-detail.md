@@ -46,7 +46,7 @@ Preconditions:
 
 - The rule sheet is a bottom drawer. A full-page screenshot can miss it; capture
   the viewport while the dialog is open.
-- `Use the account window` on the page clears the group's target. The add
+- `Use the household default` on the page clears the group's target. The add
   conflict uses `Keep the group's …` or `Keep the household default`, plus
   `Use … (from …)` for each product setting, so it does not invent 24 ounces
   or 3 months.

@@ -153,7 +153,7 @@ export const GroupDetailPage = () => {
                 if (!Number.isInteger(value)) return;
                 void saveTarget({ windowMonths: value });
               }}>Save months</Button>
-              <Button size="xs" variant="default" onClick={() => void saveTarget({ clear: true })}>Use the account window</Button>
+              <Button size="xs" variant="default" onClick={() => void saveTarget({ clear: true })}>Use the household default</Button>
             </Group>
           </Stack>
           <AddToGroup groupId={group.id} group={group} candidates={candidates} onAdded={() => { void load(); }} />

@@ -33,7 +33,7 @@ export const targetLabel = (group: Pick<ProductGroup, 'quantity' | 'dimension' |
     return `${group.quantity} ${group.dimension === 'volume' ? 'fl oz' : 'oz'}`;
   }
   if (group.windowMonths !== undefined) return `${group.windowMonths} months`;
-  return 'Account window';
+  return 'Household default';
 };
 
 export const onHandCount = (members: GroupMember[]) => members.reduce((sum, member) => sum + member.onHand, 0);
