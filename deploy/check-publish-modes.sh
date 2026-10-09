@@ -27,6 +27,49 @@ lack() {
   fi
 }
 
+# compose_service_image prints the image of a two-space-indented service.
+# The compose files are the source of the pin; callers compare them instead
+# of keeping another copy of the tag.
+compose_service_image() {
+  local file="$1" service="$2" line in_svc=0 image=""
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    if [[ "$line" =~ ^[[:space:]]{2}${service}:[[:space:]]*$ ]]; then
+      in_svc=1
+      continue
+    fi
+    if [[ "$in_svc" -eq 1 && "$line" =~ ^[[:space:]]{2}[A-Za-z0-9_-]+:[[:space:]]*$ ]]; then
+      break
+    fi
+    if [[ "$in_svc" -eq 1 && "$line" =~ ^[[:space:]]+image:[[:space:]]*(.*)$ ]]; then
+      image="${BASH_REMATCH[1]}"
+      image="${image%%#*}"
+      image="${image%"${image##*[![:space:]]}"}"
+      image="${image#"${image%%[![:space:]]*}"}"
+      if [[ ${#image} -ge 2 ]]; then
+        local first="${image:0:1}" last="${image: -1}"
+        if [[ "$first" == "$last" && ( "$first" == '"' || "$first" == "'" ) ]]; then
+          image="${image:1}"
+          image="${image%?}"
+        fi
+      fi
+      break
+    fi
+  done < "$file"
+  if [[ -z "$image" ]]; then
+    fail "could not read the ${service} image from ${file}"
+  fi
+  printf '%s\n' "$image"
+}
+
+# require_pinned_caddy rejects a floating tag. latest is not a version bump.
+require_pinned_caddy() {
+  local image="$1" tag
+  tag="${image#caddy:}"
+  if [[ "$image" == "$tag" || -z "$tag" || "$tag" == latest || "$tag" == latest-* ]]; then
+    fail "Caddy image must be a pinned official tag (caddy:<version>), got ${image}"
+  fi
+}
+
 # assert_only_cloudflared_on_trusted_ip walks `docker compose config`.
 # Service names are indented two spaces. 10.77.77.2 is the address
 # Caddyfile.tunnel trusts, so no other cf-tunnel service may be given it.
@@ -64,6 +107,15 @@ assert_only_cloudflared_on_trusted_ip() {
   fi
 }
 
+# Both publish paths must name the same Caddy image. Reading it here means a
+# Dependabot bump of the compose tags does not need a matching edit below.
+cert_caddy=$(compose_service_image deploy/docker-compose.yml caddy)
+tunnel_caddy=$(compose_service_image deploy/docker-compose.tunnel.yml caddy-tunnel)
+if [[ "$cert_caddy" != "$tunnel_caddy" ]]; then
+  fail "certificate and tunnel compose files pin different Caddy images ($cert_caddy vs $tunnel_caddy)"
+fi
+require_pinned_caddy "$cert_caddy"
+
 if command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1; then
   compose() { docker compose "$@"; }
 elif command -v docker-compose >/dev/null 2>&1; then
@@ -88,7 +140,7 @@ elif command -v docker >/dev/null 2>&1; then
       -e PUBLIC_HOST=pantry.rhionin.com \
       -e ACME_EMAIL=cj@example.com \
       -v "$dir:/etc/caddy:ro" \
-      caddy:2.11.4-alpine \
+      "$cert_caddy" \
       caddy adapt --config "/etc/caddy/$(basename "$cfg")" --pretty
   }
 else
@@ -120,7 +172,7 @@ rm -f "$empty_env"
 
 have "$public_cfg" 'published: "80"' "certificate mode publishes port 80"
 have "$public_cfg" 'published: "443"' "certificate mode publishes port 443"
-have "$public_cfg" 'caddy:2.11.4-alpine' "certificate mode pins Caddy"
+have "$public_cfg" "$cert_caddy" "certificate mode pins Caddy"
 lack "$public_cfg" 'cloudflare/cloudflared' "certificate mode must not start cloudflared"
 lack "$public_cfg" '10.77.77.2' "certificate mode must not add the tunnel network"
 lack "$public_cfg" 'Caddyfile.tunnel' "certificate mode must not mount the tunnel Caddyfile"
@@ -128,7 +180,7 @@ lack "$public_cfg" 'Caddyfile.tunnel' "certificate mode must not mount the tunne
 lack "$tunnel_cfg" 'published: "80"' "tunnel mode must not publish port 80"
 lack "$tunnel_cfg" 'published: "443"' "tunnel mode must not publish port 443"
 have "$tunnel_cfg" 'cloudflare/cloudflared:2026.10.0' "tunnel mode pins cloudflared"
-have "$tunnel_cfg" 'caddy:2.11.4-alpine' "tunnel mode pins Caddy"
+have "$tunnel_cfg" "$tunnel_caddy" "tunnel mode pins Caddy"
 have "$tunnel_cfg" 'ipv4_address: 10.77.77.2' "cloudflared has the trusted address"
 have "$tunnel_cfg" 'ipv4_address: 10.77.77.3' "caddy has a fixed address"
 have "$tunnel_cfg" 'ip_range: 10.77.77.4/30' "dynamic addresses cannot take .2 or .3"

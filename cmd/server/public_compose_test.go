@@ -65,8 +65,10 @@ func TestPublicProxyIsOptIn(t *testing.T) {
 	if len(caddy.Profiles) != 1 || caddy.Profiles[0] != "public" {
 		t.Fatalf("caddy must be opt-in via the public profile, got %v", caddy.Profiles)
 	}
-	if caddy.Image != "caddy:2.11.4-alpine" {
-		t.Fatalf("caddy image = %q, want pinned caddy:2.11.4-alpine", caddy.Image)
+	// The compose files are the pin. A version bump only has to change those
+	// files; this test checks the tag is explicit and that both files agree.
+	if !pinnedCaddyImage(caddy.Image) {
+		t.Fatalf("caddy image = %q, want a pinned caddy:<version> tag", caddy.Image)
 	}
 	for _, want := range []string{"80:80", "443:443", "443:443/udp"} {
 		if !hasExactPort(caddy.Ports, want) {
@@ -328,8 +330,8 @@ func TestPublicProxyIsOptIn(t *testing.T) {
 	if !ok {
 		t.Fatal("caddy-tunnel service missing")
 	}
-	if caddyTunnel.Image != "caddy:2.11.4-alpine" {
-		t.Fatalf("caddy-tunnel image = %q", caddyTunnel.Image)
+	if caddyTunnel.Image != caddy.Image {
+		t.Fatalf("caddy-tunnel image = %q, certificate compose pins %q", caddyTunnel.Image, caddy.Image)
 	}
 	if len(caddyTunnel.Profiles) != 1 || caddyTunnel.Profiles[0] != "tunnel" {
 		t.Fatalf("caddy-tunnel profiles = %v", caddyTunnel.Profiles)
@@ -481,6 +483,38 @@ func pathMatchers(text string) []string {
 		}
 	}
 	return got
+}
+
+func TestPinnedCaddyImage(t *testing.T) {
+	for _, image := range []string{"caddy:2.11.4-alpine", "caddy:2.11.7-alpine"} {
+		if !pinnedCaddyImage(image) {
+			t.Fatalf("%q should be a pinned caddy image", image)
+		}
+	}
+	for _, image := range []string{
+		"",
+		"caddy",
+		"caddy:",
+		"caddy:latest",
+		"caddy:latest-alpine",
+		"library/caddy:2.11.4-alpine",
+		"caddy:2.11.4 alpine",
+	} {
+		if pinnedCaddyImage(image) {
+			t.Fatalf("%q should not be a pinned official caddy image", image)
+		}
+	}
+}
+
+// pinnedCaddyImage reports whether image is the official caddy image with an
+// explicit tag. latest is not a pin: both compose files could agree on it
+// and still float.
+func pinnedCaddyImage(image string) bool {
+	tag, ok := strings.CutPrefix(image, "caddy:")
+	if !ok || tag == "" || tag == "latest" || strings.HasPrefix(tag, "latest-") {
+		return false
+	}
+	return !strings.ContainsAny(tag, " \t")
 }
 
 func hasExactPort(ports []string, want string) bool {
