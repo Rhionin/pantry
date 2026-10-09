@@ -181,7 +181,7 @@ export const InboxPage = () => {
                 <NumberInput label="Ounces" min={0} value={ounces} onChange={setOunces} w={140} />
                 <NumberInput label="Months" min={1} max={12} allowDecimal={false} value={months} onChange={setMonths} w={140} />
                 <Group gap="xs">
-                  <Button size="sm" onClick={() => void group({ clear: true })}>Use the account window</Button>
+                  <Button size="sm" onClick={() => void group({ clear: true })}>Use the household default</Button>
                   <Button
                     size="sm"
                     variant="light"

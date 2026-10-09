@@ -107,7 +107,7 @@ export const RuleSheet = ({ group, opened, onClose, onSaved }: RuleSheetProps) =
         <Select
           label="Keep on hand"
           data={[
-            { value: 'account', label: 'Account window' },
+            { value: 'account', label: 'Household default' },
             { value: 'ounces', label: 'Ounces' },
             { value: 'months', label: 'Months' },
           ]}

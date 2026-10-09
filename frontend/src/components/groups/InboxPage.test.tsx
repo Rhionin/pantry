@@ -77,6 +77,8 @@ describe('InboxPage', () => {
 
     fireEvent.click(await screen.findByRole('button', { name: 'Group these' }));
     expect(await screen.findByText('Great Value Peanut Butter: 4 ounces')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Use the household default' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Use the account window' })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Group these' })).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: 'Not the same' }));
