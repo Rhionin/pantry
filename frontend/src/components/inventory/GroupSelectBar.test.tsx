@@ -26,7 +26,7 @@ const conflict = {
 describe('GroupSelectBar', () => {
   it('offers the existing group target and the member quantity', async () => {
     const posts: unknown[] = [];
-    vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+    vi.stubGlobal('fetch', vi.fn((_input: RequestInfo | URL, init?: RequestInit) => {
       const body = JSON.parse(String(init?.body)) as { target?: unknown };
       posts.push(body);
       if (!body.target) return Promise.resolve(json(conflict, 409));
