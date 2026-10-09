@@ -73,7 +73,9 @@ const jsonResponse = (body: unknown, status = 200) =>
 // passes.
 const renderResolver = (onResolved = vi.fn()) => {
   render(
-    <MantineProvider theme={{ respectReducedMotion: true }}>
+    // env="test" disables Popover hideDetached so the combobox list stays
+    // open in jsdom, which reports no layout box for the search field.
+    <MantineProvider env="test" theme={{ respectReducedMotion: true }}>
       <FlaggedEntryResolver entry={flaggedEntry} onResolved={onResolved} />
     </MantineProvider>,
   );
