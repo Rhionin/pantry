@@ -37,11 +37,14 @@
     <symbol id="i-barcode" viewBox="0 0 24 24">
       <path d="M4 6v12M8 6v12M11 6v12M13 6v12M16 6v12M19 6v12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
     </symbol>
+    <symbol id="i-chevron-down" viewBox="0 0 24 24">
+      <path d="M6 9l6 6l6 -6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+    </symbol>
   </svg>
 
   <div class="wrap">
     <h1>Shorter bin page</h1>
-    <p class="lede">Concepts for #148. Static mockups only — the app is unchanged. Same pantry, same bin, same stock: Gatorade powder at 18.3 / 48 oz, Peanut butter on a 3 month target, Oat milk on the household default with no rule picked yet.</p>
+    <p class="lede">Concepts for #148. Static mockups only — the app is unchanged. Same pantry, same bin, same stock: Gatorade powder at 18.3 / 48 oz, Peanut butter on a 3 month target, Oat milk on the household default with no rule picked yet. The second round sits between Fraction and Chips, and shows whether a target was calculated or typed.</p>
     <p class="note">Each direction replaces the sentences and text links with Tabler-style icons and 44px controls. The full sentence stays on the control as a tooltip. Icon-only buttons keep today’s accessible name (<span>Rename</span>, <span>Remove or move …</span>).</p>
 
     <h2>Visible word count</h2>
@@ -54,9 +57,12 @@
         <tr><td>Fraction</td><td>31</td><td>23</td><td>47 fewer</td><td>30 fewer</td></tr>
         <tr><td>Chips</td><td>37</td><td>31</td><td>41 fewer</td><td>22 fewer</td></tr>
         <tr><td>Toolbar</td><td>35</td><td>23</td><td>43 fewer</td><td>30 fewer</td></tr>
+        <tr><td>Badge</td><td>37</td><td>31</td><td>41 fewer</td><td>22 fewer</td></tr>
+        <tr><td>Line</td><td>37</td><td>31</td><td>41 fewer</td><td>22 fewer</td></tr>
+        <tr><td>Stamp</td><td>37</td><td>30</td><td>41 fewer</td><td>23 fewer</td></tr>
       </tbody>
     </table>
-    <p class="method">Counted from the rendered page body under the header. A word is a token with a letter or a number. Slashes and dots are not words. Tooltips, accessible names, and the search placeholder are not counted. List totals are the three rows only. Search, filters, and “New group” are the same on every list (25 words, plus the placeholder “Name or product”) and are left out of the comparison.</p>
+    <p class="method">Counted from the rendered page body under the header, with the disclosure closed. A word is a token with a letter or a number. Slashes and dots are not words. Tooltips, accessible names, and the search placeholder are not counted. List totals are the three rows only. Search, filters, and “New group” are the same on every list (25 words, plus the placeholder “Name or product”) and are left out of the comparison. Opening Auto adds one sentence, 16 words, so the detail goes from 37 to 53. That is still 25 fewer than the current detail.</p>
 
     <h2>Current</h2>
     <p class="note">What ships after #144. The bin already shows 18.3 oz and 48 oz, then a sentence says both numbers again. Rename, Change target, Change rule, and Remove or move are underlined text.</p>
@@ -918,6 +924,614 @@
               </article>
             </div>
             <button class="btn-dark with-icon" type="button"><svg class="ico sm" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-plus"/></svg>Add a product</button>
+          </main>
+        </div>
+      </figure>
+    </div>
+
+    <h2>Between Chips and Fraction</h2>
+    <p class="note">CJ’s pass: keep the bin’s on-hand number, keep a rule name a person already knows, and don’t bring back the paragraph. These three are that density. What they add is the source of the target. Gatorade’s 48 oz is calculated (about 16 oz a month, kept for 3 months). Peanut butter’s 3 months was typed. Oat milk is still the household default, which is not a rate.</p>
+    <p class="note">Auto is the only one with something folded away. The rate stays behind the tap. “You set” and “Default” are already the whole fact, so they sit in the row.</p>
+
+    <h2>Badge</h2>
+    <p class="note">18.3 oz stays painted on the fill. 48 oz is the next control, not a corner copy and not a giant slash. Auto is its own pill. The rule drops one word from the filter: “Same as ran out”. A manual target has no pill. It says “You set 3 months”, in the same ink as the name.</p>
+    <div class="frames">
+      <figure class="shot">
+        <figcaption>Badge · group detail · 390 · closed</figcaption>
+        <div class="frame is-detail dir-mid" data-shot="badge-detail-390" style="width:390px">
+          <header class="top"><div class="header-inner">
+            <div class="brand"><svg viewBox="0 0 512 512" aria-hidden="true"><rect width="512" height="512" rx="118" fill="#1C7C4E"/><rect x="164" y="118" width="184" height="156" rx="42" fill="#F0B429"/><rect x="196" y="150" width="120" height="34" rx="17" fill="#F6F1E6"/><rect x="76" y="302" width="360" height="100" rx="50" fill="#F6F1E6"/></svg>Pantry</div>
+            <nav class="nav" aria-label="Sections"><a href="#scan">Scan Queue</a><a href="#inventory">Inventory</a><a href="#shopping">Shopping List</a></nav>
+            <button class="menu-btn" type="button" aria-label="Menu"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-menu"/></svg></button>
+          </div></header>
+          <main class="page" data-count="detail" data-label="badge-detail">
+            <a class="back hit" href="#badge-list-390"><svg class="ico sm" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-chevron"/></svg><span>Product groups</span></a>
+            <div class="hero-row">
+              <div class="bin hero">
+                <div class="well" aria-hidden="true"><div class="fill" style="height:38.125%"><div class="segment" style="background:#fcc419"></div></div></div>
+                <div class="bin-head">
+                  <h1 class="bin-name">Gatorade powder</h1>
+                  <button class="icon-btn" type="button" aria-label="Rename" title="Rename"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-pencil"/></svg></button>
+                </div>
+                <p class="level">18.3 oz</p>
+              </div>
+              <div class="side-slot">
+                <div class="mid-targets">
+                  <button class="pair-target" type="button" title="Keep 48 ounces on hand.">48 oz</button>
+                  <button class="auto-badge" type="button" aria-expanded="false" title="Show how 48 oz was set">Auto</button>
+                </div>
+                <button class="chip" type="button" title="When this runs out, buy the same kind that ran out.">
+                  <svg class="ico sm" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-repeat"/></svg>
+                  Same as ran out
+                </button>
+              </div>
+            </div>
+            <div class="members">
+              <article class="member member-grid">
+                <span class="swatch" style="background:#fcc419" aria-hidden="true"></span>
+                <div class="member-copy">
+                  <p class="member-name">Gatorade Lemon-Lime</p>
+                  <p class="meta">1 · 18.3 oz canister</p>
+                  <p class="barcode"><svg class="ico sm" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-barcode"/></svg>052000338881</p>
+                </div>
+                <button class="icon-btn" type="button" aria-label="Remove or move Gatorade Lemon-Lime" title="Remove or move"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-dots"/></svg></button>
+              </article>
+              <article class="member member-grid">
+                <span class="swatch" style="background:#74c0fc" aria-hidden="true"></span>
+                <div class="member-copy">
+                  <p class="member-name">Gatorade Fruit Punch</p>
+                  <p class="meta">0 · 18.3 oz canister</p>
+                </div>
+                <button class="icon-btn" type="button" aria-label="Remove or move Gatorade Fruit Punch" title="Remove or move"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-dots"/></svg></button>
+              </article>
+              <article class="member member-grid">
+                <span class="swatch" style="background:#ff8787" aria-hidden="true"></span>
+                <div class="member-copy">
+                  <p class="member-name">Gatorade Glacier Freeze</p>
+                  <p class="meta">0 · 50.9 oz canister</p>
+                </div>
+                <button class="icon-btn" type="button" aria-label="Remove or move Gatorade Glacier Freeze" title="Remove or move"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-dots"/></svg></button>
+              </article>
+            </div>
+            <button class="btn-dark with-icon" type="button"><svg class="ico sm" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-plus"/></svg>Add a product</button>
+          </main>
+        </div>
+      </figure>
+      <figure class="shot">
+        <figcaption>Badge · group detail · 390 · Auto open</figcaption>
+        <div class="frame is-detail dir-mid" data-shot="badge-open-390" style="width:390px">
+          <header class="top"><div class="header-inner">
+            <div class="brand"><svg viewBox="0 0 512 512" aria-hidden="true"><rect width="512" height="512" rx="118" fill="#1C7C4E"/><rect x="164" y="118" width="184" height="156" rx="42" fill="#F0B429"/><rect x="196" y="150" width="120" height="34" rx="17" fill="#F6F1E6"/><rect x="76" y="302" width="360" height="100" rx="50" fill="#F6F1E6"/></svg>Pantry</div>
+            <nav class="nav" aria-label="Sections"><a href="#scan">Scan Queue</a><a href="#inventory">Inventory</a><a href="#shopping">Shopping List</a></nav>
+            <button class="menu-btn" type="button" aria-label="Menu"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-menu"/></svg></button>
+          </div></header>
+          <main class="page" data-count="detail" data-label="badge-open">
+            <a class="back hit" href="#badge-list-390"><svg class="ico sm" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-chevron"/></svg><span>Product groups</span></a>
+            <div class="hero-row">
+              <div class="bin hero">
+                <div class="well" aria-hidden="true"><div class="fill" style="height:38.125%"><div class="segment" style="background:#fcc419"></div></div></div>
+                <div class="bin-head">
+                  <h1 class="bin-name">Gatorade powder</h1>
+                  <button class="icon-btn" type="button" aria-label="Rename" title="Rename"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-pencil"/></svg></button>
+                </div>
+                <p class="level">18.3 oz</p>
+              </div>
+              <div class="side-slot">
+                <div class="mid-targets">
+                  <button class="pair-target" type="button">48 oz</button>
+                  <button class="auto-badge" type="button" aria-expanded="true">Auto</button>
+                </div>
+                <div class="reveal" role="note">
+                  <p>You go through about 16 oz a month, so 48 oz is 3 months on hand.</p>
+                </div>
+                <button class="chip" type="button" title="When this runs out, buy the same kind that ran out.">
+                  <svg class="ico sm" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-repeat"/></svg>
+                  Same as ran out
+                </button>
+              </div>
+            </div>
+            <div class="members">
+              <article class="member member-grid">
+                <span class="swatch" style="background:#fcc419" aria-hidden="true"></span>
+                <div class="member-copy">
+                  <p class="member-name">Gatorade Lemon-Lime</p>
+                  <p class="meta">1 · 18.3 oz canister</p>
+                  <p class="barcode"><svg class="ico sm" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-barcode"/></svg>052000338881</p>
+                </div>
+                <button class="icon-btn" type="button" aria-label="Remove or move Gatorade Lemon-Lime" title="Remove or move"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-dots"/></svg></button>
+              </article>
+              <article class="member member-grid">
+                <span class="swatch" style="background:#74c0fc" aria-hidden="true"></span>
+                <div class="member-copy">
+                  <p class="member-name">Gatorade Fruit Punch</p>
+                  <p class="meta">0 · 18.3 oz canister</p>
+                </div>
+                <button class="icon-btn" type="button" aria-label="Remove or move Gatorade Fruit Punch" title="Remove or move"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-dots"/></svg></button>
+              </article>
+              <article class="member member-grid">
+                <span class="swatch" style="background:#ff8787" aria-hidden="true"></span>
+                <div class="member-copy">
+                  <p class="member-name">Gatorade Glacier Freeze</p>
+                  <p class="meta">0 · 50.9 oz canister</p>
+                </div>
+                <button class="icon-btn" type="button" aria-label="Remove or move Gatorade Glacier Freeze" title="Remove or move"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-dots"/></svg></button>
+              </article>
+            </div>
+            <button class="btn-dark with-icon" type="button"><svg class="ico sm" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-plus"/></svg>Add a product</button>
+          </main>
+        </div>
+      </figure>
+      <figure class="shot">
+        <figcaption>Badge · groups list · 390</figcaption>
+        <div class="frame" data-shot="badge-list-390" style="width:390px">
+          <header class="top"><div class="header-inner">
+            <div class="brand"><svg viewBox="0 0 512 512" aria-hidden="true"><rect width="512" height="512" rx="118" fill="#1C7C4E"/><rect x="164" y="118" width="184" height="156" rx="42" fill="#F0B429"/><rect x="196" y="150" width="120" height="34" rx="17" fill="#F6F1E6"/><rect x="76" y="302" width="360" height="100" rx="50" fill="#F6F1E6"/></svg>Pantry</div>
+            <nav class="nav" aria-label="Sections"><a href="#scan">Scan Queue</a><a href="#inventory">Inventory</a><a href="#shopping">Shopping List</a></nav>
+            <button class="menu-btn" type="button" aria-label="Menu"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-menu"/></svg></button>
+          </div></header>
+          <main class="page">
+            <div class="title-row">
+              <h1 class="page-title">Product groups</h1>
+              <button class="btn-dark" type="button" style="margin-top:0">New group</button>
+            </div>
+            <div class="field">
+              <label for="search-badge">Search groups</label>
+              <input id="search-badge" type="search" placeholder="Name or product">
+            </div>
+            <div class="filters">
+              <button class="filter" type="button" aria-pressed="true">All</button>
+              <button class="filter" type="button" aria-pressed="false">Running low</button>
+              <button class="filter" type="button" aria-pressed="false">Pick a rule</button>
+              <button class="filter" type="button" aria-pressed="false">Same as what ran out</button>
+              <button class="filter" type="button" aria-pressed="false">Always my favorite</button>
+              <button class="filter" type="button" aria-pressed="false">Best deal</button>
+            </div>
+            <ul class="list" data-count="rows" data-label="badge-list">
+              <li data-count="row">
+                <a class="row" href="#badge-detail-390">
+                  <span class="mark" aria-hidden="true"><span class="well"><span class="fill" style="height:38.125%"><span class="segment" style="background:#fcc419"></span></span></span></span>
+                  <span>
+                    <span class="row-name">Gatorade powder</span>
+                    <span class="spec">
+                      <span class="readout">18.3 oz</span>
+                      <span class="readout">48 oz</span>
+                      <span class="auto-badge">Auto</span>
+                    </span>
+                    <span class="rule-line"><svg class="ico sm" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-repeat"/></svg>Same as ran out</span>
+                  </span>
+                </a>
+              </li>
+              <li data-count="row">
+                <a class="row" href="#peanut">
+                  <span class="mark" aria-hidden="true"><span class="well"></span></span>
+                  <span>
+                    <span class="row-name">Peanut butter</span>
+                    <span class="stack-line">0 jars</span>
+                    <span class="you-set">You set 3 months</span>
+                    <span class="rule-line"><svg class="ico sm" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-star"/></svg>Always favorite</span>
+                  </span>
+                </a>
+              </li>
+              <li data-count="row">
+                <a class="row" href="#oat">
+                  <span class="mark" aria-hidden="true"><span class="well"></span></span>
+                  <span>
+                    <span class="row-name">Oat milk</span>
+                    <span class="stack-line">0 cartons</span>
+                    <span class="spec">
+                      <span class="readout">3 months</span>
+                      <span class="default-mark">Default</span>
+                    </span>
+                    <span class="rule-line warn">Pick a rule</span>
+                  </span>
+                </a>
+              </li>
+            </ul>
+          </main>
+        </div>
+      </figure>
+    </div>
+
+    <h2>Line</h2>
+    <p class="note">Same closed page as Badge, except Auto is a word and a chevron, not a pill. The rate opens in place, under the target, as one sentence. Nothing new draws a card. “You set 3 months” has no chevron: that row is finished.</p>
+    <div class="frames">
+      <figure class="shot">
+        <figcaption>Line · group detail · 390 · closed</figcaption>
+        <div class="frame is-detail dir-mid" data-shot="line-detail-390" style="width:390px">
+          <header class="top"><div class="header-inner">
+            <div class="brand"><svg viewBox="0 0 512 512" aria-hidden="true"><rect width="512" height="512" rx="118" fill="#1C7C4E"/><rect x="164" y="118" width="184" height="156" rx="42" fill="#F0B429"/><rect x="196" y="150" width="120" height="34" rx="17" fill="#F6F1E6"/><rect x="76" y="302" width="360" height="100" rx="50" fill="#F6F1E6"/></svg>Pantry</div>
+            <nav class="nav" aria-label="Sections"><a href="#scan">Scan Queue</a><a href="#inventory">Inventory</a><a href="#shopping">Shopping List</a></nav>
+            <button class="menu-btn" type="button" aria-label="Menu"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-menu"/></svg></button>
+          </div></header>
+          <main class="page" data-count="detail" data-label="line-detail">
+            <a class="back hit" href="#line-list-390"><svg class="ico sm" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-chevron"/></svg><span>Product groups</span></a>
+            <div class="hero-row">
+              <div class="bin hero">
+                <div class="well" aria-hidden="true"><div class="fill" style="height:38.125%"><div class="segment" style="background:#fcc419"></div></div></div>
+                <div class="bin-head">
+                  <h1 class="bin-name">Gatorade powder</h1>
+                  <button class="icon-btn" type="button" aria-label="Rename" title="Rename"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-pencil"/></svg></button>
+                </div>
+                <p class="level">18.3 oz</p>
+              </div>
+              <div class="side-slot">
+                <div class="mid-targets">
+                  <button class="pair-target" type="button" title="Keep 48 ounces on hand.">48 oz</button>
+                  <button class="text-disclosure" type="button" aria-expanded="false" title="Show how 48 oz was set">
+                    <span>Auto</span>
+                    <svg class="ico sm" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-chevron-down"/></svg>
+                  </button>
+                </div>
+                <button class="chip" type="button" title="When this runs out, buy the same kind that ran out.">
+                  <svg class="ico sm" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-repeat"/></svg>
+                  Same as ran out
+                </button>
+              </div>
+            </div>
+            <div class="members">
+              <article class="member member-grid">
+                <span class="swatch" style="background:#fcc419" aria-hidden="true"></span>
+                <div class="member-copy">
+                  <p class="member-name">Gatorade Lemon-Lime</p>
+                  <p class="meta">1 · 18.3 oz canister</p>
+                  <p class="barcode"><svg class="ico sm" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-barcode"/></svg>052000338881</p>
+                </div>
+                <button class="icon-btn" type="button" aria-label="Remove or move Gatorade Lemon-Lime" title="Remove or move"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-dots"/></svg></button>
+              </article>
+              <article class="member member-grid">
+                <span class="swatch" style="background:#74c0fc" aria-hidden="true"></span>
+                <div class="member-copy">
+                  <p class="member-name">Gatorade Fruit Punch</p>
+                  <p class="meta">0 · 18.3 oz canister</p>
+                </div>
+                <button class="icon-btn" type="button" aria-label="Remove or move Gatorade Fruit Punch" title="Remove or move"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-dots"/></svg></button>
+              </article>
+              <article class="member member-grid">
+                <span class="swatch" style="background:#ff8787" aria-hidden="true"></span>
+                <div class="member-copy">
+                  <p class="member-name">Gatorade Glacier Freeze</p>
+                  <p class="meta">0 · 50.9 oz canister</p>
+                </div>
+                <button class="icon-btn" type="button" aria-label="Remove or move Gatorade Glacier Freeze" title="Remove or move"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-dots"/></svg></button>
+              </article>
+            </div>
+            <button class="btn-dark with-icon" type="button"><svg class="ico sm" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-plus"/></svg>Add a product</button>
+          </main>
+        </div>
+      </figure>
+      <figure class="shot">
+        <figcaption>Line · group detail · 390 · Auto open</figcaption>
+        <div class="frame is-detail dir-mid" data-shot="line-open-390" style="width:390px">
+          <header class="top"><div class="header-inner">
+            <div class="brand"><svg viewBox="0 0 512 512" aria-hidden="true"><rect width="512" height="512" rx="118" fill="#1C7C4E"/><rect x="164" y="118" width="184" height="156" rx="42" fill="#F0B429"/><rect x="196" y="150" width="120" height="34" rx="17" fill="#F6F1E6"/><rect x="76" y="302" width="360" height="100" rx="50" fill="#F6F1E6"/></svg>Pantry</div>
+            <nav class="nav" aria-label="Sections"><a href="#scan">Scan Queue</a><a href="#inventory">Inventory</a><a href="#shopping">Shopping List</a></nav>
+            <button class="menu-btn" type="button" aria-label="Menu"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-menu"/></svg></button>
+          </div></header>
+          <main class="page" data-count="detail" data-label="line-open">
+            <a class="back hit" href="#line-list-390"><svg class="ico sm" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-chevron"/></svg><span>Product groups</span></a>
+            <div class="hero-row">
+              <div class="bin hero">
+                <div class="well" aria-hidden="true"><div class="fill" style="height:38.125%"><div class="segment" style="background:#fcc419"></div></div></div>
+                <div class="bin-head">
+                  <h1 class="bin-name">Gatorade powder</h1>
+                  <button class="icon-btn" type="button" aria-label="Rename" title="Rename"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-pencil"/></svg></button>
+                </div>
+                <p class="level">18.3 oz</p>
+              </div>
+              <div class="side-slot">
+                <div class="mid-targets">
+                  <button class="pair-target" type="button">48 oz</button>
+                  <button class="text-disclosure" type="button" aria-expanded="true">
+                    <span>Auto</span>
+                    <svg class="ico sm" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-chevron-down"/></svg>
+                  </button>
+                </div>
+                <p class="reveal plain">You go through about 16 oz a month, so 48 oz is 3 months on hand.</p>
+                <button class="chip" type="button" title="When this runs out, buy the same kind that ran out.">
+                  <svg class="ico sm" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-repeat"/></svg>
+                  Same as ran out
+                </button>
+              </div>
+            </div>
+            <div class="members">
+              <article class="member member-grid">
+                <span class="swatch" style="background:#fcc419" aria-hidden="true"></span>
+                <div class="member-copy">
+                  <p class="member-name">Gatorade Lemon-Lime</p>
+                  <p class="meta">1 · 18.3 oz canister</p>
+                  <p class="barcode"><svg class="ico sm" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-barcode"/></svg>052000338881</p>
+                </div>
+                <button class="icon-btn" type="button" aria-label="Remove or move Gatorade Lemon-Lime" title="Remove or move"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-dots"/></svg></button>
+              </article>
+              <article class="member member-grid">
+                <span class="swatch" style="background:#74c0fc" aria-hidden="true"></span>
+                <div class="member-copy">
+                  <p class="member-name">Gatorade Fruit Punch</p>
+                  <p class="meta">0 · 18.3 oz canister</p>
+                </div>
+                <button class="icon-btn" type="button" aria-label="Remove or move Gatorade Fruit Punch" title="Remove or move"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-dots"/></svg></button>
+              </article>
+              <article class="member member-grid">
+                <span class="swatch" style="background:#ff8787" aria-hidden="true"></span>
+                <div class="member-copy">
+                  <p class="member-name">Gatorade Glacier Freeze</p>
+                  <p class="meta">0 · 50.9 oz canister</p>
+                </div>
+                <button class="icon-btn" type="button" aria-label="Remove or move Gatorade Glacier Freeze" title="Remove or move"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-dots"/></svg></button>
+              </article>
+            </div>
+            <button class="btn-dark with-icon" type="button"><svg class="ico sm" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-plus"/></svg>Add a product</button>
+          </main>
+        </div>
+      </figure>
+      <figure class="shot">
+        <figcaption>Line · groups list · 390</figcaption>
+        <div class="frame" data-shot="line-list-390" style="width:390px">
+          <header class="top"><div class="header-inner">
+            <div class="brand"><svg viewBox="0 0 512 512" aria-hidden="true"><rect width="512" height="512" rx="118" fill="#1C7C4E"/><rect x="164" y="118" width="184" height="156" rx="42" fill="#F0B429"/><rect x="196" y="150" width="120" height="34" rx="17" fill="#F6F1E6"/><rect x="76" y="302" width="360" height="100" rx="50" fill="#F6F1E6"/></svg>Pantry</div>
+            <nav class="nav" aria-label="Sections"><a href="#scan">Scan Queue</a><a href="#inventory">Inventory</a><a href="#shopping">Shopping List</a></nav>
+            <button class="menu-btn" type="button" aria-label="Menu"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-menu"/></svg></button>
+          </div></header>
+          <main class="page">
+            <div class="title-row">
+              <h1 class="page-title">Product groups</h1>
+              <button class="btn-dark" type="button" style="margin-top:0">New group</button>
+            </div>
+            <div class="field">
+              <label for="search-line">Search groups</label>
+              <input id="search-line" type="search" placeholder="Name or product">
+            </div>
+            <div class="filters">
+              <button class="filter" type="button" aria-pressed="true">All</button>
+              <button class="filter" type="button" aria-pressed="false">Running low</button>
+              <button class="filter" type="button" aria-pressed="false">Pick a rule</button>
+              <button class="filter" type="button" aria-pressed="false">Same as what ran out</button>
+              <button class="filter" type="button" aria-pressed="false">Always my favorite</button>
+              <button class="filter" type="button" aria-pressed="false">Best deal</button>
+            </div>
+            <ul class="list" data-count="rows" data-label="line-list">
+              <li data-count="row">
+                <a class="row" href="#line-detail-390">
+                  <span class="mark" aria-hidden="true"><span class="well"><span class="fill" style="height:38.125%"><span class="segment" style="background:#fcc419"></span></span></span></span>
+                  <span>
+                    <span class="row-name">Gatorade powder</span>
+                    <span class="spec">
+                      <span class="readout">18.3 oz</span>
+                      <span class="readout">48 oz</span>
+                      <span class="text-disclosure"><span>Auto</span><svg class="ico sm" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-chevron-down"/></svg></span>
+                    </span>
+                    <span class="rule-line"><svg class="ico sm" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-repeat"/></svg>Same as ran out</span>
+                  </span>
+                </a>
+              </li>
+              <li data-count="row">
+                <a class="row" href="#peanut">
+                  <span class="mark" aria-hidden="true"><span class="well"></span></span>
+                  <span>
+                    <span class="row-name">Peanut butter</span>
+                    <span class="stack-line">0 jars</span>
+                    <span class="you-set">You set 3 months</span>
+                    <span class="rule-line"><svg class="ico sm" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-star"/></svg>Always favorite</span>
+                  </span>
+                </a>
+              </li>
+              <li data-count="row">
+                <a class="row" href="#oat">
+                  <span class="mark" aria-hidden="true"><span class="well"></span></span>
+                  <span>
+                    <span class="row-name">Oat milk</span>
+                    <span class="stack-line">0 cartons</span>
+                    <span class="spec">
+                      <span class="readout">3 months</span>
+                      <span class="default-mark">Default</span>
+                    </span>
+                    <span class="rule-line warn">Pick a rule</span>
+                  </span>
+                </a>
+              </li>
+            </ul>
+          </main>
+        </div>
+      </figure>
+    </div>
+
+    <h2>Stamp</h2>
+    <p class="note">Closest to Chips. 48 oz stays in the bin corner, and the word “auto” lives inside that same button, so the source is on the number rather than beside it. The only thing next to the bin is the rule. Tapping the corner opens the rate underneath. Manual rows still say “You set”, because a corner on the little list mark cannot hold a sentence.</p>
+    <div class="frames">
+      <figure class="shot">
+        <figcaption>Stamp · group detail · 390 · closed</figcaption>
+        <div class="frame is-detail dir-mid" data-shot="stamp-detail-390" style="width:390px">
+          <header class="top"><div class="header-inner">
+            <div class="brand"><svg viewBox="0 0 512 512" aria-hidden="true"><rect width="512" height="512" rx="118" fill="#1C7C4E"/><rect x="164" y="118" width="184" height="156" rx="42" fill="#F0B429"/><rect x="196" y="150" width="120" height="34" rx="17" fill="#F6F1E6"/><rect x="76" y="302" width="360" height="100" rx="50" fill="#F6F1E6"/></svg>Pantry</div>
+            <nav class="nav" aria-label="Sections"><a href="#scan">Scan Queue</a><a href="#inventory">Inventory</a><a href="#shopping">Shopping List</a></nav>
+            <button class="menu-btn" type="button" aria-label="Menu"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-menu"/></svg></button>
+          </div></header>
+          <main class="page" data-count="detail" data-label="stamp-detail">
+            <a class="back hit" href="#stamp-list-390"><svg class="ico sm" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-chevron"/></svg><span>Product groups</span></a>
+            <div class="hero-row">
+              <div class="bin hero">
+                <div class="well" aria-hidden="true"><div class="fill" style="height:38.125%"><div class="segment" style="background:#fcc419"></div></div></div>
+                <div class="bin-head">
+                  <div>
+                    <h1 class="bin-name">Gatorade powder</h1>
+                    <button class="icon-btn" type="button" aria-label="Rename" title="Rename"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-pencil"/></svg></button>
+                  </div>
+                  <button class="corner-btn with-source" type="button" aria-expanded="false" title="Show how 48 oz was set">
+                    <span>48 oz</span>
+                    <span class="src">auto</span>
+                  </button>
+                </div>
+                <p class="level">18.3 oz</p>
+              </div>
+              <div class="side-slot">
+                <button class="chip" type="button" title="When this runs out, buy the same kind that ran out.">
+                  <svg class="ico sm" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-repeat"/></svg>
+                  Same as ran out
+                </button>
+              </div>
+            </div>
+            <div class="members">
+              <article class="member member-grid">
+                <span class="swatch" style="background:#fcc419" aria-hidden="true"></span>
+                <div class="member-copy">
+                  <p class="member-name">Gatorade Lemon-Lime</p>
+                  <p class="meta">1 · 18.3 oz canister</p>
+                  <p class="barcode"><svg class="ico sm" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-barcode"/></svg>052000338881</p>
+                </div>
+                <button class="icon-btn" type="button" aria-label="Remove or move Gatorade Lemon-Lime" title="Remove or move"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-dots"/></svg></button>
+              </article>
+              <article class="member member-grid">
+                <span class="swatch" style="background:#74c0fc" aria-hidden="true"></span>
+                <div class="member-copy">
+                  <p class="member-name">Gatorade Fruit Punch</p>
+                  <p class="meta">0 · 18.3 oz canister</p>
+                </div>
+                <button class="icon-btn" type="button" aria-label="Remove or move Gatorade Fruit Punch" title="Remove or move"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-dots"/></svg></button>
+              </article>
+              <article class="member member-grid">
+                <span class="swatch" style="background:#ff8787" aria-hidden="true"></span>
+                <div class="member-copy">
+                  <p class="member-name">Gatorade Glacier Freeze</p>
+                  <p class="meta">0 · 50.9 oz canister</p>
+                </div>
+                <button class="icon-btn" type="button" aria-label="Remove or move Gatorade Glacier Freeze" title="Remove or move"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-dots"/></svg></button>
+              </article>
+            </div>
+            <button class="btn-dark with-icon" type="button"><svg class="ico sm" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-plus"/></svg>Add a product</button>
+          </main>
+        </div>
+      </figure>
+      <figure class="shot">
+        <figcaption>Stamp · group detail · 390 · Auto open</figcaption>
+        <div class="frame is-detail dir-mid" data-shot="stamp-open-390" style="width:390px">
+          <header class="top"><div class="header-inner">
+            <div class="brand"><svg viewBox="0 0 512 512" aria-hidden="true"><rect width="512" height="512" rx="118" fill="#1C7C4E"/><rect x="164" y="118" width="184" height="156" rx="42" fill="#F0B429"/><rect x="196" y="150" width="120" height="34" rx="17" fill="#F6F1E6"/><rect x="76" y="302" width="360" height="100" rx="50" fill="#F6F1E6"/></svg>Pantry</div>
+            <nav class="nav" aria-label="Sections"><a href="#scan">Scan Queue</a><a href="#inventory">Inventory</a><a href="#shopping">Shopping List</a></nav>
+            <button class="menu-btn" type="button" aria-label="Menu"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-menu"/></svg></button>
+          </div></header>
+          <main class="page" data-count="detail" data-label="stamp-open">
+            <a class="back hit" href="#stamp-list-390"><svg class="ico sm" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-chevron"/></svg><span>Product groups</span></a>
+            <div class="hero-row">
+              <div class="bin hero">
+                <div class="well" aria-hidden="true"><div class="fill" style="height:38.125%"><div class="segment" style="background:#fcc419"></div></div></div>
+                <div class="bin-head">
+                  <div>
+                    <h1 class="bin-name">Gatorade powder</h1>
+                    <button class="icon-btn" type="button" aria-label="Rename" title="Rename"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-pencil"/></svg></button>
+                  </div>
+                  <button class="corner-btn with-source" type="button" aria-expanded="true">
+                    <span>48 oz</span>
+                    <span class="src">auto</span>
+                  </button>
+                </div>
+                <p class="level">18.3 oz</p>
+              </div>
+              <div class="side-slot">
+                <div class="reveal" role="note">
+                  <p>You go through about 16 oz a month, so 48 oz is 3 months on hand.</p>
+                </div>
+                <button class="chip" type="button" title="When this runs out, buy the same kind that ran out.">
+                  <svg class="ico sm" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-repeat"/></svg>
+                  Same as ran out
+                </button>
+              </div>
+            </div>
+            <div class="members">
+              <article class="member member-grid">
+                <span class="swatch" style="background:#fcc419" aria-hidden="true"></span>
+                <div class="member-copy">
+                  <p class="member-name">Gatorade Lemon-Lime</p>
+                  <p class="meta">1 · 18.3 oz canister</p>
+                  <p class="barcode"><svg class="ico sm" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-barcode"/></svg>052000338881</p>
+                </div>
+                <button class="icon-btn" type="button" aria-label="Remove or move Gatorade Lemon-Lime" title="Remove or move"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-dots"/></svg></button>
+              </article>
+              <article class="member member-grid">
+                <span class="swatch" style="background:#74c0fc" aria-hidden="true"></span>
+                <div class="member-copy">
+                  <p class="member-name">Gatorade Fruit Punch</p>
+                  <p class="meta">0 · 18.3 oz canister</p>
+                </div>
+                <button class="icon-btn" type="button" aria-label="Remove or move Gatorade Fruit Punch" title="Remove or move"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-dots"/></svg></button>
+              </article>
+              <article class="member member-grid">
+                <span class="swatch" style="background:#ff8787" aria-hidden="true"></span>
+                <div class="member-copy">
+                  <p class="member-name">Gatorade Glacier Freeze</p>
+                  <p class="meta">0 · 50.9 oz canister</p>
+                </div>
+                <button class="icon-btn" type="button" aria-label="Remove or move Gatorade Glacier Freeze" title="Remove or move"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-dots"/></svg></button>
+              </article>
+            </div>
+            <button class="btn-dark with-icon" type="button"><svg class="ico sm" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-plus"/></svg>Add a product</button>
+          </main>
+        </div>
+      </figure>
+      <figure class="shot">
+        <figcaption>Stamp · groups list · 390</figcaption>
+        <div class="frame" data-shot="stamp-list-390" style="width:390px">
+          <header class="top"><div class="header-inner">
+            <div class="brand"><svg viewBox="0 0 512 512" aria-hidden="true"><rect width="512" height="512" rx="118" fill="#1C7C4E"/><rect x="164" y="118" width="184" height="156" rx="42" fill="#F0B429"/><rect x="196" y="150" width="120" height="34" rx="17" fill="#F6F1E6"/><rect x="76" y="302" width="360" height="100" rx="50" fill="#F6F1E6"/></svg>Pantry</div>
+            <nav class="nav" aria-label="Sections"><a href="#scan">Scan Queue</a><a href="#inventory">Inventory</a><a href="#shopping">Shopping List</a></nav>
+            <button class="menu-btn" type="button" aria-label="Menu"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-menu"/></svg></button>
+          </div></header>
+          <main class="page">
+            <div class="title-row">
+              <h1 class="page-title">Product groups</h1>
+              <button class="btn-dark" type="button" style="margin-top:0">New group</button>
+            </div>
+            <div class="field">
+              <label for="search-stamp">Search groups</label>
+              <input id="search-stamp" type="search" placeholder="Name or product">
+            </div>
+            <div class="filters">
+              <button class="filter" type="button" aria-pressed="true">All</button>
+              <button class="filter" type="button" aria-pressed="false">Running low</button>
+              <button class="filter" type="button" aria-pressed="false">Pick a rule</button>
+              <button class="filter" type="button" aria-pressed="false">Same as what ran out</button>
+              <button class="filter" type="button" aria-pressed="false">Always my favorite</button>
+              <button class="filter" type="button" aria-pressed="false">Best deal</button>
+            </div>
+            <ul class="list" data-count="rows" data-label="stamp-list">
+              <li data-count="row">
+                <a class="row" href="#stamp-detail-390">
+                  <span class="mark" aria-hidden="true"><span class="well"><span class="fill" style="height:38.125%"><span class="segment" style="background:#fcc419"></span></span></span></span>
+                  <span>
+                    <span class="row-name">Gatorade powder</span>
+                    <span class="spec">
+                      <span class="readout">18.3 <span class="goal">/ 48 oz</span></span>
+                      <span class="auto-badge">auto</span>
+                    </span>
+                    <span class="rule-line"><svg class="ico sm" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-repeat"/></svg>Same as ran out</span>
+                  </span>
+                </a>
+              </li>
+              <li data-count="row">
+                <a class="row" href="#peanut">
+                  <span class="mark" aria-hidden="true"><span class="well"></span></span>
+                  <span>
+                    <span class="row-name">Peanut butter</span>
+                    <span class="stack-line">0 jars</span>
+                    <span class="you-set">You set 3 months</span>
+                    <span class="rule-line"><svg class="ico sm" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-star"/></svg>Always favorite</span>
+                  </span>
+                </a>
+              </li>
+              <li data-count="row">
+                <a class="row" href="#oat">
+                  <span class="mark" aria-hidden="true"><span class="well"></span></span>
+                  <span>
+                    <span class="row-name">Oat milk</span>
+                    <span class="stack-line">0 cartons</span>
+                    <span class="spec">
+                      <span class="readout">3 months</span>
+                      <span class="default-mark">Default</span>
+                    </span>
+                    <span class="rule-line warn">Pick a rule</span>
+                  </span>
+                </a>
+              </li>
+            </ul>
           </main>
         </div>
       </figure>

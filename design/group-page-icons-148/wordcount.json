@@ -19,6 +19,36 @@
       "label": "toolbar-detail",
       "count": 35,
       "text": "Product groups Gatorade powder 18.3 oz Rename 48 oz Same kind Gatorade Lemon-Lime 1 · 18.3 oz canister 052000338881 Gatorade Fruit Punch 0 · 18.3 oz canister Gatorade Glacier Freeze 0 · 50.9 oz canister Add a product"
+    },
+    {
+      "label": "badge-detail",
+      "count": 37,
+      "text": "Product groups Gatorade powder 18.3 oz 48 oz Auto Same as ran out Gatorade Lemon-Lime 1 · 18.3 oz canister 052000338881 Gatorade Fruit Punch 0 · 18.3 oz canister Gatorade Glacier Freeze 0 · 50.9 oz canister Add a product"
+    },
+    {
+      "label": "badge-open",
+      "count": 53,
+      "text": "Product groups Gatorade powder 18.3 oz 48 oz Auto You go through about 16 oz a month, so 48 oz is 3 months on hand. Same as ran out Gatorade Lemon-Lime 1 · 18.3 oz canister 052000338881 Gatorade Fruit Punch 0 · 18.3 oz canister Gatorade Glacier Freeze 0 · 50.9 oz canister Add a product"
+    },
+    {
+      "label": "line-detail",
+      "count": 37,
+      "text": "Product groups Gatorade powder 18.3 oz 48 oz Auto Same as ran out Gatorade Lemon-Lime 1 · 18.3 oz canister 052000338881 Gatorade Fruit Punch 0 · 18.3 oz canister Gatorade Glacier Freeze 0 · 50.9 oz canister Add a product"
+    },
+    {
+      "label": "line-open",
+      "count": 53,
+      "text": "Product groups Gatorade powder 18.3 oz 48 oz Auto You go through about 16 oz a month, so 48 oz is 3 months on hand. Same as ran out Gatorade Lemon-Lime 1 · 18.3 oz canister 052000338881 Gatorade Fruit Punch 0 · 18.3 oz canister Gatorade Glacier Freeze 0 · 50.9 oz canister Add a product"
+    },
+    {
+      "label": "stamp-detail",
+      "count": 37,
+      "text": "Product groups Gatorade powder 48 oz auto 18.3 oz Same as ran out Gatorade Lemon-Lime 1 · 18.3 oz canister 052000338881 Gatorade Fruit Punch 0 · 18.3 oz canister Gatorade Glacier Freeze 0 · 50.9 oz canister Add a product"
+    },
+    {
+      "label": "stamp-open",
+      "count": 53,
+      "text": "Product groups Gatorade powder 48 oz auto 18.3 oz You go through about 16 oz a month, so 48 oz is 3 months on hand. Same as ran out Gatorade Lemon-Lime 1 · 18.3 oz canister 052000338881 Gatorade Fruit Punch 0 · 18.3 oz canister Gatorade Glacier Freeze 0 · 50.9 oz canister Add a product"
     }
   ],
   "lists": [
@@ -91,6 +121,60 @@
         {
           "count": 10,
           "text": "Oat milk 0 cartons Default, 3 months Pick a rule"
+        }
+      ]
+    },
+    {
+      "label": "badge-list",
+      "count": 31,
+      "rows": [
+        {
+          "count": 11,
+          "text": "Gatorade powder 18.3 oz 48 oz Auto Same as ran out"
+        },
+        {
+          "count": 10,
+          "text": "Peanut butter 0 jars You set 3 months Always favorite"
+        },
+        {
+          "count": 10,
+          "text": "Oat milk 0 cartons 3 months Default Pick a rule"
+        }
+      ]
+    },
+    {
+      "label": "line-list",
+      "count": 31,
+      "rows": [
+        {
+          "count": 11,
+          "text": "Gatorade powder 18.3 oz 48 oz Auto Same as ran out"
+        },
+        {
+          "count": 10,
+          "text": "Peanut butter 0 jars You set 3 months Always favorite"
+        },
+        {
+          "count": 10,
+          "text": "Oat milk 0 cartons 3 months Default Pick a rule"
+        }
+      ]
+    },
+    {
+      "label": "stamp-list",
+      "count": 30,
+      "rows": [
+        {
+          "count": 10,
+          "text": "Gatorade powder 18.3 / 48 oz auto Same as ran out"
+        },
+        {
+          "count": 10,
+          "text": "Peanut butter 0 jars You set 3 months Always favorite"
+        },
+        {
+          "count": 10,
+          "text": "Oat milk 0 cartons 3 months Default Pick a rule"
         }
       ]
     }

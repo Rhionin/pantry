@@ -711,6 +711,136 @@ h1.bin-name {
 .stack-line { display: block; margin-top: 2px; }
 .stack-line strong { font-weight: 650; }
 
+.mid-targets {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 10px;
+}
+
+.pair-target,
+.you-set {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0 2px 2px;
+  border: 0;
+  border-bottom: 2px solid var(--ink-strong);
+  background: transparent;
+  font: inherit;
+  font-size: 1.35rem;
+  font-weight: 650;
+  letter-spacing: -0.02em;
+  line-height: 1;
+  color: var(--ink-strong);
+}
+
+.you-set { font-size: 1.05rem; }
+
+.auto-badge,
+.text-disclosure {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  min-height: 44px;
+  min-width: 44px;
+  padding: 0 12px;
+  border-radius: 999px;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 650;
+  line-height: 1;
+}
+
+.auto-badge {
+  border: 1px solid #a5d8ff;
+  background: #e7f5ff;
+  color: #1864ab;
+}
+
+.text-disclosure {
+  border: 0;
+  background: transparent;
+  color: #1864ab;
+  padding: 0 4px;
+}
+
+.text-disclosure[aria-expanded="true"] .ico { transform: rotate(180deg); }
+
+.default-mark {
+  display: inline-flex;
+  align-items: center;
+  min-height: 26px;
+  padding: 0 8px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: #fff;
+  font-size: 13px;
+  font-weight: 650;
+  color: var(--muted);
+}
+
+.list .auto-badge,
+.list .text-disclosure,
+.list .you-set,
+.list .default-mark {
+  min-height: 26px;
+  min-width: 0;
+  padding: 0 8px;
+  font-size: 13px;
+}
+
+.list .you-set {
+  padding: 0 0 1px;
+  border-bottom-width: 1.5px;
+  font-size: 15px;
+  background: transparent;
+}
+
+.reveal {
+  margin: 2px 0 0;
+  max-width: 36ch;
+  padding: 10px 12px;
+  border: 1px solid #a5d8ff;
+  border-radius: 10px;
+  background: #f8fbff;
+  color: var(--ink);
+  font-size: 15px;
+  line-height: 1.4;
+}
+
+.reveal p { margin: 0; }
+
+.reveal.plain {
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--muted);
+}
+
+.corner-btn.with-source {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  line-height: 1.05;
+  padding: 4px 10px;
+}
+
+.corner-btn .src {
+  font-size: 12px;
+  font-weight: 650;
+  color: #1864ab;
+}
+
+.corner-btn[aria-expanded="true"],
+.auto-badge[aria-expanded="true"] {
+  box-shadow: inset 0 -2px 0 #1864ab;
+}
+
 .icon-btn:focus-visible,
 .corner-btn:focus-visible,
 .fraction:focus-visible,
@@ -722,7 +852,11 @@ h1.bin-name {
 .menu-item:focus-visible,
 .filter:focus-visible,
 .row:focus-visible,
-.menu-btn:focus-visible {
+.menu-btn:focus-visible,
+.auto-badge:focus-visible,
+.text-disclosure:focus-visible,
+.pair-target:focus-visible,
+.you-set:focus-visible {
   outline: 2px solid var(--focus);
   outline-offset: 2px;
 }
