@@ -76,6 +76,31 @@ func pickMembers(head Fact, members []Fact) (group.Result, []group.Member) {
 	return picked, gm
 }
 
+// Usage is how much of a group the household goes through in a 30-day month.
+// Unit is "oz" or "fl oz". Nil means the rate is not known yet, including
+// when the group is counted by the item instead of by amount.
+type Usage struct {
+	PerMonth float64 `json:"perMonth"`
+	Unit     string  `json:"unit"`
+}
+
+// usageFromMembers converts a qualified amount rate into the ounces the
+// screen shows. Item-count rates are not an amount, so they stay nil.
+func usageFromMembers(now time.Time, phase Phase, members []Fact) *Usage {
+	if len(members) == 0 {
+		return nil
+	}
+	rate := groupRate(now, phase, members)
+	if !rate.OK || rate.ItemCount || rate.PerDay <= 0 {
+		return nil
+	}
+	amount, unit, ok := product.DisplayNetSize(rate.PerDay*30, members[0].NetDimension)
+	if !ok || amount <= 0 {
+		return nil
+	}
+	return &Usage{PerMonth: amount, Unit: unit}
+}
+
 func groupRate(now time.Time, phase Phase, members []Fact) group.UsageRate {
 	started, ok := phase.StartedAt()
 	if !ok {

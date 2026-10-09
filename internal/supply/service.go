@@ -199,6 +199,38 @@ func Open(db *sql.DB) *Service {
 	return &Service{db: db}
 }
 
+// GroupUsage is the amount rate for one product group, or nil when usage
+// is not known yet. It writes nothing.
+func (s *Service) GroupUsage(ctx context.Context, groupID string, now time.Time) (*Usage, error) {
+	if groupID == "" {
+		return nil, nil
+	}
+	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+	if err != nil {
+		return nil, fmt.Errorf("could not read supply: %w", err)
+	}
+	defer tx.Rollback()
+
+	phase, _, err := readPhaseAndMonths(ctx, tx)
+	if err != nil {
+		return nil, err
+	}
+	facts, err := loadFacts(ctx, tx, phase)
+	if err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("could not read supply: %w", err)
+	}
+	var members []Fact
+	for _, fact := range facts {
+		if string(fact.Group) == groupID {
+			members = append(members, fact)
+		}
+	}
+	return usageFromMembers(now, phase, members), nil
+}
+
 // Plan loads phase, months, and facts in one read transaction, then calls plan.
 // It writes nothing.
 func (s *Service) Plan(ctx context.Context, now time.Time) ([]Line, error) {

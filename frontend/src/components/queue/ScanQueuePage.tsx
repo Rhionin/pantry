@@ -8,8 +8,10 @@ import { BarcodeInputField } from '../scanner/BarcodeInputField';
 import { CameraScanner } from '../scanner/CameraScanner';
 import { BatchReviewPanel } from './BatchReviewPanel';
 import { ProcessingScanCard } from './ProcessingScanCard';
+import { ScanAlertPrompt } from './ScanAlertPrompt';
 import { ScanEntryCard } from './ScanEntryCard';
 import { ScanSessionCard } from './ScanSessionCard';
+import { SCAN_ALERT_OPEN, takeScanAlertDirection, type ScanAlertOpenDetail } from './browserScanAlert';
 import { addProcessingNotice, entryMatchesView, formatReviewCount, getEntriesForView, groupScansIntoBatches, isBatchEligible, mergeScanEvent, pruneSelection, removeProcessingNotice, settleProcessingNotice, sortScansNewestFirst, toggleSelectAll } from './queueUtils';
 import { scannerModeFromEventData } from './scannerModeEvent';
 
@@ -200,6 +202,22 @@ export const ScanQueuePage = ({ userId = DEFAULT_USER_ID }: ScanQueuePageProps) 
     }
   }, [holdLocalMode]);
 
+  // A notification click names the tab that holds the scans. The stored
+  // direction covers a queue that was not mounted when the click happened.
+  useEffect(() => {
+    const openDirection = (direction: unknown) => {
+      if (direction !== 'stock_in' && direction !== 'stock_out') return;
+      void applyScannerMode(direction);
+    };
+    openDirection(takeScanAlertDirection());
+    const onOpen = (event: Event) => {
+      takeScanAlertDirection();
+      openDirection((event as CustomEvent<ScanAlertOpenDetail>).detail?.direction);
+    };
+    window.addEventListener(SCAN_ALERT_OPEN, onOpen);
+    return () => window.removeEventListener(SCAN_ALERT_OPEN, onOpen);
+  }, [applyScannerMode]);
+
   const handleViewChange = (value: string | null) => {
     if (value !== 'stock_in' && value !== 'stock_out') return;
     if (value === scannerModeRef.current) return;
@@ -313,6 +331,7 @@ export const ScanQueuePage = ({ userId = DEFAULT_USER_ID }: ScanQueuePageProps) 
             )}
           </Text>
         )}
+        <ScanAlertPrompt />
         <Tabs
           value={scannerMode}
           onChange={handleViewChange}

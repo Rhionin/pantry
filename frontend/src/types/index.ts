@@ -332,6 +332,11 @@ export interface GroupMember {
   onHand: number;
 }
 
+export interface GroupUsage {
+  perMonth: number;
+  unit: string;
+}
+
 export interface ProductGroup {
   id: string;
   name: string;
@@ -341,6 +346,7 @@ export interface ProductGroup {
   windowMonths?: number;
   quantity?: number;
   dimension?: NetDimension;
+  usage?: GroupUsage;
   members: GroupMember[];
   runningLow: boolean;
 }

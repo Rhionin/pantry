@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { BrowserRouter, NavLink, Route, Routes, useLocation } from 'react-router-dom';
 import { AppShell, Group, Title } from '@mantine/core';
+import { ScanAlertHost } from './components/queue/ScanAlertHost';
 import { ScanQueuePage } from './components/queue/ScanQueuePage';
 import { InventoryPage } from './components/inventory/InventoryPage';
 import { ShoppingListPage } from './components/shopping/ShoppingListPage';
@@ -32,6 +33,7 @@ function SignedInApp() {
   return (
     <CredentialsRevisionContext.Provider value={credentialsRevision}>
       <RouteTelemetry />
+      <ScanAlertHost />
       <AppShell
           className="app-shell"
           header={{ height: 56 }}
