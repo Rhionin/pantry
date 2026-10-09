@@ -3,6 +3,7 @@ package server
 import (
 	"net/http"
 	"testing"
+	"time"
 
 	"github.com/Rhionin/pantry/internal/product"
 )
@@ -101,6 +102,69 @@ func TestGroupHandlers(t *testing.T) {
 					bodyContains:   []string{`"code":"in_group"`, `"groupId"`},
 				},
 			),
+		},
+		{
+			name: "group usage is ounces per month when a rate qualifies",
+			setup: func(env testEnv) {
+				mustGroupProduct(env, "p1", "Powder")
+				base, _, err := product.BaseFromAmount(16, "oz")
+				if err != nil {
+					env.T.Fatal(err)
+				}
+				mustExec(env, `UPDATE products SET net_base_value = ?, net_dimension = 'mass' WHERE id = 'p1'`, base)
+				mustExec(env, `INSERT INTO items (id, user_id, product_id) VALUES ('item-1', 'user-1', 'p1')`)
+				insertGroup(env, "group-a", "Powder")
+				insertMember(env, "group-a", "p1")
+				now := time.Now().UTC()
+				started := now.Add(-90 * 24 * time.Hour)
+				firstIn := started.Add(time.Second)
+				mustExec(env, `INSERT INTO app_settings (key, value) VALUES ('onboarding_started_at', ?)`, started.Format(time.RFC3339))
+				mustExec(env, `INSERT INTO stock_in_events (product_id, at) VALUES ('p1', ?)`, firstIn)
+				mustExec(env, `INSERT INTO consumption_events (id, item_id, consumed_at) VALUES ('c1', 'item-1', ?)`, firstIn.Add(30*24*time.Hour))
+				mustExec(env, `INSERT INTO consumption_events (id, item_id, consumed_at) VALUES ('c2', 'item-1', ?)`, firstIn.Add(60*24*time.Hour))
+			},
+			httpExchange: httpExchange{
+				method:         http.MethodGet,
+				path:           "/api/groups/group-a",
+				expectedStatus: http.StatusOK,
+				assertions: []assertion{
+					{path: "$.usage.perMonth", value: float64(16)},
+					{path: "$.usage.unit", value: "oz"},
+				},
+			},
+			afterRequest: exchanges(
+				httpExchange{
+					method:         http.MethodPut,
+					path:           "/api/groups/group-a/target",
+					body:           `{"quantity":48,"dimension":"mass"}`,
+					expectedStatus: http.StatusOK,
+					assertions: []assertion{
+						{path: "$.quantity", value: float64(48)},
+						{path: "$.usage.perMonth", value: float64(16)},
+					},
+				},
+				httpExchange{
+					method:         http.MethodGet,
+					path:           "/api/groups",
+					expectedStatus: http.StatusOK,
+					bodyExcludes:   []string{`"usage"`},
+				},
+			),
+		},
+		{
+			name: "group usage is omitted until a rate qualifies",
+			setup: func(env testEnv) {
+				mustGroupProduct(env, "p1", "Powder")
+				mustExec(env, `INSERT INTO items (id, user_id, product_id) VALUES ('item-1', 'user-1', 'p1')`)
+				insertGroup(env, "group-a", "Powder")
+				insertMember(env, "group-a", "p1")
+			},
+			httpExchange: httpExchange{
+				method:         http.MethodGet,
+				path:           "/api/groups/group-a",
+				expectedStatus: http.StatusOK,
+				assertions:     []assertion{{path: "$.usage", absent: true}},
+			},
 		},
 		{
 			name: "dismissed suggestion stays gone",

@@ -87,30 +87,37 @@ describe('GroupDetailPage', () => {
       throw new Error(`Unexpected ${method} ${url}`);
     });
 
-    expect(await screen.findByText('6 on hand. Household default.')).toBeInTheDocument();
-    expect(screen.getByText('Still using Same as what ran out until you pick a rule.')).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: 'Household default, pinned' })).toBeInTheDocument();
+    expect(screen.getByText('Fills in once usage is known')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Pick a rule' })).toBeInTheDocument();
+    expect(screen.queryByText('Still using Same product until you pick a rule.')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Change target' })).not.toBeInTheDocument();
     expect(screen.queryByLabelText('Ounces')).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'Change target' }));
-    expect(await screen.findByRole('button', { name: 'Use the household default' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Household default, pinned' }));
+    expect(screen.getByLabelText('Months')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Use the household default' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Use the account window' })).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
 
     fireEvent.click(screen.getByRole('button', { name: 'Pick a rule' }));
-    expect(await screen.findByRole('dialog', { name: 'Gatorade powder' })).toBeInTheDocument();
-    expect(await screen.findByText('Next trip: Buy the powder that ran out.')).toBeInTheDocument();
-    expect(screen.getByText('Now: Household default')).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('combobox', { name: 'Keep on hand' }));
-    expect(await screen.findByRole('option', { name: 'Household default' })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('option', { name: 'Household default' }));
+    const picker = await screen.findByRole('dialog', { name: 'What to buy next' });
+    expect(within(picker).getByRole('radio', { name: 'Same product' })).toBeChecked();
+    expect(within(picker).getByText('Rebuy the exact product you used last.')).toBeInTheDocument();
+    expect(within(picker).getByText('Always buy one product.')).toBeInTheDocument();
+    expect(within(picker).getByText('Lowest price per ounce.')).toBeInTheDocument();
+    expect(within(picker).queryByText(/Next trip:/)).not.toBeInTheDocument();
+    expect(within(picker).queryByText(/Now:/)).not.toBeInTheDocument();
+    expect(within(picker).queryByRole('combobox', { name: 'Keep on hand' })).not.toBeInTheDocument();
+    expect(within(picker).queryByText(/kind/)).not.toBeInTheDocument();
+    expect(within(picker).queryByText(/ran out/)).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('combobox', { name: 'Rule' }));
-    fireEvent.click(await screen.findByRole('option', { name: 'Always my favorite' }));
-    fireEvent.click(screen.getByRole('combobox', { name: 'Always buy' }));
+    fireEvent.click(within(picker).getByRole('radio', { name: 'Favorite' }));
+    fireEvent.click(within(picker).getByRole('combobox', { name: 'Product' }));
     fireEvent.click(await screen.findByRole('option', { name: 'Fruit punch thirst quencher powder' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Save rule' }));
+    fireEvent.click(within(picker).getByRole('button', { name: 'Save' }));
 
-    expect(await screen.findByRole('button', { name: 'Change rule' })).toBeInTheDocument();
-    expect(screen.getByText('When this runs out, always buy Fruit punch thirst quencher powder.')).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: 'Change rule, Fruit punch thirst quencher powder' })).toBeInTheDocument();
+    expect(screen.queryByText('When this runs out, always buy Fruit punch thirst quencher powder.')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Pick a rule' })).not.toBeInTheDocument();
     const saved = calls.find((call) => call.url === '/api/groups/g1/rule');
     expect(JSON.parse(saved?.body ?? '{}')).toEqual({
@@ -327,9 +334,7 @@ describe('GroupDetailPage', () => {
     expect(await screen.findByRole('heading', { name: 'Sports powder' })).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: 'Remove or move Fruit punch thirst quencher powder' }));
-    const moveDialog = await screen.findByRole('dialog', { name: 'Remove or move' });
-    fireEvent.change(within(moveDialog).getByLabelText('Move Fruit punch thirst quencher powder'), { target: { value: 'g2' } });
-    fireEvent.click(within(moveDialog).getByRole('button', { name: 'Move' }));
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Drink mixes' }));
     await waitFor(() => expect(calls.some((call) => call.url === '/api/groups/g2/members')).toBe(true));
     const move = calls.find((call) => call.url === '/api/groups/g2/members');
     expect(JSON.parse(move?.body ?? '{}')).toEqual({ productIds: ['punch'], fromGroupId: 'g1' });
@@ -373,22 +378,74 @@ describe('GroupDetailPage', () => {
       throw new Error(`Unexpected ${method} ${url}`);
     });
 
-    expect(await screen.findByText('18.3 ounces of Gatorade Lemon-Lime are in the bin. Keep 48 ounces on hand.')).toBeInTheDocument();
-    expect(screen.getByText('When this runs out, buy the same kind that ran out.')).toBeInTheDocument();
-    expect(screen.getByText('18.3 oz')).toBeInTheDocument();
-    expect(screen.getByText('48 oz')).toBeInTheDocument();
+    expect(await screen.findByText('18.3 oz on hand')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Change rule, Same product' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '48 oz, pinned' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Time unknown, fills in once usage is known' })).toBeInTheDocument();
+    expect(screen.queryByText(/≈/)).not.toBeInTheDocument();
     expect(document.querySelector('.bin-fill')).not.toBeNull();
     expect(screen.getByText('18.3 oz canister, 1 on hand')).toBeInTheDocument();
     expect(screen.getByText('Barcode: 052000338881')).toBeInTheDocument();
     expect(screen.getByText('50.9 oz canister, none on hand')).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Change target' }));
-    const dialog = await screen.findByRole('dialog', { name: 'Change target' });
-    fireEvent.change(within(dialog).getByLabelText('Months'), { target: { value: '3' } });
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Save months' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Time unknown, fills in once usage is known' }));
+    expect(screen.getByRole('button', { name: 'Use the household default' })).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText('Months'), { target: { value: '3' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
 
-    expect(await screen.findByText('1 canister on hand. Keep 3 months.')).toBeInTheDocument();
-    expect(screen.getByText('3 months')).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: '3 mo, pinned' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Amount unknown, fills in once usage is known' })).toBeInTheDocument();
     expect(document.querySelector('.bin-fill')).toBeNull();
+  });
+
+  it('recomputes the other end from the consumption rate', async () => {
+    let current: ProductGroup = {
+      ...baseGroup(),
+      quantity: 48,
+      dimension: 'mass',
+      usage: { perMonth: 16, unit: 'oz' },
+      members: [member('lemon', 'Gatorade Lemon-Lime', 1)],
+    };
+    const saved: unknown[] = [];
+    renderDetail((url, init) => {
+      const method = init?.method ?? 'GET';
+      if (url === '/api/groups/g1' && method === 'GET') return json(current);
+      if (url === '/api/groups' && method === 'GET') return json([current]);
+      if (url === '/api/products' && method === 'GET') return json([]);
+      if (url === '/api/inventory') return json([]);
+      if (url === '/api/settings/supply') return json({ months: 3, opening: false, wipePhrase: 'WIPE INVENTORY' });
+      if (url === '/api/products/lemon') {
+        return json({ barcodes: [], unitOfMeasure: 'canister', netAmount: 18.3, netUnit: 'oz' });
+      }
+      if (url === '/api/groups/g1/target' && method === 'PUT') {
+        const body = JSON.parse(String(init?.body)) as { windowMonths?: number; quantity?: number; dimension?: string };
+        saved.push(body);
+        current = {
+          ...current,
+          quantity: body.quantity,
+          dimension: body.dimension as ProductGroup['dimension'],
+          windowMonths: body.windowMonths,
+          usage: current.usage,
+        };
+        return json(current);
+      }
+      throw new Error(`Unexpected ${method} ${url}`);
+    });
+
+    expect(await screen.findByText('18.3 oz on hand · ≈ 5 wks')).toBeInTheDocument();
+    expect(screen.getByText('at 16 oz / mo')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '48 oz, pinned' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'About 3 mo' })).toBeInTheDocument();
+    expect(screen.getByText('Tap either end to set it; the other follows')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'About 3 mo' }));
+    fireEvent.change(screen.getByLabelText('Months'), { target: { value: '6' } });
+    expect(screen.getByRole('button', { name: 'About 96 oz' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+    await waitFor(() => expect(saved).toEqual([{ windowMonths: 6 }]));
+    expect(screen.getByRole('button', { name: '6 mo, pinned' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'About 96 oz' })).toBeInTheDocument();
+    expect(document.querySelector('.bin-fill')).not.toBeNull();
   });
 });
