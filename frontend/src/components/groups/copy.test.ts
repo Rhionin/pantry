@@ -73,7 +73,8 @@ describe('bin sentences', () => {
     expect(detailStockSentence(group, [lemon, glacier])).toBe(
       '18.3 ounces of Gatorade Lemon-Lime are in the bin. Keep 48 ounces on hand.',
     );
-    expect(ruleSentence(group, [lemon], 'detail')).toBe('When this runs out, buy the same kind that ran out.');
+    expect(ruleSentence(group, [lemon], 'detail')).toBe('Rebuy the exact product you used last.');
+    expect(ruleSentence(group, [lemon], 'brief')).toBe('Rebuy the exact product you used last.');
     expect(memberLine(glacier)).toBe('50.9 oz canister, none on hand');
   });
 
@@ -99,22 +100,24 @@ describe('bin sentences', () => {
       },
       [{ productId: 'oat', name: 'Oat milk', onHand: 1, unitOfMeasure: 'carton' }],
       3,
-    )).toBe('1 carton on hand. Household default, 3 months. Still using Same as what ran out until you pick a rule.');
+    )).toBe('1 carton on hand. Household default, 3 months. Still using Same product until you pick a rule.');
   });
 
   it('names the pinned product in the rule sentence', () => {
     const members = [{ productId: 'creamy', name: 'Creamy peanut butter' }];
     expect(ruleSentence({ rule: 'favorite', ruleConfirmed: true, pinnedProductId: 'creamy' }, members, 'detail'))
-      .toBe('When this runs out, always buy Creamy peanut butter.');
+      .toBe('Always buy Creamy peanut butter.');
     expect(ruleSentence({ rule: 'best_deal', ruleConfirmed: true, pinnedProductId: 'creamy' }, members, 'brief'))
-      .toBe('Buy the best deal, or Creamy peanut butter if nothing is on sale.');
+      .toBe('Lowest price per ounce, or Creamy peanut butter if nothing is on sale.');
+    expect(ruleSentence({ rule: 'best_deal', ruleConfirmed: true }, [], 'detail'))
+      .toBe('Lowest price per ounce.');
   });
 
   it('matches the restock picker to the pill words', () => {
     expect(ruleChoices).toEqual([
-      { id: 'same_as_ran_out', label: 'Same as ran out', hint: 'Buy the kind that ran out.' },
+      { id: 'same_as_ran_out', label: 'Same product', hint: 'Rebuy the exact product you used last.' },
       { id: 'favorite', label: 'Favorite', hint: 'Always buy one product.' },
-      { id: 'best_deal', label: 'Best deal', hint: 'Buy the one on sale.' },
+      { id: 'best_deal', label: 'Best deal', hint: 'Lowest price per ounce.' },
     ]);
     expect(rulePillLabel({ rule: 'same_as_ran_out', ruleConfirmed: true }, [])).toBe(ruleChoices[0].label);
     expect(rulePillLabel({ rule: 'favorite', ruleConfirmed: true }, [])).toBe(ruleChoices[1].label);

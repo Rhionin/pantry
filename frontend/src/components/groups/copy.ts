@@ -1,7 +1,7 @@
 import type { GroupMember, GroupTarget, NetDimension, ProductGroup, SuggestionMember, TargetConflictMember } from '../../types';
 
 export const ruleLabels: Record<string, string> = {
-  same_as_ran_out: 'Same as what ran out',
+  same_as_ran_out: 'Same product',
   favorite: 'Always my favorite',
   best_deal: 'Best deal',
 };
@@ -9,9 +9,9 @@ export const ruleLabels: Record<string, string> = {
 export const ruleLabel = (rule: string) => ruleLabels[rule] ?? rule;
 
 export const ruleChoices = [
-  { id: 'same_as_ran_out', label: 'Same as ran out', hint: 'Buy the kind that ran out.' },
+  { id: 'same_as_ran_out', label: 'Same product', hint: 'Rebuy the exact product you used last.' },
   { id: 'favorite', label: 'Favorite', hint: 'Always buy one product.' },
-  { id: 'best_deal', label: 'Best deal', hint: 'Buy the one on sale.' },
+  { id: 'best_deal', label: 'Best deal', hint: 'Lowest price per ounce.' },
 ] as const;
 
 export function rulePillLabel(
@@ -19,7 +19,7 @@ export function rulePillLabel(
   members: { productId: string; name: string }[],
 ): string {
   if (!group.ruleConfirmed) return 'Pick a rule';
-  if (group.rule === 'same_as_ran_out') return 'Same as ran out';
+  if (group.rule === 'same_as_ran_out') return ruleLabels.same_as_ran_out;
   if (group.rule === 'favorite') {
     return members.find((member) => member.productId === group.pinnedProductId)?.name ?? 'Favorite';
   }
@@ -426,23 +426,16 @@ export function ruleSentence(
   }
   const pin = pinnedName(group, members);
   if (group.rule === 'favorite') {
-    if (style === 'detail') return pin ? `When this runs out, always buy ${pin}.` : 'When this runs out, buy your favorite.';
-    return pin ? `Always buy ${pin}.` : 'Buy your favorite.';
+    if (pin) return `Always buy ${pin}.`;
+    return style === 'detail' ? 'Always buy one product.' : 'Buy your favorite.';
   }
   if (group.rule === 'best_deal') {
-    if (style === 'detail') {
-      return pin
-        ? `When this runs out, buy the best deal, or ${pin} if nothing is on sale.`
-        : 'When this runs out, buy the best deal.';
-    }
-    return pin ? `Buy the best deal, or ${pin} if nothing is on sale.` : 'Buy the best deal.';
+    return pin
+      ? `Lowest price per ounce, or ${pin} if nothing is on sale.`
+      : 'Lowest price per ounce.';
   }
-  if (group.rule === 'same_as_ran_out') {
-    return style === 'detail'
-      ? 'When this runs out, buy the same kind that ran out.'
-      : 'Buy the same kind that ran out.';
-  }
-  return style === 'detail' ? `When this runs out, follow ${ruleLabel(group.rule)}.` : `${ruleLabel(group.rule)}.`;
+  if (group.rule === 'same_as_ran_out') return ruleChoices[0].hint;
+  return style === 'detail' ? `Buy ${ruleLabel(group.rule)} next.` : `${ruleLabel(group.rule)}.`;
 }
 
 export function listSummary(

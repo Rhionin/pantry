@@ -12,7 +12,7 @@ const chips: { id: GroupChip; label: string }[] = [
   { id: 'all', label: 'All' },
   { id: 'low', label: 'Running low' },
   { id: 'unconfirmed', label: 'Pick a rule' },
-  { id: 'same_as_ran_out', label: 'Same as what ran out' },
+  { id: 'same_as_ran_out', label: 'Same product' },
   { id: 'favorite', label: 'Always my favorite' },
   { id: 'best_deal', label: 'Best deal' },
 ];

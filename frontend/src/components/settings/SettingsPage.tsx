@@ -69,7 +69,7 @@ export const SettingsPage = () => {
       />
       <Select
         label="Default group rule"
-        description="A new group starts here. It still asks you to pick a rule, including when this is Same as what ran out."
+        description="A new group starts here. It still asks you to pick a rule, including Same product."
         data={Object.entries(ruleLabels).map(([value, label]) => ({ value, label }))}
         value={rule}
         disabled={loading}

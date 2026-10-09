@@ -48,7 +48,7 @@ export const RulePicker = ({
       opened={opened}
       onClose={onClose}
       position="bottom"
-      title="When it runs out"
+      title="What to buy next"
       size="auto"
       closeButtonProps={{ 'aria-label': 'Close' }}
     >

@@ -90,7 +90,7 @@ describe('GroupDetailPage', () => {
     expect(await screen.findByRole('button', { name: 'Household default, pinned' })).toBeInTheDocument();
     expect(screen.getByText('Fills in once usage is known')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Pick a rule' })).toBeInTheDocument();
-    expect(screen.queryByText('Still using Same as what ran out until you pick a rule.')).not.toBeInTheDocument();
+    expect(screen.queryByText('Still using Same product until you pick a rule.')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Change target' })).not.toBeInTheDocument();
     expect(screen.queryByLabelText('Ounces')).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Household default, pinned' }));
@@ -100,15 +100,16 @@ describe('GroupDetailPage', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
 
     fireEvent.click(screen.getByRole('button', { name: 'Pick a rule' }));
-    const picker = await screen.findByRole('dialog', { name: 'When it runs out' });
-    expect(within(picker).getByRole('radio', { name: 'Same as ran out' })).toBeChecked();
-    expect(within(picker).getByText('Buy the kind that ran out.')).toBeInTheDocument();
+    const picker = await screen.findByRole('dialog', { name: 'What to buy next' });
+    expect(within(picker).getByRole('radio', { name: 'Same product' })).toBeChecked();
+    expect(within(picker).getByText('Rebuy the exact product you used last.')).toBeInTheDocument();
     expect(within(picker).getByText('Always buy one product.')).toBeInTheDocument();
-    expect(within(picker).getByText('Buy the one on sale.')).toBeInTheDocument();
+    expect(within(picker).getByText('Lowest price per ounce.')).toBeInTheDocument();
     expect(within(picker).queryByText(/Next trip:/)).not.toBeInTheDocument();
     expect(within(picker).queryByText(/Now:/)).not.toBeInTheDocument();
     expect(within(picker).queryByRole('combobox', { name: 'Keep on hand' })).not.toBeInTheDocument();
-    expect(within(picker).queryByText('This is still Same as what ran out. Pick a rule so the next trip is yours.')).not.toBeInTheDocument();
+    expect(within(picker).queryByText(/kind/)).not.toBeInTheDocument();
+    expect(within(picker).queryByText(/ran out/)).not.toBeInTheDocument();
 
     fireEvent.click(within(picker).getByRole('radio', { name: 'Favorite' }));
     fireEvent.click(within(picker).getByRole('combobox', { name: 'Product' }));
@@ -378,7 +379,7 @@ describe('GroupDetailPage', () => {
     });
 
     expect(await screen.findByText('18.3 oz on hand')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Change rule, Same as ran out' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Change rule, Same product' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '48 oz, pinned' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Time unknown, fills in once usage is known' })).toBeInTheDocument();
     expect(screen.queryByText(/≈/)).not.toBeInTheDocument();
