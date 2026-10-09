@@ -11,7 +11,7 @@ export const sortScansNewestFirst = (entries: ScanEntry[]): ScanEntry[] =>
 // A session is a shopping trip, not a stored id. Consecutive scans belong
 // together while each step is strictly under 5 minutes; a longer pause starts
 // another session even when the whole trip runs past 5 minutes.
-const BATCH_GAP_MS = 5 * 60 * 1000;
+export const BATCH_GAP_MS = 5 * 60 * 1000;
 
 const scannedAtMillis = (entry: ScanEntry): number => {
   const value = new Date(entry.scannedAt).getTime();
