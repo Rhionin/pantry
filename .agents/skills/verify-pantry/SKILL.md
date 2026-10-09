@@ -21,7 +21,7 @@ that external lookup and seeds products locally instead.
 header menu opens `/diagnostics` for page-load timings, manages the Kroger
 connection, and shows the version and build id under a Build heading. `Settings` sits
 immediately above that Build label and opens `/settings` for the default supply
-length and the wipe dialog.
+length, scan alerts, and the wipe dialog.
 There is also a headless
 HID/stdin scanner path and the raw HTTP API; those are secondary and noted in
 the feature map, but proofs drive the web UI unless a feature has no UI entry

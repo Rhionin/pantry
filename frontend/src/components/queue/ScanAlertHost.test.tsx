@@ -1,8 +1,11 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { MantineProvider } from '@mantine/core';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import type { ProcessingFailure, ScanEntry } from '../../types';
+import { ScanAlertsSetting } from '../settings/ScanAlertsSetting';
 import { ScanAlertHost } from './ScanAlertHost';
+import { SCAN_ALERTS_ASKED_KEY, SCAN_ALERTS_ENABLED_KEY } from './scanAlertPreference';
 
 class FakeNotification {
   static permission: NotificationPermission = 'granted';
@@ -65,6 +68,7 @@ describe('ScanAlertHost', () => {
   afterEach(() => {
     vi.unstubAllGlobals();
     sessionStorage.clear();
+    localStorage.clear();
     FakeNotification.instances = [];
     FakeEventSource.instances = [];
   });
@@ -115,5 +119,103 @@ describe('ScanAlertHost', () => {
     notification?.onclick?.();
     expect(screen.getByTestId('location')).toHaveTextContent('/');
     expect(sessionStorage.getItem('pantry-scan-alert-direction')).toBe('stock_in');
+  });
+
+  it('asks for notification permission on the first interaction and never again', () => {
+    FakeNotification.permission = 'default';
+    const requestPermission = vi.fn(() => Promise.resolve<NotificationPermission>('default'));
+    FakeNotification.requestPermission = requestPermission;
+    const source = renderHost();
+    expect(requestPermission).not.toHaveBeenCalled();
+
+    fireEvent.pointerDown(document.body);
+    expect(requestPermission).toHaveBeenCalledOnce();
+    expect(localStorage.getItem(SCAN_ALERTS_ASKED_KEY)).toBe('1');
+
+    fireEvent.pointerDown(document.body);
+    fireEvent.keyDown(document.body, { key: 'a' });
+    source.dispatch('scan', scan({ id: 'scan-2', barcode: '222' }));
+    expect(requestPermission).toHaveBeenCalledOnce();
+
+    cleanup();
+    FakeEventSource.instances = [];
+    renderHost();
+    fireEvent.keyDown(document.body, { key: 'Enter' });
+    FakeEventSource.instances.at(-1)?.dispatch('scan', scan({ id: 'scan-3', barcode: '333' }));
+    expect(requestPermission).toHaveBeenCalledOnce();
+  });
+
+  it('asks on the first keypress when the page has not been clicked', () => {
+    FakeNotification.permission = 'default';
+    const requestPermission = vi.fn(() => Promise.resolve<NotificationPermission>('default'));
+    FakeNotification.requestPermission = requestPermission;
+    renderHost();
+
+    fireEvent.keyDown(document.body, { key: 'Tab' });
+    expect(requestPermission).toHaveBeenCalledOnce();
+    fireEvent.pointerDown(document.body);
+    expect(requestPermission).toHaveBeenCalledOnce();
+  });
+
+  it('asks on the first scan and does not ask again', () => {
+    FakeNotification.permission = 'default';
+    const requestPermission = vi.fn(() => Promise.resolve<NotificationPermission>('default'));
+    FakeNotification.requestPermission = requestPermission;
+    const source = renderHost();
+
+    source.dispatch('scan', scan({ status: 'pending', productId: 'product-1' }));
+    expect(requestPermission).toHaveBeenCalledOnce();
+    expect(FakeNotification.instances).toHaveLength(0);
+
+    source.dispatch('scan_processing_failed', {
+      id: 'lookup-1',
+      barcode: '999',
+      message: "Couldn't look up that barcode.",
+    } satisfies ProcessingFailure);
+    fireEvent.pointerDown(document.body);
+    expect(requestPermission).toHaveBeenCalledOnce();
+  });
+
+  it('does not ask when scan alerts are switched off', () => {
+    FakeNotification.permission = 'default';
+    const requestPermission = vi.fn(() => Promise.resolve<NotificationPermission>('default'));
+    FakeNotification.requestPermission = requestPermission;
+    localStorage.setItem(SCAN_ALERTS_ENABLED_KEY, 'off');
+    const source = renderHost();
+
+    fireEvent.pointerDown(document.body);
+    fireEvent.keyDown(document.body, { key: 'a' });
+    source.dispatch('scan', scan({ id: 'scan-2' }));
+    expect(requestPermission).not.toHaveBeenCalled();
+    expect(localStorage.getItem(SCAN_ALERTS_ASKED_KEY)).toBeNull();
+  });
+
+  it('switching scan alerts off suppresses notifications', () => {
+    FakeNotification.permission = 'granted';
+    FakeNotification.requestPermission = vi.fn();
+    vi.stubGlobal('Notification', FakeNotification);
+    vi.stubGlobal('EventSource', FakeEventSource);
+    render(
+      <MantineProvider>
+        <MemoryRouter initialEntries={['/inventory']}>
+          <ScanAlertHost />
+          <ScanAlertsSetting />
+        </MemoryRouter>
+      </MantineProvider>,
+    );
+    const source = FakeEventSource.instances[0];
+    source.dispatch('scan', scan({ id: 'flag-1', barcode: '000111' }));
+    expect(FakeNotification.instances).toHaveLength(1);
+
+    const toggle = screen.getByRole('switch', { name: 'Scan alerts' });
+    fireEvent.pointerDown(toggle);
+    fireEvent.click(toggle);
+
+    expect(FakeNotification.requestPermission).not.toHaveBeenCalled();
+    expect(toggle).not.toBeChecked();
+    expect(localStorage.getItem(SCAN_ALERTS_ENABLED_KEY)).toBe('off');
+
+    source.dispatch('scan', scan({ id: 'flag-2', barcode: '000222' }));
+    expect(FakeNotification.instances).toHaveLength(1);
   });
 });

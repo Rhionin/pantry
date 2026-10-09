@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import type { ProcessingFailure, ScanEntry } from '../../types';
 import { openScanAlert, showScanAlert } from './browserScanAlert';
+import { gestureTargetsScanAlertsControl, requestScanAlertPermissionOnce } from './scanAlertPreference';
 import { ScanAttention, type AttentionNotice } from './scanAttention';
 
 const parseEvent = <T,>(message: Event): T | null => {
@@ -26,6 +27,16 @@ export function ScanAlertHost() {
   }, [navigate]);
 
   useEffect(() => {
+    // Chrome only presents the permission prompt from a user gesture, and it
+    // quiets a prompt that is asked again. The first pointer, key, or scan
+    // in this browser is the ask, unless scan alerts are switched off.
+    const onGesture = (event: Event) => {
+      if (gestureTargetsScanAlertsControl(event)) return;
+      requestScanAlertPermissionOnce();
+    };
+    window.addEventListener('pointerdown', onGesture, true);
+    window.addEventListener('keydown', onGesture, true);
+
     const open = (notice: AttentionNotice) => {
       window.focus();
       openScanAlert(notice.direction);
@@ -36,14 +47,18 @@ export function ScanAlertHost() {
     });
     const source = new EventSource('/api/events');
     source.addEventListener('scan', (message) => {
+      requestScanAlertPermissionOnce();
       const entry = parseEvent<ScanEntry>(message);
       if (entry !== null) attention.noteScan(entry);
     });
     source.addEventListener('scan_processing_failed', (message) => {
+      requestScanAlertPermissionOnce();
       const failure = parseEvent<ProcessingFailure>(message);
       if (failure !== null) attention.noteFailure(failure);
     });
     return () => {
+      window.removeEventListener('pointerdown', onGesture, true);
+      window.removeEventListener('keydown', onGesture, true);
       attention.dispose();
       source.close();
     };

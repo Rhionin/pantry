@@ -1,4 +1,5 @@
 import type { ScanDirection } from '../../types';
+import { readScanAlertsEnabled } from './scanAlertPreference';
 import type { AttentionNotice } from './scanAttention';
 
 export const SCAN_ALERT_OPEN = 'pantry-scan-alert-open';
@@ -27,6 +28,9 @@ export function takeScanAlertDirection(): ScanDirection | null {
 }
 
 export function showScanAlert(notice: AttentionNotice, onClick: () => void): void {
+  // Read at send time so turning alerts off also drops a batch notice that
+  // was already waiting out its quiet period.
+  if (!readScanAlertsEnabled()) return;
   if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return;
   try {
     const notification = new Notification(notice.title, {

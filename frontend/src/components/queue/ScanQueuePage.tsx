@@ -8,7 +8,6 @@ import { BarcodeInputField } from '../scanner/BarcodeInputField';
 import { CameraScanner } from '../scanner/CameraScanner';
 import { BatchReviewPanel } from './BatchReviewPanel';
 import { ProcessingScanCard } from './ProcessingScanCard';
-import { ScanAlertPrompt } from './ScanAlertPrompt';
 import { ScanEntryCard } from './ScanEntryCard';
 import { ScanSessionCard } from './ScanSessionCard';
 import { SCAN_ALERT_OPEN, takeScanAlertDirection, type ScanAlertOpenDetail } from './browserScanAlert';
@@ -331,7 +330,6 @@ export const ScanQueuePage = ({ userId = DEFAULT_USER_ID }: ScanQueuePageProps) 
             )}
           </Text>
         )}
-        <ScanAlertPrompt />
         <Tabs
           value={scannerMode}
           onChange={handleViewChange}
