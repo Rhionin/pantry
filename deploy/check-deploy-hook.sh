@@ -32,6 +32,8 @@ have .github/workflows/ci.yml 'X-Pantry-Deploy-Signature' "workflow sends the si
 have .github/workflows/ci.yml 'https://pantry.rhionin.com/api/deploy-hook' "workflow posts to the public hook"
 have .github/workflows/ci.yml 'DEPLOY_HOOK_SECRET is not set; skipping the deploy hook' "workflow skips when the repo secret is unset"
 have .github/workflows/ci.yml "github.ref == 'refs/heads/master'" "workflow notifies only after a master push"
+have .github/workflows/ci.yml "inputs.publish_image != 'skip'" "reusable Release run does not publish the image"
+have .github/workflows/release.yml 'publish_image: skip' "Release does not publish :latest and :master"
 
 have deploy/Caddyfile '@deploy path /api/deploy-hook' "certificate Caddyfile exempts the hook"
 have deploy/Caddyfile.tunnel '@deploy path /api/deploy-hook' "tunnel Caddyfile exempts the hook"
