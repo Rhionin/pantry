@@ -26,7 +26,7 @@ export const RulePicker = ({
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
   const memberOptions = group.members.map((member) => ({ value: member.productId, label: member.name }));
-  const productLabel = rule === 'favorite' ? 'Product' : 'If nothing is on sale';
+  const productLabel = rule === 'favorite' ? 'Product' : 'If no price is known';
 
   const save = async () => {
     setSaving(true);

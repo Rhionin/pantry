@@ -431,7 +431,7 @@ export function ruleSentence(
   }
   if (group.rule === 'best_deal') {
     return pin
-      ? `Lowest price per ounce, or ${pin} if nothing is on sale.`
+      ? `Lowest price per ounce, or ${pin} if no price is known.`
       : 'Lowest price per ounce.';
   }
   if (group.rule === 'same_as_ran_out') return ruleChoices[0].hint;

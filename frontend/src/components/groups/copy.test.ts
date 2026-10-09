@@ -108,7 +108,7 @@ describe('bin sentences', () => {
     expect(ruleSentence({ rule: 'favorite', ruleConfirmed: true, pinnedProductId: 'creamy' }, members, 'detail'))
       .toBe('Always buy Creamy peanut butter.');
     expect(ruleSentence({ rule: 'best_deal', ruleConfirmed: true, pinnedProductId: 'creamy' }, members, 'brief'))
-      .toBe('Lowest price per ounce, or Creamy peanut butter if nothing is on sale.');
+      .toBe('Lowest price per ounce, or Creamy peanut butter if no price is known.');
     expect(ruleSentence({ rule: 'best_deal', ruleConfirmed: true }, [], 'detail'))
       .toBe('Lowest price per ounce.');
   });
