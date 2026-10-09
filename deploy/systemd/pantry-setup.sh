@@ -6,9 +6,11 @@
 # replaces this file with a new inode while an update is in progress.
 # The trigger file is data: this script never evals it, and it never passes
 # ref, a path, or a shell metacharacter to git. A sha is used only after it
-# is 40 hex digits, an ancestor of origin/master fetched from GitHub (the
-# tip counts), and — once a last-known-good commit exists — that commit or
-# a descendant of it. Rolling back to last-known-good is the only backward
+# is 40 hex digits and an ancestor of origin/master fetched from GitHub.
+# With no last-known-good yet, only the origin/master tip is applied. After
+# that, only that commit or a descendant of it is applied. A sha that already
+# failed or was already refused is skipped before another fetch. Rolling
+# back to last-known-good is the only backward
 # step. The request is not a command, and the pantry container is not given
 # a root socket — the host path unit starts the updater that is already root.
 #
@@ -16,7 +18,7 @@
 # pull as the only automatic step. Package installs and Docker upgrades stay
 # out of this path; the one manual `sudo ./setup.sh` remains how those happen.
 
-main() {
+pantry_setup_main() {
   # Production paths are fixed here so a polluted environment (or a trigger
   # line) cannot point git at another remote or another script. Tests opt in
   # with PANTRY_SETUP_TEST=1 before sourcing this file.
@@ -69,42 +71,85 @@ main() {
     return 0
   }
 
-  # trigger_request_unsafe is true when the trigger must not be read.
-  # The directory is writable by the container, so a symlink or a huge file
-  # is a refusal, not a request. Missing means there is nothing to apply.
-  trigger_request_unsafe() {
-    local file="${PANTRY_TRIGGER_FILE}" size
-    [[ -n "$file" ]] || return 1
-    if [[ -L "$file" ]]; then
+  trigger_claim_path() {
+    printf '%s' "${PANTRY_SETUP_STATE_DIR}/trigger-claim/request"
+  }
+
+  # stage_trigger moves the container-writable request into a root-owned
+  # directory on the same filesystem. rename does not open the inode, so a
+  # fifo or a symlink swapped in at the last moment is not followed and
+  # cannot block the updater. Later reads use only the staged path.
+  stage_trigger() {
+    local src="${PANTRY_TRIGGER_FILE}" dest dir
+    dir="${PANTRY_SETUP_STATE_DIR}/trigger-claim"
+    dest=$(trigger_claim_path)
+    [[ -n "$src" && -n "$PANTRY_SETUP_STATE_DIR" ]] || return 1
+    mkdir -p "$dir"
+    chmod 700 "$dir"
+    if [[ -e "$src" || -L "$src" ]]; then
+      rm -rf -- "$dest"
+      if ! mv -f -- "$src" "$dest"; then
+        return 1
+      fi
+    fi
+    [[ -e "$dest" || -L "$dest" ]]
+  }
+
+  # trigger_staged_status prints missing, unsafe, or ok. It does not read
+  # a non-regular file. The fd check is on the staged inode, which the
+  # container cannot replace.
+  trigger_staged_status() {
+    local dest kind size fd
+    if ! stage_trigger; then
+      printf 'missing'
       return 0
     fi
-    if [[ -e "$file" && ! -f "$file" ]]; then
+    dest=$(trigger_claim_path)
+    if [[ -L "$dest" || -p "$dest" || ! -f "$dest" ]]; then
+      printf 'unsafe'
       return 0
     fi
-    if [[ ! -f "$file" ]]; then
-      return 1
-    fi
-    size=$(stat -c '%s' "$file" 2>/dev/null || printf '%s' 999999)
+    size=$(stat -c '%s' "$dest" 2>/dev/null || printf '%s' 999999)
     if [[ ! "$size" =~ ^[0-9]+$ ]] || (( 10#$size > 1024 )); then
+      printf 'unsafe'
+      return 0
+    fi
+    exec {fd}<"$dest" || { printf 'unsafe'; return 0; }
+    kind=$(stat -L -c '%F' "/dev/fd/${fd}" 2>/dev/null || true)
+    size=$(stat -L -c '%s' "/dev/fd/${fd}" 2>/dev/null || printf '%s' 999999)
+    exec {fd}<&-
+    if [[ "$kind" != "regular file" && "$kind" != "regular empty file" ]]; then
+      printf 'unsafe'
+      return 0
+    fi
+    if [[ ! "$size" =~ ^[0-9]+$ ]] || (( 10#$size > 1024 )); then
+      printf 'unsafe'
+      return 0
+    fi
+    printf 'ok'
+  }
+
+  # trigger_request_unsafe is true when the staged request must not be parsed.
+  # Missing means there is nothing to apply.
+  trigger_request_unsafe() {
+    local status
+    status=$(trigger_staged_status)
+    if [[ "$status" == "unsafe" ]]; then
+      rm -rf -- "$(trigger_claim_path)"
       return 0
     fi
     return 1
   }
 
-  # trigger_setup_sha prints a full lowercase commit from the trigger file.
+  # trigger_setup_sha prints a full lowercase commit from the staged trigger.
   # A short sha, a ref, or any other text prints nothing and is not executed.
-  # The descriptor is how the read stays on the inode opened after the
-  # symlink check: a swap to a symlink between the check and the read is dropped.
   trigger_setup_sha() {
-    local file="${PANTRY_TRIGGER_FILE}" line sha fd size
-    [[ -n "$file" && ! -L "$file" && -f "$file" ]] || return 0
-    exec {fd}<"$file" || return 0
-    if [[ -L "$file" ]]; then
-      exec {fd}<&-
-      return 0
-    fi
-    size=$(stat -c '%s' "/dev/fd/${fd}" 2>/dev/null || printf '%s' 999999)
-    if [[ ! "$size" =~ ^[0-9]+$ ]] || (( 10#$size > 1024 )); then
+    local dest line sha fd kind
+    [[ "$(trigger_staged_status)" == "ok" ]] || return 0
+    dest=$(trigger_claim_path)
+    exec {fd}<"$dest" || return 0
+    kind=$(stat -L -c '%F' "/dev/fd/${fd}" 2>/dev/null || true)
+    if [[ "$kind" != "regular file" && "$kind" != "regular empty file" ]]; then
       exec {fd}<&-
       return 0
     fi
@@ -117,23 +162,13 @@ main() {
     return 0
   }
 
-  # trigger_digest_value prints a hash of a safe trigger file. A symlink is
-  # not followed, and an oversized file is not read.
+  # trigger_digest_value prints a hash of a staged regular trigger. A symlink
+  # is not followed, and an oversized file or a fifo is not read.
   trigger_digest_value() {
-    local file="${PANTRY_TRIGGER_FILE}" fd size sum
-    [[ -n "$file" && ! -L "$file" && -f "$file" ]] || return 0
-    exec {fd}<"$file" || return 0
-    if [[ -L "$file" ]]; then
-      exec {fd}<&-
-      return 0
-    fi
-    size=$(stat -c '%s' "/dev/fd/${fd}" 2>/dev/null || printf '%s' 999999)
-    if [[ ! "$size" =~ ^[0-9]+$ ]] || (( 10#$size > 1024 )); then
-      exec {fd}<&-
-      return 0
-    fi
-    sum=$(sha256sum <&"$fd" | awk '{print $1}')
-    exec {fd}<&-
+    local dest sum
+    [[ "$(trigger_staged_status)" == "ok" ]] || return 0
+    dest=$(trigger_claim_path)
+    sum=$(sha256sum -- "$dest" | awk '{print $1}')
     printf '%s' "$sum"
   }
 
@@ -176,7 +211,7 @@ main() {
   write_state_sha() {
     local name="$1" sha="$2"
     case "$name" in
-      last-applied|last-known-good) ;;
+      last-applied|last-known-good|last-failed|last-refused) ;;
       *) return 1 ;;
     esac
     [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || return 1
@@ -314,9 +349,10 @@ main() {
     printf '%s' "$port"
   }
 
-  # setup_health_ok waits briefly for the local health endpoint. last-known-good
-  # is recorded only after this passes, so a commit that does not boot is not
-  # what the next failure restores.
+  # setup_health_ok waits briefly for local /health. That is the pantry
+  # process on this host. It does not check the tunnel, Caddy, or the firewall.
+  # last-known-good is recorded only after this passes, so a commit that does
+  # not boot is not what the next failure restores.
   setup_health_ok() {
     local port deadline wait body
     port=$(setup_listen_port)
@@ -442,6 +478,18 @@ main() {
       echo "pantry setup: ${sha} already applied; not running setup again"
       return 0
     fi
+    # A failed or refused sha stays in the trigger file. Skip it before
+    # fetch so the minute timer does not clone, fetch, or roll back again.
+    applied=$(read_state_sha "${PANTRY_SETUP_STATE_DIR}/last-failed" || true)
+    if [[ -n "$applied" && "$sha" == "$applied" ]]; then
+      echo "pantry setup: ${sha} already failed; not running setup again"
+      return 0
+    fi
+    applied=$(read_state_sha "${PANTRY_SETUP_STATE_DIR}/last-refused" || true)
+    if [[ -n "$applied" && "$sha" == "$applied" ]]; then
+      echo "pantry setup: ${sha} already refused; not running setup again"
+      return 0
+    fi
     if ! ensure_setup_checkout; then
       echo "pantry setup: FAILED to prepare the checkout; not applying ${sha}" >&2
       write_setup_status "" "failed" || true
@@ -455,21 +503,33 @@ main() {
     if ! sha_is_on_origin_master "$PANTRY_SETUP_CHECKOUT" "$sha"; then
       echo "pantry setup: REFUSING ${sha}; it is not on origin/master" >&2
       write_setup_status "$sha" "refused" || true
+      write_state_sha last-refused "$sha" || true
       return 0
     fi
     lkg=$(read_known_good || true)
-    if [[ -n "$lkg" ]] && git_in "$PANTRY_SETUP_CHECKOUT" merge-base --is-ancestor "$sha" "$lkg"; then
+    if [[ -z "$lkg" ]]; then
+      # No baseline yet: an ancestor of master would let the container roll
+      # the host back to the first commit. Only the tip is a forward step.
+      applied=$(git_in "$PANTRY_SETUP_CHECKOUT" rev-parse origin/master 2>/dev/null || true)
+      if [[ "$sha" != "$applied" ]]; then
+        echo "pantry setup: REFUSING ${sha}; it is not the origin/master tip" >&2
+        write_setup_status "$sha" "refused" || true
+        write_state_sha last-refused "$sha" || true
+        return 0
+      fi
+    elif git_in "$PANTRY_SETUP_CHECKOUT" merge-base --is-ancestor "$sha" "$lkg"; then
       if [[ "$sha" == "$lkg" ]]; then
         echo "pantry setup: ${sha} is last-known-good; not running setup again"
         return 0
       fi
       echo "pantry setup: REFUSING ${sha}; it is an ancestor of last-known-good" >&2
       write_setup_status "$sha" "refused" || true
+      write_state_sha last-refused "$sha" || true
       return 0
-    fi
-    if [[ -n "$lkg" ]] && ! git_in "$PANTRY_SETUP_CHECKOUT" merge-base --is-ancestor "$lkg" "$sha"; then
+    elif ! git_in "$PANTRY_SETUP_CHECKOUT" merge-base --is-ancestor "$lkg" "$sha"; then
       echo "pantry setup: REFUSING ${sha}; it is not a descendant of last-known-good" >&2
       write_setup_status "$sha" "refused" || true
+      write_state_sha last-refused "$sha" || true
       return 0
     fi
     echo "pantry setup: applying ${sha}"
@@ -478,18 +538,21 @@ main() {
       echo "pantry setup: FAILED to check out ${sha}" >&2
       rollback_setup
       clear_in_progress
+      write_state_sha last-failed "$sha" || true
       return 0
     fi
     if ! run_setup_apply; then
       echo "pantry setup: FAILED applying ${sha}" >&2
       rollback_setup
       clear_in_progress
+      write_state_sha last-failed "$sha" || true
       return 0
     fi
     if ! setup_health_ok; then
       echo "pantry setup: FAILED health check after ${sha}" >&2
       rollback_setup
       clear_in_progress
+      write_state_sha last-failed "$sha" || true
       return 0
     fi
     write_state_sha last-applied "$sha" || true
@@ -501,7 +564,8 @@ main() {
   }
 }
 
-main "$@"
+# Not named main: pantry-update.sh defines main and sources this file.
+pantry_setup_main "$@"
 # Sourced by pantry-update.sh. exit only when this file is the process.
 if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
   exit

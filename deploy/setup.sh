@@ -629,26 +629,68 @@ ensure_deploy_hook_secret() {
   log_success "Generated DEPLOY_HOOK_SECRET (print it with: sudo ./setup.sh deploy-secret)"
 }
 
-# seed_known_good_setup records the commit a manual run just applied.
-# The automatic path skips this. A health failure on that path must not
-# become the commit a later rollback restores; the updater records
-# last-known-good only after its own health check.
-seed_known_good_setup() {
-  local sha tree
-  if [[ "${PANTRY_SETUP_SKIP_PACKAGES:-}" == 1 ]]; then
-    return 0
-  fi
-  tree="$SCRIPT_DIR"
-  if ! sha=$(git -C "$tree" rev-parse HEAD 2>/dev/null) || [[ ! "$sha" =~ ^[0-9a-f]{40}$ ]]; then
-    tree="${PANTRY_DIR}/src"
-    if ! sha=$(git -C "$tree" rev-parse HEAD 2>/dev/null) || [[ ! "$sha" =~ ^[0-9a-f]{40}$ ]]; then
+# seed_git_root prints the working tree that contains $1, if it has a .git.
+seed_git_root() {
+  local dir
+  dir=$(cd "$1" 2>/dev/null && pwd) || return 1
+  while true; do
+    if [[ -e "$dir/.git" ]]; then
+      printf '%s' "$dir"
       return 0
     fi
+    [[ "$dir" == "/" ]] && return 1
+    dir=$(dirname "$dir")
+  done
+}
+
+# seed_record_root writes HEAD only when this tree is clean and that commit
+# is already on origin/master. safe.directory is required because setup.sh
+# runs as root and git otherwise refuses a checkout it does not own.
+# A dirty tree or an unpushed commit is skipped: recording it would make
+# every later master tip look like a downgrade and be refused forever.
+seed_record_root() {
+  local root="$1" sha status
+  if ! status=$(git -c "safe.directory=${root}" -C "$root" status --porcelain 2>/dev/null); then
+    log_warn "Not recording last-known-good; git could not read ${root}"
+    return 0
+  fi
+  if [[ -n "$status" ]]; then
+    log_warn "Not recording last-known-good; the setup checkout has local changes"
+    return 0
+  fi
+  if ! sha=$(git -c "safe.directory=${root}" -C "$root" rev-parse HEAD 2>/dev/null) || [[ ! "$sha" =~ ^[0-9a-f]{40}$ ]]; then
+    log_warn "Not recording last-known-good; git could not read ${root}"
+    return 0
+  fi
+  if ! git -c "safe.directory=${root}" -C "$root" rev-parse --verify --quiet origin/master >/dev/null 2>&1 \
+    || ! git -c "safe.directory=${root}" -C "$root" merge-base --is-ancestor "$sha" origin/master; then
+    log_warn "Not recording last-known-good; HEAD is not on origin/master"
+    return 0
   fi
   mkdir -p "${PANTRY_DIR}/setup-state"
   printf '%s\n' "$sha" > "${PANTRY_DIR}/setup-state/last-known-good"
   printf '%s\n' "$sha" > "${PANTRY_DIR}/setup-state/last-applied"
   log_info "Recorded last-known-good setup ${sha}"
+}
+
+# seed_known_good_setup records the commit a manual run just applied.
+# The automatic path skips this. A health failure on that path must not
+# become the commit a later rollback restores; the updater records
+# last-known-good only after its own health check.
+seed_known_good_setup() {
+  local root
+  if [[ "${PANTRY_SETUP_SKIP_PACKAGES:-}" == 1 ]]; then
+    return 0
+  fi
+  if root=$(seed_git_root "$SCRIPT_DIR"); then
+    seed_record_root "$root"
+    return 0
+  fi
+  if root=$(seed_git_root "${PANTRY_DIR}/src"); then
+    seed_record_root "$root"
+    return 0
+  fi
+  log_warn "Not recording last-known-good; no git checkout was found"
 }
 
 # ============================================================================
