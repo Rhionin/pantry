@@ -1,0 +1,98 @@
+{
+  "details": [
+    {
+      "label": "current-detail",
+      "count": 78,
+      "text": "Product groups Gatorade powder Rename 48 oz 18.3 oz 18.3 ounces of Gatorade Lemon-Lime are in the bin. Keep 48 ounces on hand. Change target When this runs out, buy the same kind that ran out. Change rule Remove or move Gatorade Lemon-Lime 18.3 oz canister, 1 on hand Barcode: 052000338881 Remove or move Gatorade Fruit Punch 18.3 oz canister, none on hand Remove or move Gatorade Glacier Freeze 50.9 oz canister, none on hand Add a product"
+    },
+    {
+      "label": "fraction-detail",
+      "count": 31,
+      "text": "Product groups Gatorade powder 18.3 / 48 oz Same kind Gatorade Lemon-Lime 1 · 18.3 oz canister 052000338881 Gatorade Fruit Punch 0 · 18.3 oz canister Gatorade Glacier Freeze 0 · 50.9 oz canister Add"
+    },
+    {
+      "label": "chips-detail",
+      "count": 37,
+      "text": "Product groups Gatorade powder 48 oz 18.3 oz Same as what ran out Gatorade Lemon-Lime 1 · 18.3 oz canister 052000338881 Gatorade Fruit Punch 0 · 18.3 oz canister Gatorade Glacier Freeze 0 · 50.9 oz canister Add a product"
+    },
+    {
+      "label": "toolbar-detail",
+      "count": 35,
+      "text": "Product groups Gatorade powder 18.3 oz Rename 48 oz Same kind Gatorade Lemon-Lime 1 · 18.3 oz canister 052000338881 Gatorade Fruit Punch 0 · 18.3 oz canister Gatorade Glacier Freeze 0 · 50.9 oz canister Add a product"
+    }
+  ],
+  "lists": [
+    {
+      "label": "current-list",
+      "count": 53,
+      "rows": [
+        {
+          "count": 17,
+          "text": "Gatorade powder 18.3 ounces in the bin. Keep 48 ounces. Buy the same kind that ran out."
+        },
+        {
+          "count": 14,
+          "text": "Peanut butter No jars on hand. Keep 3 months. Always buy Creamy peanut butter."
+        },
+        {
+          "count": 22,
+          "text": "Oat milk No cartons on hand. Household default, 3 months. Still using Same as what ran out until you pick a rule."
+        }
+      ]
+    },
+    {
+      "label": "fraction-list",
+      "count": 23,
+      "rows": [
+        {
+          "count": 6,
+          "text": "Gatorade powder 18.3/48 oz Same kind"
+        },
+        {
+          "count": 7,
+          "text": "Peanut butter 0 jars 3 months Favorite"
+        },
+        {
+          "count": 10,
+          "text": "Oat milk 0 cartons Default, 3 months Pick a rule"
+        }
+      ]
+    },
+    {
+      "label": "chips-list",
+      "count": 31,
+      "rows": [
+        {
+          "count": 11,
+          "text": "Gatorade powder 18.3 oz 48 oz Same as what ran out"
+        },
+        {
+          "count": 9,
+          "text": "Peanut butter 0 jars 3 months Always my favorite"
+        },
+        {
+          "count": 11,
+          "text": "Oat milk 0 cartons Household default 3 months Pick a rule"
+        }
+      ]
+    },
+    {
+      "label": "toolbar-list",
+      "count": 23,
+      "rows": [
+        {
+          "count": 6,
+          "text": "Gatorade powder 18.3/48 oz Same kind"
+        },
+        {
+          "count": 7,
+          "text": "Peanut butter 0 jars 3 months Favorite"
+        },
+        {
+          "count": 10,
+          "text": "Oat milk 0 cartons Default, 3 months Pick a rule"
+        }
+      ]
+    }
+  ]
+}
