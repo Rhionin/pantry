@@ -26,7 +26,11 @@ export function BinMark({
             <div
               key={segment.productId}
               className="bin-segment"
-              style={{ flexGrow: segment.fraction, background: binColor(members, segment.productId) }}
+              style={{
+                flexGrow: percent > 0 ? segment.fraction / (percent / 100) : 1,
+                flexBasis: 0,
+                background: binColor(members, segment.productId),
+              }}
             />
           ))}
         </div>

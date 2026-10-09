@@ -65,11 +65,11 @@
 
 .bin-name {
   margin: 0;
-  max-width: 12em;
-  font-size: clamp(1.7rem, 4.6vw, 2.15rem);
+  font-size: clamp(1.55rem, 4.2vw, 1.85rem);
   line-height: 1.12;
   letter-spacing: -0.02em;
   font-weight: 650;
+  white-space: nowrap;
   color: light-dark(var(--mantine-color-dark-9), var(--mantine-color-gray-0));
 }
 
@@ -312,7 +312,7 @@
 
 @media (min-width: 48em) {
   .bin-hero-row {
-    grid-template-columns: minmax(0, 17.5rem) minmax(0, 1fr);
+    grid-template-columns: minmax(0, 22rem) minmax(0, 1fr);
     gap: 1.5rem 2rem;
     align-items: center;
   }
