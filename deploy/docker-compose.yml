@@ -74,7 +74,7 @@ services:
   # `sudo ./setup.sh` does this when PUBLIC_HOST is set and auth.caddy exists.
   caddy:
     profiles: ["public"]
-    image: caddy:2.11.4-alpine
+    image: caddy:2.11.7-alpine
     container_name: pantry-caddy
     restart: unless-stopped
     depends_on:
