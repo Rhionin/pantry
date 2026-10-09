@@ -95,7 +95,7 @@ describe('GroupDetailPage', () => {
     expect(await screen.findByRole('dialog', { name: 'Gatorade powder' })).toBeInTheDocument();
     expect(await screen.findByText('Next trip: Buy the powder that ran out.')).toBeInTheDocument();
     expect(screen.getByText('Now: Household default')).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('textbox', { name: 'Keep on hand' }));
+    fireEvent.click(screen.getByRole('combobox', { name: 'Keep on hand' }));
     expect(await screen.findByRole('option', { name: 'Household default' })).toBeInTheDocument();
     fireEvent.click(screen.getByRole('option', { name: 'Household default' }));
 
