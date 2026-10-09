@@ -85,9 +85,17 @@ describe('GroupDetailPage', () => {
       throw new Error(`Unexpected ${method} ${url}`);
     });
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Pick a rule' }));
+    expect(await screen.findByText('6 on hand · Household default')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Use the household default' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Use the account window' })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Pick a rule' }));
     expect(await screen.findByRole('dialog', { name: 'Gatorade powder' })).toBeInTheDocument();
     expect(await screen.findByText('Next trip: Buy the powder that ran out.')).toBeInTheDocument();
+    expect(screen.getByText('Now: Household default')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('textbox', { name: 'Keep on hand' }));
+    expect(await screen.findByRole('option', { name: 'Household default' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('option', { name: 'Household default' }));
 
     fireEvent.click(screen.getByRole('textbox', { name: 'Rule' }));
     fireEvent.click(await screen.findByRole('option', { name: 'Always my favorite' }));

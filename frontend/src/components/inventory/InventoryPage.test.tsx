@@ -398,10 +398,11 @@ describe('InventoryPage', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Show products' }));
     expect(await screen.findByText('Great Value Cut Green Beans · 3 on hand')).toBeInTheDocument();
     expect(screen.getByText('Barcode: 111')).toBeInTheDocument();
-    expect(screen.getByText('5 on hand · Account window · 2 products')).toBeInTheDocument();
+    expect(screen.getByText('5 on hand · Household default · 2 products')).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: 'Edit rule' }));
     expect(await screen.findByText('Next trip: Buy the can that ran out.')).toBeInTheDocument();
+    expect(screen.getByText('Now: Household default')).toBeInTheDocument();
   });
 
   it('groups two selected products', async () => {
