@@ -85,16 +85,152 @@
   color: light-dark(var(--mantine-color-dark-9), var(--mantine-color-gray-1));
 }
 
-.bin-level {
+.bin-level,
+.bin-caption {
   position: absolute;
   z-index: 1;
-  left: 1rem;
-  bottom: 0.75rem;
+  left: var(--mantine-spacing-md);
+  right: var(--mantine-spacing-md);
+  bottom: var(--mantine-spacing-sm);
   margin: 0;
-  font-weight: 700;
+  font-weight: 650;
+  font-size: var(--mantine-font-size-sm);
+  line-height: 1.2;
+  white-space: nowrap;
   color: var(--mantine-color-dark-9);
   text-shadow: 0 1px 0 rgba(255, 255, 255, 0.7);
   pointer-events: none;
+}
+
+.seesaw {
+  min-width: 0;
+}
+
+.seesaw-caption {
+  margin: 0 0 var(--mantine-spacing-xs);
+  font-size: var(--mantine-font-size-xs);
+  font-weight: 650;
+  letter-spacing: 0.06em;
+  color: light-dark(var(--mantine-color-dark-4), var(--mantine-color-gray-5));
+}
+
+.seesaw-row {
+  display: grid;
+  grid-template-columns: auto minmax(7.5rem, 1fr) auto;
+  align-items: center;
+  gap: var(--mantine-spacing-sm);
+}
+
+.seesaw-end {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+
+.seesaw-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--mantine-spacing-xs);
+  box-sizing: border-box;
+  min-height: 2.75rem;
+  margin: 0;
+  padding: var(--mantine-spacing-xs) var(--mantine-spacing-sm);
+  border-radius: var(--mantine-radius-xl);
+  font: inherit;
+  font-weight: 650;
+  line-height: 1.2;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.seesaw-pill.is-pinned {
+  border: 1px solid transparent;
+  background: light-dark(var(--mantine-color-dark-7), var(--mantine-color-gray-3));
+  color: light-dark(var(--mantine-color-white), var(--mantine-color-dark-9));
+}
+
+.seesaw-pill.is-inferred {
+  border: 1px dashed light-dark(var(--mantine-color-dark-4), var(--mantine-color-gray-5));
+  background: transparent;
+  color: light-dark(var(--mantine-color-dark-6), var(--mantine-color-gray-4));
+}
+
+.seesaw-pin {
+  flex: none;
+  display: block;
+}
+
+.seesaw-default {
+  font-size: var(--mantine-font-size-xs);
+  font-weight: 500;
+  letter-spacing: 0;
+  opacity: 0.72;
+}
+
+.seesaw-beam {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  height: 2.75rem;
+}
+
+.seesaw-beam-line {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: 1px;
+  background: light-dark(var(--mantine-color-gray-5), var(--mantine-color-dark-3));
+}
+
+.seesaw-rate {
+  position: relative;
+  z-index: 1;
+  padding: 0 var(--mantine-spacing-xs);
+  background: var(--mantine-color-body);
+  font-size: var(--mantine-font-size-xs);
+  line-height: 1.2;
+  white-space: nowrap;
+  color: light-dark(var(--mantine-color-dark-5), var(--mantine-color-gray-4));
+}
+
+.seesaw-editor {
+  width: 6.5rem;
+}
+
+.seesaw-editor .mantine-NumberInput-input {
+  min-height: 2.75rem;
+  font-weight: 650;
+}
+
+.seesaw-unknown,
+.seesaw-hint,
+.seesaw-error {
+  margin: var(--mantine-spacing-xs) 0 0;
+}
+
+.seesaw-unknown,
+.seesaw-hint {
+  font-size: var(--mantine-font-size-xs);
+  line-height: 1.3;
+  white-space: nowrap;
+  color: light-dark(var(--mantine-color-dark-4), var(--mantine-color-gray-5));
+}
+
+.seesaw-unknown.is-end {
+  text-align: right;
+}
+
+.seesaw-actions {
+  margin-top: var(--mantine-spacing-sm);
+}
+
+.seesaw-pill:focus-visible,
+.seesaw-editor .mantine-NumberInput-input:focus-visible {
+  outline: 2px solid var(--mantine-color-blue-6);
+  outline-offset: 2px;
 }
 
 .bin-hero-row {
@@ -172,11 +308,40 @@
   order: 3;
 }
 
+.seesaw-slot {
+  min-width: 0;
+}
+
+@media (max-width: 47.99em) {
+  .seesaw-slot {
+    order: 2;
+  }
+
+  .bin-hero-row .bin-copy {
+    order: 3;
+  }
+}
+
 @media (min-width: 48em) {
   .bin-hero-row {
     grid-template-columns: minmax(0, 17.5rem) minmax(0, 1fr);
     gap: 1.5rem 2rem;
     align-items: center;
+  }
+
+  .bin-hero-row > .bin-hero {
+    grid-column: 1;
+    grid-row: 1;
+  }
+
+  .bin-hero-row > .bin-copy {
+    grid-column: 2;
+    grid-row: 1;
+  }
+
+  .seesaw-slot {
+    grid-column: 1 / -1;
+    grid-row: 2;
   }
 
   .bin-member {

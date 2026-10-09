@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import {
-  Alert, Anchor, Button, Group, Loader, Modal, NativeSelect, NumberInput, Stack, Text, TextInput,
+  Alert, Anchor, Button, Group, Loader, Modal, NativeSelect, Stack, Text, TextInput,
 } from '@mantine/core';
 import {
   addGroupMembers, getGroup, getInventoryList, getProduct, getSupplySettings, listGroups, listProducts, removeGroupMember, renameGroup, setGroupTarget,
@@ -12,8 +12,10 @@ import { AddToGroup } from './AddToGroup';
 import { BinMark } from './BinMark';
 import { ungroupedProducts, type AddCandidate } from './candidates';
 import {
-  binColor, binView, detailStockSentence, memberLine, memberOrder, memberPackage, ruleSentence, type MemberPackage,
+  binColor, binView, memberLine, memberOrder, memberPackage, ruleSentence, type MemberPackage,
 } from './copy';
+import { Seesaw } from './Seesaw';
+import { seesawView, type SeesawDraft } from './seesaw';
 
 const closeButton = { 'aria-label': 'Close' };
 
@@ -29,9 +31,7 @@ export const GroupDetailPage = () => {
   const [moveTo, setMoveTo] = useState('');
   const [moving, setMoving] = useState('');
   const [actingOn, setActingOn] = useState('');
-  const [months, setMonths] = useState<number | string>('');
-  const [ounces, setOunces] = useState<number | string>('');
-  const [targetOpen, setTargetOpen] = useState(false);
+  const [draft, setDraft] = useState<SeesawDraft | null>(null);
   const [adding, setAdding] = useState(false);
   const [candidates, setCandidates] = useState<AddCandidate[]>([]);
   const [ruleOpen, setRuleOpen] = useState(false);
@@ -118,21 +118,7 @@ export const GroupDetailPage = () => {
 
   const saveTarget = async (body: GroupTarget) => {
     if (!group) return;
-    setError('');
-    try {
-      setGroup(await setGroupTarget(group.id, body));
-      setTargetOpen(false);
-    } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : 'Unable to save the target.');
-    }
-  };
-
-  const openTarget = () => {
-    if (!group) return;
-    setOunces(group.quantity ?? '');
-    setMonths(group.windowMonths ?? '');
-    setError('');
-    setTargetOpen(true);
+    setGroup(await setGroupTarget(group.id, body));
   };
 
   if (loading) return <Loader aria-label="Loading group" />;
@@ -140,14 +126,22 @@ export const GroupDetailPage = () => {
   const members: MemberPackage[] = memberOrder((group?.members ?? []).map((member) => (
     memberPackage(member, details[member.productId])
   )));
-  const view = group ? binView(group, members) : null;
+  const shown = group ? seesawView(group, members, householdMonths, draft) : null;
+  const view = group && shown
+    ? binView(
+      shown.fillQuantity !== undefined
+        ? { quantity: shown.fillQuantity, dimension: shown.dimension }
+        : { windowMonths: shown.time.pinned ? group.windowMonths : undefined },
+      members,
+    )
+    : null;
   const acting = members.find((member) => member.productId === actingOn);
 
   return (
     <Stack gap="lg" className="bin-page">
       <Anchor component={Link} to="/groups" size="sm">Product groups</Anchor>
-      {error !== '' && !renaming && !targetOpen && actingOn === '' && <Alert color="red" py="xs">{error}</Alert>}
-      {group && view && (
+      {error !== '' && !renaming && actingOn === '' && <Alert color="red" py="xs">{error}</Alert>}
+      {group && view && shown && (
         <>
           <div className="bin-hero-row">
             <BinMark
@@ -155,19 +149,23 @@ export const GroupDetailPage = () => {
               members={members}
               size="hero"
               name={group.name}
+              caption={shown.caption}
               onRename={() => {
                 setName(group.name);
                 setError('');
                 setRenaming(true);
               }}
             />
+            <div className="seesaw-slot">
+              <Seesaw
+                view={shown}
+                group={group}
+                draft={draft}
+                onDraft={setDraft}
+                onSave={saveTarget}
+              />
+            </div>
             <div className="bin-copy">
-              <div className="bin-block">
-                <Text className="bin-stock">{detailStockSentence(group, members, householdMonths)}</Text>
-                <Anchor component="button" type="button" className="bin-action" onClick={openTarget}>
-                  Change target
-                </Anchor>
-              </div>
               <div className="bin-block">
                 <Text className="bin-rule">{ruleSentence(group, members, 'detail')}</Text>
                 <Anchor component="button" type="button" className="bin-action" onClick={() => setRuleOpen(true)}>
@@ -217,55 +215,6 @@ export const GroupDetailPage = () => {
               <TextInput label="Name" value={name} onChange={(event) => setName(event.currentTarget.value)} />
               {error !== '' && <Text size="sm" c="red">{error}</Text>}
               <Button onClick={() => void rename()} disabled={name.trim() === ''}>Rename</Button>
-            </Stack>
-          </Modal>
-          <Modal
-            opened={targetOpen}
-            onClose={() => setTargetOpen(false)}
-            title="Change target"
-            closeButtonProps={closeButton}
-          >
-            <Stack gap="sm">
-              <Text size="sm">Choose ounces, a number of months, or the household default.</Text>
-              <Group align="end" gap="xs">
-                <NumberInput
-                  label={group.dimension === 'volume' ? 'Fluid ounces' : 'Ounces'}
-                  value={ounces}
-                  onChange={setOunces}
-                  w={140}
-                />
-                <Button size="xs" onClick={() => {
-                  const value = typeof ounces === 'number' ? ounces : Number(ounces);
-                  if (!Number.isFinite(value) || value <= 0) {
-                    setError('Enter an amount greater than zero.');
-                    return;
-                  }
-                  void saveTarget({ quantity: value, dimension: group.dimension === 'volume' ? 'volume' : 'mass' });
-                }}>Save ounces</Button>
-              </Group>
-              <Group align="end" gap="xs">
-                <NumberInput
-                  label="Months"
-                  min={1}
-                  max={12}
-                  allowDecimal={false}
-                  value={months}
-                  onChange={setMonths}
-                  w={140}
-                />
-                <Button size="xs" variant="light" onClick={() => {
-                  const value = typeof months === 'number' ? months : Number(months);
-                  if (!Number.isInteger(value) || value < 1 || value > 12) {
-                    setError('Enter a whole number of months from 1 to 12.');
-                    return;
-                  }
-                  void saveTarget({ windowMonths: value });
-                }}>Save months</Button>
-              </Group>
-              <Button size="xs" variant="default" onClick={() => void saveTarget({ clear: true })}>
-                Use the household default
-              </Button>
-              {error !== '' && <Text size="sm" c="red">{error}</Text>}
             </Stack>
           </Modal>
           <Modal

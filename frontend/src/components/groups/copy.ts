@@ -235,6 +235,12 @@ interface Measured {
 
 // Null when any stocked package is missing a size, or the units do not match
 // the target. A partial fill would draw ounces the shelf does not have.
+export function onHandOunces(members: MemberPackage[], dimension?: NetDimension): number | null {
+  const measured = measuredOunces(members, dimension === 'volume' ? 'volume' : 'mass');
+  if (measured === null) return null;
+  return measured.total;
+}
+
 function measuredOunces(members: MemberPackage[], dimension: NetDimension): Measured | null {
   const unit = ounceUnit(dimension);
   const parts: { productId: string; ounces: number }[] = [];

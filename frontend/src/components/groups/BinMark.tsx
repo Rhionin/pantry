@@ -8,12 +8,14 @@ export function BinMark({
   size,
   name,
   onRename,
+  caption,
 }: {
   view: BinView;
   members: { productId: string }[];
   size: 'hero' | 'mark';
   name?: string;
   onRename?: () => void;
+  caption?: string;
 }) {
   const percent = view.segments.reduce((sum, segment) => sum + segment.fraction, 0) * 100;
   const well = (
@@ -48,9 +50,11 @@ export function BinMark({
             </Anchor>
           )}
         </div>
-        <p className="bin-corner">{view.corner}</p>
+        {caption === undefined && <p className="bin-corner">{view.corner}</p>}
       </div>
-      {view.level !== '' && <p className="bin-level">{view.level}</p>}
+      {caption !== undefined
+        ? (caption !== '' && <p className="bin-caption">{caption}</p>)
+        : (view.level !== '' && <p className="bin-level">{view.level}</p>)}
     </div>
   );
 }

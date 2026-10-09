@@ -87,13 +87,16 @@ describe('GroupDetailPage', () => {
       throw new Error(`Unexpected ${method} ${url}`);
     });
 
-    expect(await screen.findByText('6 on hand. Household default.')).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: 'Household default, pinned' })).toBeInTheDocument();
+    expect(screen.getByText('Fills in once usage is known')).toBeInTheDocument();
     expect(screen.getByText('Still using Same as what ran out until you pick a rule.')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Change target' })).not.toBeInTheDocument();
     expect(screen.queryByLabelText('Ounces')).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'Change target' }));
-    expect(await screen.findByRole('button', { name: 'Use the household default' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Household default, pinned' }));
+    expect(screen.getByLabelText('Months')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Use the household default' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Use the account window' })).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
 
     fireEvent.click(screen.getByRole('button', { name: 'Pick a rule' }));
     expect(await screen.findByRole('dialog', { name: 'Gatorade powder' })).toBeInTheDocument();
@@ -373,22 +376,74 @@ describe('GroupDetailPage', () => {
       throw new Error(`Unexpected ${method} ${url}`);
     });
 
-    expect(await screen.findByText('18.3 ounces of Gatorade Lemon-Lime are in the bin. Keep 48 ounces on hand.')).toBeInTheDocument();
+    expect(await screen.findByText('18.3 oz on hand')).toBeInTheDocument();
     expect(screen.getByText('When this runs out, buy the same kind that ran out.')).toBeInTheDocument();
-    expect(screen.getByText('18.3 oz')).toBeInTheDocument();
-    expect(screen.getByText('48 oz')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '48 oz, pinned' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Time unknown, fills in once usage is known' })).toBeInTheDocument();
+    expect(screen.queryByText(/≈/)).not.toBeInTheDocument();
     expect(document.querySelector('.bin-fill')).not.toBeNull();
     expect(screen.getByText('18.3 oz canister, 1 on hand')).toBeInTheDocument();
     expect(screen.getByText('Barcode: 052000338881')).toBeInTheDocument();
     expect(screen.getByText('50.9 oz canister, none on hand')).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Change target' }));
-    const dialog = await screen.findByRole('dialog', { name: 'Change target' });
-    fireEvent.change(within(dialog).getByLabelText('Months'), { target: { value: '3' } });
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Save months' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Time unknown, fills in once usage is known' }));
+    expect(screen.getByRole('button', { name: 'Use the household default' })).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText('Months'), { target: { value: '3' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
 
-    expect(await screen.findByText('1 canister on hand. Keep 3 months.')).toBeInTheDocument();
-    expect(screen.getByText('3 months')).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: '3 mo, pinned' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Amount unknown, fills in once usage is known' })).toBeInTheDocument();
     expect(document.querySelector('.bin-fill')).toBeNull();
+  });
+
+  it('recomputes the other end from the consumption rate', async () => {
+    let current: ProductGroup = {
+      ...baseGroup(),
+      quantity: 48,
+      dimension: 'mass',
+      usage: { perMonth: 16, unit: 'oz' },
+      members: [member('lemon', 'Gatorade Lemon-Lime', 1)],
+    };
+    const saved: unknown[] = [];
+    renderDetail((url, init) => {
+      const method = init?.method ?? 'GET';
+      if (url === '/api/groups/g1' && method === 'GET') return json(current);
+      if (url === '/api/groups' && method === 'GET') return json([current]);
+      if (url === '/api/products' && method === 'GET') return json([]);
+      if (url === '/api/inventory') return json([]);
+      if (url === '/api/settings/supply') return json({ months: 3, opening: false, wipePhrase: 'WIPE INVENTORY' });
+      if (url === '/api/products/lemon') {
+        return json({ barcodes: [], unitOfMeasure: 'canister', netAmount: 18.3, netUnit: 'oz' });
+      }
+      if (url === '/api/groups/g1/target' && method === 'PUT') {
+        const body = JSON.parse(String(init?.body)) as { windowMonths?: number; quantity?: number; dimension?: string };
+        saved.push(body);
+        current = {
+          ...current,
+          quantity: body.quantity,
+          dimension: body.dimension as ProductGroup['dimension'],
+          windowMonths: body.windowMonths,
+          usage: current.usage,
+        };
+        return json(current);
+      }
+      throw new Error(`Unexpected ${method} ${url}`);
+    });
+
+    expect(await screen.findByText('18.3 oz on hand · ≈ 5 wks')).toBeInTheDocument();
+    expect(screen.getByText('at 16 oz / mo')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '48 oz, pinned' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'About 3 mo' })).toBeInTheDocument();
+    expect(screen.getByText('Tap either end to set it; the other follows')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'About 3 mo' }));
+    fireEvent.change(screen.getByLabelText('Months'), { target: { value: '6' } });
+    expect(screen.getByRole('button', { name: 'About 96 oz' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+    await waitFor(() => expect(saved).toEqual([{ windowMonths: 6 }]));
+    expect(screen.getByRole('button', { name: '6 mo, pinned' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'About 96 oz' })).toBeInTheDocument();
+    expect(document.querySelector('.bin-fill')).not.toBeNull();
   });
 });
