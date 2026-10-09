@@ -7,7 +7,7 @@ ARG BUILD_TIME=
 ARG VERSION=dev
 
 # Frontend build stage
-FROM --platform=$BUILDPLATFORM node:24-alpine AS frontend
+FROM --platform=$BUILDPLATFORM node:25-alpine AS frontend
 WORKDIR /src/frontend
 COPY frontend/package.json frontend/package-lock.json ./
 RUN npm ci
