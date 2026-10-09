@@ -152,3 +152,287 @@ export const matchesSearch = (group: ProductGroup, query: string) => {
   if (group.name.toLowerCase().includes(q)) return true;
   return group.members.some((member) => member.name.toLowerCase().includes(q));
 };
+
+// A member plus the package facts the bin needs. Sizes come from the catalog;
+// the group payload itself only carries a name and a count.
+export interface MemberPackage {
+  productId: string;
+  name: string;
+  onHand: number;
+  unitOfMeasure?: string;
+  netAmount?: number;
+  netUnit?: string;
+  packCount?: number;
+  barcodes?: string[];
+}
+
+export function memberPackage(
+  member: GroupMember,
+  product?: { unitOfMeasure?: string; netAmount?: number; netUnit?: string; packCount?: number; barcodes?: string[] },
+): MemberPackage {
+  return {
+    productId: member.productId,
+    name: member.name,
+    onHand: member.onHand,
+    unitOfMeasure: product?.unitOfMeasure,
+    netAmount: product?.netAmount,
+    netUnit: product?.netUnit,
+    packCount: product?.packCount,
+    barcodes: product?.barcodes,
+  };
+}
+
+// Stocked products first, so the color in the bin is the first swatch in the list.
+export function memberOrder<T extends { name: string; onHand: number }>(members: T[]): T[] {
+  return [...members].sort((a, b) => {
+    const stocked = Number(b.onHand > 0) - Number(a.onHand > 0);
+    if (stocked !== 0) return stocked;
+    return a.name.localeCompare(b.name);
+  });
+}
+
+export function formatAmount(value: number): string {
+  if (!Number.isFinite(value)) return '0';
+  const rounded = Math.round(value * 10) / 10;
+  if (Object.is(rounded, -0)) return '0';
+  return Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(1);
+}
+
+const pluralize = (unit: string, count: number) => {
+  if (count === 1) return unit;
+  if (/[^aeiou]y$/i.test(unit)) return `${unit.slice(0, -1)}ies`;
+  if (/(s|x|z|ch|sh)$/i.test(unit)) return `${unit}es`;
+  return `${unit}s`;
+};
+
+export function onHandPhrase(count: number, unit: string): string {
+  if (count <= 0) return unit === '' ? 'Nothing on hand' : `No ${pluralize(unit, 2)} on hand`;
+  if (unit === '') return count === 1 ? '1 on hand' : `${count} on hand`;
+  return `${count} ${pluralize(unit, count)} on hand`;
+}
+
+const sharedUnit = (members: MemberPackage[]) => {
+  if (members.length === 0) return '';
+  const units = members.map((member) => (member.unitOfMeasure ?? '').trim());
+  if (units.some((unit) => unit === '')) return '';
+  const first = units[0] ?? '';
+  return units.every((unit) => unit === first) ? first : '';
+};
+
+const ounceUnit = (dimension?: NetDimension): 'oz' | 'fl oz' => (dimension === 'volume' ? 'fl oz' : 'oz');
+
+function spokenOunces(amount: number, unit: 'oz' | 'fl oz'): string {
+  const shown = formatAmount(amount);
+  const one = shown === '1';
+  const noun = unit === 'fl oz' ? (one ? 'fluid ounce' : 'fluid ounces') : (one ? 'ounce' : 'ounces');
+  return `${shown} ${noun}`;
+}
+
+interface Measured {
+  total: number;
+  parts: { productId: string; ounces: number }[];
+}
+
+// Null when any stocked package is missing a size, or the units do not match
+// the target. A partial fill would draw ounces the shelf does not have.
+function measuredOunces(members: MemberPackage[], dimension: NetDimension): Measured | null {
+  const unit = ounceUnit(dimension);
+  const parts: { productId: string; ounces: number }[] = [];
+  for (const member of members) {
+    if (member.onHand <= 0) continue;
+    if (member.netAmount === undefined || !(member.netAmount > 0) || member.netUnit !== unit) return null;
+    const packs = member.packCount !== undefined && member.packCount > 0 ? member.packCount : 1;
+    parts.push({ productId: member.productId, ounces: member.netAmount * packs * member.onHand });
+  }
+  return { total: parts.reduce((sum, part) => sum + part.ounces, 0), parts };
+}
+
+const binPalette = [
+  'var(--mantine-color-yellow-5)',
+  'var(--mantine-color-blue-3)',
+  'var(--mantine-color-red-4)',
+  'var(--mantine-color-teal-4)',
+  'var(--mantine-color-orange-4)',
+  'var(--mantine-color-grape-3)',
+];
+
+export function binColor(members: { productId: string }[], productId: string): string {
+  const index = members.findIndex((member) => member.productId === productId);
+  return binPalette[(index < 0 ? 0 : index) % binPalette.length] ?? binPalette[0] ?? '';
+}
+
+export interface BinSegment {
+  productId: string;
+  fraction: number;
+}
+
+export interface BinView {
+  corner: string;
+  level: string;
+  segments: BinSegment[];
+  label: string;
+}
+
+export function binView(
+  group: Pick<ProductGroup, 'quantity' | 'dimension' | 'windowMonths'>,
+  members: MemberPackage[],
+): BinView {
+  if (group.quantity === undefined) {
+    if (group.windowMonths !== undefined) {
+      const noun = group.windowMonths === 1 ? 'month' : 'months';
+      return {
+        corner: `${group.windowMonths} ${noun}`,
+        level: '',
+        segments: [],
+        label: `Keeping ${group.windowMonths} ${noun}. The bin stays empty because the target is not ounces.`,
+      };
+    }
+    return {
+      corner: 'Default',
+      level: '',
+      segments: [],
+      label: 'Household default. The bin stays empty because the target is not ounces.',
+    };
+  }
+
+  const dimension: NetDimension = group.dimension === 'volume' ? 'volume' : 'mass';
+  const unit = ounceUnit(dimension);
+  const corner = `${formatAmount(group.quantity)} ${unit}`;
+  const quantity = group.quantity;
+  if (!(quantity > 0)) {
+    return { corner, level: '', segments: [], label: `Keeping ${corner}.` };
+  }
+  const measured = measuredOunces(members, dimension);
+  if (measured === null) {
+    return {
+      corner,
+      level: '',
+      segments: [],
+      label: `Keeping ${corner}. Package sizes are not listed, so the bin is not filled.`,
+    };
+  }
+  if (measured.total <= 0) {
+    return { corner, level: '', segments: [], label: `Empty bin, keeping ${corner}.` };
+  }
+  const scale = measured.total > quantity ? quantity / measured.total : 1;
+  return {
+    corner,
+    level: `${formatAmount(measured.total)} ${unit}`,
+    segments: measured.parts.map((part) => ({
+      productId: part.productId,
+      fraction: (part.ounces / quantity) * scale,
+    })),
+    label: `${formatAmount(measured.total)} ${unit} on hand, keeping ${corner}.`,
+  };
+}
+
+export function householdPhrase(months?: number): string {
+  if (months === undefined || !Number.isFinite(months)) return 'Household default';
+  const n = Math.round(months);
+  return `Household default, ${n} ${n === 1 ? 'month' : 'months'}`;
+}
+
+const countSentence = (members: MemberPackage[]) => {
+  const count = members.reduce((sum, member) => sum + member.onHand, 0);
+  return onHandPhrase(count, sharedUnit(members));
+};
+
+export function detailStockSentence(
+  group: Pick<ProductGroup, 'quantity' | 'dimension' | 'windowMonths'>,
+  members: MemberPackage[],
+  householdMonths?: number,
+): string {
+  const counted = countSentence(members);
+  if (group.quantity !== undefined) {
+    const dimension: NetDimension = group.dimension === 'volume' ? 'volume' : 'mass';
+    const keep = spokenOunces(group.quantity, ounceUnit(dimension));
+    const measured = measuredOunces(members, dimension);
+    if (measured === null) {
+      return `${counted}. Keep ${keep} on hand. Package sizes are not listed, so the bin stays empty.`;
+    }
+    if (measured.total <= 0) return `The bin is empty. Keep ${keep} on hand.`;
+    const held = spokenOunces(measured.total, ounceUnit(dimension));
+    const verb = formatAmount(measured.total) === '1' ? 'is' : 'are';
+    const stocked = members.filter((member) => member.onHand > 0);
+    if (stocked.length === 1) {
+      return `${held} of ${stocked[0]?.name} ${verb} in the bin. Keep ${keep} on hand.`;
+    }
+    return `${held} ${verb} in the bin. Keep ${keep} on hand.`;
+  }
+  if (group.windowMonths !== undefined) {
+    const n = group.windowMonths;
+    return `${counted}. Keep ${n} ${n === 1 ? 'month' : 'months'}.`;
+  }
+  return `${counted}. ${householdPhrase(householdMonths)}.`;
+}
+
+function listStockSentence(
+  group: Pick<ProductGroup, 'quantity' | 'dimension' | 'windowMonths'>,
+  members: MemberPackage[],
+  householdMonths?: number,
+): string {
+  const counted = countSentence(members);
+  if (group.quantity !== undefined) {
+    const dimension: NetDimension = group.dimension === 'volume' ? 'volume' : 'mass';
+    const keep = spokenOunces(group.quantity, ounceUnit(dimension));
+    const measured = measuredOunces(members, dimension);
+    if (measured === null || measured.total <= 0) {
+      return measured === null ? `${counted}. Keep ${keep}.` : `Nothing in the bin. Keep ${keep}.`;
+    }
+    return `${spokenOunces(measured.total, ounceUnit(dimension))} in the bin. Keep ${keep}.`;
+  }
+  if (group.windowMonths !== undefined) {
+    const n = group.windowMonths;
+    return `${counted}. Keep ${n} ${n === 1 ? 'month' : 'months'}.`;
+  }
+  return `${counted}. ${householdPhrase(householdMonths)}.`;
+}
+
+const pinnedName = (group: { pinnedProductId?: string }, members: { productId: string; name: string }[]) =>
+  members.find((member) => member.productId === group.pinnedProductId)?.name;
+
+export function ruleSentence(
+  group: Pick<ProductGroup, 'rule' | 'ruleConfirmed' | 'pinnedProductId'>,
+  members: { productId: string; name: string }[],
+  style: 'detail' | 'brief',
+): string {
+  if (!group.ruleConfirmed) {
+    return `Still using ${ruleLabel(group.rule)} until you pick a rule.`;
+  }
+  const pin = pinnedName(group, members);
+  if (group.rule === 'favorite') {
+    if (style === 'detail') return pin ? `When this runs out, always buy ${pin}.` : 'When this runs out, buy your favorite.';
+    return pin ? `Always buy ${pin}.` : 'Buy your favorite.';
+  }
+  if (group.rule === 'best_deal') {
+    if (style === 'detail') {
+      return pin
+        ? `When this runs out, buy the best deal, or ${pin} if nothing is on sale.`
+        : 'When this runs out, buy the best deal.';
+    }
+    return pin ? `Buy the best deal, or ${pin} if nothing is on sale.` : 'Buy the best deal.';
+  }
+  if (group.rule === 'same_as_ran_out') {
+    return style === 'detail'
+      ? 'When this runs out, buy the same kind that ran out.'
+      : 'Buy the same kind that ran out.';
+  }
+  return style === 'detail' ? `When this runs out, follow ${ruleLabel(group.rule)}.` : `${ruleLabel(group.rule)}.`;
+}
+
+export function listSummary(
+  group: ProductGroup,
+  members: MemberPackage[],
+  householdMonths?: number,
+): string {
+  return `${listStockSentence(group, members, householdMonths)} ${ruleSentence(group, members, 'brief')}`;
+}
+
+export function memberLine(member: MemberPackage): string {
+  const size = formatMemberSize(member);
+  const hand = member.onHand <= 0 ? 'none on hand' : member.onHand === 1 ? '1 on hand' : `${member.onHand} on hand`;
+  const unit = (member.unitOfMeasure ?? '').trim();
+  const parts = [size, unit].filter((part) => part !== '');
+  if (parts.length === 0) return hand;
+  return `${parts.join(' ')}, ${hand}`;
+}

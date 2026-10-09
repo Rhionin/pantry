@@ -11,12 +11,13 @@ export interface AddToGroupProps {
   group: GroupSupply;
   candidates: AddCandidate[];
   onAdded: () => void;
+  showHeading?: boolean;
 }
 
 const candidateLabel = (candidate: AddCandidate) =>
   candidate.onHand === undefined ? candidate.name : `${candidate.name} · ${candidate.onHand} on hand`;
 
-export const AddToGroup = ({ groupId, group, candidates, onAdded }: AddToGroupProps) => {
+export const AddToGroup = ({ groupId, group, candidates, onAdded, showHeading = true }: AddToGroupProps) => {
   const [query, setQuery] = useState('');
   const [selected, setSelected] = useState<string[]>([]);
   const [conflict, setConflict] = useState<TargetConflictMember[] | null>(null);
@@ -58,7 +59,7 @@ export const AddToGroup = ({ groupId, group, candidates, onAdded }: AddToGroupPr
 
   return (
     <Stack gap="xs">
-      <Text fw={600}>Add to this group</Text>
+      {showHeading && <Text fw={600}>Add to this group</Text>}
       {candidates.length === 0 ? (
         <Text size="sm" c="dimmed">Every product already belongs to a group.</Text>
       ) : (
