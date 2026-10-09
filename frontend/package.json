@@ -13,7 +13,7 @@
   },
   "dependencies": {
     "@mantine/core": "^7.17.8",
-    "@mantine/dates": "^7.17.8",
+    "@mantine/dates": "^9.7.1",
     "@mantine/hooks": "^7.17.8",
     "@mantine/notifications": "^7.17.8",
     "@zxing/library": "^0.21.3",
