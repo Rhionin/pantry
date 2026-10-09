@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { binView, conflictLine, detailStockSentence, listSummary, memberLine, ruleSentence, targetChoices } from './copy';
+import { binView, conflictLine, detailStockSentence, listSummary, memberLine, ruleChoices, rulePillLabel, ruleSentence, targetChoices } from './copy';
 
 describe('targetChoices', () => {
   it('keeps the group window and one choice per distinct member setting', () => {
@@ -108,6 +108,17 @@ describe('bin sentences', () => {
       .toBe('When this runs out, always buy Creamy peanut butter.');
     expect(ruleSentence({ rule: 'best_deal', ruleConfirmed: true, pinnedProductId: 'creamy' }, members, 'brief'))
       .toBe('Buy the best deal, or Creamy peanut butter if nothing is on sale.');
+  });
+
+  it('matches the restock picker to the pill words', () => {
+    expect(ruleChoices).toEqual([
+      { id: 'same_as_ran_out', label: 'Same as ran out', hint: 'Buy the kind that ran out.' },
+      { id: 'favorite', label: 'Favorite', hint: 'Always buy one product.' },
+      { id: 'best_deal', label: 'Best deal', hint: 'Buy the one on sale.' },
+    ]);
+    expect(rulePillLabel({ rule: 'same_as_ran_out', ruleConfirmed: true }, [])).toBe(ruleChoices[0].label);
+    expect(rulePillLabel({ rule: 'favorite', ruleConfirmed: true }, [])).toBe(ruleChoices[1].label);
+    expect(rulePillLabel({ rule: 'best_deal', ruleConfirmed: true }, [])).toBe(ruleChoices[2].label);
   });
 
   it('does not fill the bin when a stocked package has no size', () => {

@@ -3,12 +3,13 @@ import { Button, Group, NumberInput, Text } from '@mantine/core';
 import type { GroupTarget, ProductGroup } from '../../types';
 import { clampMonth, type SeesawDraft, type SeesawEnd, type SeesawPin, type SeesawView } from './seesaw';
 
+// Material Symbols "keep" (push pin), Apache-2.0.
 function PinIcon() {
   return (
-    <svg className="seesaw-pin" viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
+    <svg className="seesaw-pin" viewBox="0 0 24 24" aria-hidden="true">
       <path
         fill="currentColor"
-        d="M8 1.2a4.2 4.2 0 0 0-4.2 4.2c0 3.2 4.2 8.4 4.2 8.4s4.2-5.2 4.2-8.4A4.2 4.2 0 0 0 8 1.2Zm0 5.6a1.4 1.4 0 1 1 0-2.8 1.4 1.4 0 0 1 0 2.8Z"
+        d="M16 12V4h1V2H7v2h1v8l-2 2v2h5.2v6h1.6v-6H18v-2l-2-2z"
       />
     </svg>
   );

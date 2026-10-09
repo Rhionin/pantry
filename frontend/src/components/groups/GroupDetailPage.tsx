@@ -7,13 +7,13 @@ import {
   addGroupMembers, getGroup, getInventoryList, getProduct, getSupplySettings, listGroups, listProducts, removeGroupMember, renameGroup, setGroupTarget,
 } from '../../api/client';
 import type { GroupTarget, ProductDetail, ProductGroup } from '../../types';
-import { RuleSheet } from '../inventory/RuleSheet';
 import { AddToGroup } from './AddToGroup';
 import { BinMark } from './BinMark';
 import { ungroupedProducts, type AddCandidate } from './candidates';
 import {
   binColor, binView, memberLine, memberOrder, memberPackage, rulePillLabel, ruleSentence, type MemberPackage,
 } from './copy';
+import { RulePicker } from './RulePicker';
 import { Seesaw } from './Seesaw';
 import { seesawView, type SeesawDraft } from './seesaw';
 
@@ -259,7 +259,7 @@ export const GroupDetailPage = () => {
             )}
           </Modal>
           {ruleOpen && (
-            <RuleSheet
+            <RulePicker
               group={group}
               opened
               onClose={() => setRuleOpen(false)}

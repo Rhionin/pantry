@@ -8,6 +8,12 @@ export const ruleLabels: Record<string, string> = {
 
 export const ruleLabel = (rule: string) => ruleLabels[rule] ?? rule;
 
+export const ruleChoices = [
+  { id: 'same_as_ran_out', label: 'Same as ran out', hint: 'Buy the kind that ran out.' },
+  { id: 'favorite', label: 'Favorite', hint: 'Always buy one product.' },
+  { id: 'best_deal', label: 'Best deal', hint: 'Buy the one on sale.' },
+] as const;
+
 export function rulePillLabel(
   group: Pick<ProductGroup, 'rule' | 'ruleConfirmed' | 'pinnedProductId'>,
   members: { productId: string; name: string }[],

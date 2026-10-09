@@ -100,18 +100,20 @@ describe('GroupDetailPage', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
 
     fireEvent.click(screen.getByRole('button', { name: 'Pick a rule' }));
-    expect(await screen.findByRole('dialog', { name: 'Gatorade powder' })).toBeInTheDocument();
-    expect(await screen.findByText('Next trip: Buy the powder that ran out.')).toBeInTheDocument();
-    expect(screen.getByText('Now: Household default')).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('combobox', { name: 'Keep on hand' }));
-    expect(await screen.findByRole('option', { name: 'Household default' })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('option', { name: 'Household default' }));
+    const picker = await screen.findByRole('dialog', { name: 'When it runs out' });
+    expect(within(picker).getByRole('radio', { name: 'Same as ran out' })).toBeChecked();
+    expect(within(picker).getByText('Buy the kind that ran out.')).toBeInTheDocument();
+    expect(within(picker).getByText('Always buy one product.')).toBeInTheDocument();
+    expect(within(picker).getByText('Buy the one on sale.')).toBeInTheDocument();
+    expect(within(picker).queryByText(/Next trip:/)).not.toBeInTheDocument();
+    expect(within(picker).queryByText(/Now:/)).not.toBeInTheDocument();
+    expect(within(picker).queryByRole('combobox', { name: 'Keep on hand' })).not.toBeInTheDocument();
+    expect(within(picker).queryByText('This is still Same as what ran out. Pick a rule so the next trip is yours.')).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('combobox', { name: 'Rule' }));
-    fireEvent.click(await screen.findByRole('option', { name: 'Always my favorite' }));
-    fireEvent.click(screen.getByRole('combobox', { name: 'Always buy' }));
+    fireEvent.click(within(picker).getByRole('radio', { name: 'Favorite' }));
+    fireEvent.click(within(picker).getByRole('combobox', { name: 'Product' }));
     fireEvent.click(await screen.findByRole('option', { name: 'Fruit punch thirst quencher powder' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Save rule' }));
+    fireEvent.click(within(picker).getByRole('button', { name: 'Save' }));
 
     expect(await screen.findByRole('button', { name: 'Change rule, Fruit punch thirst quencher powder' })).toBeInTheDocument();
     expect(screen.queryByText('When this runs out, always buy Fruit punch thirst quencher powder.')).not.toBeInTheDocument();

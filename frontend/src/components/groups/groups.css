@@ -191,6 +191,8 @@
 .seesaw-pin {
   flex: none;
   display: block;
+  width: 1em;
+  height: 1em;
 }
 
 .seesaw-default {
@@ -310,6 +312,11 @@
 .rule-pill:focus-visible {
   outline: 2px solid var(--mantine-color-blue-6);
   outline-offset: 2px;
+}
+
+.rule-choice-extra {
+  margin-top: var(--mantine-spacing-xs);
+  margin-left: calc(1.25rem + var(--mantine-spacing-sm));
 }
 
 .bin-stock {
