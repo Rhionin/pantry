@@ -72,6 +72,35 @@ Data-access types are named for *what* they store, not *how* they store it — n
 
 Error messages should be user-friendly without function names. Avoid redundant comments that restate code—keep godoc and WHY comments, remove WHAT comments and numbered steps.
 
+## UI work
+
+The web UI is React, Vite, and Mantine (`@mantine/core`, plus dates, hooks, and notifications). `frontend/src/main.tsx` wraps the app in `MantineProvider`. Build and revise screens with Mantine components and this repo's existing theme and layout patterns.
+
+Also follow the `frontend-design` skill when the work is visual: new UI, or a reshape of an existing screen. The skill is the upstream Anthropic skill, unmodified, including `LICENSE.txt`:
+
+- `.cursor/skills/frontend-design/SKILL.md`
+- `.agents/skills/frontend-design/SKILL.md` (same files, installed with `npx skills add anthropics/skills --skill frontend-design`; `skills-lock.json` records the source)
+
+Apply that skill's guidance on palette, type, layout, copy, and critique through Mantine components, the existing theme, and the conventions in this file. The skill complements Mantine; screens stay on Mantine components and the project theme.
+
+## Running the app for Playwright MCP
+
+Local development is two processes. From the repository root, start the API:
+
+```bash
+go run ./cmd/server
+```
+
+It listens on `ADDR` (default `:8080`). In another terminal, from `frontend/`:
+
+```bash
+npm run dev
+```
+
+Vite serves the live UI, usually at `http://127.0.0.1:5173`, and proxies `/api` and `/brand` to the Go server (`frontend/vite.config.ts`, override with `VITE_API_PROXY_TARGET`). Open that Vite URL for layout checks. During development the Go address serves the placeholder assets document; the live UI is the Vite origin.
+
+Playwright MCP is the `playwright` server in `.cursor/mcp.json`. The server command is `npx @playwright/mcp@latest`, matching the [Playwright MCP getting-started guide](https://playwright.dev/docs/next/getting-started-mcp). After both processes are up, point that browser at the Vite origin (the URL Vite printed, typically `http://127.0.0.1:5173`) and use its snapshot and screenshot tools to check layout. That origin proxies API calls, so the page is the running app. On a machine with no display, add `--headless` to the server args in `.cursor/mcp.json`.
+
 ## Cursor Cloud specific instructions
 
 Go coverage is `./scripts/test-coverage.sh` (needs `bc` and the Go version in `go.mod`). Frontend checks from `frontend/` are `npm test` (`vitest --run`), `npm run lint`, and `npx tsc -b`. `npm ci` installs frontend dependencies. The Cloud Agent image is `.cursor/Dockerfile`, referenced by `.cursor/environment.json`.
