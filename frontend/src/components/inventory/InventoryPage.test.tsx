@@ -438,6 +438,107 @@ describe('InventoryPage', () => {
     })));
   });
 
+  it('adds an ungrouped product to an existing group', async () => {
+    const milk = inventoryItem('milk', 'Whole Milk', 'Dairy', false);
+    const posts: string[] = [];
+    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      const method = init?.method ?? 'GET';
+      if (url === '/api/groups' && method === 'GET') {
+        return Promise.resolve(jsonResponse([{
+          id: 'g-breakfast',
+          name: 'Breakfast',
+          rule: 'same_as_ran_out',
+          ruleConfirmed: false,
+          members: [],
+          runningLow: false,
+        }]));
+      }
+      if (url === '/api/groups/g-breakfast/members' && method === 'POST') {
+        posts.push(String(init?.body));
+        return Promise.resolve(jsonResponse({ id: 'g-breakfast', name: 'Breakfast', members: [] }));
+      }
+      if (url === '/api/settings/supply') {
+        return Promise.resolve(jsonResponse({ months: 3, opening: false, wipePhrase: 'WIPE INVENTORY' }));
+      }
+      return Promise.resolve(jsonResponse([milk]));
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<MantineProvider><InventoryPage /></MantineProvider>);
+    expect(await screen.findByRole('button', { name: 'Add Whole Milk to a group' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Select' }));
+    expect(screen.queryByRole('button', { name: 'Add Whole Milk to a group' })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Done' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Add Whole Milk to a group' }));
+    expect(await screen.findByRole('radio', { name: 'Breakfast' })).toBeChecked();
+    fireEvent.click(screen.getByRole('button', { name: 'Add to group' }));
+    await waitFor(() => expect(posts).toEqual([
+      JSON.stringify({ productIds: ['product-milk'] }),
+    ]));
+  });
+
+  it('moves a product that is already in a group', async () => {
+    const group = {
+      id: 'g-beans',
+      name: 'Cut green beans',
+      rule: 'same_as_ran_out',
+      ruleConfirmed: true,
+      onHand: 3,
+      memberCount: 1,
+      members: [{ productId: 'product-gv', name: 'Great Value Cut Green Beans', onHand: 3 }],
+    };
+    const gv = inventoryItem('gv', 'Great Value Cut Green Beans', 'Canned', false);
+    gv.group = group;
+    const posts: string[] = [];
+    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      const method = init?.method ?? 'GET';
+      if (url === '/api/groups' && method === 'GET') {
+        return Promise.resolve(jsonResponse([
+          {
+            id: 'g-beans',
+            name: 'Cut green beans',
+            rule: 'same_as_ran_out',
+            ruleConfirmed: true,
+            members: [{ productId: 'product-gv', name: 'Great Value Cut Green Beans', onHand: 3 }],
+            runningLow: false,
+          },
+          {
+            id: 'g-soup',
+            name: 'Soup',
+            rule: 'same_as_ran_out',
+            ruleConfirmed: false,
+            members: [],
+            runningLow: false,
+          },
+        ]));
+      }
+      if (url === '/api/groups/g-soup/members' && method === 'POST') {
+        posts.push(String(init?.body));
+        return Promise.resolve(jsonResponse({ id: 'g-soup', name: 'Soup', members: [] }));
+      }
+      if (url === '/api/settings/supply') {
+        return Promise.resolve(jsonResponse({ months: 3, opening: false, wipePhrase: 'WIPE INVENTORY' }));
+      }
+      return Promise.resolve(jsonResponse([gv]));
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<MantineProvider><InventoryPage /></MantineProvider>);
+    await screen.findByRole('heading', { name: 'Cut green beans' });
+    expect(screen.queryByRole('button', { name: 'Add Great Value Cut Green Beans to a group' })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Show products' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Move Great Value Cut Green Beans to another group' }));
+    expect(await screen.findByText('Already in Cut green beans.')).toBeInTheDocument();
+    expect(screen.queryByRole('radio', { name: 'Cut green beans' })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('radio', { name: 'Soup' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Move to this group' }));
+    await waitFor(() => expect(posts).toEqual([
+      JSON.stringify({ productIds: ['product-gv'], fromGroupId: 'g-beans' }),
+    ]));
+  });
+
   it('reloads when a grouped product changes', async () => {
     const group = {
       id: 'g-beans',

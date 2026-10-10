@@ -3,6 +3,7 @@ import { Badge, Button, Card, Divider, Group, Stack, Text, Title } from '@mantin
 import type { InventoryGroup, InventoryItem } from '../../types';
 import { ProductEditor } from '../product/ProductEditor';
 import { ruleLabel, targetLabel } from '../groups/copy';
+import { GroupMembershipAction } from './GroupMembershipAction';
 import { ItemInstanceList } from './ItemInstanceList';
 
 export interface GroupRowProps {
@@ -59,15 +60,23 @@ export const GroupRow = ({
                 {member.barcodes && member.barcodes.length > 0 && (
                   <Text size="xs" c="dimmed" className="copyable-barcode">Barcode: {member.barcodes.join(', ')}</Text>
                 )}
-                {inventoryItem && (
-                  <Button
-                    size="compact-xs"
-                    variant="subtle"
-                    onClick={() => setInstancesFor((current) => current === member.productId ? null : member.productId)}
-                  >
-                    Instances
-                  </Button>
-                )}
+                <Group gap="xs">
+                  {inventoryItem && (
+                    <Button
+                      size="compact-xs"
+                      variant="subtle"
+                      onClick={() => setInstancesFor((current) => current === member.productId ? null : member.productId)}
+                    >
+                      Instances
+                    </Button>
+                  )}
+                  <GroupMembershipAction
+                    productId={member.productId}
+                    productName={member.name}
+                    currentGroup={{ id: group.id, name: group.name }}
+                    onChanged={onInventoryChanged}
+                  />
+                </Group>
                 {inventoryItem && instancesFor === member.productId && (
                   <ItemInstanceList
                     itemId={inventoryItem.item.id}

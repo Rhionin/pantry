@@ -5,6 +5,7 @@ import { getInventoryList, getProduct, getSupplySettings, listGroups } from '../
 import type { InventoryItem, ProductGroup } from '../../types';
 import { filterInventoryItems } from '../../utils/inventoryFilter';
 import { ProductEditor } from '../product/ProductEditor';
+import { GroupMembershipAction } from './GroupMembershipAction';
 import { GroupRow } from './GroupRow';
 import { GroupSelectBar } from './GroupSelectBar';
 import { ItemInstanceList } from './ItemInstanceList';
@@ -105,6 +106,13 @@ const InventorySection = ({
             checked={checked.includes(inventoryItem.item.productId)}
             onChecked={(next) => onChecked(inventoryItem.item.productId, next)}
             onLongPress={() => onLongPress(inventoryItem.item.productId)}
+            membership={selecting ? null : (
+              <GroupMembershipAction
+                productId={inventoryItem.item.productId}
+                productName={inventoryItem.item.product.name}
+                onChanged={onInventoryChanged}
+              />
+            )}
           >
             {selected ? renderExpanded(inventoryItem) : null}
           </ItemRow>

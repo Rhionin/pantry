@@ -103,6 +103,9 @@ behavior, then uses exactly these four H2 sections in order:
 - [Group detail](./group-detail.md) — pick a restocking rule and add an
   ungrouped product on `/groups/:id`. Proven end to end by
   `scripts/drive-group-detail.mjs`.
+- [Group from inventory](./group-from-inventory.md) — add an inventory product
+  to an existing group, move one that is already grouped, and land in a group
+  the moment it is created. Proven end to end by `scripts/drive-group-from-inventory.mjs`.
 - [Wipe inventory](./wipe-inventory.md) — type `WIPE INVENTORY` to clear stock
   without deleting the product lookup cache. Proven end to end by
   `scripts/drive-wipe-inventory.mjs`.

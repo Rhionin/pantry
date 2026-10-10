@@ -13,6 +13,7 @@ export interface ItemRowProps {
   checked?: boolean;
   onChecked?: (checked: boolean) => void;
   onLongPress?: () => void;
+  membership?: ReactNode;
   children?: ReactNode;
 }
 
@@ -25,6 +26,7 @@ export const ItemRow = memo(({
   checked = false,
   onChecked,
   onLongPress,
+  membership,
   children,
 }: ItemRowProps) => {
   const { item, instanceCount, nearExpiryCount, expiredCount } = inventoryItem;
@@ -88,6 +90,7 @@ export const ItemRow = memo(({
                 {selected ? 'Hide instances' : 'View instances'}
                 <span aria-hidden="true">{selected ? ' ▴' : ' ▾'}</span>
               </Button>
+              {membership}
             </Group>
           </Stack>
         </Group>
