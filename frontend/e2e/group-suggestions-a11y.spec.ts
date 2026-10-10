@@ -30,6 +30,35 @@ async function expectClean(page: Page) {
   expect(results.violations, violationText(results.violations)).toEqual([])
 }
 
+// The suite shares one SQLite database and runs specs in file order. Earlier
+// specs leave ungrouped look-alikes, and both creating a product and opening
+// this page refresh suggestions, so those leftovers become inbox cards.
+// Dismiss them until the inbox stays empty. Pair dismissals stick, so a later
+// refresh cannot put the same cards back. Products this spec creates are
+// checked after that, so an empty inbox still means these products did not match.
+async function dismissOpenSuggestions(request: APIRequestContext) {
+  let remaining: { id: string; title: string }[] = []
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    const listed = await request.get('/api/group-suggestions')
+    if (!listed.ok()) throw new Error(`list suggestions: ${listed.status()} ${await listed.text()}`)
+    remaining = await listed.json() as { id: string; title: string }[]
+    if (remaining.length === 0) return
+    for (const card of remaining) {
+      const dismissed = await request.post(`/api/group-suggestions/${card.id}/dismiss`)
+      if (!dismissed.ok()) throw new Error(`dismiss ${card.title}: ${dismissed.status()} ${await dismissed.text()}`)
+    }
+  }
+  throw new Error(`suggestions still open: ${remaining.map((card) => card.title).join(', ')}`)
+}
+
+test.beforeEach(async ({ request }) => {
+  await dismissOpenSuggestions(request)
+})
+
+test.afterEach(async ({ request }) => {
+  await dismissOpenSuggestions(request)
+})
+
 test('suggestion rescan meets axe in light and dark', async ({ page, request }) => {
   test.setTimeout(60_000)
   await createProduct(request, { name: 'Axe apple juice', category: 'Juice', unitOfMeasure: 'bottle' })
