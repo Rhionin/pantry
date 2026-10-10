@@ -25,7 +25,7 @@ export const API_URL = process.env.PANTRY_API_URL ?? 'http://127.0.0.1:18080';
 export const EVIDENCE_DIR = process.env.PANTRY_EVIDENCE_DIR ?? process.cwd();
 export const USER_ID = 'user-1';
 
-export async function openBrowser({ args, viewport, permissions, timezoneId, headless, channel } = {}) {
+export async function openBrowser({ args, viewport, permissions, timezoneId, headless, channel, colorScheme, deviceScaleFactor } = {}) {
   // headless Playwright Chromium reports notification permission as denied, so
   // a drive that must see the permission ask can pass channel: 'chrome'.
   const browser = await chromium.launch({
@@ -38,6 +38,8 @@ export async function openBrowser({ args, viewport, permissions, timezoneId, hea
     locale: 'en-US',
     ...(timezoneId ? { timezoneId } : {}),
     ...(viewport ? { viewport } : {}),
+    ...(colorScheme ? { colorScheme } : {}),
+    ...(deviceScaleFactor ? { deviceScaleFactor } : {}),
     ...(permissions ? { permissions } : {}),
   });
   const page = await context.newPage();

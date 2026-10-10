@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState, type CSSProperties } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import {
-  ActionIcon, Alert, Anchor, Button, Loader, Menu, Modal, Stack, Text, TextInput, Tooltip,
+  ActionIcon, Alert, Anchor, Button, Group, Loader, Menu, Modal, Stack, Text, TextInput, Tooltip,
 } from '@mantine/core';
 import {
   addGroupMembers, getGroup, getInventoryList, getProduct, getSupplySettings, listGroups, listProducts, removeGroupMember, renameGroup, setGroupTarget, setMemberRestock,
@@ -17,6 +17,7 @@ import { RulePicker } from './RulePicker';
 import { restockNote } from './restock';
 import { Seesaw } from './Seesaw';
 import { seesawView, stockMeter, type SeesawDraft } from './seesaw';
+import '../history/history.css';
 
 const closeButton = { 'aria-label': 'Close' };
 
@@ -234,7 +235,12 @@ export const GroupDetailPage = () => {
 
   return (
     <Stack gap="lg" className="bin-page">
-      <Anchor component={Link} to="/inventory?filter=groups" size="sm">Inventory</Anchor>
+      <Group gap="md">
+        <Anchor className="history-back" component={Link} to="/inventory?filter=groups">Inventory</Anchor>
+        {group && (
+          <Anchor className="history-back" component={Link} to={`/groups/${group.id}/history`}>History</Anchor>
+        )}
+      </Group>
       {error !== '' && !renaming && <Alert color="red" py="xs">{error}</Alert>}
       {group && view && shown && (
         <>

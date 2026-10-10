@@ -109,3 +109,6 @@ behavior, then uses exactly these four H2 sections in order:
 - [Wipe inventory](./wipe-inventory.md) — type `WIPE INVENTORY` to clear stock
   without deleting the product lookup cache. Proven end to end by
   `scripts/drive-wipe-inventory.mjs`.
+- [Consumption history](./history.md) — open a product or group history, read
+  the days between uses and the recent trail, then change a quantity or undo a
+  move. Proven end to end by `scripts/drive-history.mjs`.
