@@ -245,7 +245,7 @@ export const InventoryPage = () => {
           onChange={(event) => setSearchQuery(event.currentTarget.value)}
           style={{ flex: 1 }}
         />
-        <Button size="xs" variant={selecting ? 'filled' : 'light'} onClick={() => {
+        <Button size="xs" variant="default" className="shelf-select" onClick={() => {
           if (selecting) {
             setSelecting(false);
             setChecked([]);
@@ -352,17 +352,19 @@ export const InventoryPage = () => {
           }}
         />
       )}
-      <Drawer
-        opened={reviewOpen}
-        onClose={closeReview}
-        position="right"
-        size="md"
-        title="Suggestions"
-        classNames={{ content: 'bin-page' }}
-        closeButtonProps={{ 'aria-label': 'Close' }}
-      >
-        <InboxPage embedded focusId={suggestionId} />
-      </Drawer>
+      <Drawer.Root opened={reviewOpen} onClose={closeReview} position="right" size="md">
+        <Drawer.Overlay />
+        <Drawer.Content className="bin-page">
+          {/* A header element here is a second banner landmark beside the app bar. */}
+          <Drawer.Header component="div">
+            <Drawer.Title>Suggestions</Drawer.Title>
+            <Drawer.CloseButton aria-label="Close" />
+          </Drawer.Header>
+          <Drawer.Body>
+            <InboxPage embedded focusId={suggestionId} />
+          </Drawer.Body>
+        </Drawer.Content>
+      </Drawer.Root>
     </Stack>
   );
 };

@@ -43,6 +43,16 @@
   text-underline-offset: 0.16em;
 }
 
+.bin-page .mantine-Drawer-header,
+.bin-page .mantine-Drawer-title {
+  color: var(--mantine-color-dark-9);
+}
+
+:where([data-mantine-color-scheme='dark']) .bin-page .mantine-Drawer-header,
+:where([data-mantine-color-scheme='dark']) .bin-page .mantine-Drawer-title {
+  color: var(--mantine-color-gray-0);
+}
+
 .bin-page .suggestion-rescan,
 .bin-page .suggestion-dismiss,
 .bin-page .suggestion-skip {

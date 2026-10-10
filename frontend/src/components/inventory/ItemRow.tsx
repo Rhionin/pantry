@@ -82,7 +82,7 @@ export const ItemRow = memo(({
         )}
         <ProductPhoto src={item.product.imageUrl} name={item.product.name} />
         <div className="shelf-copy">
-          <h3 className="shelf-name">{item.product.name}</h3>
+          <h2 className="shelf-name">{item.product.name}</h2>
           {category !== null && <p className="shelf-category">{category}</p>}
           <div className="shelf-meta">
             <span>{hand}</span>

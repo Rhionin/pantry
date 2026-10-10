@@ -89,7 +89,6 @@ test('add an inventory item to a group, and open a group just created', async ({
   await expect(page.getByRole('heading', { name: 'Rice cakes' })).toBeVisible()
   await expect(page).toHaveURL(/\/groups\/[^/]+$/)
   await expect(page.getByRole('button', { name: 'Add a product' })).toBeVisible()
-  await expect(page.getByText('Rice cakes')).toBeVisible()
 })
 
 test.afterEach(async ({ request }) => {

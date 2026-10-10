@@ -2,6 +2,15 @@
   max-width: 42rem;
 }
 
+.bin-page .shelf-select {
+  --button-bg: var(--bin-well);
+  --button-hover: var(--bin-row-hover);
+  --button-color: var(--bin-ink);
+  --button-bd: 1px solid var(--bin-line);
+  color: var(--bin-ink);
+  font-weight: 650;
+}
+
 .shelf-filters {
   display: flex;
   flex-wrap: nowrap;

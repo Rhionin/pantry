@@ -190,7 +190,7 @@ test('group page meets axe in light and dark', async ({ page, request }) => {
   await setScheme(page, 'light')
   await expect(page).toHaveURL(/\/inventory\?filter=groups/)
   await expect(page.getByRole('heading', { name: 'Inventory' })).toBeVisible()
-  await expect(page.getByRole('button', { name: 'Groups' })).toHaveAttribute('aria-pressed', 'true')
+  await expect(page.getByRole('button', { name: 'Groups', exact: true })).toHaveAttribute('aria-pressed', 'true')
   await expect(page.getByRole('textbox', { name: 'Search products or groups' })).toBeVisible()
   await expectClean(page)
   await expectListColors(page, 'light')

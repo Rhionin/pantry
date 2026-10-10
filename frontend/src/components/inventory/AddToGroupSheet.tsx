@@ -95,16 +95,16 @@ export function AddToGroupSheet({
   };
 
   return (
-    <Drawer
-      opened={opened}
-      onClose={close}
-      position="bottom"
-      title={moving ? `Move ${productName} to…` : `Add ${productName} to…`}
-      classNames={{ content: 'bin-page shelf-sheet', body: 'shelf-sheet-body' }}
-      closeButtonProps={{ 'aria-label': 'Close' }}
-      transitionProps={{ duration: 0 }}
-    >
-      <Stack gap="sm">
+    <Drawer.Root opened={opened} onClose={close} position="bottom" transitionProps={{ duration: 0 }}>
+      <Drawer.Overlay />
+      <Drawer.Content className="bin-page shelf-sheet">
+        {/* A header element here is a second banner landmark beside the app bar. */}
+        <Drawer.Header component="div">
+          <Drawer.Title>{moving ? `Move ${productName} to…` : `Add ${productName} to…`}</Drawer.Title>
+          <Drawer.CloseButton aria-label="Close" />
+        </Drawer.Header>
+        <Drawer.Body className="shelf-sheet-body">
+          <Stack gap="sm">
         {moving && (
           <Text size="sm">Already in {groups.find((group) => group.id === fromGroupId)?.name}.</Text>
         )}
@@ -157,12 +157,14 @@ export function AddToGroupSheet({
           <Text size="sm" c="dimmed">{moving ? 'No other groups.' : 'No groups yet.'}</Text>
         )}
         {conflict === null && !moving && (
-          <Button variant="light" loading={saving} onClick={() => void create()}>
+          <Button variant="default" className="shelf-select" loading={saving} onClick={() => void create()}>
             {`New group "${productName}"`}
           </Button>
         )}
-        {error !== '' && <Text size="sm" c="red">{error}</Text>}
-      </Stack>
-    </Drawer>
+            {error !== '' && <Text size="sm" c="red">{error}</Text>}
+          </Stack>
+        </Drawer.Body>
+      </Drawer.Content>
+    </Drawer.Root>
   );
 }

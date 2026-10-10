@@ -75,7 +75,7 @@ export function GroupRow({ row, expanded, onToggle, onMove, onChanged, onHandCha
         <ProductPhoto src={row.photoSrc} name={row.photoName} stacked />
         <div className="shelf-copy">
           <div className="shelf-title">
-            <h3 className="shelf-name">{row.group.name}</h3>
+            <h2 className="shelf-name">{row.group.name}</h2>
             <span className="shelf-count">{row.group.members.length}</span>
           </div>
           <p className="shelf-meta">
