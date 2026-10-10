@@ -170,10 +170,17 @@ describe('CameraScanner', () => {
       fireEvent.click(screen.getByRole('button', { name: 'Scan with camera' }));
 
       expect(await screen.findByLabelText('Camera preview')).toBeInTheDocument();
-      await vi.waitFor(() => expect(onScan).toHaveBeenCalledTimes(2));
-      expect(onScan).toHaveBeenNthCalledWith(1, '111');
-      expect(onScan).toHaveBeenNthCalledWith(2, '222');
-      expect(screen.getByText('Captured 222')).toBeInTheDocument();
+      // onScan runs in the same turn as setLastScan. React commits the label
+      // on a later task (scheduler MessageChannel), while vi.waitFor polls on
+      // a timer. Those timers line up with SCAN_INTERVAL_MS, so a poll can
+      // observe the second callback while the DOM still says "Captured 111".
+      // The label has to be part of the same retry or that poll resolves early.
+      await vi.waitFor(() => {
+        expect(onScan).toHaveBeenCalledTimes(2);
+        expect(onScan).toHaveBeenNthCalledWith(1, '111');
+        expect(onScan).toHaveBeenNthCalledWith(2, '222');
+        expect(screen.getByText('Captured 222')).toBeInTheDocument();
+      });
       expect(screen.queryByText(/scans automatically/i)).not.toBeInTheDocument();
       expect(document.querySelector('.camera-preview-flash')).not.toBeNull();
       expect(getUserMedia).toHaveBeenCalledWith({
