@@ -266,3 +266,14 @@ test('group page meets axe in light and dark', async ({ page, request }) => {
   expect((await request.delete(`/api/groups/${targetedGroup.id}`)).ok()).toBe(true)
   expect((await request.delete(`/api/groups/${emptyGroup.id}`)).ok()).toBe(true)
 })
+
+test.afterEach(async ({ request }) => {
+  const listed = await request.get('/api/groups')
+  if (!listed.ok()) return
+  const groups = await listed.json() as { id: string; name: string }[]
+  for (const group of groups) {
+    if (group.name.startsWith('Contrast') || group.name.startsWith('Loose contrast') || group.name.startsWith('Axe ')) {
+      await request.delete(`/api/groups/${group.id}`)
+    }
+  }
+})

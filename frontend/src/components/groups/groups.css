@@ -468,14 +468,57 @@
 .bin-menu-hint {
   max-width: 16rem;
   margin-top: 0.15rem;
-  color: var(--mantine-color-gray-7);
   font-size: var(--mantine-font-size-xs);
   font-weight: 400;
   line-height: 1.35;
 }
 
-:where([data-mantine-color-scheme='dark']) .bin-menu-hint {
+/* The menu is portaled, so it does not inherit the bin page's dimmed override.
+   Gray-6 labels and a faded item fail 4.5:1 on the menu surface. */
+.bin-member-menu {
+  --menu-item-color: var(--mantine-color-dark-9);
+  --mantine-color-text: var(--mantine-color-dark-9);
+  --mantine-color-dimmed: var(--mantine-color-gray-7);
+}
+
+.bin-member-menu .mantine-Menu-item,
+.bin-member-menu .mantine-Menu-itemLabel,
+.bin-member-menu .bin-menu-label {
+  color: var(--mantine-color-dark-9);
+}
+
+.bin-member-menu .mantine-Menu-label,
+.bin-member-menu .bin-menu-hint {
+  color: var(--mantine-color-gray-7);
+}
+
+:where([data-mantine-color-scheme='dark']) .bin-member-menu {
+  --menu-item-color: var(--mantine-color-gray-0);
+  --mantine-color-text: var(--mantine-color-gray-0);
+  --mantine-color-dimmed: var(--mantine-color-gray-3);
+}
+
+:where([data-mantine-color-scheme='dark']) .bin-member-menu .mantine-Menu-item,
+:where([data-mantine-color-scheme='dark']) .bin-member-menu .mantine-Menu-itemLabel,
+:where([data-mantine-color-scheme='dark']) .bin-member-menu .bin-menu-label {
+  color: var(--mantine-color-gray-0);
+}
+
+:where([data-mantine-color-scheme='dark']) .bin-member-menu .mantine-Menu-label,
+:where([data-mantine-color-scheme='dark']) .bin-member-menu .bin-menu-hint {
   color: var(--mantine-color-gray-3);
+}
+
+.rule-sheet {
+  --mantine-color-dimmed: var(--mantine-color-gray-7);
+  --mantine-color-text: var(--mantine-color-dark-9);
+  color: var(--mantine-color-dark-9);
+}
+
+:where([data-mantine-color-scheme='dark']) .rule-sheet {
+  --mantine-color-dimmed: var(--mantine-color-gray-3);
+  --mantine-color-text: var(--mantine-color-gray-0);
+  color: var(--mantine-color-gray-0);
 }
 
 .seesaw-slot {

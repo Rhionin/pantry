@@ -64,7 +64,7 @@ function MemberRows({
           <Text size="xs" c="dimmed">Barcode: {(member.barcodes ?? []).join(', ')}</Text>
         )}
       </div>
-      <Menu position="bottom-end">
+      <Menu position="bottom-end" withInitialFocusPlaceholder={false} transitionProps={{ duration: 0 }}>
         <Menu.Target>
           <Tooltip label="Remove or move">
             <ActionIcon
@@ -78,7 +78,7 @@ function MemberRows({
             </ActionIcon>
           </Tooltip>
         </Menu.Target>
-        <Menu.Dropdown>
+        <Menu.Dropdown className="bin-member-menu">
           {member.noRestock ? (
             <Menu.Item onClick={() => onRestock(member.productId, false)}>Keep in rotation</Menu.Item>
           ) : (
