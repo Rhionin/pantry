@@ -13,9 +13,10 @@ import (
 const seededSetting = "group_suggestions_seeded_v1"
 
 type seedProduct struct {
-	id   string
-	name string
-	unit string
+	id       string
+	name     string
+	unit     string
+	category string
 }
 
 type seedCluster struct {
@@ -50,7 +51,7 @@ func (g *Groups) Seed(ctx context.Context) error {
 	if err != sql.ErrNoRows {
 		return fmt.Errorf("could not prepare group suggestions: %w", err)
 	}
-	if err := seedSuggestions(ctx, tx); err != nil {
+	if _, err := seedSuggestions(ctx, tx); err != nil {
 		return err
 	}
 	if _, err := tx.ExecContext(ctx, `INSERT INTO app_settings (key, value) VALUES (?, '1')`, seededSetting); err != nil {
@@ -62,33 +63,29 @@ func (g *Groups) Seed(ctx context.Context) error {
 	return nil
 }
 
-func seedSuggestions(ctx context.Context, tx *sql.Tx) error {
+func seedSuggestions(ctx context.Context, tx *sql.Tx) ([]string, error) {
 	products, err := loadSeedProducts(ctx, tx)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	groupOf, extraKeys, err := loadMembership(ctx, tx)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	dismissed, err := loadDismissed(ctx, tx)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	openSets, err := loadOpenSets(ctx, tx)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	prefs, err := loadSeedPrefs(ctx, tx)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	names := make([]string, len(products))
-	for i, p := range products {
-		names[i] = p.name
-	}
-	matches := ResolveLookAlikes(names, extraKeys)
+	matches := similarMatches(products, extraKeys)
 	lookalikes := clustersFrom(products, matches, groupOf, dismissed, func(key string) string {
 		return titleFromKey(key)
 	})
@@ -114,21 +111,26 @@ func seedSuggestions(ctx context.Context, tx *sql.Tx) error {
 		cards = append(cards, card)
 	}
 
+	var created []string
 	for _, card := range cards {
 		sig := strings.Join(card.ids, "\n")
 		if _, already := openSets[sig]; already {
 			continue
 		}
-		if err := insertSeeded(ctx, tx, card, matchPref(card.ids, prefs, needMembers)); err != nil {
-			return err
+		id, err := insertSeeded(ctx, tx, card, matchPref(card.ids, prefs, needMembers))
+		if err != nil {
+			return nil, err
 		}
+		created = append(created, id)
 		openSets[sig] = struct{}{}
 	}
-	return nil
+	return created, nil
 }
 
 func loadSeedProducts(ctx context.Context, q querier) ([]seedProduct, error) {
-	rows, err := q.QueryContext(ctx, `SELECT id, name, COALESCE(unit_of_measure, '') FROM products ORDER BY id`)
+	rows, err := q.QueryContext(ctx, `
+		SELECT id, name, COALESCE(unit_of_measure, ''), COALESCE(category, '')
+		FROM products ORDER BY id`)
 	if err != nil {
 		return nil, fmt.Errorf("could not prepare group suggestions: %w", err)
 	}
@@ -136,7 +138,7 @@ func loadSeedProducts(ctx context.Context, q querier) ([]seedProduct, error) {
 	var out []seedProduct
 	for rows.Next() {
 		var p seedProduct
-		if err := rows.Scan(&p.id, &p.name, &p.unit); err != nil {
+		if err := rows.Scan(&p.id, &p.name, &p.unit, &p.category); err != nil {
 			return nil, fmt.Errorf("could not prepare group suggestions: %w", err)
 		}
 		out = append(out, p)
@@ -312,7 +314,7 @@ func matchPref(ids []string, prefs []seedPref, needMembers map[string][]string) 
 	return nil
 }
 
-func insertSeeded(ctx context.Context, tx *sql.Tx, card seedCluster, pref *seedPref) error {
+func insertSeeded(ctx context.Context, tx *sql.Tx, card seedCluster, pref *seedPref) (string, error) {
 	id := uuid.NewString()
 	kind := "looks_alike"
 	var rule, pin any
@@ -332,7 +334,7 @@ func insertSeeded(ctx context.Context, tx *sql.Tx, card seedCluster, pref *seedP
 		INSERT INTO group_suggestions (id, user_id, kind, title, proposed_rule, pinned_product_id, existing_group_id, status)
 		VALUES (?, ?, ?, ?, ?, ?, ?, 'open')`,
 		id, householdUser, kind, card.title, rule, pin, existing); err != nil {
-		return fmt.Errorf("could not prepare group suggestions: %w", err)
+		return "", fmt.Errorf("could not prepare group suggestions: %w", err)
 	}
 	style := majorityCaution(card.ids, card.caution)
 	for _, productID := range card.ids {
@@ -348,8 +350,8 @@ func insertSeeded(ctx context.Context, tx *sql.Tx, card seedCluster, pref *seedP
 			INSERT INTO group_suggestion_members (suggestion_id, product_id, included, caution)
 			VALUES (?, ?, ?, ?)`,
 			id, productID, included, caution); err != nil {
-			return fmt.Errorf("could not prepare group suggestions: %w", err)
+			return "", fmt.Errorf("could not prepare group suggestions: %w", err)
 		}
 	}
-	return nil
+	return id, nil
 }

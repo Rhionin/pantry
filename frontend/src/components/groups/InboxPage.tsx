@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import {
   Alert, Anchor, Button, Checkbox, Group, Loader, NumberInput, Stack, Text, TextInput, Title,
 } from '@mantine/core';
-import { ApiError, acceptSuggestion, dismissSuggestion, listSuggestions, skipSuggestion } from '../../api/client';
+import { ApiError, acceptSuggestion, dismissSuggestion, listSuggestions, rescanSuggestions, skipSuggestion } from '../../api/client';
 import type { GroupSuggestion, GroupTarget, SuggestionMember, TargetConflictMember } from '../../types';
 import { conflictLine, kindPhrase, memberFacts } from './copy';
 
@@ -34,7 +34,7 @@ const MemberCard = ({
       onChange={(event) => onChecked(event.currentTarget.checked)}
     />
     <MemberPhoto src={member.imageUrl} />
-    <Title order={3} size="h5" className="suggestion-name">{member.name}</Title>
+    <Title order={2} size="h5" className="suggestion-name">{member.name}</Title>
     {facts.length > 0 && (
       <dl className="suggestion-facts">
         {facts.map((fact) => {
@@ -62,6 +62,8 @@ export const InboxPage = () => {
   const [ounces, setOunces] = useState<number | string>('');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [scanning, setScanning] = useState(false);
+  const [notice, setNotice] = useState('');
   const [error, setError] = useState('');
 
   const load = useCallback(async () => {
@@ -130,6 +132,24 @@ export const InboxPage = () => {
     }
   };
 
+  const rescan = async () => {
+    setScanning(true);
+    setNotice('');
+    setError('');
+    try {
+      const created = await rescanSuggestions();
+      if (created.length === 0) {
+        setNotice('No new groups found');
+        return;
+      }
+      await load();
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : 'Unable to look for groups.');
+    } finally {
+      setScanning(false);
+    }
+  };
+
   const skip = async () => {
     if (!card) return;
     setError('');
@@ -144,7 +164,13 @@ export const InboxPage = () => {
   return (
     <Stack gap="sm" className="bin-page">
       <Anchor component={Link} to="/groups" size="sm">Product groups</Anchor>
-      <Title order={1} size="h3">Suggestions</Title>
+      <Group justify="space-between" align="center" wrap="wrap">
+        <Title order={1} size="h3">Suggestions</Title>
+        <Button size="sm" variant="default" className="suggestion-rescan" loading={scanning} onClick={() => void rescan()}>
+          Look for more groups
+        </Button>
+      </Group>
+      {notice !== '' && <Text size="sm">{notice}</Text>}
       {loading && <Loader aria-label="Loading suggestions" />}
       {error !== '' && <Alert color="red" py="xs">{error}</Alert>}
       {!loading && cards.length === 0 && <Text c="dimmed">Nothing to review.</Text>}
@@ -212,8 +238,8 @@ export const InboxPage = () => {
             <Button className="suggestion-primary" size="sm" loading={saving} disabled={selected.length === 0} onClick={() => void group()}>
               {card.existingGroupId ? 'Add to group' : 'Group these'}
             </Button>
-            <Button size="sm" variant="light" color="red" loading={saving} onClick={() => void dismiss()}>Not the same</Button>
-            <Button size="sm" variant="subtle" onClick={() => void skip()}>Skip for now</Button>
+            <Button className="suggestion-dismiss" size="sm" variant="default" loading={saving} onClick={() => void dismiss()}>Not the same</Button>
+            <Button className="suggestion-skip" size="sm" variant="default" onClick={() => void skip()}>Skip for now</Button>
           </div>
         </Stack>
       )}

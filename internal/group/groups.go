@@ -489,11 +489,15 @@ func (g *Groups) SetDefaultRule(ctx context.Context, rule string) error {
 	return nil
 }
 
-// ListSuggestions refreshes look-alike cards, then returns the open ones.
+// ListSuggestions refreshes look-alike and same-need cards, then returns the open ones.
 func (g *Groups) ListSuggestions(ctx context.Context) ([]Suggestion, error) {
 	if err := g.RefreshSuggestions(ctx); err != nil {
 		return nil, err
 	}
+	return g.listOpenSuggestions(ctx)
+}
+
+func (g *Groups) listOpenSuggestions(ctx context.Context) ([]Suggestion, error) {
 	rows, err := g.db.QueryContext(ctx, `
 		SELECT id, kind, title, proposed_rule, pinned_product_id, existing_group_id, status
 		FROM group_suggestions

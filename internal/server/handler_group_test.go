@@ -377,6 +377,44 @@ func TestGroupHandlers(t *testing.T) {
 			},
 		},
 		{
+			name: "rescan finds a national brand group once",
+			setup: func(env testEnv) {
+				mustGroupProduct(env, "heinz", "Heinz Tomato Ketchup")
+				mustGroupProduct(env, "hunts", "Hunt's Tomato Ketchup")
+			},
+			httpExchange: httpExchange{
+				method:         http.MethodPost,
+				path:           "/api/group-suggestions/rescan",
+				expectedStatus: http.StatusOK,
+				assertions: []assertion{
+					{path: "$[0].title", value: "Tomato ketchup"},
+					{path: "$[0].kind", value: "looks_alike"},
+					{path: "$[0].members[0].productId", value: "heinz"},
+					{path: "$[0].members[1].productId", value: "hunts"},
+					{path: "$[1]", absent: true},
+				},
+			},
+			afterRequest: exchanges(httpExchange{
+				method:         http.MethodPost,
+				path:           "/api/group-suggestions/rescan",
+				expectedStatus: http.StatusOK,
+				bodyContains:   []string{"[]"},
+			}),
+		},
+		{
+			name: "rescan reports no new groups",
+			setup: func(env testEnv) {
+				mustGroupProduct(env, "apple", "Apple Juice")
+				mustGroupProduct(env, "beans", "Black Beans")
+			},
+			httpExchange: httpExchange{
+				method:         http.MethodPost,
+				path:           "/api/group-suggestions/rescan",
+				expectedStatus: http.StatusOK,
+				bodyContains:   []string{"[]"},
+			},
+		},
+		{
 			name: "opening suggestions creates one look-alike card",
 			setup: func(env testEnv) {
 				mustGroupProduct(env, "gv", "Great Value Cut Green Beans")

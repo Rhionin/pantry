@@ -1,12 +1,14 @@
 package server
 
 import (
+	"github.com/Rhionin/pantry/internal/group"
 	"github.com/Rhionin/pantry/internal/product"
 )
 
 type UpdateHandler struct {
 	Catalog     *product.Catalog
 	Contributor product.UpstreamContributor
+	Groups      *group.Groups
 }
 
 type updateProductPathParams struct {
@@ -58,6 +60,7 @@ func (h *UpdateHandler) Handle(req Request[productWriteBody, updateProductPathPa
 	if err != nil {
 		return productWriteResponse{}, err
 	}
+	considerGroupProduct(req.Context, h.Groups, stored.ID)
 	return productWriteResponse{Product: *stored, Contribution: outcome}, nil
 }
 
