@@ -21,6 +21,7 @@ here.
 
 - Open Product groups from the header menu, then open a group. The route is
   `/groups/:id`.
+- Creating a group from Product groups opens that group's page immediately.
 
 ## Driving it with Playwright
 

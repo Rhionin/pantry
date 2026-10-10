@@ -1,6 +1,6 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { MantineProvider } from '@mantine/core';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter, useLocation } from 'react-router-dom';
 import { describe, expect, it, vi } from 'vitest';
 import type { ProductGroup } from '../../types';
 import { GroupsPage } from './GroupsPage';
@@ -70,5 +70,37 @@ describe('GroupsPage', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Always my favorite' }));
     expect(screen.queryByText('Cut green beans')).not.toBeInTheDocument();
     expect(screen.getByText('Milk')).toBeInTheDocument();
+  });
+
+  it('opens the new group after creating it', async () => {
+    const Pathname = () => {
+      const { pathname } = useLocation();
+      return <p>Path {pathname}</p>;
+    };
+    vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      const method = init?.method ?? 'GET';
+      if (url === '/api/groups' && method === 'GET') return Promise.resolve(jsonResponse(groups));
+      if (url === '/api/groups' && method === 'POST') {
+        return Promise.resolve(jsonResponse(group({ id: 'g-soup', name: 'Soup', members: [] })));
+      }
+      if (url === '/api/group-suggestions') return Promise.resolve(jsonResponse([]));
+      if (url === '/api/products') return Promise.resolve(jsonResponse([]));
+      if (url === '/api/settings/supply') return Promise.resolve(jsonResponse({ months: 3 }));
+      throw new Error(`Unexpected request: ${method} ${url}`);
+    }));
+    render(
+      <MantineProvider>
+        <MemoryRouter initialEntries={['/groups']}>
+          <Pathname />
+          <GroupsPage />
+        </MemoryRouter>
+      </MantineProvider>,
+    );
+
+    fireEvent.click(await screen.findByRole('button', { name: 'New group' }));
+    fireEvent.change(await screen.findByRole('textbox', { name: 'Name' }), { target: { value: 'Soup' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Create group' }));
+    expect(await screen.findByText('Path /groups/g-soup')).toBeInTheDocument();
   });
 });

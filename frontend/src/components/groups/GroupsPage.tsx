@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { Alert, Anchor, Button, Group, Loader, Modal, Stack, Text, TextInput, Title, UnstyledButton } from '@mantine/core';
 import { createGroup, getSupplySettings, listGroups, listProducts, listSuggestions } from '../../api/client';
 import type { GroupSuggestion, Product, ProductGroup } from '../../types';
@@ -19,6 +19,7 @@ const chips: { id: GroupChip; label: string }[] = [
 ];
 
 export const GroupsPage = () => {
+  const navigate = useNavigate();
   const [groups, setGroups] = useState<ProductGroup[]>([]);
   const [catalog, setCatalog] = useState<Product[]>([]);
   const [suggestions, setSuggestions] = useState<GroupSuggestion[]>([]);
@@ -63,10 +64,10 @@ export const GroupsPage = () => {
     setSaving(true);
     setError('');
     try {
-      await createGroup(trimmed);
+      const created = await createGroup(trimmed);
       setName('');
       setCreating(false);
-      await load();
+      navigate(`/groups/${created.id}`);
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : 'Unable to create the group.');
     } finally {
