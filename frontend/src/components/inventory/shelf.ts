@@ -1,4 +1,4 @@
-import type { GroupSuggestion, InventoryGroup, InventoryItem, Product, ProductGroup } from '../../types';
+import type { GroupSuggestion, InventoryGroup, InventoryItem, Product, ProductGroup, ProductSummary } from '../../types';
 import {
   memberLine, memberPackage, onHandOunces, onHandPhrase, rulePillLabel, suggestionReason, type MemberPackage,
 } from '../groups/copy';
@@ -238,7 +238,7 @@ function countLine(members: MemberPackage[]): string {
 }
 
 function mergedProduct(
-  onHand: Product | undefined,
+  onHand: ProductSummary | null | undefined,
   listed: Product | undefined,
 ): Product | undefined {
   if (!onHand && !listed) return undefined;
