@@ -173,7 +173,7 @@ export const GroupDetailPage = () => {
     try {
       const result = await removeGroupMember(group.id, productId);
       if (result.deleted) {
-        navigate('/groups');
+        navigate('/inventory?filter=groups');
         return;
       }
       await load();
@@ -234,7 +234,7 @@ export const GroupDetailPage = () => {
 
   return (
     <Stack gap="lg" className="bin-page">
-      <Anchor component={Link} to="/groups" size="sm">Product groups</Anchor>
+      <Anchor component={Link} to="/inventory?filter=groups" size="sm">Inventory</Anchor>
       {error !== '' && !renaming && <Alert color="red" py="xs">{error}</Alert>}
       {group && view && shown && (
         <>

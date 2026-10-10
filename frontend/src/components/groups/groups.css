@@ -43,6 +43,16 @@
   text-underline-offset: 0.16em;
 }
 
+.bin-page .mantine-Drawer-header,
+.bin-page .mantine-Drawer-title {
+  color: var(--mantine-color-dark-9);
+}
+
+:where([data-mantine-color-scheme='dark']) .bin-page .mantine-Drawer-header,
+:where([data-mantine-color-scheme='dark']) .bin-page .mantine-Drawer-title {
+  color: var(--mantine-color-gray-0);
+}
+
 .bin-page .suggestion-rescan,
 .bin-page .suggestion-dismiss,
 .bin-page .suggestion-skip {
@@ -70,10 +80,6 @@
   --button-color: var(--suggestion-primary-ink);
   --button-bd: 1px solid transparent;
   color: var(--suggestion-primary-ink);
-}
-
-.bin-page .bin-list-title {
-  color: var(--bin-ink);
 }
 
 /* Pin the field ink and border. A gray-4 edge is about 1.5:1 on white, and a gray-5 placeholder is about 2:1. */
@@ -560,17 +566,6 @@
   min-width: 0;
 }
 
-.bin-title-row {
-  max-width: 40rem;
-}
-
-.bin-filters {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.4rem 0.9rem;
-  max-width: 36rem;
-}
-
 .bin-chip,
 .bin-chip:hover,
 .bin-chip:active,
@@ -596,64 +591,9 @@
 }
 
 .bin-chip:focus-visible,
-.bin-row:focus-visible,
 .bin-page .bin-action:focus-visible {
   outline: 2px solid var(--bin-focus);
   outline-offset: 2px;
-}
-
-.bin-list {
-  list-style: none;
-  margin: 0.4rem 0 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 1.15rem;
-  max-width: 40rem;
-}
-
-.bin-row,
-.bin-row:link,
-.bin-row:visited,
-.bin-row:hover,
-.bin-row:active,
-.bin-row:focus {
-  display: flex;
-  align-items: flex-start;
-  gap: 0.85rem;
-  /* Link states must keep the theme ink. A dark hover with the browser's black text is the list-page slab. */
-  color: var(--bin-ink);
-  background: transparent;
-  text-decoration: none;
-  padding: 0.35rem 0.4rem;
-  border-radius: var(--mantine-radius-sm);
-  -webkit-tap-highlight-color: transparent;
-}
-
-.bin-row-copy {
-  min-width: 0;
-}
-
-.bin-row-name {
-  font-weight: 650;
-  text-decoration: underline;
-  text-underline-offset: 0.15em;
-}
-
-.bin-row-summary {
-  display: block;
-  margin-top: 0.15rem;
-  max-width: 48ch;
-  color: var(--bin-muted);
-}
-
-.bin-row:hover,
-.bin-row:focus-visible {
-  background: var(--bin-row-hover);
-}
-
-.bin-row:active {
-  background: var(--bin-row-active);
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -1,34 +1,25 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { trackEventSource } from '../../telemetry/client';
-import { Alert, Button, Group, Loader, Stack, Text, TextInput, Title } from '@mantine/core';
-import { getInventoryList, getProduct, getSupplySettings, listGroups } from '../../api/client';
-import type { InventoryItem, ProductGroup } from '../../types';
-import { filterInventoryItems } from '../../utils/inventoryFilter';
+import { Alert, Button, Drawer, Group, Loader, Stack, Text, TextInput, Title, UnstyledButton } from '@mantine/core';
+import {
+  createGroup, getInventoryList, getProduct, getSupplySettings, listGroups, listProducts, listSuggestions, rescanSuggestions,
+} from '../../api/client';
+import type { GroupSuggestion, InventoryItem, Product, ProductGroup } from '../../types';
+import { InboxPage } from '../groups/InboxPage';
 import { ProductEditor } from '../product/ProductEditor';
+import { AddToGroupSheet } from './AddToGroupSheet';
 import { GroupRow } from './GroupRow';
 import { GroupSelectBar } from './GroupSelectBar';
 import { ItemInstanceList } from './ItemInstanceList';
 import { ItemRow } from './ItemRow';
-import { clusterInventory, mergeInventoryEvent } from './inventoryUtils';
 import { OpeningBanner } from './OpeningBanner';
-import { RuleSheet } from './RuleSheet';
-
-interface InventorySectionProps {
-  heading: string;
-  items: InventoryItem[];
-  selectedItemId: string | null;
-  expandedGroupId: string | null;
-  selecting: boolean;
-  checked: string[];
-  onSelect: (itemId: string) => void;
-  onToggleGroup: (groupId: string) => void;
-  onEditRule: (groupId: string) => void;
-  onChecked: (productId: string, next: boolean) => void;
-  onLongPress: (productId: string) => void;
-  renderExpanded: (item: InventoryItem) => ReactNode;
-  onHandChange: (itemId: string, delta: number) => void;
-  onInventoryChanged: () => void;
-}
+import { mergeInventoryEvent } from './inventoryUtils';
+import {
+  asCatalog, asSuggestions, buildShelf, filterShelf, groupsForShelf, parseShelfFilter, type ShelfFilter, type ShelfMember,
+} from './shelf';
+import '../groups/groups.css';
+import './shelf.css';
 
 const ProductBarcodeLine = ({ productId }: { productId: string }) => {
   const [barcodes, setBarcodes] = useState<string[]>([]);
@@ -56,99 +47,62 @@ const ProductBarcodeLine = ({ productId }: { productId: string }) => {
   );
 };
 
-const InventorySection = ({
-  heading,
-  items,
-  selectedItemId,
-  expandedGroupId,
-  selecting,
-  checked,
-  onSelect,
-  onToggleGroup,
-  onEditRule,
-  onChecked,
-  onLongPress,
-  renderExpanded,
-  onHandChange,
-  onInventoryChanged,
-}: InventorySectionProps) => (
-  <Stack component="section" aria-label={heading} gap="xs">
-    <Title order={2} size="h4" className="page-cluster">{heading}</Title>
-    <div className="card-grid">
-      {clusterInventory(items).map((cluster) => {
-        const group = cluster.items[0]?.group;
-        if (group) {
-          return (
-            <GroupRow
-              key={cluster.key}
-              group={group}
-              items={cluster.items}
-              expanded={expandedGroupId === group.id}
-              onToggle={() => onToggleGroup(group.id)}
-              onEditRule={() => onEditRule(group.id)}
-              onHandChange={onHandChange}
-              onInventoryChanged={onInventoryChanged}
-            />
-          );
-        }
-        const inventoryItem = cluster.items[0];
-        if (!inventoryItem) return null;
-        const selected = selectedItemId === inventoryItem.item.id;
-        return (
-          <ItemRow
-            key={cluster.key}
-            inventoryItem={inventoryItem}
-            selected={selected}
-            controlsId={`inventory-item-${inventoryItem.item.id}`}
-            onSelect={() => onSelect(inventoryItem.item.id)}
-            selecting={selecting}
-            checked={checked.includes(inventoryItem.item.productId)}
-            onChecked={(next) => onChecked(inventoryItem.item.productId, next)}
-            onLongPress={() => onLongPress(inventoryItem.item.productId)}
-          >
-            {selected ? renderExpanded(inventoryItem) : null}
-          </ItemRow>
-        );
-      })}
-    </div>
-  </Stack>
-);
+const chips: { id: ShelfFilter; label: string }[] = [
+  { id: 'all', label: 'All' },
+  { id: 'low', label: 'Running low' },
+  { id: 'groups', label: 'Groups' },
+  { id: 'ungrouped', label: 'Ungrouped' },
+];
 
 export const InventoryPage = () => {
+  const navigate = useNavigate();
+  const [params, setParams] = useSearchParams();
+  const filter = parseShelfFilter(params.get('filter'));
+  const reviewOpen = params.get('review') === '1' || params.get('suggestion') !== null;
+  const suggestionId = params.get('suggestion') ?? undefined;
   const [inventoryItems, setInventoryItems] = useState<InventoryItem[]>([]);
+  const [groups, setGroups] = useState<ProductGroup[]>([]);
+  const [suggestions, setSuggestions] = useState<GroupSuggestion[]>([]);
+  const [catalog, setCatalog] = useState<Product[]>([]);
+  const [householdMonths, setHouseholdMonths] = useState<number | undefined>();
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
   const [expandedGroupId, setExpandedGroupId] = useState<string | null>(null);
-  const [ruleGroupId, setRuleGroupId] = useState<string | null>(null);
   const [selecting, setSelecting] = useState(false);
   const [checked, setChecked] = useState<string[]>([]);
-  const [existingGroups, setExistingGroups] = useState<ProductGroup[]>([]);
+  const [sheet, setSheet] = useState<{ productId: string; name: string; fromGroupId?: string } | null>(null);
   const [loading, setLoading] = useState(true);
+  const [scanning, setScanning] = useState(false);
+  const [notice, setNotice] = useState('');
   const [error, setError] = useState('');
   const [opening, setOpening] = useState(false);
   const itemsRef = useRef<InventoryItem[]>([]);
+  const rescanned = useRef(false);
   useEffect(() => {
     itemsRef.current = inventoryItems;
   }, [inventoryItems]);
 
   const loadInventory = useCallback(async (quiet = false) => {
-    if (!quiet) {
-      setLoading(true);
-    }
+    if (!quiet) setLoading(true);
     setError('');
     try {
-      const [items, settings] = await Promise.all([
+      const [items, settings, listed, cards, products] = await Promise.all([
         getInventoryList(),
         getSupplySettings().catch(() => null),
+        listGroups().catch(() => [] as ProductGroup[]),
+        listSuggestions().catch(() => [] as GroupSuggestion[]),
+        listProducts().catch(() => [] as Product[]),
       ]);
       setInventoryItems(items);
       setOpening(settings?.opening === true);
+      setHouseholdMonths(settings?.months);
+      setGroups(groupsForShelf(listed, items));
+      setSuggestions(asSuggestions(cards));
+      setCatalog(asCatalog(products));
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : 'Unable to load inventory.');
     } finally {
-      if (!quiet) {
-        setLoading(false);
-      }
+      if (!quiet) setLoading(false);
     }
   }, []);
 
@@ -173,19 +127,60 @@ export const InventoryPage = () => {
     return () => eventSource.close();
   }, [loadInventory]);
 
-  const filteredItems = useMemo(
-    () => filterInventoryItems(inventoryItems, searchQuery),
-    [inventoryItems, searchQuery],
+  const rescan = useCallback(async () => {
+    setScanning(true);
+    setNotice('');
+    setError('');
+    try {
+      const created = await rescanSuggestions();
+      if (created.length === 0) setNotice('No new groups found');
+      await loadInventory(true);
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : 'Unable to look for groups.');
+    } finally {
+      setScanning(false);
+    }
+  }, [loadInventory]);
+
+  useEffect(() => {
+    if (params.get('rescan') !== '1' || rescanned.current) return;
+    rescanned.current = true;
+    const next = new URLSearchParams(params);
+    next.delete('rescan');
+    setParams(next, { replace: true });
+    void rescan();
+  }, [params, rescan, setParams]);
+
+  const rows = useMemo(
+    () => filterShelf(buildShelf({
+      items: inventoryItems,
+      groups,
+      suggestions,
+      catalog,
+      householdMonths,
+    }), searchQuery, filter),
+    [inventoryItems, groups, suggestions, catalog, householdMonths, searchQuery, filter],
   );
-  const clustered = clusterInventory(filteredItems);
-  const attentionIds = new Set(
-    clustered
-      .filter((cluster) => cluster.items.some((item) => item.needsAttention))
-      .flatMap((cluster) => cluster.items.map((item) => item.item.id)),
-  );
-  const needsAttentionItems = filteredItems.filter((item) => attentionIds.has(item.item.id));
-  const otherItems = filteredItems.filter((item) => !attentionIds.has(item.item.id));
-  const ruleGroup = inventoryItems.find((item) => item.group?.id === ruleGroupId)?.group;
+
+  const setFilter = (next: ShelfFilter) => {
+    const updated = new URLSearchParams(params);
+    if (next === 'all') updated.delete('filter');
+    else updated.set('filter', next);
+    setParams(updated, { replace: true });
+  };
+
+  const closeReview = () => {
+    const updated = new URLSearchParams(params);
+    updated.delete('review');
+    updated.delete('suggestion');
+    setParams(updated, { replace: true });
+  };
+
+  const openSuggestion = (id: string) => {
+    const updated = new URLSearchParams(params);
+    updated.set('suggestion', id);
+    setParams(updated, { replace: true });
+  };
 
   const toggleChecked = (productId: string, next: boolean) => {
     setChecked((current) => next ? [...new Set([...current, productId])] : current.filter((id) => id !== productId));
@@ -194,7 +189,6 @@ export const InventoryPage = () => {
   const startSelecting = (productId?: string) => {
     setSelecting(true);
     if (productId) toggleChecked(productId, true);
-    void listGroups().then(setExistingGroups).catch(() => setExistingGroups([]));
   };
 
   const selectItem = (itemId: string) => {
@@ -209,7 +203,17 @@ export const InventoryPage = () => {
     )));
   };
 
-  const renderExpanded = (inventoryItem: InventoryItem) => (
+  const startGroup = async (productId: string, name: string) => {
+    setError('');
+    try {
+      const created = await createGroup(name, [productId]);
+      navigate(`/groups/${created.id}`);
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : 'Unable to create the group.');
+    }
+  };
+
+  const renderExpanded = (inventoryItem: InventoryItem): ReactNode => (
     <Stack gap="sm">
       <ProductBarcodeLine productId={inventoryItem.item.productId} />
       <ItemInstanceList
@@ -226,20 +230,22 @@ export const InventoryPage = () => {
     </Stack>
   );
 
+  const empty = !loading && error === '' && inventoryItems.length === 0 && groups.length === 0;
+
   return (
-    <Stack gap="sm" className="page-wide">
+    <Stack gap="sm" className="page-wide bin-page shelf-page">
       <Title order={1} size="h3" className="page-cluster">Inventory</Title>
       {opening && <OpeningBanner onComplete={() => setOpening(false)} />}
-      <Group className="page-cluster" gap="xs" align="flex-end">
+      <Group className="page-cluster" gap="xs" align="flex-end" wrap="nowrap">
         <TextInput
           size="xs"
-          label="Search inventory"
-          placeholder="Search by product name or category"
+          label="Search products or groups"
+          placeholder="Search products or groups"
           value={searchQuery}
           onChange={(event) => setSearchQuery(event.currentTarget.value)}
           style={{ flex: 1 }}
         />
-        <Button size="xs" variant={selecting ? 'filled' : 'light'} onClick={() => {
+        <Button size="xs" variant="default" className="shelf-select" onClick={() => {
           if (selecting) {
             setSelecting(false);
             setChecked([]);
@@ -251,60 +257,79 @@ export const InventoryPage = () => {
           {selecting ? 'Done' : 'Select'}
         </Button>
       </Group>
+      <div className="shelf-filters" role="group" aria-label="Filter inventory">
+        {chips.map((chip) => (
+          <UnstyledButton
+            key={chip.id}
+            className="bin-chip"
+            aria-pressed={filter === chip.id}
+            onClick={() => setFilter(chip.id)}
+          >
+            {chip.label}
+          </UnstyledButton>
+        ))}
+      </div>
+      {filter === 'groups' && (
+        <Button size="sm" variant="default" className="suggestion-rescan" loading={scanning} onClick={() => void rescan()}>
+          Look for more groups
+        </Button>
+      )}
+      {notice !== '' && <p className="shelf-notice">{notice}</p>}
       {loading && <Loader aria-label="Loading inventory" />}
-      {error !== '' && (
-        <Alert color="red" py="xs">
-          {error}
-        </Alert>
+      {error !== '' && <Alert color="red" py="xs">{error}</Alert>}
+      {empty && <Text c="dimmed">Your inventory is empty.</Text>}
+      {!loading && error === '' && !empty && rows.length === 0 && (
+        <Text c="dimmed">No products or groups match.</Text>
       )}
-      {!loading && error === '' && inventoryItems.length === 0 && (
-        <Text c="dimmed">Your inventory is empty.</Text>
-      )}
-      {!loading && error === '' && inventoryItems.length > 0 && filteredItems.length === 0 && (
-        <Text c="dimmed">No inventory items match your search.</Text>
-      )}
-      {needsAttentionItems.length > 0 && (
-        <Alert color="yellow" title="Items expiring soon or already expired">
-          <InventorySection
-            heading="Needs Attention"
-            items={needsAttentionItems}
-            selectedItemId={selectedItemId}
-            expandedGroupId={expandedGroupId}
-            selecting={selecting}
-            checked={checked}
-            onSelect={selectItem}
-            onToggleGroup={(groupId) => setExpandedGroupId((current) => current === groupId ? null : groupId)}
-            onEditRule={setRuleGroupId}
-            onChecked={toggleChecked}
-            onLongPress={startSelecting}
-            renderExpanded={renderExpanded}
-            onHandChange={shiftOnHand}
-            onInventoryChanged={() => { void loadInventory(true); }}
-          />
-        </Alert>
-      )}
-      {otherItems.length > 0 && (
-        <InventorySection
-          heading="Inventory items"
-          items={otherItems}
-          selectedItemId={selectedItemId}
-          expandedGroupId={expandedGroupId}
-          selecting={selecting}
-          checked={checked}
-          onSelect={selectItem}
-          onToggleGroup={(groupId) => setExpandedGroupId((current) => current === groupId ? null : groupId)}
-          onEditRule={setRuleGroupId}
-          onChecked={toggleChecked}
-          onLongPress={startSelecting}
-          renderExpanded={renderExpanded}
-          onHandChange={shiftOnHand}
-          onInventoryChanged={() => { void loadInventory(true); }}
-        />
+      {rows.length > 0 && (
+        <div className="shelf-list">
+          {rows.map((row) => {
+            if (row.kind === 'group') {
+              return (
+                <GroupRow
+                  key={row.id}
+                  row={row}
+                  expanded={expandedGroupId === row.id}
+                  onToggle={() => setExpandedGroupId((current) => current === row.id ? null : row.id)}
+                  onMove={(member: ShelfMember) => setSheet({
+                    productId: member.productId,
+                    name: member.name,
+                    fromGroupId: row.id,
+                  })}
+                  onChanged={() => { void loadInventory(true); }}
+                  onHandChange={shiftOnHand}
+                />
+              );
+            }
+            const inventoryItem = row.item;
+            const selected = selectedItemId === inventoryItem.item.id;
+            return (
+              <ItemRow
+                key={row.id}
+                inventoryItem={inventoryItem}
+                hand={row.hand}
+                suggestion={row.suggestion}
+                selected={selected}
+                controlsId={`inventory-item-${inventoryItem.item.id}`}
+                onSelect={() => selectItem(inventoryItem.item.id)}
+                onAdd={() => setSheet({ productId: inventoryItem.item.productId, name: inventoryItem.item.product.name })}
+                onStartGroup={() => void startGroup(inventoryItem.item.productId, inventoryItem.item.product.name)}
+                onOpenSuggestion={row.suggestion ? () => openSuggestion(row.suggestion?.id ?? '') : undefined}
+                selecting={selecting}
+                checked={checked.includes(inventoryItem.item.productId)}
+                onChecked={(next) => toggleChecked(inventoryItem.item.productId, next)}
+                onLongPress={() => startSelecting(inventoryItem.item.productId)}
+              >
+                {selected ? renderExpanded(inventoryItem) : null}
+              </ItemRow>
+            );
+          })}
+        </div>
       )}
       {selecting && checked.length > 0 && (
         <GroupSelectBar
           productIds={checked}
-          groups={existingGroups}
+          groups={groups}
           onDone={() => {
             setSelecting(false);
             setChecked([]);
@@ -312,14 +337,34 @@ export const InventoryPage = () => {
           }}
         />
       )}
-      {ruleGroup && (
-        <RuleSheet
-          group={ruleGroup}
-          opened={ruleGroupId !== null}
-          onClose={() => setRuleGroupId(null)}
-          onSaved={() => { void loadInventory(true); }}
+      {sheet && (
+        <AddToGroupSheet
+          opened
+          productId={sheet.productId}
+          productName={sheet.name}
+          fromGroupId={sheet.fromGroupId}
+          groups={groups}
+          suggestions={suggestions}
+          onClose={() => setSheet(null)}
+          onChanged={() => {
+            setSheet(null);
+            void loadInventory(true);
+          }}
         />
       )}
+      <Drawer.Root opened={reviewOpen} onClose={closeReview} position="right" size="md">
+        <Drawer.Overlay />
+        <Drawer.Content className="bin-page">
+          {/* A header element here is a second banner landmark beside the app bar. */}
+          <Drawer.Header component="div">
+            <Drawer.Title>Suggestions</Drawer.Title>
+            <Drawer.CloseButton aria-label="Close" />
+          </Drawer.Header>
+          <Drawer.Body>
+            <InboxPage embedded focusId={suggestionId} />
+          </Drawer.Body>
+        </Drawer.Content>
+      </Drawer.Root>
     </Stack>
   );
 };

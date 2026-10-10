@@ -37,6 +37,14 @@ export const kindPhrase = (kind: string) => {
   return kind;
 };
 
+// Short reason on an inventory row or the add sheet. Same-need cards come from the old plan.
+export const suggestionReason = (kind: string) => {
+  if (kind === 'from_old_plan') return 'same need';
+  if (kind === 'looks_alike') return 'look alike';
+  if (kind === 'from_scan') return 'from a scan';
+  return kindPhrase(kind);
+};
+
 export const suggestionBanner = (cards: { kind: string }[]) => {
   if (cards.length === 0) return '';
   const counts = new Map<string, number>();

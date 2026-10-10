@@ -56,7 +56,7 @@ const renderDetail = (
       <MemoryRouter initialEntries={['/groups/g1']}>
         <Routes>
           <Route path="/groups/:id" element={<GroupDetailPage />} />
-          <Route path="/groups" element={<p>Groups list</p>} />
+          <Route path="/inventory" element={<p>Inventory</p>} />
         </Routes>
       </MemoryRouter>
     </MantineProvider>,

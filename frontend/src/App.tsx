@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { BrowserRouter, NavLink, Route, Routes, useLocation } from 'react-router-dom';
+import { BrowserRouter, NavLink, Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import { AppShell, Group, Title } from '@mantine/core';
 import { ScanAlertHost } from './components/queue/ScanAlertHost';
 import { ScanQueuePage } from './components/queue/ScanQueuePage';
@@ -7,8 +7,6 @@ import { InventoryPage } from './components/inventory/InventoryPage';
 import { ShoppingListPage } from './components/shopping/ShoppingListPage';
 import { DiagnosticsPage } from './components/diagnostics/DiagnosticsPage';
 import { SettingsPage } from './components/settings/SettingsPage';
-import { GroupsPage } from './components/groups/GroupsPage';
-import { InboxPage } from './components/groups/InboxPage';
 import { GroupDetailPage } from './components/groups/GroupDetailPage';
 import { AppMenu } from './components/shell/AppMenu';
 import { HouseholdGate } from './components/auth/HouseholdGate';
@@ -60,8 +58,8 @@ function SignedInApp() {
                 <Route path="/shopping" element={<ShoppingListPage />} />
                 <Route path="/diagnostics" element={<DiagnosticsPage />} />
                 <Route path="/settings" element={<SettingsPage />} />
-                <Route path="/groups" element={<GroupsPage />} />
-                <Route path="/groups/suggestions" element={<InboxPage />} />
+                <Route path="/groups" element={<Navigate to="/inventory?filter=groups" replace />} />
+                <Route path="/groups/suggestions" element={<Navigate to="/inventory?review=1" replace />} />
                 <Route path="/groups/:id" element={<GroupDetailPage />} />
               </Routes>
             </div>

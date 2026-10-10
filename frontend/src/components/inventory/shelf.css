@@ -1,0 +1,334 @@
+.shelf-page {
+  max-width: 42rem;
+}
+
+.bin-page .shelf-select {
+  --button-bg: var(--bin-well);
+  --button-hover: var(--bin-row-hover);
+  --button-color: var(--bin-ink);
+  --button-bd: 1px solid var(--bin-line);
+  color: var(--bin-ink);
+  font-weight: 650;
+}
+
+.shelf-filters {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: var(--mantine-spacing-xs);
+  overflow-x: auto;
+  padding-bottom: var(--mantine-spacing-xs);
+}
+
+.shelf-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.shelf-row {
+  display: flex;
+  flex-direction: column;
+  gap: var(--mantine-spacing-xs);
+  padding: var(--mantine-spacing-sm) 0;
+  border-bottom: 1px solid var(--bin-line);
+  min-width: 0;
+}
+
+.shelf-head {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--mantine-spacing-sm);
+  min-width: 0;
+}
+
+.shelf-copy {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--mantine-spacing-xs);
+}
+
+.shelf-title {
+  display: flex;
+  align-items: center;
+  gap: var(--mantine-spacing-xs);
+  min-width: 0;
+}
+
+.shelf-name {
+  margin: 0;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--mantine-font-size-md);
+  line-height: 1.3;
+  font-weight: 650;
+  color: var(--bin-ink);
+}
+
+.shelf-count {
+  flex: none;
+  min-width: 1.5rem;
+  padding: 0 var(--mantine-spacing-xs);
+  border-radius: var(--mantine-radius-xl);
+  background: var(--bin-well);
+  color: var(--bin-ink);
+  border: 1px solid var(--bin-line);
+  font-size: var(--mantine-font-size-xs);
+  font-weight: 650;
+  line-height: 1.5rem;
+  text-align: center;
+}
+
+.shelf-category,
+.shelf-meta,
+.shelf-pin {
+  margin: 0;
+  color: var(--bin-muted);
+  font-size: var(--mantine-font-size-sm);
+  line-height: 1.35;
+}
+
+.shelf-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--mantine-spacing-xs);
+}
+
+.shelf-pill {
+  flex: none;
+  padding: 0 var(--mantine-spacing-xs);
+  border-radius: var(--mantine-radius-xl);
+  background: var(--bin-well);
+  color: var(--bin-ink);
+  border: 1px solid var(--bin-line);
+  font-size: var(--mantine-font-size-xs);
+  font-weight: 650;
+  line-height: 1.4rem;
+}
+
+.shelf-meter {
+  height: 0.35rem;
+  border-radius: var(--mantine-radius-sm);
+  background: var(--bin-well);
+  border: 1px solid var(--bin-line);
+  overflow: hidden;
+}
+
+.shelf-meter-fill {
+  display: block;
+  height: 100%;
+  background: var(--bin-ink);
+}
+
+.shelf-pin {
+  display: flex;
+  align-items: center;
+  gap: var(--mantine-spacing-xs);
+  color: var(--bin-ink);
+  font-weight: 650;
+}
+
+.shelf-pin-icon {
+  width: 0.95rem;
+  height: 0.95rem;
+  flex: none;
+}
+
+.shelf-expand,
+.shelf-menu {
+  flex: none;
+  width: 2.75rem;
+  height: 2.75rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--bin-ink);
+  background: transparent;
+  border: 0;
+  border-radius: var(--mantine-radius-sm);
+  cursor: pointer;
+}
+
+.shelf-menu {
+  --ai-color: var(--bin-ink) !important;
+  --ai-hover-color: var(--bin-ink) !important;
+  color: var(--bin-ink) !important;
+}
+
+.shelf-chevron {
+  width: 1.5rem;
+  height: 1.5rem;
+}
+
+.shelf-chevron.is-open {
+  transform: rotate(180deg);
+}
+
+.shelf-photo {
+  position: relative;
+  width: 3rem;
+  height: 3rem;
+  flex: none;
+}
+
+.shelf-photo.is-stack {
+  margin-top: 4px;
+  margin-right: 4px;
+}
+
+.shelf-photo.is-stack::before {
+  content: "";
+  position: absolute;
+  z-index: 0;
+  top: -4px;
+  right: -4px;
+  width: 100%;
+  height: 100%;
+  border-radius: var(--mantine-radius-sm);
+  background: var(--bin-well);
+  border: 1px solid var(--bin-line);
+}
+
+.shelf-photo img,
+.shelf-photo-fallback {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: var(--mantine-radius-sm);
+  background: var(--bin-well);
+  border: 1px solid var(--bin-line);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--bin-muted);
+}
+
+.shelf-members {
+  margin-left: var(--mantine-spacing-md);
+  padding-left: var(--mantine-spacing-sm);
+  border-left: 2px solid var(--bin-line);
+  display: flex;
+  flex-direction: column;
+  gap: var(--mantine-spacing-sm);
+}
+
+.shelf-member {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--mantine-spacing-sm);
+  min-width: 0;
+}
+
+.shelf-member .shelf-photo {
+  width: 2.25rem;
+  height: 2.25rem;
+}
+
+.shelf-member-copy {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.shelf-member-name {
+  margin: 0;
+  font-weight: 650;
+  color: var(--bin-ink);
+}
+
+.shelf-aside {
+  color: var(--bin-muted);
+  font-size: var(--mantine-font-size-sm);
+}
+
+.shelf-settings {
+  color: var(--bin-link);
+  font-weight: 650;
+  text-underline-offset: 0.16em;
+}
+
+.shelf-suggestion {
+  align-self: flex-start;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--bin-link);
+  font: inherit;
+  font-size: var(--mantine-font-size-xs);
+  text-decoration: underline;
+  text-underline-offset: 0.16em;
+  cursor: pointer;
+  text-align: left;
+}
+
+.shelf-details {
+  padding-left: calc(3rem + var(--mantine-spacing-sm));
+}
+
+.shelf-expand:focus-visible,
+.shelf-menu:focus-visible,
+.shelf-suggestion:focus-visible,
+.shelf-settings:focus-visible,
+.shelf-sheet-choice:focus-visible,
+.bin-page .bin-chip:focus-visible {
+  outline: 2px solid var(--bin-focus);
+  outline-offset: 2px;
+}
+
+.shelf-sheet-body {
+  padding-bottom: calc(var(--mantine-spacing-md) + env(safe-area-inset-bottom));
+}
+
+.shelf-sheet-choice {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  width: 100%;
+  min-height: 2.75rem;
+  padding: var(--mantine-spacing-xs) var(--mantine-spacing-sm);
+  border-radius: var(--mantine-radius-sm);
+  color: var(--bin-ink);
+  text-align: left;
+}
+
+.shelf-sheet-choice:hover,
+.shelf-sheet-choice:focus-visible {
+  background: var(--bin-row-hover);
+}
+
+.shelf-sheet-choice-name {
+  font-weight: 650;
+}
+
+.shelf-sheet-choice-reason {
+  color: var(--bin-muted);
+  font-size: var(--mantine-font-size-sm);
+}
+
+.shelf-notice {
+  margin: 0;
+  color: var(--bin-ink);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .shelf-chevron {
+    transition: none;
+  }
+}
+
+@media (min-width: 80em) {
+  .shelf-page {
+    max-width: 46rem;
+  }
+}

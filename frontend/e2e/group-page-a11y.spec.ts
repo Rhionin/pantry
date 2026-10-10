@@ -51,18 +51,28 @@ function contrast(foreground: string, background: string) {
 }
 
 async function expectListColors(page: Page, scheme: 'light' | 'dark') {
-  const row = page.locator('.bin-row').first()
-  await row.hover()
+  const row = page.locator('.shelf-row').first()
   const sample = await row.evaluate((el) => {
-    const style = getComputedStyle(el)
-    const summary = el.querySelector('.bin-row-summary')
-    const well = el.querySelector('.bin-well')
+    const name = el.querySelector('.shelf-name')
+    const meta = el.querySelector('.shelf-meta')
+    const meter = el.querySelector('.shelf-meter')
     const input = document.querySelector('.bin-page .mantine-Input-input')
+    const walk = (start: Element | null) => {
+      let node = start
+      while (node) {
+        const bg = getComputedStyle(node).backgroundColor
+        const alpha = bg.match(/rgba\(\d+,\s*\d+,\s*\d+,\s*([\d.]+)\)/)
+        if (bg !== 'transparent' && (!alpha || Number(alpha[1]) > 0.05)) return bg
+        node = node.parentElement
+      }
+      return getComputedStyle(document.body).backgroundColor
+    }
+    const background = walk(el)
     return {
-      color: style.color,
-      background: style.backgroundColor,
-      summary: summary ? getComputedStyle(summary).color : '',
-      well: well ? getComputedStyle(well).backgroundColor : '',
+      color: name ? getComputedStyle(name).color : '',
+      background,
+      summary: meta ? getComputedStyle(meta).color : '',
+      well: meter ? getComputedStyle(meter).backgroundColor : '',
       placeholder: input ? getComputedStyle(input, '::placeholder').color : '',
       field: input ? getComputedStyle(input).backgroundColor : '',
       border: input ? getComputedStyle(input).borderTopColor : '',
@@ -84,8 +94,8 @@ async function expectListColors(page: Page, scheme: 'light' | 'dark') {
 
 async function tabTo(page: Page, name: string) {
   const target = page.getByRole('button', { name })
-  await page.getByRole('link', { name: 'Product groups' }).focus()
-  for (let step = 0; step < 16; step += 1) {
+  await page.getByRole('navigation', { name: 'Sections' }).getByRole('link', { name: 'Inventory' }).focus()
+  for (let step = 0; step < 24; step += 1) {
     if (await target.evaluate((el) => document.activeElement === el)) return target
     await page.keyboard.press('Tab')
   }
@@ -175,16 +185,18 @@ test('group page meets axe in light and dark', async ({ page, request }) => {
   await unsetTime.press('Enter')
   await expect(page.getByLabel('Months')).toBeVisible()
 
+  expect((await request.post('/api/onboarding/complete')).ok()).toBe(true)
   await page.goto('/groups')
   await setScheme(page, 'light')
-  await expect(page.getByRole('heading', { name: 'Product groups' })).toBeVisible()
-  await expect(page.getByRole('button', { name: 'All' })).toHaveAttribute('aria-pressed', 'true')
-  await expect(page.getByPlaceholder('Name or product')).toBeVisible()
+  await expect(page).toHaveURL(/\/inventory\?filter=groups/)
+  await expect(page.getByRole('heading', { name: 'Inventory' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Groups', exact: true })).toHaveAttribute('aria-pressed', 'true')
+  await expect(page.getByRole('textbox', { name: 'Search products or groups' })).toBeVisible()
   await expectClean(page)
   await expectListColors(page, 'light')
 
   await setScheme(page, 'dark')
-  await expect(page.getByRole('heading', { name: 'Product groups' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Inventory' })).toBeVisible()
   await expectClean(page)
   await expectListColors(page, 'dark')
 
