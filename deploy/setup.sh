@@ -144,6 +144,52 @@ write_auth_caddy() {
   mv "$tmp" "${PANTRY_DIR}/auth.caddy" || fatal "Could not write the password hash file"
 }
 
+# install_new_file replaces dest with a new inode. cp onto an existing path
+# rewrites the file bash is already executing; mv of a temp file does not.
+install_new_file() {
+  local src="$1" dest="$2" tmp dir
+  dir=$(dirname "$dest")
+  mkdir -p "$dir"
+  tmp=$(mktemp "${dir}/.pantry-install.XXXXXX")
+  if ! cp "$src" "$tmp"; then
+    rm -f "$tmp"
+    return 1
+  fi
+  chmod --reference="$src" "$tmp" || chmod 644 "$tmp"
+  mv -f "$tmp" "$dest"
+}
+
+# install_deploy_path copies a file or directory tree through install_new_file.
+# A symlink in the source tree is skipped so the copy cannot walk outside it.
+install_deploy_path() {
+  local src="$1" dest="$2" child base
+  local nullglob_was=0 dotglob_was=0
+  if [[ -L "$src" ]]; then
+    log_warn "Skipping symlink ${src}"
+    return 0
+  fi
+  if [[ -d "$src" ]]; then
+    mkdir -p "$dest"
+    shopt -q nullglob && nullglob_was=1
+    shopt -q dotglob && dotglob_was=1
+    shopt -s nullglob dotglob
+    for child in "$src"/*; do
+      base=$(basename "$child")
+      install_deploy_path "$child" "${dest}/${base}"
+    done
+    if [[ "$nullglob_was" -eq 0 ]]; then
+      shopt -u nullglob
+    fi
+    if [[ "$dotglob_was" -eq 0 ]]; then
+      shopt -u dotglob
+    fi
+    return 0
+  fi
+  if [[ -f "$src" ]]; then
+    install_new_file "$src" "$dest"
+  fi
+}
+
 # copy_deploy_files refreshes ${PANTRY_DIR} from this script's directory.
 # .env is never copied, so a re-run cannot clobber operator settings.
 # Copying a file onto itself (running the already-installed script) is skipped.
@@ -160,14 +206,17 @@ copy_deploy_files() {
     if [[ "$src" == "$dest" ]]; then
       continue
     fi
-    cp -r "$src" "${PANTRY_DIR}/"
+    install_deploy_path "$src" "$dest"
   done
   if [[ "$SCRIPT_DIR/setup.sh" != "${PANTRY_DIR}/setup.sh" ]]; then
-    cp "$SCRIPT_DIR/setup.sh" "${PANTRY_DIR}/setup.sh"
+    install_new_file "$SCRIPT_DIR/setup.sh" "${PANTRY_DIR}/setup.sh"
   fi
   chmod +x "${PANTRY_DIR}/setup.sh"
   if [[ -f "${PANTRY_DIR}/systemd/pantry-update.sh" ]]; then
     chmod +x "${PANTRY_DIR}/systemd/pantry-update.sh"
+  fi
+  if [[ -f "${PANTRY_DIR}/systemd/pantry-setup.sh" ]]; then
+    chmod +x "${PANTRY_DIR}/systemd/pantry-setup.sh"
   fi
   if [[ -f "${PANTRY_DIR}/firewall/pantry-lan-only.sh" ]]; then
     chmod +x "${PANTRY_DIR}/firewall/pantry-lan-only.sh"
@@ -506,6 +555,26 @@ verify_public_sign_in() {
   rm -f "$body"
 }
 
+# ensure_setup_status_file creates the public setup record the container
+# bind-mounts. An existing record is kept, so a routine apply does not wipe
+# the last applied commit. The file is mode 644 because the pantry process
+# reads it and has no other privileges. A directory at this path is the
+# Docker footgun from mounting a missing file; this path is a directory mount.
+ensure_setup_status_file() {
+  local dir="${PANTRY_DIR}/setup-state" status="${PANTRY_DIR}/setup-state/status.json"
+  if [[ -e "$dir" && ! -d "$dir" ]]; then
+    fatal "${dir} exists and is not a directory. Remove it and re-run 'sudo ./setup.sh'"
+  fi
+  if [[ -d "$status" ]]; then
+    fatal "${status} is a directory. Remove it and re-run 'sudo ./setup.sh'"
+  fi
+  mkdir -p "$dir"
+  if [[ ! -f "$status" ]]; then
+    printf '%s\n' '{}' > "$status"
+    chmod 644 "$status"
+  fi
+}
+
 # prepare_deploy_trigger_dir is the host directory mounted into the container.
 # uid 65532 is the distroless nonroot user. If the directory is missing, Docker
 # creates it as root and the hook cannot write the trigger file.
@@ -560,6 +629,70 @@ ensure_deploy_hook_secret() {
   log_success "Generated DEPLOY_HOOK_SECRET (print it with: sudo ./setup.sh deploy-secret)"
 }
 
+# seed_git_root prints the working tree that contains $1, if it has a .git.
+seed_git_root() {
+  local dir
+  dir=$(cd "$1" 2>/dev/null && pwd) || return 1
+  while true; do
+    if [[ -e "$dir/.git" ]]; then
+      printf '%s' "$dir"
+      return 0
+    fi
+    [[ "$dir" == "/" ]] && return 1
+    dir=$(dirname "$dir")
+  done
+}
+
+# seed_record_root writes HEAD only when this tree is clean and that commit
+# is already on origin/master. safe.directory is required because setup.sh
+# runs as root and git otherwise refuses a checkout it does not own.
+# A dirty tree or an unpushed commit is skipped: recording it would make
+# every later master tip look like a downgrade and be refused forever.
+seed_record_root() {
+  local root="$1" sha status
+  if ! status=$(git -c "safe.directory=${root}" -C "$root" status --porcelain 2>/dev/null); then
+    log_warn "Not recording last-known-good; git could not read ${root}"
+    return 0
+  fi
+  if [[ -n "$status" ]]; then
+    log_warn "Not recording last-known-good; the setup checkout has local changes"
+    return 0
+  fi
+  if ! sha=$(git -c "safe.directory=${root}" -C "$root" rev-parse HEAD 2>/dev/null) || [[ ! "$sha" =~ ^[0-9a-f]{40}$ ]]; then
+    log_warn "Not recording last-known-good; git could not read ${root}"
+    return 0
+  fi
+  if ! git -c "safe.directory=${root}" -C "$root" rev-parse --verify --quiet origin/master >/dev/null 2>&1 \
+    || ! git -c "safe.directory=${root}" -C "$root" merge-base --is-ancestor "$sha" origin/master; then
+    log_warn "Not recording last-known-good; HEAD is not on origin/master"
+    return 0
+  fi
+  mkdir -p "${PANTRY_DIR}/setup-state"
+  printf '%s\n' "$sha" > "${PANTRY_DIR}/setup-state/last-known-good"
+  printf '%s\n' "$sha" > "${PANTRY_DIR}/setup-state/last-applied"
+  log_info "Recorded last-known-good setup ${sha}"
+}
+
+# seed_known_good_setup records the commit a manual run just applied.
+# The automatic path skips this. A health failure on that path must not
+# become the commit a later rollback restores; the updater records
+# last-known-good only after its own health check.
+seed_known_good_setup() {
+  local root
+  if [[ "${PANTRY_SETUP_SKIP_PACKAGES:-}" == 1 ]]; then
+    return 0
+  fi
+  if root=$(seed_git_root "$SCRIPT_DIR"); then
+    seed_record_root "$root"
+    return 0
+  fi
+  if root=$(seed_git_root "${PANTRY_DIR}/src"); then
+    seed_record_root "$root"
+    return 0
+  fi
+  log_warn "Not recording last-known-good; no git checkout was found"
+}
+
 # ============================================================================
 # apply: sync files, containers, Caddy, and the LAN firewall
 # ============================================================================
@@ -587,20 +720,32 @@ cmd_apply() {
 
   log_info "Applying Pantry setup..."
 
-  if ! command_exists docker; then
-    log_warn "Docker not found, installing..."
-    if ! curl -fsSL https://get.docker.com | sh; then
-      fatal "Failed to install Docker"
+  # The signed updater sets PANTRY_SETUP_SKIP_PACKAGES. A merge must not
+  # install OS packages or upgrade Docker; the one manual run still can.
+  if [[ "${PANTRY_SETUP_SKIP_PACKAGES:-}" == 1 ]]; then
+    if ! command_exists docker; then
+      fatal "Docker is not installed. Automatic setup does not install packages or upgrade Docker."
     fi
-    log_success "Docker installed"
+    if ! docker compose version &> /dev/null; then
+      fatal "Docker Compose is not installed. Automatic setup does not install packages or upgrade Docker."
+    fi
+    log_success "Docker is already installed; automatic setup leaves it as it is"
   else
-    log_success "Docker already installed"
-  fi
+    if ! command_exists docker; then
+      log_warn "Docker not found, installing..."
+      if ! curl -fsSL https://get.docker.com | sh; then
+        fatal "Failed to install Docker"
+      fi
+      log_success "Docker installed"
+    else
+      log_success "Docker already installed"
+    fi
 
-  if ! docker compose version &> /dev/null; then
-    fatal "Docker Compose plugin not found after Docker installation"
+    if ! docker compose version &> /dev/null; then
+      fatal "Docker Compose plugin not found after Docker installation"
+    fi
+    log_success "Docker Compose plugin available"
   fi
-  log_success "Docker Compose plugin available"
 
   local current_user="${SUDO_USER:-$USER}"
   if [[ -z "$current_user" ]]; then
@@ -626,6 +771,7 @@ cmd_apply() {
     chmod 600 "$PANTRY_DIR/.env"
   fi
   prepare_deploy_trigger_dir
+  ensure_setup_status_file
 
   if [[ ! -d /dev/input ]]; then
     log_warn "/dev/input does not exist, creating it (scanner nodes will not appear inside container otherwise)"
@@ -771,6 +917,7 @@ cmd_apply() {
     fatal "Health check timeout"
   fi
   log_success "Pantry is healthy"
+  seed_known_good_setup
 
   if [[ "$use_public" == true ]]; then
     verify_public_sign_in "$host_port"
@@ -1312,6 +1459,10 @@ COMMANDS:
   deploy-secret    Print DEPLOY_HOOK_SECRET for the GitHub Actions secret
   help             Show this message
 
+After one `sudo ./setup.sh` installs the updater, a signed deploy from master
+also runs this apply. Set PANTRY_AUTO_SETUP=off in /opt/pantry/.env to keep
+image pulls only. That path does not install packages or upgrade Docker.
+
 EXAMPLES:
   # First install, and every update after git pull
   sudo ./setup.sh
@@ -1376,4 +1527,10 @@ main() {
   esac
 }
 
+# Tests source this file to call copy_deploy_files. A normal run applies
+# and exits so a rewritten copy of this script is not read further.
+if [[ "${PANTRY_SETUP_SOURCE_ONLY:-}" == 1 ]]; then
+  return 0
+fi
 main "$@"
+exit

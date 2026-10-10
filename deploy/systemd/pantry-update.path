@@ -5,7 +5,10 @@ Description=Deploy Pantry when a signed hook arrives
 # The container writes this file after the signature check. PathChanged is
 # edge-triggered, so a second write while an update is running starts another
 # run after the current one exits. The update script also re-reads the file
-# so two writes that land in one run still pull the newer image.
+# so two writes that land in one run still apply setup and pull again.
+# The service runs as root and is not sandboxed. The request body is not a
+# command: the update script accepts only a full commit that is on
+# origin/master and is last-known-good or a descendant of it.
 PathChanged=/opt/pantry/deploy-trigger/request
 Unit=pantry-update.service
 

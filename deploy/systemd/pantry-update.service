@@ -1,10 +1,14 @@
 [Unit]
-Description=Pull and restart the Pantry deployment
+Description=Apply signed setup, then pull and restart the Pantry deployment
 Wants=network-online.target docker.service
 After=network-online.target docker.service
 
 [Service]
 Type=oneshot
-TimeoutStartSec=15min
+# One run fetches the setup tree, applies it, and pulls the image.
+# Not sandboxed: no ProtectSystem, DynamicUser, or other confinement.
+# The unit runs as root because it applies setup.sh and talks to Docker.
+# A valid DEPLOY_HOOK_SECRET is root-setup authority for a master commit.
+TimeoutStartSec=30min
 WorkingDirectory=/opt/pantry
 ExecStart=/opt/pantry/systemd/pantry-update.sh

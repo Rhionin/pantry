@@ -237,7 +237,8 @@ func newAPIMux(
 	apiMux.HandleFunc("GET /api/events", eventsHandler.Handle)
 	// Caddy serves this exact path without the household password, beside
 	// telemetry, and isPublicPath leaves it open when X-Pantry-Entry is set.
-	// An agent compares commit with master to see that a deploy landed.
+	// An agent compares commit with master to see that a deploy landed, and
+	// setupCommit to see which setup tree the Pi applied.
 	apiMux.HandleFunc("GET /api/build", HandleJSON(handleBuildInfo))
 
 	telemetryHandler := &TelemetryHandler{Registry: reg}

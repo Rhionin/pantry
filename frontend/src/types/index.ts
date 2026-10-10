@@ -308,13 +308,17 @@ export interface LookupResult {
 // Matches buildInfoResponse in internal/server/handler_build.go.
 // commit is the full git SHA the image is tagged with, or "unknown".
 // version is "dev" for a local build. committedAt, builtAt, and subject are
-// omitted when the build was not stamped.
+// omitted when the build was not stamped. setupCommit, setupAppliedAt, and
+// setupStatus are omitted until the Pi records an applied setup tree.
 export interface BuildInfo {
   commit: string;
   committedAt?: string;
   builtAt?: string;
   version?: string;
   subject?: string;
+  setupCommit?: string;
+  setupAppliedAt?: string;
+  setupStatus?: string;
 }
 
 // Matches batchCommitResponse in internal/server/handler_scan_batch_commit.go.

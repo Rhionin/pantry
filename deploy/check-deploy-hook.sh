@@ -51,6 +51,57 @@ have deploy/systemd/pantry-update.path 'PathChanged=/opt/pantry/deploy-trigger/r
 have deploy/systemd/pantry-update.path 'Unit=pantry-update.service' "path unit starts the existing update service"
 have deploy/systemd/pantry-update.sh 'flock' "update script serializes overlapping triggers"
 have deploy/systemd/pantry-update.sh 'trigger changed during the pull' "update script pulls again when a trigger lands mid-run"
+have deploy/systemd/pantry-update.sh 'apply_signed_setup' "update script applies setup from the trigger"
+have deploy/systemd/pantry-setup.sh 'merge-base --is-ancestor' "setup accepts only an ancestor of origin/master"
+have deploy/systemd/pantry-setup.sh 'not a descendant of last-known-good' "setup refuses a downgrade behind last-known-good"
+# shellcheck disable=SC2016
+have deploy/systemd/pantry-setup.sh 'remote set-url origin "$PANTRY_SETUP_REMOTE" &&' "fetch uses the URL it just set"
+have deploy/systemd/pantry-setup.sh '1024' "trigger file is size-capped"
+have deploy/systemd/pantry-setup.sh 'in-progress' "an interrupted apply is recorded"
+have deploy/systemd/pantry-update.sh '/run/pantry-update.lock' "update lock is outside the container-writable trigger directory"
+have deploy/systemd/pantry-update.sh 'main "$@"' "update script parses its body before running"
+have deploy/systemd/pantry-setup.sh 'pantry_setup_main "$@"' "setup helper parses its body before running"
+have deploy/systemd/pantry-setup.sh 'last-failed' "a failed sha is not retried"
+have deploy/systemd/pantry-setup.sh 'last-refused' "a refused sha is not fetched again"
+have deploy/systemd/pantry-setup.sh 'trigger-claim' "the trigger is moved before it is read"
+have deploy/systemd/pantry-setup.sh 'not the origin/master tip' "the first apply accepts only the master tip"
+have deploy/setup.sh 'safe.directory' "manual setup can read a root-owned checkout"
+have deploy/README.md 'does not check the tunnel, Caddy, or the firewall' "health check is only local /health"
+if grep -q 'deploy-trigger/.lock' deploy/systemd/pantry-update.sh; then
+  fail "update lock must not live in the trigger directory"
+fi
+if grep -q "tr '\\\\n'" deploy/systemd/pantry-update.sh; then
+  fail "update script must not echo the raw trigger file"
+fi
+if grep -q 'cp -r' deploy/setup.sh; then
+  fail "setup must not copy deploy files onto an existing inode"
+fi
+have deploy/systemd/pantry-setup.sh 'https://github.com/Rhionin/pantry.git' "setup fetches GitHub, not the request"
+have deploy/systemd/pantry-setup.sh 'apply </dev/null' "setup.sh runs with stdin closed"
+have deploy/systemd/pantry-setup.sh 'PANTRY_SETUP_SKIP_PACKAGES=1' "automatic setup does not install packages"
+have deploy/systemd/pantry-setup.sh 'PANTRY_AUTO_SETUP' "auto setup can be turned off"
+have deploy/docker-compose.yml './setup-state:/etc/pantry/setup-state:ro' "setup status mount is read-only"
+have deploy/setup.sh 'PANTRY_SETUP_SKIP_PACKAGES' "setup.sh honors the no-install path"
+have internal/server/handler_build.go 'setupCommit' "public build info reports the applied setup commit"
+have internal/server/handler_build.go '"refused"' "public build info allows a refused setup status"
+have deploy/README.md 'root-setup authority' "README states the hook secret is root authority"
+have deploy/README.md 'not sandboxed' "README states the update unit is not sandboxed"
+
+setup_line=$(grep -n 'apply_signed_setup' deploy/systemd/pantry-update.sh | tail -1 | cut -d: -f1)
+compose_line=$(grep -n 'apply_compose' deploy/systemd/pantry-update.sh | tail -1 | cut -d: -f1)
+lock_line=$(grep -n 'flock -n 9' deploy/systemd/pantry-update.sh | head -1 | cut -d: -f1)
+[[ -n "$setup_line" && -n "$compose_line" && "$setup_line" -lt "$compose_line" ]] || fail "setup must run before the image pull"
+[[ -n "$lock_line" && "$lock_line" -lt "$setup_line" ]] || fail "setup must run inside the update lock"
+
+if grep -q '"os/exec"' internal/deployhook/hook.go || grep -q 'exec.Command' internal/deployhook/hook.go; then
+  fail "deploy hook must only write the trigger file"
+fi
+if grep -q 'eval ' deploy/systemd/pantry-setup.sh; then
+  fail "setup updater must not eval the trigger"
+fi
+if grep -Eq 'src:|/opt/pantry/src' deploy/docker-compose.yml deploy/docker-compose.tunnel.yml; then
+  fail "compose must not mount the setup checkout into the container"
+fi
 
 # The compose value is a literal ${...} interpolation, not a shell expansion.
 # shellcheck disable=SC2016

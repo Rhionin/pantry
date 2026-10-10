@@ -3,6 +3,8 @@ package server
 import (
 	"io"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -11,6 +13,11 @@ import (
 )
 
 func TestBuildInfoEndpoint(t *testing.T) {
+	t.Setenv("PANTRY_SETUP_STATUS", "")
+	originalStatusPath := setupStatusPath
+	setupStatusPath = filepath.Join(t.TempDir(), "missing.json")
+	t.Cleanup(func() { setupStatusPath = originalStatusPath })
+
 	originalCommit := buildinfo.Commit
 	originalTime := buildinfo.CommittedAt
 	originalBuilt := buildinfo.BuiltAt
@@ -69,6 +76,108 @@ func TestBuildInfoEndpoint(t *testing.T) {
 			afterRequest: assertBuildInfoOmitsEmptyFields,
 		},
 		{
+			name: "GET /api/build reports the applied setup commit and status",
+			setup: func(env testEnv) {
+				path := filepath.Join(env.T.TempDir(), "status.json")
+				body := `{"setupCommit":"0123456789abcdef0123456789abcdef01234567","setupAppliedAt":"2026-10-09T14:00:00Z","setupStatus":"applied","secret":"nope"}`
+				if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+					env.T.Fatalf("write status: %v", err)
+				}
+				env.T.Setenv("PANTRY_SETUP_STATUS", path)
+			},
+			httpExchange: httpExchange{
+				method:         "GET",
+				url:            "/api/build",
+				expectedStatus: http.StatusOK,
+				assertions: []assertion{
+					{path: "$.setupCommit", value: "0123456789abcdef0123456789abcdef01234567"},
+					{path: "$.setupAppliedAt", value: "2026-10-09T14:00:00Z"},
+					{path: "$.setupStatus", value: "applied"},
+					{path: "$.secret", absent: true},
+				},
+				bodyExcludes: []string{"nope"},
+			},
+			afterRequest: assertBuildInfoKeys,
+		},
+		{
+			name: "GET /api/build reports a rolled-back setup",
+			setup: func(env testEnv) {
+				path := filepath.Join(env.T.TempDir(), "status.json")
+				body := `{"setupCommit":"abcdefabcdefabcdefabcdefabcdefabcdefabcd","setupAppliedAt":"2026-10-09T15:04:05Z","setupStatus":"rolled-back"}`
+				if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+					env.T.Fatalf("write status: %v", err)
+				}
+				env.T.Setenv("PANTRY_SETUP_STATUS", path)
+			},
+			httpExchange: httpExchange{
+				method:         "GET",
+				url:            "/api/build",
+				expectedStatus: http.StatusOK,
+				assertions: []assertion{
+					{path: "$.setupCommit", value: "abcdefabcdefabcdefabcdefabcdefabcdefabcd"},
+					{path: "$.setupStatus", value: "rolled-back"},
+				},
+			},
+			afterRequest: assertBuildInfoKeys,
+		},
+		{
+			name: "GET /api/build reports a refused setup commit",
+			setup: func(env testEnv) {
+				path := filepath.Join(env.T.TempDir(), "status.json")
+				body := `{"setupCommit":"fedcba9876543210fedcba9876543210fedcba98","setupAppliedAt":"2026-10-09T16:00:00Z","setupStatus":"refused"}`
+				if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+					env.T.Fatalf("write status: %v", err)
+				}
+				env.T.Setenv("PANTRY_SETUP_STATUS", path)
+			},
+			httpExchange: httpExchange{
+				method:         "GET",
+				url:            "/api/build",
+				expectedStatus: http.StatusOK,
+				assertions: []assertion{
+					{path: "$.setupCommit", value: "fedcba9876543210fedcba9876543210fedcba98"},
+					{path: "$.setupAppliedAt", value: "2026-10-09T16:00:00Z"},
+					{path: "$.setupStatus", value: "refused"},
+				},
+			},
+			afterRequest: assertBuildInfoKeys,
+		},
+		{
+			name: "GET /api/build omits a setup record that is not a commit or status",
+			setup: func(env testEnv) {
+				path := filepath.Join(env.T.TempDir(), "status.json")
+				body := `{"setupCommit":"../etc/passwd","setupAppliedAt":"yesterday","setupStatus":"applied;rm"}`
+				if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+					env.T.Fatalf("write status: %v", err)
+				}
+				env.T.Setenv("PANTRY_SETUP_STATUS", path)
+			},
+			httpExchange: httpExchange{
+				method:         "GET",
+				url:            "/api/build",
+				expectedStatus: http.StatusOK,
+				bodyExcludes:   []string{"setupCommit", "setupAppliedAt", "setupStatus", "passwd", "yesterday"},
+			},
+			afterRequest: assertBuildInfoOmitsEmptyFields,
+		},
+		{
+			name: "GET /api/build ignores a setup record that is not JSON",
+			setup: func(env testEnv) {
+				path := filepath.Join(env.T.TempDir(), "status.json")
+				if err := os.WriteFile(path, []byte("not-json"), 0o644); err != nil {
+					env.T.Fatalf("write status: %v", err)
+				}
+				env.T.Setenv("PANTRY_SETUP_STATUS", path)
+			},
+			httpExchange: httpExchange{
+				method:         "GET",
+				url:            "/api/build",
+				expectedStatus: http.StatusOK,
+				bodyExcludes:   []string{"setupCommit", "not-json"},
+			},
+			afterRequest: assertBuildInfoOmitsEmptyFields,
+		},
+		{
 			name: "POST /api/build is not a build lookup",
 			httpExchange: httpExchange{
 				method:         "POST",
@@ -83,8 +192,9 @@ func TestBuildInfoEndpoint(t *testing.T) {
 func assertBuildInfoOmitsEmptyFields(env testEnv) {
 	body := readBuildInfoBody(env)
 	text := string(body)
-	if strings.Contains(text, "committedAt") || strings.Contains(text, "builtAt") || strings.Contains(text, "subject") {
-		env.T.Errorf("unstamped build info should omit times and subject, got %s", text)
+	if strings.Contains(text, "committedAt") || strings.Contains(text, "builtAt") || strings.Contains(text, "subject") ||
+		strings.Contains(text, "setupCommit") || strings.Contains(text, "setupAppliedAt") || strings.Contains(text, "setupStatus") {
+		env.T.Errorf("unstamped build info should omit times, subject, and setup status, got %s", text)
 	}
 	assertBuildInfoKeySet(env.T, body)
 }
@@ -115,6 +225,7 @@ func assertBuildInfoKeySet(t *testing.T, body []byte) {
 	}
 	allowed := map[string]bool{
 		"commit": true, "committedAt": true, "builtAt": true, "version": true, "subject": true,
+		"setupCommit": true, "setupAppliedAt": true, "setupStatus": true,
 	}
 	for key := range raw {
 		if !allowed[key] {

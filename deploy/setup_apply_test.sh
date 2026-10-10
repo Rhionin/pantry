@@ -10,6 +10,7 @@ SETUP="$ROOT/deploy/setup.sh"
 bash -n "$SETUP"
 bash -n "$ROOT/deploy/firewall/pantry-lan-only.sh"
 bash -n "$ROOT/deploy/systemd/pantry-update.sh"
+bash -n "$ROOT/deploy/systemd/pantry-setup.sh"
 bash -n "$ROOT/deploy/mdns/pantry-mdns.sh"
 bash -n "$ROOT/deploy/mdns/lan-ipv4.sh"
 bash -n "$ROOT/deploy/dns/pantry-split-dns.sh"
@@ -592,6 +593,8 @@ have "$LAST_DOCKER" "--profile tunnel" "split-horizon removal keeps the tunnel"
 source "$ROOT/deploy/publish-mode.sh"
 mode_dir=$(mktemp -d)
 write_env "$mode_dir" "PUBLIC_HOST=" "CLOUDFLARE_TUNNEL_TOKEN=" "PUBLISH_MODE="
+# publish_mode_from_env reads PANTRY_DIR from this shell.
+# shellcheck disable=SC2034
 PANTRY_DIR="$mode_dir"
 got=$(publish_mode_from_env)
 [[ "$got" == none ]] || fail "empty env mode, got $got"
@@ -709,6 +712,58 @@ set -e
 have "$(cat /tmp/pantry-chown-skip.out)" "[warn] Could not give" "skip-root chown failure is a warning"
 unset CURL_SESSION_CODE CURL_SESSION_BODY
 
-rm -rf "$lan" "$pub" "$first" "$bad" "$incomplete" "$opt" "$mdns" "$split" "$badip" "$mdns_bin" "$tun" "$notoken" "$unready" "$tunsplit" "$mode_dir" "$custom" "$updates" "$unavailable" "$owned" "$own_bin" "$fail_bin"
+# Automatic setup must not call the Docker installer, and must not replace
+# a password file or a secret that is already in .env.
+auto=$(mktemp -d)
+write_env "$auto" \
+  "PANTRY_IMAGE_TAG=pinned-by-operator" \
+  "HOST_PORT=9090" \
+  "PUBLIC_HOST=" \
+  "ACME_EMAIL=" \
+  "BASIC_AUTH_USER=pantry" \
+  "BASIC_AUTH_PASSWORD=correct horse battery staple" \
+  "DEPLOY_HOOK_SECRET=kept-hook-secret" \
+  "PANTRY_SESSION_SECRET=kept-session-secret" \
+  "SCANNER_DEVICE=/dev/input/pantry-scanner"
+printf '%s\n' 'basic_auth bcrypt Pantry {' '	pantry ORIGINAL-HASH' '}' > "$auto/auth.caddy"
+cp "$auto/auth.caddy" "$auto/auth.caddy.before"
+PANTRY_SETUP_SKIP_PACKAGES=1 run_setup "$auto"
+[[ "$LAST_RC" -eq 0 ]] || fail "skip-packages setup exited $LAST_RC: $LAST_OUT"
+lack "$LAST_CURL" "get.docker.com" "automatic setup must not install Docker"
+have "$LAST_OUT" "automatic setup leaves it as it is" "automatic setup says Docker is unchanged"
+cmp "$auto/auth.caddy" "$auto/auth.caddy.before" || fail "automatic setup replaced auth.caddy"
+grep -q '^DEPLOY_HOOK_SECRET=kept-hook-secret$' "$auto/.env" || fail "automatic setup replaced DEPLOY_HOOK_SECRET"
+grep -q '^PANTRY_SESSION_SECRET=kept-session-secret$' "$auto/.env" || fail "automatic setup replaced the session secret"
+grep -q '^PANTRY_IMAGE_TAG=pinned-by-operator$' "$auto/.env" || fail "automatic setup replaced PANTRY_IMAGE_TAG"
+grep -q '^BASIC_AUTH_PASSWORD=correct horse battery staple$' "$auto/.env" || fail "automatic setup replaced BASIC_AUTH_PASSWORD"
+[[ -f "$auto/setup-state/status.json" ]] || fail "automatic setup did not create the setup status file"
+[[ ! -f "$auto/setup-state/last-known-good" ]] || fail "automatic setup seeded last-known-good"
+
+# No docker binary: the automatic path stops instead of curling the installer.
+nodocker=$(mktemp -d)
+write_env "$nodocker" \
+  "PANTRY_IMAGE_TAG=latest" \
+  "HOST_PORT=9090" \
+  "PUBLIC_HOST=" \
+  "BASIC_AUTH_USER=pantry" \
+  "BASIC_AUTH_PASSWORD="
+nodocker_out=$(mktemp)
+nodocker_bin=$(mktemp -d)
+ln -s "$(command -v bash)" "$nodocker_bin/bash"
+ln -s "$(command -v dirname)" "$nodocker_bin/dirname"
+set +e
+PATH="$nodocker_bin" \
+  PANTRY_SETUP_SKIP_PACKAGES=1 \
+  PANTRY_SETUP_SKIP_ROOT=1 \
+  PANTRY_DIR="$nodocker" \
+  bash "$SETUP" apply >"$nodocker_out" 2>&1
+nodocker_rc=$?
+set -e
+[[ "$nodocker_rc" -ne 0 ]] || fail "automatic setup should stop when Docker is missing"
+have "$(cat "$nodocker_out")" "does not install packages or upgrade Docker" "missing Docker is not installed"
+lack "$(cat "$nodocker_out")" "get.docker.com" "missing Docker must not reach the installer"
+
+rm -rf "$lan" "$pub" "$first" "$bad" "$incomplete" "$opt" "$mdns" "$split" "$badip" "$mdns_bin" "$tun" "$notoken" "$unready" "$tunsplit" "$mode_dir" "$custom" "$updates" "$unavailable" "$owned" "$own_bin" "$fail_bin" "$auto" "$nodocker" "$nodocker_bin"
+rm -f "$nodocker_out"
 rm -f /tmp/pantry-chown-fail.out /tmp/pantry-chown-skip.out
 echo "setup_apply_test ok"
