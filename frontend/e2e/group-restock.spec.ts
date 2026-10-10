@@ -6,6 +6,26 @@ import { commitSelectedScan, resetToStockIn, scanBarcode } from './helpers'
 
 const artifacts = '/opt/cursor/artifacts'
 
+// The suite shares one database. These scans have to land after opening so
+// variety can see a stock-in time. Shopping list, which runs later, still
+// expects the opening snapshot, so the household is put back when this spec ends.
+let createdGroupID = ''
+
+async function restoreOpeningSnapshot(request: APIRequestContext) {
+  if (createdGroupID !== '') {
+    await request.delete(`/api/groups/${createdGroupID}`)
+    createdGroupID = ''
+  }
+  const wiped = await request.post('/api/inventory/wipe', {
+    data: { confirmation: 'WIPE INVENTORY' },
+  })
+  expect(wiped.ok()).toBe(true)
+  const settings = await request.get('/api/settings/supply')
+  expect(settings.ok()).toBe(true)
+  const body = await settings.json() as { opening: boolean }
+  expect(body.opening).toBe(true)
+}
+
 async function shot(page: Page, name: string) {
   mkdirSync(artifacts, { recursive: true })
   await page.screenshot({ path: join(artifacts, name) })
@@ -28,6 +48,10 @@ async function setScheme(page: Page, scheme: 'light' | 'dark') {
   await page.reload()
   await expect.poll(() => page.evaluate(() => document.documentElement.getAttribute('data-mantine-color-scheme'))).toBe(scheme)
 }
+
+test.afterEach(async ({ request }) => {
+  await restoreOpeningSnapshot(request)
+})
 
 test('favor variety and don\'t restock on a phone', async ({ page, request }) => {
   test.setTimeout(90_000)
@@ -65,6 +89,7 @@ test('favor variety and don\'t restock on a phone', async ({ page, request }) =>
   })
   if (!created.ok()) throw new Error(await created.text())
   const group = await created.json() as { id: string }
+  createdGroupID = group.id
   expect((await request.put(`/api/groups/${group.id}/rule`, {
     data: { rule: 'same_as_ran_out', confirm: true },
   })).ok()).toBe(true)
@@ -113,6 +138,4 @@ test('favor variety and don\'t restock on a phone', async ({ page, request }) =>
 
   const violations = await new AxeBuilder({ page }).include('.bin-page').analyze()
   expect(violations.violations).toEqual([])
-
-  expect((await request.delete(`/api/groups/${group.id}`)).ok()).toBe(true)
 })
