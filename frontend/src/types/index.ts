@@ -318,7 +318,7 @@ export interface BuildInfo {
 }
 
 // Matches batchCommitResponse in internal/server/handler_scan_batch_commit.go.
-export type GroupRule = 'same_as_ran_out' | 'favorite' | 'best_deal';
+export type GroupRule = 'same_as_ran_out' | 'favorite' | 'best_deal' | 'favor_variety';
 
 export type SuggestionKind = 'looks_alike' | 'from_scan' | 'from_old_plan';
 
@@ -326,6 +326,9 @@ export interface GroupMember {
   productId: string;
   name: string;
   onHand: number;
+  noRestock?: boolean;
+  lastStockedAt?: string;
+  lastConsumedAt?: string;
 }
 
 export interface GroupUsage {

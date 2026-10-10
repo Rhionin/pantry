@@ -459,4 +459,62 @@ describe('GroupDetailPage', () => {
     expect(screen.getByRole('button', { name: 'Keep on hand amount, about 96 ounces' })).toBeInTheDocument();
     expect(document.querySelector('.bin-fill')).not.toBeNull();
   });
+
+  it('splits don\'t-restock products out of the rotation and saves favor variety', async () => {
+    let current: ProductGroup = {
+      ...baseGroup(),
+      rule: 'favor_variety',
+      ruleConfirmed: true,
+      quantity: 48,
+      dimension: 'mass',
+      members: [
+        { ...member('plain', 'Kroger bran', 1), lastStockedAt: '2026-06-01T00:00:00Z' },
+        { ...member('fancy', 'Lehi roller', 1), noRestock: true, lastStockedAt: '2024-01-01T00:00:00Z' },
+        member('corn', 'Corn muffin', 0),
+      ],
+    };
+    const calls: { url: string; body?: string }[] = [];
+    renderDetail((url, init) => {
+      const method = init?.method ?? 'GET';
+      if (method !== 'GET') calls.push({ url, body: typeof init?.body === 'string' ? init.body : undefined });
+      if (url === '/api/groups/g1' && method === 'GET') return json(current);
+      if (url === '/api/groups' && method === 'GET') return json([current]);
+      if (url === '/api/products' && method === 'GET') return json([]);
+      if (url === '/api/inventory') return json([]);
+      if (url === '/api/settings/supply') return json({ months: 3, opening: false, wipePhrase: 'WIPE INVENTORY' });
+      if (url.startsWith('/api/products/')) {
+        return json({ barcodes: [], unitOfMeasure: 'box', netAmount: 18, netUnit: 'oz' });
+      }
+      if (url === '/api/groups/g1/members/plain/restock' && method === 'PUT') {
+        current = {
+          ...current,
+          members: current.members.map((item) => (item.productId === 'plain' ? { ...item, noRestock: true } : item)),
+        };
+        return json(current);
+      }
+      if (url === '/api/groups/g1/rule' && method === 'PUT') return json(current);
+      throw new Error(`Unexpected ${method} ${url}`);
+    });
+
+    expect(await screen.findByRole('heading', { name: 'In rotation' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Not restocked' })).toBeInTheDocument();
+    expect(screen.getByText('Next up: Corn muffin · rotates through 2')).toBeInTheDocument();
+    expect(screen.getByText('⊘ no restock')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Change rule, Favor variety' })).toBeInTheDocument();
+    const stock = screen.getByRole('meter', { name: 'Stock on hand' });
+    expect(stock).toHaveAttribute('aria-valuenow', '36');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Remove or move Kroger bran' }));
+    expect(await screen.findByRole('menuitem', { name: /Don't restock/ })).toBeInTheDocument();
+    expect(screen.getByText('Stays in the group and counts toward stock')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('menuitem', { name: /Don't restock/ }));
+    await waitFor(() => expect(calls.some((call) => call.url.endsWith('/restock'))).toBe(true));
+    expect(JSON.parse(calls.find((call) => call.url.endsWith('/restock'))?.body ?? '{}')).toEqual({ noRestock: true });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Change rule, Favor variety' }));
+    const picker = await screen.findByRole('dialog', { name: 'What to buy next' });
+    expect(within(picker).getByRole('radio', { name: 'Favor variety' })).toBeChecked();
+    expect(within(picker).getByText("Rotate to the product you've had least recently.")).toBeInTheDocument();
+    expect(within(picker).getByText('Products marked "Don\'t restock" are skipped.')).toBeInTheDocument();
+  });
 });

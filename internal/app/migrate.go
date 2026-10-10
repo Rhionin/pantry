@@ -55,6 +55,11 @@ func RunMigrations(db *sql.DB) error {
 				return fmt.Errorf("apply migration %q: %w", name, err)
 			}
 		}
+		if name == restockChangeMigration {
+			if err := snapshotRestockDB(db); err != nil {
+				return fmt.Errorf("apply migration %q: %w", name, err)
+			}
+		}
 
 		// Read the embedded SQL file.
 		sqlBytes, err := migrationsFS.ReadFile("migrations/" + name)

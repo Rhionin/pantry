@@ -432,6 +432,138 @@ func TestGroupHandlers(t *testing.T) {
 				},
 			),
 		},
+		{
+			name: "don't restock stays on the product and out of the rotation",
+			setup: func(env testEnv) {
+				mustGroupProduct(env, "plain", "Plain muffin")
+				mustGroupProduct(env, "fancy", "Fancy muffin")
+				insertGroup(env, "mixes", "Muffin mix")
+				insertMember(env, "mixes", "plain")
+				insertMember(env, "mixes", "fancy")
+			},
+			httpExchange: httpExchange{
+				method:         http.MethodPut,
+				path:           "/api/groups/mixes/members/fancy/restock",
+				body:           `{"noRestock":true}`,
+				expectedStatus: http.StatusOK,
+				assertions: []assertion{
+					{path: "$.members[0].productId", value: "fancy"},
+					{path: "$.members[0].noRestock", value: true},
+					{path: "$.members[1].productId", value: "plain"},
+					{path: "$.members[1].noRestock", absent: true},
+				},
+			},
+			afterRequest: exchanges(
+				httpExchange{
+					method:         http.MethodGet,
+					path:           "/api/groups/mixes",
+					expectedStatus: http.StatusOK,
+					assertions:     []assertion{{path: "$.members[0].noRestock", value: true}},
+				},
+				httpExchange{
+					method:         http.MethodPut,
+					path:           "/api/groups/mixes/rule",
+					body:           `{"rule":"favor_variety","confirm":true}`,
+					expectedStatus: http.StatusOK,
+					assertions:     []assertion{{path: "$.rule", value: "favor_variety"}},
+				},
+				httpExchange{
+					method:         http.MethodPut,
+					path:           "/api/groups/mixes/members/fancy/restock",
+					body:           `{"noRestock":false}`,
+					expectedStatus: http.StatusOK,
+					assertions:     []assertion{{path: "$.members[0].noRestock", absent: true}},
+				},
+			),
+		},
+		{
+			name: "preview skips products that are not restocked",
+			httpExchange: httpExchange{
+				method: http.MethodPost,
+				path:   "/api/groups/preview",
+				body: `{
+					"rule":"favor_variety",
+					"members":[
+						{"productId":"fancy","name":"Fancy","noRestock":true,"lastStockedAt":"2024-01-01T00:00:00Z"},
+						{"productId":"plain","name":"Plain","lastStockedAt":"2026-01-01T00:00:00Z"},
+						{"productId":"new","name":"New"}
+					]
+				}`,
+				expectedStatus: http.StatusOK,
+				assertions: []assertion{
+					{path: "$.productId", value: "new"},
+					{path: "$.because", value: "Next up: New · rotates through 2"},
+				},
+			},
+			afterRequest: exchanges(
+				httpExchange{
+					method: http.MethodPost,
+					path:   "/api/groups/preview",
+					body: `{
+						"rule":"same_as_ran_out",
+						"members":[
+							{"productId":"fancy","name":"Fancy","noRestock":true,"lastConsumedAt":"2026-04-01T00:00:00Z"},
+							{"productId":"plain","name":"Plain","lastConsumedAt":"2026-01-01T00:00:00Z"}
+						]
+					}`,
+					expectedStatus: http.StatusOK,
+					assertions: []assertion{
+						{path: "$.productId", value: "plain"},
+						{path: "$.because", value: "Fancy isn't restocked. The last one used up was Plain."},
+					},
+				},
+				httpExchange{
+					method: http.MethodPost,
+					path:   "/api/groups/preview",
+					body: `{
+						"rule":"favorite",
+						"pinnedProductId":"fancy",
+						"members":[
+							{"productId":"fancy","name":"Fancy","noRestock":true},
+							{"productId":"plain","name":"Plain","lastConsumedAt":"2026-01-01T00:00:00Z"}
+						]
+					}`,
+					expectedStatus: http.StatusOK,
+					assertions: []assertion{
+						{path: "$.productId", value: "plain"},
+						{path: "$.because", value: "Fancy isn't restocked. The last one used up was Plain."},
+					},
+				},
+				httpExchange{
+					method: http.MethodPost,
+					path:   "/api/groups/preview",
+					body: `{
+						"rule":"best_deal",
+						"pinnedProductId":"fancy",
+						"members":[
+							{"productId":"fancy","name":"Fancy","noRestock":true},
+							{"productId":"plain","name":"Plain"}
+						]
+					}`,
+					expectedStatus: http.StatusOK,
+					assertions: []assertion{
+						{path: "$.productId", value: "plain"},
+						{path: "$.because", value: "Fancy isn't restocked. Nothing is on sale and no fallback is set. Nothing has run out yet."},
+					},
+				},
+				httpExchange{
+					method: http.MethodPost,
+					path:   "/api/groups/preview",
+					body: `{
+						"rule":"favor_variety",
+						"members":[
+							{"productId":"a","name":"A","noRestock":true},
+							{"productId":"b","name":"B","noRestock":true}
+						]
+					}`,
+					expectedStatus: http.StatusOK,
+					assertions: []assertion{
+						{path: "$.productId", value: ""},
+						{path: "$.because", value: "Every product in this group is marked don't restock."},
+					},
+				},
+			),
+		},
 	})
 }
 

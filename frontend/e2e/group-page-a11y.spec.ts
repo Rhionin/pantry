@@ -26,8 +26,10 @@ function violationText(violations: { id: string; help: string; nodes: { target: 
   )).join('\n')
 }
 
-async function expectClean(page: Page) {
-  const results = await new AxeBuilder({ page }).include('.bin-page').analyze()
+async function expectClean(page: Page, extra: string[] = []) {
+  let builder = new AxeBuilder({ page }).include('.bin-page')
+  for (const selector of extra) builder = builder.include(selector)
+  const results = await builder.analyze()
   expect(results.violations, violationText(results.violations)).toEqual([])
 }
 
@@ -186,6 +188,73 @@ test('group page meets axe in light and dark', async ({ page, request }) => {
   await expectClean(page)
   await expectListColors(page, 'dark')
 
+  const bran = await createProduct(request, {
+    name: 'Axe bran muffin', category: 'Baking', unitOfMeasure: 'box', netAmount: 16, netUnit: 'oz',
+  })
+  const berry = await createProduct(request, {
+    name: 'Axe blueberry muffin', category: 'Baking', unitOfMeasure: 'box', netAmount: 16, netUnit: 'oz',
+  })
+  const fancy = await createProduct(request, {
+    name: 'Axe lehi roller', category: 'Baking', unitOfMeasure: 'box', netAmount: 16, netUnit: 'oz',
+  })
+  const variety = await request.post('/api/groups', {
+    data: {
+      name: 'Axe muffin mix',
+      productIds: [bran.id, berry.id, fancy.id],
+      target: { quantity: 32, dimension: 'mass' },
+    },
+  })
+  if (!variety.ok()) throw new Error(await variety.text())
+  const varietyGroup = await variety.json() as { id: string }
+  expect((await request.put(`/api/groups/${varietyGroup.id}/rule`, {
+    data: { rule: 'favor_variety', confirm: true },
+  })).ok()).toBe(true)
+  expect((await request.put(`/api/groups/${varietyGroup.id}/members/${fancy.id}/restock`, {
+    data: { noRestock: true },
+  })).ok()).toBe(true)
+
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.goto(`/groups/${varietyGroup.id}`)
+  await setScheme(page, 'light')
+  await expect(page.getByRole('heading', { name: 'Axe muffin mix' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'In rotation' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Not restocked' })).toBeVisible()
+  await expect(page.getByText('⊘ no restock')).toBeVisible()
+  await expect(page.getByText(/Next up: .* · rotates through 2/)).toBeVisible()
+  const asideInk = await page.locator('.bin-member.is-aside .bin-member-name').evaluate((el) => {
+    const color = getComputedStyle(el).color
+    let background = getComputedStyle(document.body).backgroundColor
+    let node = el.parentElement
+    while (node) {
+      const bg = getComputedStyle(node).backgroundColor
+      const alpha = bg.match(/rgba\(\d+,\s*\d+,\s*\d+,\s*([\d.]+)\)/)
+      if (!alpha || Number(alpha[1]) > 0.05) {
+        background = bg
+        break
+      }
+      node = node.parentElement
+    }
+    return { color, background }
+  })
+  expect(contrast(asideInk.color, asideInk.background), JSON.stringify(asideInk)).toBeGreaterThanOrEqual(4.5)
+  await expectClean(page)
+
+  await page.getByRole('button', { name: 'Remove or move Axe bran muffin' }).click()
+  await expect(page.getByRole('menuitem', { name: /Don't restock/ })).toBeVisible()
+  await expectClean(page, ['[role="menu"]'])
+  await page.keyboard.press('Escape')
+
+  await page.getByRole('button', { name: 'Change rule, Favor variety' }).click()
+  const varietyDialog = page.getByRole('dialog', { name: 'What to buy next' })
+  await expect(varietyDialog.getByText('Products marked "Don\'t restock" are skipped.')).toBeVisible()
+  await expectClean(page, ['[role="dialog"]'])
+  await page.keyboard.press('Escape')
+
+  await setScheme(page, 'dark')
+  await expect(page.getByRole('heading', { name: 'Not restocked' })).toBeVisible()
+  await expectClean(page)
+  expect((await request.delete(`/api/groups/${varietyGroup.id}`)).ok()).toBe(true)
+
   await page.goto('/groups/suggestions')
   await expect(page.getByRole('heading', { name: 'Suggestions' })).toBeVisible()
   await expectClean(page)
@@ -196,4 +265,15 @@ test('group page meets axe in light and dark', async ({ page, request }) => {
   // Later specs share this database and match the household-default list line.
   expect((await request.delete(`/api/groups/${targetedGroup.id}`)).ok()).toBe(true)
   expect((await request.delete(`/api/groups/${emptyGroup.id}`)).ok()).toBe(true)
+})
+
+test.afterEach(async ({ request }) => {
+  const listed = await request.get('/api/groups')
+  if (!listed.ok()) return
+  const groups = await listed.json() as { id: string; name: string }[]
+  for (const group of groups) {
+    if (group.name.startsWith('Contrast') || group.name.startsWith('Loose contrast') || group.name.startsWith('Axe ')) {
+      await request.delete(`/api/groups/${group.id}`)
+    }
+  }
 })

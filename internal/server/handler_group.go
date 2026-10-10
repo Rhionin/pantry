@@ -93,6 +93,7 @@ type previewMember struct {
 	OnHand         int       `json:"onHand"`
 	LastConsumedAt time.Time `json:"lastConsumedAt"`
 	LastStockedAt  time.Time `json:"lastStockedAt"`
+	NoRestock      bool      `json:"noRestock"`
 }
 
 type previewDeal struct {
@@ -199,6 +200,18 @@ func (h *GroupHandler) RemoveMember(req Request[struct{}, groupMemberParams]) (*
 		return &removeMemberResponse{Deleted: true}, nil
 	}
 	return &removeMemberResponse{Group: &view}, nil
+}
+
+type restockBody struct {
+	NoRestock bool `json:"noRestock"`
+}
+
+func (h *GroupHandler) PutMemberRestock(req Request[restockBody, groupMemberParams]) (*group.Group, error) {
+	view, err := h.Groups.SetMemberRestock(req.Context, req.PathParams.ID, req.PathParams.ProductID, req.Body.NoRestock)
+	if err != nil {
+		return nil, groupErr(err)
+	}
+	return &view, nil
 }
 
 func (h *GroupHandler) PutRule(req Request[ruleBody, groupIDParams]) (*group.Group, error) {
@@ -322,6 +335,7 @@ func (h *GroupHandler) Preview(req Request[previewBody, struct{}]) (*previewResp
 				OnHand:         m.OnHand,
 				LastConsumedAt: m.LastConsumedAt,
 				LastStockedAt:  m.LastStockedAt,
+				NoRestock:      m.NoRestock,
 			})
 		}
 	} else if body.GroupID != "" {
@@ -339,7 +353,7 @@ func (h *GroupHandler) Preview(req Request[previewBody, struct{}]) (*previewResp
 		}
 	}
 	if !group.Valid(rule) {
-		return nil, BadRequest("Pick one of the three rules.")
+		return nil, BadRequest("Pick one of the rules.")
 	}
 	if len(body.Deals) > 0 {
 		for _, d := range body.Deals {

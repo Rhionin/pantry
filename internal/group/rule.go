@@ -17,18 +17,25 @@ const (
 	KindSameAsRanOut Kind = "same_as_ran_out"
 	KindFavorite     Kind = "favorite"
 	KindBestDeal     Kind = "best_deal"
+	KindFavorVariety Kind = "favor_variety"
 )
+
+// everyNoRestock is the sentence when nothing in the group can be bought.
+const everyNoRestock = "Every product in this group is marked don't restock."
 
 // Member is one product the rule can pick.
 type Member struct {
-	ProductID      string    `json:"productId"`
-	Name           string    `json:"name"`
-	OnHand         int       `json:"onHand"`
-	ItemID         string    `json:"-"`
-	NetBase        *float64  `json:"-"`
-	Dimension      string    `json:"-"`
-	LastConsumedAt time.Time `json:"-"`
-	LastStockedAt  time.Time `json:"-"`
+	ProductID string   `json:"productId"`
+	Name      string   `json:"name"`
+	OnHand    int      `json:"onHand"`
+	ItemID    string   `json:"-"`
+	NetBase   *float64 `json:"-"`
+	Dimension string   `json:"-"`
+	// NoRestock keeps the product in the group and in the on-hand count,
+	// and out of every shopping rule.
+	NoRestock      bool      `json:"noRestock,omitempty"`
+	LastConsumedAt time.Time `json:"lastConsumedAt,omitempty"`
+	LastStockedAt  time.Time `json:"lastStockedAt,omitempty"`
 }
 
 // Input is everything a picker needs. Rules do not read the database.
@@ -51,10 +58,10 @@ type Picker interface {
 	Pick(Input) Result
 }
 
-// Valid reports whether rule is one of the three kinds.
+// Valid reports whether rule is one of the shopping kinds.
 func Valid(rule string) bool {
 	switch Kind(rule) {
-	case KindSameAsRanOut, KindFavorite, KindBestDeal:
+	case KindSameAsRanOut, KindFavorite, KindBestDeal, KindFavorVariety:
 		return true
 	default:
 		return false
@@ -67,6 +74,7 @@ func init() {
 	register(sameAsRanOut{})
 	register(favoritePicker{})
 	register(bestDealPicker{})
+	register(varietyPicker{})
 }
 
 func register(p Picker) {
@@ -87,7 +95,21 @@ type sameAsRanOut struct{}
 
 func (sameAsRanOut) Kind() Kind { return KindSameAsRanOut }
 
-func (sameAsRanOut) Pick(in Input) Result { return pickSame(in) }
+func (sameAsRanOut) Pick(in Input) Result {
+	if len(in.Members) == 0 {
+		return Result{}
+	}
+	eligible := restockable(in.Members)
+	if len(eligible) == 0 {
+		return noneRestocked()
+	}
+	full := pickSame(in)
+	result := pickSame(Input{Members: eligible})
+	if skipped, ok := memberByID(in.Members, full.ProductID); ok && skipped.NoRestock {
+		result.Because = skipped.Name + " isn't restocked. " + result.Because
+	}
+	return result
+}
 
 type favoritePicker struct{}
 
@@ -97,12 +119,45 @@ func (favoritePicker) Pick(in Input) Result {
 	if len(in.Members) == 0 {
 		return Result{}
 	}
-	if m, ok := memberByID(in.Members, in.PinnedProductID); ok && in.PinnedProductID != "" {
-		return Result{ProductID: m.ProductID, Because: "This is the one with the star."}
+	eligible := restockable(in.Members)
+	if len(eligible) == 0 {
+		return noneRestocked()
 	}
-	r := pickSame(in)
-	r.Because = "No favorite is set. " + r.Because
-	return r
+	if m, ok := memberByID(in.Members, in.PinnedProductID); ok && in.PinnedProductID != "" {
+		if !m.NoRestock {
+			return Result{ProductID: m.ProductID, Because: "This is the one with the star."}
+		}
+		result := pickSame(Input{Members: eligible})
+		result.Because = m.Name + " isn't restocked. " + result.Because
+		return result
+	}
+	result := pickSame(Input{Members: eligible})
+	result.Because = "No favorite is set. " + result.Because
+	return result
+}
+
+type varietyPicker struct{}
+
+func (varietyPicker) Kind() Kind { return KindFavorVariety }
+
+func (varietyPicker) Pick(in Input) Result {
+	if len(in.Members) == 0 {
+		return Result{}
+	}
+	eligible := restockable(in.Members)
+	if len(eligible) == 0 {
+		return noneRestocked()
+	}
+	best := eligible[0]
+	for _, m := range eligible[1:] {
+		if boughtEarlier(m, best) {
+			best = m
+		}
+	}
+	return Result{
+		ProductID: best.ProductID,
+		Because:   fmt.Sprintf("Next up: %s · rotates through %d", best.Name, len(eligible)),
+	}
 }
 
 type bestDealPicker struct{}
@@ -113,6 +168,24 @@ func (bestDealPicker) Pick(in Input) Result {
 	if len(in.Members) == 0 {
 		return Result{}
 	}
+	eligible := restockable(in.Members)
+	if len(eligible) == 0 {
+		return noneRestocked()
+	}
+	narrowed := in
+	narrowed.Members = eligible
+	skipped, skip := skippedPin(in)
+	if skip {
+		narrowed.PinnedProductID = ""
+	}
+	result := pickBestDeal(narrowed)
+	if skip && len(onSale(narrowed)) == 0 {
+		result.Because = skipped.Name + " isn't restocked. " + result.Because
+	}
+	return result
+}
+
+func pickBestDeal(in Input) Result {
 	sales := onSale(in)
 	if len(sales) == 0 {
 		if m, ok := memberByID(in.Members, in.PinnedProductID); ok && in.PinnedProductID != "" {
@@ -179,6 +252,46 @@ func pickSame(in Input) Result {
 		}
 	}
 	return Result{ProductID: best.ProductID, Because: "Nothing has run out yet."}
+}
+
+func restockable(members []Member) []Member {
+	out := make([]Member, 0, len(members))
+	for _, m := range members {
+		if !m.NoRestock {
+			out = append(out, m)
+		}
+	}
+	return out
+}
+
+func noneRestocked() Result {
+	return Result{Because: everyNoRestock}
+}
+
+func skippedPin(in Input) (Member, bool) {
+	m, ok := memberByID(in.Members, in.PinnedProductID)
+	if !ok || !m.NoRestock {
+		return Member{}, false
+	}
+	return m, true
+}
+
+// boughtEarlier reports whether a was bought, or scanned in, less recently than b.
+// A product with no stock-in time has never been bought and comes first.
+// Equal times break by name, then product id.
+func boughtEarlier(a, b Member) bool {
+	aNever := a.LastStockedAt.IsZero()
+	bNever := b.LastStockedAt.IsZero()
+	if aNever != bNever {
+		return aNever
+	}
+	if !a.LastStockedAt.Equal(b.LastStockedAt) {
+		return a.LastStockedAt.Before(b.LastStockedAt)
+	}
+	if a.Name != b.Name {
+		return a.Name < b.Name
+	}
+	return a.ProductID < b.ProductID
 }
 
 func laterMember(at time.Time, m Member, bt time.Time, b Member) bool {

@@ -60,6 +60,7 @@ func pickMembers(head Fact, members []Fact) (group.Result, []group.Member) {
 			Dimension:      member.NetDimension,
 			LastConsumedAt: member.LastConsumed,
 			LastStockedAt:  member.LastStocked,
+			NoRestock:      member.NoRestock,
 		}
 		if member.Deal != nil {
 			deals = append(deals, *member.Deal)

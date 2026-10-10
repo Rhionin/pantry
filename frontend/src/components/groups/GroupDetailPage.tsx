@@ -4,7 +4,7 @@ import {
   ActionIcon, Alert, Anchor, Button, Loader, Menu, Modal, Stack, Text, TextInput, Tooltip,
 } from '@mantine/core';
 import {
-  addGroupMembers, getGroup, getInventoryList, getProduct, getSupplySettings, listGroups, listProducts, removeGroupMember, renameGroup, setGroupTarget,
+  addGroupMembers, getGroup, getInventoryList, getProduct, getSupplySettings, listGroups, listProducts, removeGroupMember, renameGroup, setGroupTarget, setMemberRestock,
 } from '../../api/client';
 import type { GroupTarget, ProductDetail, ProductGroup } from '../../types';
 import { AddToGroup } from './AddToGroup';
@@ -14,6 +14,7 @@ import {
   binColor, binView, memberLine, memberOrder, memberPackage, onHandOunces, rulePillLabel, ruleSentence, type MemberPackage,
 } from './copy';
 import { RulePicker } from './RulePicker';
+import { restockNote } from './restock';
 import { Seesaw } from './Seesaw';
 import { seesawView, stockMeter, type SeesawDraft } from './seesaw';
 
@@ -33,6 +34,74 @@ function KebabIcon() {
       <circle cx="8" cy="12.9" r="1.35" fill="currentColor" />
     </svg>
   );
+}
+
+function MemberRows({
+  members,
+  palette,
+  others,
+  moving,
+  onRemove,
+  onMove,
+  onRestock,
+}: {
+  members: MemberPackage[];
+  palette: MemberPackage[];
+  others: ProductGroup[];
+  moving: string;
+  onRemove: (productId: string) => void;
+  onMove: (productId: string, destination: string) => void;
+  onRestock: (productId: string, noRestock: boolean) => void;
+}) {
+  return members.map((member) => (
+    <article key={member.productId} className={member.noRestock ? 'bin-member is-aside' : 'bin-member'}>
+      <span className="bin-swatch" style={{ background: binColor(palette, member.productId) }} aria-hidden="true" />
+      <div className="bin-member-copy">
+        <p className="bin-member-name">{member.name}</p>
+        {member.noRestock && <span className="bin-restock-tag">⊘ no restock</span>}
+        <Text size="sm" c="dimmed">{memberLine(member)}</Text>
+        {(member.barcodes ?? []).length > 0 && (
+          <Text size="xs" c="dimmed">Barcode: {(member.barcodes ?? []).join(', ')}</Text>
+        )}
+      </div>
+      <Menu position="bottom-end" withInitialFocusPlaceholder={false} transitionProps={{ duration: 0 }}>
+        <Menu.Target>
+          <Tooltip label="Remove or move">
+            <ActionIcon
+              variant="subtle"
+              color="dark"
+              className="bin-icon-button"
+              style={iconInk}
+              aria-label={`Remove or move ${member.name}`}
+            >
+              <KebabIcon />
+            </ActionIcon>
+          </Tooltip>
+        </Menu.Target>
+        <Menu.Dropdown className="bin-member-menu">
+          {member.noRestock ? (
+            <Menu.Item onClick={() => onRestock(member.productId, false)}>Keep in rotation</Menu.Item>
+          ) : (
+            <Menu.Item onClick={() => onRestock(member.productId, true)}>
+              <span className="bin-menu-label">Don't restock</span>
+              <span className="bin-menu-hint">Stays in the group and counts toward stock</span>
+            </Menu.Item>
+          )}
+          <Menu.Item onClick={() => onRemove(member.productId)}>Remove</Menu.Item>
+          {others.length > 0 && <Menu.Label>Move to</Menu.Label>}
+          {others.map((item) => (
+            <Menu.Item
+              key={item.id}
+              disabled={moving === member.productId}
+              onClick={() => onMove(member.productId, item.id)}
+            >
+              {item.name}
+            </Menu.Item>
+          ))}
+        </Menu.Dropdown>
+      </Menu>
+    </article>
+  ));
 }
 
 export const GroupDetailPage = () => {
@@ -131,6 +200,17 @@ export const GroupDetailPage = () => {
     setGroup(await setGroupTarget(group.id, body));
   };
 
+  const restock = async (productId: string, noRestock: boolean) => {
+    if (!group) return;
+    setError('');
+    try {
+      await setMemberRestock(group.id, productId, noRestock);
+      await load();
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : 'Unable to update that product.');
+    }
+  };
+
   if (loading) return <Loader aria-label="Loading group" />;
 
   const members: MemberPackage[] = memberOrder((group?.members ?? []).map((member) => (
@@ -147,6 +227,9 @@ export const GroupDetailPage = () => {
     : null;
   const ruleName = group ? rulePillLabel(group, members) : '';
   const ruleDetail = group ? ruleSentence(group, members, 'detail') : '';
+  const note = group ? restockNote(group, members) : '';
+  const rotating = members.filter((member) => !member.noRestock);
+  const aside = members.filter((member) => member.noRestock);
   const meter = shown ? stockMeter(shown, onHandOunces(members, shown.dimension)) : null;
 
   return (
@@ -179,61 +262,65 @@ export const GroupDetailPage = () => {
               />
             </div>
             <div className="bin-copy">
-              <Tooltip label={ruleDetail}>
-                <button
-                  type="button"
-                  className="rule-pill"
-                  aria-label={group.ruleConfirmed ? `Change rule, ${ruleName}` : ruleName}
-                  onClick={() => setRuleOpen(true)}
-                >
-                  <span className="rule-pill-mark" aria-hidden="true">⇄</span>
-                  <span className="rule-pill-label">{ruleName}</span>
-                </button>
-              </Tooltip>
+              <div className="rule-block">
+                <Tooltip label={ruleDetail}>
+                  <button
+                    type="button"
+                    className="rule-pill"
+                    aria-label={group.ruleConfirmed ? `Change rule, ${ruleName}` : ruleName}
+                    onClick={() => setRuleOpen(true)}
+                  >
+                    <span className="rule-pill-mark" aria-hidden="true">⇄</span>
+                    <span className="rule-pill-label">{ruleName}</span>
+                  </button>
+                </Tooltip>
+                {note !== '' && <p className="rule-next">{note}</p>}
+              </div>
             </div>
           </div>
           <div className="bin-members">
-            {members.map((member) => (
-              <article key={member.productId} className="bin-member">
-                <span className="bin-swatch" style={{ background: binColor(members, member.productId) }} aria-hidden="true" />
-                <div className="bin-member-copy">
-                  <p className="bin-member-name">{member.name}</p>
-                  <Text size="sm" c="dimmed">{memberLine(member)}</Text>
-                  {(member.barcodes ?? []).length > 0 && (
-                    <Text size="xs" c="dimmed">Barcode: {(member.barcodes ?? []).join(', ')}</Text>
-                  )}
-                </div>
-                <Menu position="bottom-end">
-                  <Menu.Target>
-                    <Tooltip label="Remove or move">
-                      <ActionIcon
-                        variant="subtle"
-                        color="dark"
-                        className="bin-icon-button"
-                        style={iconInk}
-                        aria-label={`Remove or move ${member.name}`}
-                      >
-                        <KebabIcon />
-                      </ActionIcon>
-                    </Tooltip>
-                  </Menu.Target>
-                  <Menu.Dropdown>
-                    <Menu.Item onClick={() => void remove(member.productId)}>Remove</Menu.Item>
-                    {others.length > 0 && <Menu.Label>Move to</Menu.Label>}
-                    {others.map((item) => (
-                      <Menu.Item
-                        key={item.id}
-                        disabled={moving === member.productId}
-                        onClick={() => void move(member.productId, item.id)}
-                      >
-                        {item.name}
-                      </Menu.Item>
-                    ))}
-                  </Menu.Dropdown>
-                </Menu>
-              </article>
-            ))}
-            {members.length === 0 && <Text c="dimmed">This group has no products yet.</Text>}
+            {aside.length > 0 ? (
+              <>
+                <section className="bin-section" aria-label="In rotation">
+                  <h2 className="bin-section-title">In rotation</h2>
+                  {rotating.length === 0 && <p className="bin-section-empty">Nothing is in rotation.</p>}
+                  <MemberRows
+                    members={rotating}
+                    palette={members}
+                    others={others}
+                    moving={moving}
+                    onRemove={(productId) => void remove(productId)}
+                    onMove={(productId, destination) => void move(productId, destination)}
+                    onRestock={(productId, noRestock) => void restock(productId, noRestock)}
+                  />
+                </section>
+                <section className="bin-section" aria-label="Not restocked">
+                  <h2 className="bin-section-title">Not restocked</h2>
+                  <MemberRows
+                    members={aside}
+                    palette={members}
+                    others={others}
+                    moving={moving}
+                    onRemove={(productId) => void remove(productId)}
+                    onMove={(productId, destination) => void move(productId, destination)}
+                    onRestock={(productId, noRestock) => void restock(productId, noRestock)}
+                  />
+                </section>
+              </>
+            ) : (
+              <>
+                <MemberRows
+                  members={members}
+                  palette={members}
+                  others={others}
+                  moving={moving}
+                  onRemove={(productId) => void remove(productId)}
+                  onMove={(productId, destination) => void move(productId, destination)}
+                  onRestock={(productId, noRestock) => void restock(productId, noRestock)}
+                />
+                {members.length === 0 && <Text c="dimmed">This group has no products yet.</Text>}
+              </>
+            )}
           </div>
           <Button color="dark" w="fit-content" onClick={() => setAdding(true)}>Add a product</Button>
           <Modal

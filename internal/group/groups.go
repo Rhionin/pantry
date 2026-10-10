@@ -365,7 +365,7 @@ func (g *Groups) RemoveMember(ctx context.Context, id, productID string) (Group,
 // A nil pin keeps the pin already stored. confirm records that the sheet was saved.
 func (g *Groups) SetRule(ctx context.Context, id, rule string, pin *string, confirm bool) (Group, error) {
 	if !Valid(rule) {
-		return Group{}, invalid("Pick one of the three rules.")
+		return Group{}, invalid("Pick one of the rules.")
 	}
 	tx, err := g.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -403,6 +403,29 @@ func (g *Groups) SetRule(ctx context.Context, id, rule string, pin *string, conf
 		return Group{}, fmt.Errorf("could not save the rule: %w", err)
 	}
 	return g.load(ctx, g.db, id)
+}
+
+// SetMemberRestock keeps a product in the group and out of every shopping rule.
+// noRestock false puts it back in the rotation.
+func (g *Groups) SetMemberRestock(ctx context.Context, groupID, productID string, noRestock bool) (Group, error) {
+	if err := ensureGroup(ctx, g.db, groupID); err != nil {
+		return Group{}, err
+	}
+	flag := 0
+	if noRestock {
+		flag = 1
+	}
+	res, err := g.db.ExecContext(ctx, `
+		UPDATE product_group_members SET no_restock = ?
+		WHERE group_id = ? AND product_id = ?`, flag, groupID, productID)
+	if err != nil {
+		return Group{}, fmt.Errorf("could not update the group: %w", err)
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return Group{}, missing("That product is not in this group.")
+	}
+	return g.load(ctx, g.db, groupID)
 }
 
 // SetTarget saves the group's target and does not change member supply settings.
@@ -455,7 +478,7 @@ func (g *Groups) DefaultRule(ctx context.Context) (Kind, error) {
 // SetDefaultRule stores the account rule.
 func (g *Groups) SetDefaultRule(ctx context.Context, rule string) error {
 	if !Valid(rule) {
-		return invalid("Pick one of the three rules.")
+		return invalid("Pick one of the rules.")
 	}
 	_, err := g.db.ExecContext(ctx, `
 		INSERT INTO app_settings (key, value) VALUES (?, ?)
@@ -675,7 +698,7 @@ func insertGroup(ctx context.Context, tx *sql.Tx, name, rule, pin string, produc
 		return "", err
 	}
 	if !Valid(rule) {
-		return "", invalid("Pick one of the three rules.")
+		return "", invalid("Pick one of the rules.")
 	}
 	if err := ensureNameFree(ctx, tx, key, ""); err != nil {
 		return "", err
@@ -1048,7 +1071,8 @@ func loadMembers(ctx context.Context, q querier, groupID string) ([]Member, erro
 		       (SELECT MAX(c.consumed_at) FROM consumption_events c
 		         JOIN items i ON i.id = c.item_id
 		         WHERE i.product_id = m.product_id AND i.user_id = ?),
-		       (SELECT MAX(s.at) FROM stock_in_events s WHERE s.product_id = m.product_id)
+		       (SELECT MAX(s.at) FROM stock_in_events s WHERE s.product_id = m.product_id),
+		       m.no_restock
 		FROM product_group_members m
 		JOIN products p ON p.id = m.product_id
 		WHERE m.group_id = ?
@@ -1063,9 +1087,11 @@ func loadMembers(ctx context.Context, q querier, groupID string) ([]Member, erro
 		var itemID, dim sql.NullString
 		var net sql.NullFloat64
 		var consumed, stocked sql.NullString
-		if err := rows.Scan(&m.ProductID, &m.Name, &m.OnHand, &itemID, &net, &dim, &consumed, &stocked); err != nil {
+		var noRestock int
+		if err := rows.Scan(&m.ProductID, &m.Name, &m.OnHand, &itemID, &net, &dim, &consumed, &stocked, &noRestock); err != nil {
 			return nil, fmt.Errorf("could not load the group: %w", err)
 		}
+		m.NoRestock = noRestock != 0
 		if itemID.Valid {
 			m.ItemID = itemID.String
 		}
