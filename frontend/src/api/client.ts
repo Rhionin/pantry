@@ -492,6 +492,10 @@ export function listSuggestions(): Promise<GroupSuggestion[]> {
   return apiFetch('/api/group-suggestions');
 }
 
+export function rescanSuggestions(): Promise<GroupSuggestion[]> {
+  return apiFetch('/api/group-suggestions/rescan', { method: 'POST' });
+}
+
 export function acceptSuggestion(id: string, productIds: string[], name?: string, target?: GroupTarget): Promise<ProductGroup> {
   return apiFetch(`/api/group-suggestions/${id}/accept`, {
     method: 'POST',

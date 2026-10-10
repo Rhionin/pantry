@@ -10,6 +10,9 @@
   --bin-link: var(--mantine-color-blue-8);
   --bin-row-hover: var(--mantine-color-gray-1);
   --bin-row-active: var(--mantine-color-gray-2);
+  --suggestion-primary-bg: var(--mantine-color-blue-9);
+  --suggestion-primary-ink: var(--mantine-color-white);
+  --suggestion-danger: var(--mantine-color-red-9);
   color: var(--bin-ink);
   /* Mantine dimmed (gray-6), placeholder (gray-5), and anchor (blue-6) miss 4.5:1 on white. */
   --mantine-color-dimmed: var(--bin-muted);
@@ -29,12 +32,44 @@
   --bin-link: var(--mantine-color-blue-4);
   --bin-row-hover: var(--mantine-color-dark-5);
   --bin-row-active: var(--mantine-color-dark-4);
+  --suggestion-primary-bg: var(--mantine-color-blue-8);
+  --suggestion-primary-ink: var(--mantine-color-white);
+  --suggestion-danger: var(--mantine-color-red-4);
 }
 
 .bin-page .bin-action {
   color: var(--bin-ink);
   font-weight: 650;
   text-underline-offset: 0.16em;
+}
+
+.bin-page .suggestion-rescan,
+.bin-page .suggestion-dismiss,
+.bin-page .suggestion-skip {
+  --button-bg: var(--bin-well);
+  --button-hover: var(--bin-row-hover);
+  --button-color: var(--bin-ink);
+  --button-bd: 1px solid var(--bin-line);
+  color: var(--bin-ink);
+  font-weight: 650;
+}
+
+.bin-page .suggestion-dismiss {
+  --button-color: var(--suggestion-danger);
+  --button-bd: 1px solid var(--suggestion-danger);
+  color: var(--suggestion-danger);
+}
+
+.bin-page .suggestion-member .suggestion-name {
+  color: inherit !important;
+}
+
+.bin-page .suggestion-primary {
+  --button-bg: var(--suggestion-primary-bg);
+  --button-hover: var(--suggestion-primary-bg);
+  --button-color: var(--suggestion-primary-ink);
+  --button-bd: 1px solid transparent;
+  color: var(--suggestion-primary-ink);
 }
 
 .bin-page .bin-list-title {

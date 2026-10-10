@@ -25,6 +25,10 @@ func setupTestDB(t *testing.T) *sql.DB {
 	if err != nil {
 		t.Fatalf("open in-memory SQLite: %v", err)
 	}
+	// A :memory: database lives on one connection. A second pooled connection
+	// is an empty database, so transactions (group suggestion refresh during
+	// lookup) would miss the migrated schema.
+	conn.SetMaxOpenConns(1)
 	t.Cleanup(func() { conn.Close() })
 	if err := app.RunMigrations(conn); err != nil {
 		t.Fatalf("RunMigrations: %v", err)

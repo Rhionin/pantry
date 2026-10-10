@@ -3,7 +3,10 @@ package server
 import (
 	"context"
 	stdjson "encoding/json"
+	"log"
+	"strings"
 
+	"github.com/Rhionin/pantry/internal/group"
 	"github.com/Rhionin/pantry/internal/product"
 	"github.com/google/uuid"
 )
@@ -11,6 +14,7 @@ import (
 type CreateHandler struct {
 	Catalog     *product.Catalog
 	Contributor product.UpstreamContributor
+	Groups      *group.Groups
 }
 
 type productWriteBody struct {
@@ -107,7 +111,17 @@ func (h *CreateHandler) Handle(req Request[productWriteBody, struct{}]) (Created
 	if err != nil {
 		return Created{}, err
 	}
+	considerGroupProduct(req.Context, h.Groups, stored.ID)
 	return Created{Value: productWriteResponse{Product: *stored, Contribution: outcome}}, nil
+}
+
+func considerGroupProduct(ctx context.Context, groups *group.Groups, productID string) {
+	if groups == nil || strings.TrimSpace(productID) == "" {
+		return
+	}
+	if err := groups.ConsiderProduct(ctx, productID); err != nil {
+		log.Printf("could not update group suggestions: %v", err)
+	}
 }
 
 func validateWriteContribution(body productWriteBody) error {

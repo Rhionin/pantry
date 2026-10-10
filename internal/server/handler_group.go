@@ -260,6 +260,17 @@ func (h *GroupHandler) NoteFromScan(req Request[fromScanBody, struct{}]) (NoCont
 	return NoContent{}, nil
 }
 
+func (h *GroupHandler) Rescan(req Request[struct{}, struct{}]) ([]group.Suggestion, error) {
+	rows, err := h.Groups.Rescan(req.Context)
+	if err != nil {
+		return nil, groupErr(err)
+	}
+	if rows == nil {
+		rows = []group.Suggestion{}
+	}
+	return rows, nil
+}
+
 func (h *GroupHandler) ListSuggestions(req Request[struct{}, struct{}]) ([]group.Suggestion, error) {
 	rows, err := h.Groups.ListSuggestions(req.Context)
 	if err != nil {

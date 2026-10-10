@@ -159,4 +159,36 @@ describe('InboxPage', () => {
       name: 'Sandwich relish',
     });
   });
+
+  it('looks for more groups and says when none are new', async () => {
+    const calls: string[] = [];
+    renderInbox((url, init) => {
+      calls.push(`${init?.method ?? 'GET'} ${url}`);
+      if (url === '/api/group-suggestions' && (init?.method ?? 'GET') === 'GET') return json([]);
+      if (url === '/api/group-suggestions/rescan') return json([]);
+      throw new Error(`Unexpected ${init?.method} ${url}`);
+    });
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Look for more groups' }));
+    expect(await screen.findByText('No new groups found')).toBeInTheDocument();
+    expect(screen.getByText('Nothing to review.')).toBeInTheDocument();
+    expect(calls).toContain('POST /api/group-suggestions/rescan');
+  });
+
+  it('shows a group the rescan just found', async () => {
+    let open: GroupSuggestion[] = [];
+    renderInbox((url, init) => {
+      if (url === '/api/group-suggestions' && (init?.method ?? 'GET') === 'GET') return json(open);
+      if (url === '/api/group-suggestions/rescan') {
+        open = [card];
+        return json([card]);
+      }
+      throw new Error(`Unexpected ${init?.method} ${url}`);
+    });
+
+    expect(await screen.findByText('Nothing to review.')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Look for more groups' }));
+    expect(await screen.findByLabelText('Great Value Peanut Butter')).toBeChecked();
+    expect(screen.queryByText('No new groups found')).not.toBeInTheDocument();
+  });
 });

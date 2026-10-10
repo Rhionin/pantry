@@ -362,6 +362,9 @@ func newAPIMux(
 	supplySettingsPutHandler := &SupplySettingsPutHandler{Supply: supplySvc}
 	groups := group.NewGroups(db)
 	scanListHandler.Groups = groups
+	createHandler.Groups = groups
+	updateHandler.Groups = groups
+	lookupHandler.Groups = groups
 	supplyOverrideGetHandler := &SupplyOverrideGetHandler{Supply: supplySvc, Groups: groups}
 	supplyOverridePutHandler := &SupplyOverridePutHandler{Supply: supplySvc, Groups: groups}
 	onboardingCompleteHandler := &OnboardingCompleteHandler{Supply: supplySvc}
@@ -391,6 +394,7 @@ func newAPIMux(
 	apiMux.HandleFunc("PUT /api/groups/{id}/rule", HandleJSON(groupHandler.PutRule))
 	apiMux.HandleFunc("PUT /api/groups/{id}/target", HandleJSON(groupHandler.PutTarget))
 	apiMux.HandleFunc("GET /api/group-suggestions", HandleJSON(groupHandler.ListSuggestions))
+	apiMux.HandleFunc("POST /api/group-suggestions/rescan", HandleJSON(groupHandler.Rescan))
 	apiMux.HandleFunc("POST /api/group-suggestions/from-scan", HandleJSON(groupHandler.NoteFromScan))
 	apiMux.HandleFunc("POST /api/group-suggestions/{id}/accept", HandleJSON(groupHandler.AcceptSuggestion))
 	apiMux.HandleFunc("POST /api/group-suggestions/{id}/dismiss", HandleJSON(groupHandler.DismissSuggestion))

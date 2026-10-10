@@ -40,6 +40,29 @@ func TestHints_MatchesGroupAndSkipsMembers(t *testing.T) {
 	}
 }
 
+func TestHints_LooseNameJoinsExistingGroup(t *testing.T) {
+	groups, catalog, _ := newTestGroups(t)
+	ctx := context.Background()
+	mustProduct(t, catalog, "barilla", "Barilla Spaghetti")
+	mustProduct(t, catalog, "rice", "Rice")
+	if _, err := groups.Create(ctx, "Spaghetti", nil, nil); err != nil {
+		t.Fatal(err)
+	}
+	hints, err := groups.Hints(ctx, map[string]string{
+		"barilla": "Barilla Spaghetti",
+		"rice":    "Rice",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if hints["barilla"].Name != "Spaghetti" {
+		t.Fatalf("barilla hint = %+v", hints["barilla"])
+	}
+	if _, ok := hints["rice"]; ok {
+		t.Fatalf("rice matched spaghetti: %+v", hints["rice"])
+	}
+}
+
 func TestNoteFromScan_Once(t *testing.T) {
 	groups, catalog, conn := newTestGroups(t)
 	ctx := context.Background()
