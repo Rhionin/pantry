@@ -14,6 +14,7 @@ import (
 	"github.com/Rhionin/pantry/internal/deployhook"
 	"github.com/Rhionin/pantry/internal/events"
 	"github.com/Rhionin/pantry/internal/group"
+	"github.com/Rhionin/pantry/internal/history"
 	"github.com/Rhionin/pantry/internal/inventory"
 	"github.com/Rhionin/pantry/internal/product"
 	"github.com/Rhionin/pantry/internal/scan"
@@ -375,6 +376,13 @@ func newAPIMux(
 	apiMux.HandleFunc("POST /api/inventory/{itemId}/stock-out", HandleJSON(inventoryStockOutHandler.Handle))
 	apiMux.HandleFunc("DELETE /api/inventory/instances/{instanceId}", HandleJSON(inventoryInstanceDeleteHandler.Handle))
 	apiMux.HandleFunc("POST /api/inventory/wipe", HandleJSON(inventoryWipeHandler.Handle))
+
+	historyHandler := &HistoryHandler{Journal: history.NewJournal(db), Pantry: pantry, Events: broadcaster}
+	apiMux.HandleFunc("GET /api/items/{itemId}/history", HandleJSON(historyHandler.Product))
+	apiMux.HandleFunc("GET /api/groups/{groupId}/history", HandleJSON(historyHandler.Group))
+	apiMux.HandleFunc("PATCH /api/moves/{id}", HandleJSON(historyHandler.SetQuantity))
+	apiMux.HandleFunc("DELETE /api/moves/{id}", HandleJSON(historyHandler.Undo))
+
 	apiMux.HandleFunc("GET /api/settings/supply", HandleJSON(supplySettingsGetHandler.Handle))
 	apiMux.HandleFunc("PUT /api/settings/supply", HandleJSON(supplySettingsPutHandler.Handle))
 	apiMux.HandleFunc("GET /api/products/{id}/supply-override", HandleJSON(supplyOverrideGetHandler.Handle))

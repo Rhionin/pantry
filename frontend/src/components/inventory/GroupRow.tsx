@@ -97,6 +97,7 @@ export function GroupRow({ row, expanded, onToggle, onMove, onChanged, onHandCha
             <PinIcon />
             <span>{row.pinLabel}</span>
           </p>
+          <Link className="shelf-history" to={`/groups/${row.id}/history`} onPointerDown={(event) => event.stopPropagation()}>History</Link>
         </div>
         <button
           type="button"
@@ -155,9 +156,14 @@ export function GroupRow({ row, expanded, onToggle, onMove, onChanged, onHandCha
                   <Menu.Item onClick={() => onMove(member)}>Move to another group</Menu.Item>
                   <Menu.Item onClick={() => void remove(member)}>Remove from group</Menu.Item>
                   {member.itemId && (
-                    <Menu.Item onClick={() => setInstancesFor((current) => current === member.productId ? null : member.productId)}>
-                      {instancesFor === member.productId ? 'Hide instances' : 'View instances'}
-                    </Menu.Item>
+                    <>
+                      <Menu.Item component={Link} to={`/inventory/${member.itemId}/history`}>
+                        View history
+                      </Menu.Item>
+                      <Menu.Item onClick={() => setInstancesFor((current) => current === member.productId ? null : member.productId)}>
+                        {instancesFor === member.productId ? 'Hide instances' : 'View instances'}
+                      </Menu.Item>
+                    </>
                   )}
                 </Menu.Dropdown>
               </Menu>

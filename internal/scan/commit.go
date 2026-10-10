@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/Rhionin/pantry/internal/history"
 	"github.com/Rhionin/pantry/internal/inventory"
 	"github.com/google/uuid"
 )
@@ -61,7 +62,8 @@ func (r *Queue) CommitStockIn(ctx context.Context, scanEntry *ScanEntry) error {
 	if err != nil {
 		return err
 	}
-	if _, err := r.recordStockInTx(ctx, tx, itemID, *scanEntry.ProductID, scanEntry.ScannedAt, scanEntry.ExpiresAt, units); err != nil {
+	scanID := scanEntry.ID
+	if _, err := r.recordStockInTx(ctx, tx, itemID, *scanEntry.ProductID, scanEntry.ScannedAt, scanEntry.ExpiresAt, units, "scan", &scanID); err != nil {
 		return err
 	}
 
@@ -141,7 +143,7 @@ func stockInUnits(ctx context.Context, tx *sql.Tx, productID string, unitCount i
 // recordStockInTx adds units on the shelf. Once opening is finished it also
 // resets the provider ledger and writes one stock-in event for the whole call.
 // Opening only records units that are already here.
-func (r *Queue) recordStockInTx(ctx context.Context, tx *sql.Tx, itemID, productID string, at time.Time, expiresAt *time.Time, units int) ([]string, error) {
+func (r *Queue) recordStockInTx(ctx context.Context, tx *sql.Tx, itemID, productID string, at time.Time, expiresAt *time.Time, units int, source string, scanID *string) ([]string, error) {
 	ids := make([]string, 0, units)
 	for i := 0; i < units; i++ {
 		instanceID := uuid.NewString()
@@ -174,6 +176,12 @@ func (r *Queue) recordStockInTx(ctx context.Context, tx *sql.Tx, itemID, product
 		); err != nil {
 			return nil, fmt.Errorf("record stock-in: %w", err)
 		}
+	}
+	if err := history.AttachStockIn(ctx, tx, history.InNote{
+		ItemID: itemID, ProductID: productID, At: at, Source: source, ScanEntryID: scanID,
+		Tracked: trackRestock && r.Supply != nil, InstanceIDs: ids,
+	}); err != nil {
+		return nil, fmt.Errorf("record stock-in: %w", err)
 	}
 	return ids, nil
 }
@@ -227,19 +235,33 @@ func (r *Queue) recordStockOutTx(ctx context.Context, tx *sql.Tx, itemID string,
 	if err != nil {
 		return err
 	}
-	if !usage {
-		return nil
+	var productID string
+	if err := tx.QueryRowContext(ctx, `SELECT product_id FROM items WHERE id = ?`, itemID).Scan(&productID); err != nil {
+		return fmt.Errorf("find item: %w", err)
 	}
-
-	if _, err := tx.ExecContext(ctx, `
-		INSERT INTO consumption_events (id, item_id, consumed_at, scan_entry_id)
-		VALUES (?, ?, ?, ?)`,
-		uuid.NewString(),
-		itemID,
-		at,
-		nullableString(scanEntryID),
-	); err != nil {
-		return fmt.Errorf("create consumption event: %w", err)
+	source := "manual"
+	if scanEntryID != nil && *scanEntryID != "" {
+		source = "scan"
+	}
+	consumptionID := ""
+	if usage {
+		consumptionID = uuid.NewString()
+		if _, err := tx.ExecContext(ctx, `
+			INSERT INTO consumption_events (id, item_id, consumed_at, scan_entry_id)
+			VALUES (?, ?, ?, ?)`,
+			consumptionID,
+			itemID,
+			at,
+			nullableString(scanEntryID),
+		); err != nil {
+			return fmt.Errorf("create consumption event: %w", err)
+		}
+	}
+	if err := history.AttachStockOut(ctx, tx, history.OutNote{
+		ItemID: itemID, ProductID: productID, At: at, Source: source, ScanEntryID: scanEntryID,
+		Tracked: usage, InstanceID: selected, ConsumptionID: consumptionID,
+	}); err != nil {
+		return fmt.Errorf("record stock-out: %w", err)
 	}
 	return nil
 }
@@ -262,7 +284,7 @@ func (r *Queue) StockIn(ctx context.Context, itemID string, at time.Time, expire
 		return nil, fmt.Errorf("find item: %w", err)
 	}
 
-	ids, err := r.recordStockInTx(ctx, tx, itemID, productID, at, expiresAt, 1)
+	ids, err := r.recordStockInTx(ctx, tx, itemID, productID, at, expiresAt, 1, "manual", nil)
 	if err != nil {
 		return nil, err
 	}

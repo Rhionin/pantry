@@ -27,6 +27,7 @@ import type {
   GroupSuggestion,
   GroupTarget,
   GroupPreview,
+  HistoryView,
   TargetConflictMember,
 } from '../types';
 
@@ -251,6 +252,22 @@ export function removeItemInstance(instanceId: string): Promise<void> {
 
 export function stockOutItem(itemId: string): Promise<void> {
   return apiFetch(`/api/inventory/${itemId}/stock-out`, { method: 'POST', body: '{}' });
+}
+
+export function getItemHistory(itemId: string): Promise<HistoryView> {
+  return apiFetch(`/api/items/${itemId}/history`);
+}
+
+export function getGroupHistory(groupId: string): Promise<HistoryView> {
+  return apiFetch(`/api/groups/${groupId}/history`);
+}
+
+export function setMoveQuantity(id: string, quantity: number): Promise<HistoryView> {
+  return apiFetch(`/api/moves/${id}`, { method: 'PATCH', body: JSON.stringify({ quantity }) });
+}
+
+export function undoMove(id: string): Promise<HistoryView> {
+  return apiFetch(`/api/moves/${id}`, { method: 'DELETE' });
 }
 
 // Exact phrase POST /api/inventory/wipe requires. Kept in sync with

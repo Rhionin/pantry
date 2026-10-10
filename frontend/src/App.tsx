@@ -8,6 +8,7 @@ import { ShoppingListPage } from './components/shopping/ShoppingListPage';
 import { DiagnosticsPage } from './components/diagnostics/DiagnosticsPage';
 import { SettingsPage } from './components/settings/SettingsPage';
 import { GroupDetailPage } from './components/groups/GroupDetailPage';
+import { HistoryPage } from './components/history/HistoryPage';
 import { AppMenu } from './components/shell/AppMenu';
 import { HouseholdGate } from './components/auth/HouseholdGate';
 import { CredentialsRevisionContext } from './credentialsRefresh';
@@ -55,12 +56,14 @@ function SignedInApp() {
               <Routes>
                 <Route path="/" element={<ScanQueuePage />} />
                 <Route path="/inventory" element={<InventoryPage />} />
+                <Route path="/inventory/:itemId/history" element={<HistoryPage />} />
                 <Route path="/shopping" element={<ShoppingListPage />} />
                 <Route path="/diagnostics" element={<DiagnosticsPage />} />
                 <Route path="/settings" element={<SettingsPage />} />
                 <Route path="/groups" element={<Navigate to="/inventory?filter=groups" replace />} />
                 <Route path="/groups/suggestions" element={<Navigate to="/inventory?review=1" replace />} />
                 <Route path="/groups/:id" element={<GroupDetailPage />} />
+                <Route path="/groups/:groupId/history" element={<HistoryPage />} />
               </Routes>
             </div>
           </AppShell.Main>

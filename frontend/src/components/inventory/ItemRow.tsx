@@ -19,6 +19,7 @@ export interface ItemRowProps {
   checked?: boolean;
   onChecked?: (checked: boolean) => void;
   onLongPress?: () => void;
+  onViewHistory?: () => void;
   children?: ReactNode;
 }
 
@@ -46,6 +47,7 @@ export const ItemRow = memo(({
   checked = false,
   onChecked,
   onLongPress,
+  onViewHistory,
   children,
 }: ItemRowProps) => {
   const { item, nearExpiryCount, expiredCount } = inventoryItem;
@@ -86,6 +88,16 @@ export const ItemRow = memo(({
           {category !== null && <p className="shelf-category">{category}</p>}
           <div className="shelf-meta">
             <span>{hand}</span>
+            {onViewHistory && (
+              <button
+                type="button"
+                className="shelf-history"
+                onPointerDown={(event) => event.stopPropagation()}
+                onClick={onViewHistory}
+              >
+                History
+              </button>
+            )}
             {nearExpiryCount > 0 && <Badge size="sm" color="yellow">{nearExpiryCount} near expiry</Badge>}
             {expiredCount > 0 && <Badge size="sm" color="red">{expiredCount} expired</Badge>}
           </div>

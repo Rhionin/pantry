@@ -1,0 +1,113 @@
+package history
+
+import (
+	"context"
+	"database/sql"
+	"time"
+
+	"github.com/google/uuid"
+)
+
+// InNote is one stock-in that just put units on the shelf.
+type InNote struct {
+	ItemID      string
+	ProductID   string
+	At          time.Time
+	Source      string
+	ScanEntryID *string
+	Tracked     bool
+	InstanceIDs []string
+}
+
+// OutNote is one stock-out that just took a unit off the shelf.
+type OutNote struct {
+	ItemID        string
+	ProductID     string
+	At            time.Time
+	Source        string
+	ScanEntryID   *string
+	Tracked       bool
+	InstanceID    string
+	ConsumptionID string
+}
+
+// AttachStockIn records the move and points the new instances (and the
+// stock-in event, when this restock counts toward pace) at it.
+func AttachStockIn(ctx context.Context, tx *sql.Tx, note InNote) error {
+	if len(note.InstanceIDs) == 0 {
+		return nil
+	}
+	id := uuid.NewString()
+	tracked := 0
+	if note.Tracked {
+		tracked = 1
+	}
+	if _, err := tx.ExecContext(ctx, `
+		INSERT INTO stock_moves (id, item_id, product_id, direction, quantity, at, source, scan_entry_id, tracked)
+		VALUES (?, ?, ?, 'in', ?, ?, ?, ?, ?)`,
+		id, note.ItemID, note.ProductID, len(note.InstanceIDs), note.At, note.Source, nullableString(note.ScanEntryID), tracked,
+	); err != nil {
+		return err
+	}
+	for _, instanceID := range note.InstanceIDs {
+		if _, err := tx.ExecContext(ctx, `
+			UPDATE item_instances SET stock_move_id = ? WHERE id = ?`,
+			id, instanceID,
+		); err != nil {
+			return err
+		}
+	}
+	if !note.Tracked {
+		return nil
+	}
+	_, err := tx.ExecContext(ctx, `
+		UPDATE stock_in_events SET stock_move_id = ?
+		WHERE id = (
+			SELECT id FROM stock_in_events
+			WHERE product_id = ? AND at = ? AND stock_move_id IS NULL
+			ORDER BY id DESC
+			LIMIT 1
+		)`, id, note.ProductID, note.At)
+	return err
+}
+
+// AttachStockOut records the move and points the removed unit (and the
+// consumption row, when this use counts toward pace) at it.
+func AttachStockOut(ctx context.Context, tx *sql.Tx, note OutNote) error {
+	if note.InstanceID == "" {
+		return nil
+	}
+	id := uuid.NewString()
+	tracked := 0
+	if note.Tracked {
+		tracked = 1
+	}
+	if _, err := tx.ExecContext(ctx, `
+		INSERT INTO stock_moves (id, item_id, product_id, direction, quantity, at, source, scan_entry_id, tracked)
+		VALUES (?, ?, ?, 'out', 1, ?, ?, ?, ?)`,
+		id, note.ItemID, note.ProductID, note.At, note.Source, nullableString(note.ScanEntryID), tracked,
+	); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `
+		UPDATE item_instances SET removed_by_move_id = ? WHERE id = ?`,
+		id, note.InstanceID,
+	); err != nil {
+		return err
+	}
+	if note.ConsumptionID == "" {
+		return nil
+	}
+	_, err := tx.ExecContext(ctx, `
+		UPDATE consumption_events SET stock_move_id = ? WHERE id = ?`,
+		id, note.ConsumptionID,
+	)
+	return err
+}
+
+func nullableString(value *string) any {
+	if value == nil || *value == "" {
+		return nil
+	}
+	return *value
+}

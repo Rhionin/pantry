@@ -181,6 +181,35 @@ export interface InventoryItem {
   group?: InventoryGroup;
 }
 
+export interface HistoryPace {
+  known: boolean;
+  daysBetweenUses?: number;
+  daysLeft?: number;
+  daysLeftKnown: boolean;
+  trend?: 'steady' | 'faster' | 'slower' | '';
+  sparkline: number[];
+}
+
+export interface HistoryMove {
+  id: string;
+  direction: 'in' | 'out';
+  quantity: number;
+  at: string;
+  source: 'scan' | 'manual';
+  productId: string;
+  productName: string;
+}
+
+export interface HistoryView {
+  kind: 'product' | 'group';
+  id: string;
+  name: string;
+  detail?: string;
+  onHand: number;
+  pace: HistoryPace;
+  moves: HistoryMove[];
+}
+
 export interface GroupPreview {
   productId: string;
   because: string;
