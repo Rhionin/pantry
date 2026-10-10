@@ -20,6 +20,7 @@ import {
 } from './shelf';
 import '../groups/groups.css';
 import './shelf.css';
+import '../history/history.css';
 
 const ProductBarcodeLine = ({ productId }: { productId: string }) => {
   const [barcodes, setBarcodes] = useState<string[]>([]);
@@ -319,6 +320,7 @@ export const InventoryPage = () => {
                 checked={checked.includes(inventoryItem.item.productId)}
                 onChecked={(next) => toggleChecked(inventoryItem.item.productId, next)}
                 onLongPress={() => startSelecting(inventoryItem.item.productId)}
+                onViewHistory={() => navigate(`/inventory/${inventoryItem.item.id}/history`)}
               >
                 {selected ? renderExpanded(inventoryItem) : null}
               </ItemRow>
