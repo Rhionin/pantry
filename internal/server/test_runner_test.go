@@ -40,6 +40,9 @@ type httpExchange struct {
 	// bodyExcludes asserts that the response body does not contain each
 	// substring. Use it to prove a secret was not echoed.
 	bodyExcludes []string
+
+	// headers are set on the request. Optional.
+	headers map[string]string
 }
 
 // handlerTestCase defines a single HTTP handler test case for table-driven testing.
@@ -59,6 +62,9 @@ type handlerTestCase struct {
 	// contributor, when set, is the Product Opener writer wired into the
 	// handler. Nil keeps sharing local.
 	contributor product.UpstreamContributor
+
+	// options are passed to NewHandler after the test defaults.
+	options []Option
 }
 
 // assertion wraps a JSONPath assertion for cleaner test tables.
@@ -98,13 +104,15 @@ type testEnv struct {
 	Contributor   product.UpstreamContributor
 	Res           *http.Response // populated only inside afterRequest callbacks
 	Registry      *cart.Registry // the registry wired into the handler under test
+	Options       []Option
 }
 
 // runHandlerTests executes a table of handler test cases.
 func runHandlerTests(t *testing.T, tests []handlerTestCase) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			handler, env := setupTestWithContributor(t, tt.contributor)
+			handler, env := setupTestWithContributor(t, tt.contributor, tt.options...)
+			env.Options = tt.options
 
 			if tt.setup != nil {
 				tt.setup(env)
@@ -170,6 +178,9 @@ func buildRequest(test *apitest.APITest, ex httpExchange) *apitest.Request {
 
 	if ex.body != "" {
 		req = req.JSON(ex.body)
+	}
+	for key, val := range ex.headers {
+		req = req.Header(key, val)
 	}
 
 	return req
@@ -262,6 +273,7 @@ func exchanges(exs ...httpExchange) func(env testEnv) {
 		if env.Contributor != nil {
 			opts = append(opts, WithContributor(env.Contributor))
 		}
+		opts = append(opts, env.Options...)
 		handler, _ := NewHandler(env.ProductStore, &product.LookupService{
 			Catalog:   env.ProductStore,
 			Upstream:  env.Upstream,

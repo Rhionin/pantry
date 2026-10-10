@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 
 	"github.com/Rhionin/pantry/internal/brand"
 	"github.com/Rhionin/pantry/internal/cart"
@@ -49,6 +50,7 @@ type config struct {
 	deployHookSecret string
 	deployHookPath   string
 	household        *HouseholdAuth
+	syncToken        string
 }
 
 // Option is a functional option for NewHandler.
@@ -119,6 +121,15 @@ func WithScannerMode(mode *scannerMode) Option {
 	}
 }
 
+// WithSyncToken enables GET /api/sync/snapshot for the grocy-sync sidecar.
+// An empty token leaves the route looking like it is not there. The token
+// cannot call any other route.
+func WithSyncToken(token string) Option {
+	return func(c *config) {
+		c.syncToken = strings.TrimSpace(token)
+	}
+}
+
 // WithDeployHook enables POST /api/deploy-hook. An empty secret leaves the
 // route in place and rejecting requests, so a missing key cannot be used as
 // an unsigned deploy. path is the trigger file; empty uses the container default.
@@ -174,6 +185,14 @@ func NewHandler(
 	if cfg.household != nil {
 		handler = cfg.household.Middleware(root)
 	}
+	var syncToken string
+	if cfg != nil {
+		syncToken = cfg.syncToken
+	}
+	// Outside household login so the sidecar can read while the public site
+	// still asks a person to sign in. A wrong or missing token never falls
+	// through to the open LAN listener.
+	handler = syncGate(syncToken, handler)
 	return observeHTTP(reg, secureHeaders(handler)), scanQueue
 }
 
@@ -376,6 +395,12 @@ func newAPIMux(
 	apiMux.HandleFunc("POST /api/inventory/{itemId}/stock-out", HandleJSON(inventoryStockOutHandler.Handle))
 	apiMux.HandleFunc("DELETE /api/inventory/instances/{instanceId}", HandleJSON(inventoryInstanceDeleteHandler.Handle))
 	apiMux.HandleFunc("POST /api/inventory/wipe", HandleJSON(inventoryWipeHandler.Handle))
+
+	var syncToken string
+	if cfg != nil {
+		syncToken = cfg.syncToken
+	}
+	apiMux.HandleFunc("GET /api/sync/snapshot", (&syncSnapshotHandler{DB: db, Token: syncToken}).ServeHTTP)
 
 	historyHandler := &HistoryHandler{Journal: history.NewJournal(db), Pantry: pantry, Events: broadcaster}
 	apiMux.HandleFunc("GET /api/items/{itemId}/history", HandleJSON(historyHandler.Product))

@@ -40,6 +40,9 @@ services:
       # The value stays in /opt/pantry/.env; setup.sh generates it once.
       DEPLOY_HOOK_SECRET: ${DEPLOY_HOOK_SECRET:-}
       DEPLOY_TRIGGER_PATH: /deploy-trigger/request
+      # Empty leaves GET /api/sync/snapshot hidden. The grocy-sync sidecar
+      # sends this same value. It is not a household password.
+      PANTRY_SYNC_TOKEN: ${PANTRY_SYNC_TOKEN:-}
       # Empty on a LAN-only install. setup.sh copies auth.caddy here when the
       # public site has a password, and leaves the LAN listener alone.
       # The file is mode 0600 and owned by uid 65532, this image's nonroot

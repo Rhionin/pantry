@@ -1,0 +1,470 @@
+package grocysync
+
+import (
+	"context"
+	"database/sql"
+	"errors"
+	"fmt"
+	"os"
+	"strings"
+	"time"
+
+	"github.com/Rhionin/pantry/internal/syncsnap"
+)
+
+// ErrNotConfirmed is returned when backfill is invoked without --confirm.
+var ErrNotConfirmed = fmt.Errorf("pass --confirm to write past uses into Grocy. Nothing was changed")
+
+// HistoryResult is what one backfill run did.
+type HistoryResult struct {
+	BackupPath string
+	Inserted   int
+	Updated    int
+	Undone     int
+	Unchanged  int
+}
+
+// HistoryOptions is the one-time stock_log write.
+// Products maps a Pantry product id to the Grocy product id already created by Reconcile.
+// The stock table is not modified, so current on-hand counts stay with the API sync.
+type HistoryOptions struct {
+	DBPath     string
+	LocationID int
+	Products   map[string]int
+	Snap       syncsnap.Snapshot
+	Now        time.Time
+	Loc        *time.Location
+	Confirm    bool
+}
+
+// ApplyHistory backs up grocy.db, then upserts one stock_log row per Pantry stock move.
+// Rows are keyed by note pantry-history:<move id>, so running it again does not duplicate them.
+func ApplyHistory(ctx context.Context, opts HistoryOptions) (HistoryResult, error) {
+	if !opts.Confirm {
+		return HistoryResult{}, ErrNotConfirmed
+	}
+	if strings.TrimSpace(opts.DBPath) == "" {
+		return HistoryResult{}, fmt.Errorf("pass --db with the path to grocy.db")
+	}
+	if strings.Contains(opts.DBPath, "'") {
+		return HistoryResult{}, fmt.Errorf("the database path cannot contain a quote")
+	}
+	if opts.Now.IsZero() {
+		opts.Now = time.Now().UTC()
+	}
+	if opts.Loc == nil {
+		opts.Loc = time.UTC
+	}
+	db, err := sql.Open("sqlite", opts.DBPath)
+	if err != nil {
+		return HistoryResult{}, fmt.Errorf("could not open grocy.db")
+	}
+	defer db.Close()
+	db.SetMaxOpenConns(1)
+	if _, err := db.ExecContext(ctx, `PRAGMA busy_timeout = 5000`); err != nil {
+		return HistoryResult{}, fmt.Errorf("could not open grocy.db")
+	}
+	cols, err := tableColumns(ctx, db, "stock_log")
+	if err != nil {
+		return HistoryResult{}, err
+	}
+	for _, need := range []string{"product_id", "amount", "stock_id", "transaction_id", "transaction_type", "undone", "note", "row_created_timestamp"} {
+		if !cols[need] {
+			return HistoryResult{}, fmt.Errorf("this Grocy database is missing stock_log.%s", need)
+		}
+	}
+	planned, err := planHistory(opts)
+	if err != nil {
+		return HistoryResult{}, err
+	}
+	existing, err := loadHistory(ctx, db, cols)
+	if err != nil {
+		return HistoryResult{}, err
+	}
+	var result HistoryResult
+	type change struct {
+		kind string
+		row  historyRow
+		id   int
+	}
+	var changes []change
+	want := map[string]bool{}
+	for _, row := range planned {
+		want[row.Note] = true
+		ex, ok := existing[row.Note]
+		if !ok {
+			changes = append(changes, change{kind: "insert", row: row})
+			continue
+		}
+		if !cols["best_before_date"] {
+			ex.Best = row.BestBefore
+		}
+		if !cols["purchased_date"] {
+			ex.Purchased = row.Purchased
+		}
+		if !cols["spoiled"] {
+			ex.Spoiled = row.Spoiled
+		}
+		if historySame(ex, row) {
+			result.Unchanged++
+			continue
+		}
+		changes = append(changes, change{kind: "update", row: row, id: ex.ID})
+	}
+	for note, ex := range existing {
+		if want[note] || ex.Undone == 1 {
+			continue
+		}
+		changes = append(changes, change{kind: "undo", id: ex.ID, row: historyRow{Note: note}})
+	}
+	if len(changes) == 0 {
+		return result, nil
+	}
+	backup, err := nextBackupPath(opts.DBPath, opts.Now)
+	if err != nil {
+		return HistoryResult{}, err
+	}
+	if _, err := db.ExecContext(ctx, `VACUUM INTO '`+backup+`'`); err != nil {
+		return HistoryResult{}, fmt.Errorf("could not back up grocy.db (%s). Stop Grocy and try again. Nothing was changed", err.Error())
+	}
+	result.BackupPath = backup
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		return result, fmt.Errorf("could not write stock history. Restore from %s. %s", backup, RestoreSteps(backup, opts.DBPath))
+	}
+	defer tx.Rollback()
+	for _, change := range changes {
+		switch change.kind {
+		case "insert":
+			if err := insertHistory(ctx, tx, cols, change.row); err != nil {
+				return result, fmt.Errorf("could not write stock history. Restore from %s. %s", backup, RestoreSteps(backup, opts.DBPath))
+			}
+			result.Inserted++
+		case "update":
+			if err := updateHistory(ctx, tx, cols, change.id, change.row); err != nil {
+				return result, fmt.Errorf("could not write stock history. Restore from %s. %s", backup, RestoreSteps(backup, opts.DBPath))
+			}
+			result.Updated++
+		case "undo":
+			if err := undoHistory(ctx, tx, cols, change.id, opts.Now); err != nil {
+				return result, fmt.Errorf("could not write stock history. Restore from %s. %s", backup, RestoreSteps(backup, opts.DBPath))
+			}
+			result.Undone++
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return result, fmt.Errorf("could not write stock history. Restore from %s. %s", backup, RestoreSteps(backup, opts.DBPath))
+	}
+	return result, nil
+}
+
+// nextBackupPath picks a free grocy.db.bak-* name. A second run in the same
+// instant must not reuse the previous backup file.
+func nextBackupPath(dbPath string, now time.Time) (string, error) {
+	base := dbPath + ".bak-" + now.UTC().Format("20060102T150405.000000000Z")
+	candidate := base
+	for n := 2; n < 1000; n++ {
+		if strings.Contains(candidate, "'") {
+			return "", fmt.Errorf("the backup path cannot contain a quote")
+		}
+		_, err := os.Stat(candidate)
+		if errors.Is(err, os.ErrNotExist) {
+			return candidate, nil
+		}
+		if err != nil {
+			return "", fmt.Errorf("could not back up grocy.db (%s). Stop Grocy and try again. Nothing was changed", err.Error())
+		}
+		candidate = fmt.Sprintf("%s-%d", base, n)
+	}
+	return "", fmt.Errorf("could not back up grocy.db. Stop Grocy and try again. Nothing was changed")
+}
+
+// RestoreSteps is how to put grocy.db back after a failed or unwanted backfill.
+func RestoreSteps(backup, live string) string {
+	return fmt.Sprintf("Stop Grocy (docker stop grocy). Move %s aside, copy %s to %s, delete %s-wal and %s-shm if they exist, then start Grocy.", live, backup, live, live, live)
+}
+
+type historyRow struct {
+	Note         string
+	GrocyProduct int
+	Amount       float64
+	Type         string
+	Stamp        string
+	Purchased    string
+	BestBefore   string
+	Used         string
+	Spoiled      int
+	LocationID   int
+	StockID      string
+	TxID         string
+}
+
+type existingHistory struct {
+	ID        int
+	Amount    float64
+	Stamp     string
+	Spoiled   int
+	Undone    int
+	Type      string
+	Best      string
+	Purchased string
+}
+
+func planHistory(opts HistoryOptions) ([]historyRow, error) {
+	var rows []historyRow
+	for _, move := range opts.Snap.Moves {
+		grocyID := opts.Products[move.ProductID]
+		if grocyID == 0 {
+			return nil, fmt.Errorf("sync once before backfilling so Grocy has every product")
+		}
+		if opts.LocationID == 0 {
+			return nil, fmt.Errorf("sync once before backfilling so Grocy has the Pantry location")
+		}
+		row := historyRow{
+			Note:         historyPrefix + move.ID,
+			GrocyProduct: grocyID,
+			Stamp:        stamp(move.At, opts.Loc),
+			LocationID:   opts.LocationID,
+			StockID:      "pantry-stock-" + move.ID,
+			TxID:         "pantry-history-" + move.ID,
+			BestBefore:   neverExpires,
+		}
+		switch move.Direction {
+		case "in":
+			row.Type = "purchase"
+			row.Amount = float64(move.Quantity)
+			row.Purchased = day(move.At, opts.Loc)
+			row.BestBefore = expiryForMove(move.ID, opts.Snap, opts.Loc)
+		case "out":
+			row.Type = "consume"
+			row.Amount = -float64(move.Quantity)
+			row.Spoiled = spoiledMove(move.ID, opts.Snap.Removals)
+			row.Used = day(move.At, opts.Loc)
+			row.Purchased, row.BestBefore = consumeDates(move.ID, opts.Snap, opts.Loc)
+		default:
+			continue
+		}
+		rows = append(rows, row)
+	}
+	return rows, nil
+}
+
+func expiryForMove(moveID string, snap syncsnap.Snapshot, loc *time.Location) string {
+	var earliest *time.Time
+	consider := func(t *time.Time) {
+		if t == nil || t.IsZero() {
+			return
+		}
+		if earliest == nil || t.Before(*earliest) {
+			c := t.UTC()
+			earliest = &c
+		}
+	}
+	for _, inst := range snap.Instances {
+		if inst.StockMoveID == moveID {
+			consider(inst.ExpiresAt)
+		}
+	}
+	for _, rm := range snap.Removals {
+		if rm.StockMoveID == moveID {
+			consider(rm.ExpiresAt)
+		}
+	}
+	return bestBefore(earliest, loc)
+}
+
+func consumeDates(moveID string, snap syncsnap.Snapshot, loc *time.Location) (purchased, best string) {
+	best = neverExpires
+	for _, rm := range snap.Removals {
+		if rm.RemovedByMoveID != moveID {
+			continue
+		}
+		if purchased == "" && !rm.StockInAt.IsZero() {
+			purchased = day(rm.StockInAt, loc)
+		}
+		if rm.ExpiresAt != nil {
+			candidate := day(*rm.ExpiresAt, loc)
+			if best == neverExpires || candidate < best {
+				best = candidate
+			}
+		}
+	}
+	return purchased, best
+}
+
+func spoiledMove(moveID string, removals []syncsnap.Removal) int {
+	n := 0
+	for _, rm := range removals {
+		if rm.RemovedByMoveID != moveID {
+			continue
+		}
+		n++
+		if rm.Reason != "expired" {
+			return 0
+		}
+	}
+	if n == 0 {
+		return 0
+	}
+	return 1
+}
+
+func historySame(ex existingHistory, row historyRow) bool {
+	return ex.Undone == 0 &&
+		ex.Type == row.Type &&
+		ex.Amount == row.Amount &&
+		ex.Stamp == row.Stamp &&
+		ex.Spoiled == row.Spoiled &&
+		ex.Best == row.BestBefore &&
+		ex.Purchased == row.Purchased
+}
+
+func loadHistory(ctx context.Context, db *sql.DB, cols map[string]bool) (map[string]existingHistory, error) {
+	selects := []string{"id", "note", "amount", "row_created_timestamp", "transaction_type", "undone"}
+	optional := []string{"spoiled", "best_before_date", "purchased_date"}
+	for _, col := range optional {
+		if cols[col] {
+			selects = append(selects, col)
+		}
+	}
+	q := "SELECT " + strings.Join(selects, ", ") + " FROM stock_log WHERE note LIKE ?"
+	rows, err := db.QueryContext(ctx, q, historyPrefix+"%")
+	if err != nil {
+		return nil, fmt.Errorf("could not read Grocy's stock journal")
+	}
+	defer rows.Close()
+	out := map[string]existingHistory{}
+	for rows.Next() {
+		var ex existingHistory
+		var note string
+		dest := []any{&ex.ID, &note, &ex.Amount, &ex.Stamp, &ex.Type, &ex.Undone}
+		var spoiled sql.NullInt64
+		var best, purchased sql.NullString
+		if cols["spoiled"] {
+			dest = append(dest, &spoiled)
+		}
+		if cols["best_before_date"] {
+			dest = append(dest, &best)
+		}
+		if cols["purchased_date"] {
+			dest = append(dest, &purchased)
+		}
+		if err := rows.Scan(dest...); err != nil {
+			return nil, fmt.Errorf("could not read Grocy's stock journal")
+		}
+		if spoiled.Valid && spoiled.Int64 != 0 {
+			ex.Spoiled = 1
+		}
+		if best.Valid {
+			ex.Best = best.String
+		}
+		if purchased.Valid {
+			ex.Purchased = purchased.String
+		}
+		out[note] = ex
+	}
+	return out, rows.Err()
+}
+
+func tableColumns(ctx context.Context, db *sql.DB, table string) (map[string]bool, error) {
+	if table != "stock_log" {
+		return nil, fmt.Errorf("unexpected table")
+	}
+	rows, err := db.QueryContext(ctx, `PRAGMA table_info(stock_log)`)
+	if err != nil {
+		return nil, fmt.Errorf("could not read Grocy's stock journal")
+	}
+	defer rows.Close()
+	out := map[string]bool{}
+	for rows.Next() {
+		var cid, notnull, pk int
+		var name, typ string
+		var dflt sql.NullString
+		if err := rows.Scan(&cid, &name, &typ, &notnull, &dflt, &pk); err != nil {
+			return nil, fmt.Errorf("could not read Grocy's stock journal")
+		}
+		out[name] = true
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if len(out) == 0 {
+		return nil, fmt.Errorf("grocy.db has no stock_log table. This command is for Grocy's own database.")
+	}
+	return out, nil
+}
+
+func insertHistory(ctx context.Context, tx *sql.Tx, cols map[string]bool, row historyRow) error {
+	fields, args := historyAssignments(cols, row, true)
+	q := "INSERT INTO stock_log (" + strings.Join(fields, ", ") + ") VALUES (" + placeholders(len(fields)) + ")"
+	_, err := tx.ExecContext(ctx, q, args...)
+	return err
+}
+
+func updateHistory(ctx context.Context, tx *sql.Tx, cols map[string]bool, id int, row historyRow) error {
+	fields, args := historyAssignments(cols, row, false)
+	sets := make([]string, len(fields))
+	for i, field := range fields {
+		sets[i] = field + " = ?"
+	}
+	if cols["undone"] {
+		sets = append(sets, "undone = ?")
+		args = append(args, 0)
+	}
+	args = append(args, id)
+	_, err := tx.ExecContext(ctx, "UPDATE stock_log SET "+strings.Join(sets, ", ")+" WHERE id = ?", args...)
+	return err
+}
+
+func historyAssignments(cols map[string]bool, row historyRow, insert bool) ([]string, []any) {
+	var fields []string
+	var args []any
+	add := func(col string, val any) {
+		if cols[col] {
+			fields = append(fields, col)
+			args = append(args, val)
+		}
+	}
+	if insert {
+		add("product_id", row.GrocyProduct)
+		add("stock_id", row.StockID)
+		add("transaction_id", row.TxID)
+		add("note", row.Note)
+		add("user_id", 1)
+		add("correlation_id", "pantry-history")
+		add("undone", 0)
+	}
+	add("amount", row.Amount)
+	add("transaction_type", row.Type)
+	add("row_created_timestamp", row.Stamp)
+	add("best_before_date", row.BestBefore)
+	add("purchased_date", emptyNull(row.Purchased))
+	add("used_date", emptyNull(row.Used))
+	add("spoiled", row.Spoiled)
+	add("location_id", row.LocationID)
+	return fields, args
+}
+
+func emptyNull(s string) any {
+	if s == "" {
+		return nil
+	}
+	return s
+}
+
+func undoHistory(ctx context.Context, tx *sql.Tx, cols map[string]bool, id int, now time.Time) error {
+	if cols["undone_timestamp"] {
+		_, err := tx.ExecContext(ctx, `UPDATE stock_log SET undone = 1, undone_timestamp = ? WHERE id = ?`, stamp(now, time.UTC), id)
+		return err
+	}
+	_, err := tx.ExecContext(ctx, `UPDATE stock_log SET undone = 1 WHERE id = ?`, id)
+	return err
+}
+
+func placeholders(n int) string {
+	parts := make([]string, n)
+	for i := range parts {
+		parts[i] = "?"
+	}
+	return strings.Join(parts, ", ")
+}

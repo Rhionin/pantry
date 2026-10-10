@@ -151,7 +151,7 @@ copy_deploy_files() {
   log_info "Copying deployment files to ${PANTRY_DIR}..."
   mkdir -p "${PANTRY_DIR}"
   local item src dest
-  for item in docker-compose.yml docker-compose.tunnel.yml .env.example Caddyfile Caddyfile.tunnel publish-mode.sh auth-migrate.sh udev systemd firewall mdns dns; do
+  for item in docker-compose.yml docker-compose.tunnel.yml docker-compose.grocy.yml .env.example Caddyfile Caddyfile.tunnel publish-mode.sh auth-migrate.sh udev systemd firewall mdns dns; do
     src="$SCRIPT_DIR/$item"
     dest="${PANTRY_DIR}/$item"
     if [[ ! -e "$src" ]]; then
@@ -685,6 +685,9 @@ cmd_apply() {
   else
     log_info "Starting Pantry on the LAN"
   fi
+  while IFS= read -r arg; do
+    [[ -n "$arg" ]] && compose+=("$arg")
+  done < <(grocy_compose_suffix)
   # Pull is the update script's job. Here, drop a proxy container left over
   # from the other mode before Compose tries to reuse the name pantry-caddy.
   if [[ "$use_public" == true || "$publish_mode" != tunnel ]]; then
