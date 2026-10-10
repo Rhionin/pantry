@@ -438,6 +438,13 @@ export function removeGroupMember(id: string, productId: string): Promise<{ dele
   return apiFetch(`/api/groups/${id}/members/${productId}`, { method: 'DELETE' });
 }
 
+export function setMemberRestock(id: string, productId: string, noRestock: boolean): Promise<ProductGroup> {
+  return apiFetch(`/api/groups/${id}/members/${productId}/restock`, {
+    method: 'PUT',
+    body: JSON.stringify({ noRestock }),
+  });
+}
+
 export function setGroupRule(id: string, rule: string, pinnedProductId = '', confirm = true): Promise<ProductGroup> {
   return apiFetch(`/api/groups/${id}/rule`, {
     method: 'PUT',

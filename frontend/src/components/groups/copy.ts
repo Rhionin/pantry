@@ -4,6 +4,7 @@ export const ruleLabels: Record<string, string> = {
   same_as_ran_out: 'Same product',
   favorite: 'Always my favorite',
   best_deal: 'Best deal',
+  favor_variety: 'Favor variety',
 };
 
 export const ruleLabel = (rule: string) => ruleLabels[rule] ?? rule;
@@ -12,6 +13,7 @@ export const ruleChoices = [
   { id: 'same_as_ran_out', label: 'Same product', hint: 'Rebuy the exact product you used last.' },
   { id: 'favorite', label: 'Favorite', hint: 'Always buy one product.' },
   { id: 'best_deal', label: 'Best deal', hint: 'Lowest price per ounce.' },
+  { id: 'favor_variety', label: 'Favor variety', hint: "Rotate to the product you've had least recently." },
 ] as const;
 
 export function rulePillLabel(
@@ -24,6 +26,7 @@ export function rulePillLabel(
     return members.find((member) => member.productId === group.pinnedProductId)?.name ?? 'Favorite';
   }
   if (group.rule === 'best_deal') return 'Best deal';
+  if (group.rule === 'favor_variety') return 'Favor variety';
   return ruleLabel(group.rule);
 }
 
@@ -183,6 +186,9 @@ export interface MemberPackage {
   netUnit?: string;
   packCount?: number;
   barcodes?: string[];
+  noRestock?: boolean;
+  lastStockedAt?: string;
+  lastConsumedAt?: string;
 }
 
 export function memberPackage(
@@ -198,6 +204,9 @@ export function memberPackage(
     netUnit: product?.netUnit,
     packCount: product?.packCount,
     barcodes: product?.barcodes,
+    noRestock: member.noRestock,
+    lastStockedAt: member.lastStockedAt,
+    lastConsumedAt: member.lastConsumedAt,
   };
 }
 
@@ -435,6 +444,7 @@ export function ruleSentence(
       : 'Lowest price per ounce.';
   }
   if (group.rule === 'same_as_ran_out') return ruleChoices[0].hint;
+  if (group.rule === 'favor_variety') return ruleChoices[3].hint;
   return style === 'detail' ? `Buy ${ruleLabel(group.rule)} next.` : `${ruleLabel(group.rule)}.`;
 }
 

@@ -27,12 +27,13 @@ export const RulePicker = ({
   const [saving, setSaving] = useState(false);
   const memberOptions = group.members.map((member) => ({ value: member.productId, label: member.name }));
   const productLabel = rule === 'favorite' ? 'Product' : 'If no price is known';
+  const namesAProduct = rule !== 'same_as_ran_out' && rule !== 'favor_variety';
 
   const save = async () => {
     setSaving(true);
     setError('');
     try {
-      const pinnedProductId = rule === 'same_as_ran_out' ? '' : pin;
+      const pinnedProductId = namesAProduct ? pin : '';
       await setGroupRule(group.id, rule, pinnedProductId, true);
       onSaved();
       onClose();
@@ -58,7 +59,7 @@ export const RulePicker = ({
             {ruleChoices.map((choice) => (
               <div key={choice.id}>
                 <Radio value={choice.id} label={choice.label} description={choice.hint} />
-                {rule === choice.id && choice.id !== 'same_as_ran_out' && (
+                {rule === choice.id && choice.id !== 'same_as_ran_out' && choice.id !== 'favor_variety' && (
                   <Select
                     className="rule-choice-extra"
                     aria-label={productLabel}
@@ -74,6 +75,7 @@ export const RulePicker = ({
             ))}
           </Stack>
         </Radio.Group>
+        <p className="rule-skip-note">Products marked "Don't restock" are skipped.</p>
         {error !== '' && <Text size="sm" c="red">{error}</Text>}
         <Button color="dark" onClick={() => void save()} loading={saving} disabled={rule === 'favorite' && pin === ''}>
           Save

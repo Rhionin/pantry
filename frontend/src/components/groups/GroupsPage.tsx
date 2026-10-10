@@ -15,6 +15,7 @@ const chips: { id: GroupChip; label: string }[] = [
   { id: 'same_as_ran_out', label: 'Same product' },
   { id: 'favorite', label: 'Always my favorite' },
   { id: 'best_deal', label: 'Best deal' },
+  { id: 'favor_variety', label: 'Favor variety' },
 ];
 
 export const GroupsPage = () => {

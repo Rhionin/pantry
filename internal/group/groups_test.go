@@ -145,6 +145,52 @@ func TestAcceptDismissesOnlyExcludedPairs(t *testing.T) {
 	}
 }
 
+func TestFavorVarietyAndNoRestockRoundTrip(t *testing.T) {
+	groups, catalog, db := newTestGroups(t)
+	ctx := context.Background()
+	mustProduct(t, catalog, "plain", "Plain")
+	mustProduct(t, catalog, "fancy", "Fancy")
+	view, err := groups.Create(ctx, "Muffin mix", []string{"plain", "fancy"}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	saved, err := groups.SetRule(ctx, view.ID, string(KindFavorVariety), nil, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if saved.Rule != string(KindFavorVariety) || !saved.RuleConfirmed {
+		t.Fatalf("%+v", saved)
+	}
+	marked, err := groups.SetMemberRestock(ctx, view.ID, "fancy", true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var fancy Member
+	for _, member := range marked.Members {
+		if member.ProductID == "fancy" {
+			fancy = member
+		}
+		if member.ProductID == "plain" && member.NoRestock {
+			t.Fatal("plain was marked")
+		}
+	}
+	if !fancy.NoRestock {
+		t.Fatal("fancy stayed in rotation")
+	}
+	if _, err := db.Exec(`INSERT INTO product_group_members (product_id, group_id, no_restock) VALUES ('nope', 'missing', 2)`); err == nil {
+		t.Fatal("expected the flag check to reject 2")
+	}
+	back, err := groups.SetMemberRestock(ctx, view.ID, "fancy", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, member := range back.Members {
+		if member.NoRestock {
+			t.Fatalf("still marked %+v", member)
+		}
+	}
+}
+
 func TestLoadLastConsumed(t *testing.T) {
 	groups, catalog, db := newTestGroups(t)
 	ctx := context.Background()

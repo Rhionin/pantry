@@ -387,6 +387,7 @@ func newAPIMux(
 	apiMux.HandleFunc("DELETE /api/groups/{id}", HandleJSON(groupHandler.Delete))
 	apiMux.HandleFunc("POST /api/groups/{id}/members", HandleJSON(groupHandler.AddMembers))
 	apiMux.HandleFunc("DELETE /api/groups/{id}/members/{productId}", HandleJSON(groupHandler.RemoveMember))
+	apiMux.HandleFunc("PUT /api/groups/{id}/members/{productId}/restock", HandleJSON(groupHandler.PutMemberRestock))
 	apiMux.HandleFunc("PUT /api/groups/{id}/rule", HandleJSON(groupHandler.PutRule))
 	apiMux.HandleFunc("PUT /api/groups/{id}/target", HandleJSON(groupHandler.PutTarget))
 	apiMux.HandleFunc("GET /api/group-suggestions", HandleJSON(groupHandler.ListSuggestions))

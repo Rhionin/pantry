@@ -183,6 +183,135 @@ func TestPickBestDealNothingOnSale(t *testing.T) {
 	}
 }
 
+func TestPickFavorVarietyLeastRecentlyBought(t *testing.T) {
+	early := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
+	late := time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)
+	in := Input{Members: []Member{
+		{ProductID: "late", Name: "Blueberry", LastStockedAt: late},
+		{ProductID: "early", Name: "Bran", LastStockedAt: early},
+		{ProductID: "never", Name: "Corn"},
+	}}
+	got, err := Pick(KindFavorVariety, in)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.ProductID != "never" || got.Because != "Next up: Corn · rotates through 3" {
+		t.Fatalf("%+v", got)
+	}
+	in.Members = in.Members[:2]
+	got, err = Pick(KindFavorVariety, in)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.ProductID != "early" || got.Because != "Next up: Bran · rotates through 2" {
+		t.Fatalf("%+v", got)
+	}
+}
+
+func TestPickFavorVarietyTieBreaksByNameThenID(t *testing.T) {
+	when := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	got, err := Pick(KindFavorVariety, Input{Members: []Member{
+		{ProductID: "b", Name: "Zucchini"},
+		{ProductID: "a", Name: "Apple"},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.ProductID != "a" {
+		t.Fatalf("%+v", got)
+	}
+	got, err = Pick(KindFavorVariety, Input{Members: []Member{
+		{ProductID: "b", Name: "Same", LastStockedAt: when},
+		{ProductID: "a", Name: "Same", LastStockedAt: when},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.ProductID != "a" || got.Because != "Next up: Same · rotates through 2" {
+		t.Fatalf("%+v", got)
+	}
+}
+
+func TestPickSkipsNoRestockForEveryRule(t *testing.T) {
+	early := time.Date(2024, 2, 1, 0, 0, 0, 0, time.UTC)
+	late := time.Date(2026, 2, 1, 0, 0, 0, 0, time.UTC)
+	members := []Member{
+		{ProductID: "fancy", Name: "Fancy", NoRestock: true, LastConsumedAt: late, LastStockedAt: early},
+		{ProductID: "plain", Name: "Plain", LastConsumedAt: early, LastStockedAt: late},
+	}
+	price := 40
+	deals := []shopping.Deal{{ItemID: "fancy", PriceCents: &price, RegularPriceCents: intPtr(80)}}
+
+	same, err := Pick(KindSameAsRanOut, Input{Members: members})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if same.ProductID != "plain" || same.Because != "Fancy isn't restocked. The last one used up was Plain." {
+		t.Fatalf("same %+v", same)
+	}
+
+	favorite, err := Pick(KindFavorite, Input{Members: members, PinnedProductID: "fancy"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if favorite.ProductID != "plain" || favorite.Because != "Fancy isn't restocked. The last one used up was Plain." {
+		t.Fatalf("favorite %+v", favorite)
+	}
+
+	deal, err := Pick(KindBestDeal, Input{Members: members, PinnedProductID: "fancy", Deals: deals})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if deal.ProductID != "plain" || deal.Because != "Fancy isn't restocked. Nothing is on sale and no fallback is set. The last one used up was Plain." {
+		t.Fatalf("deal %+v", deal)
+	}
+
+	variety, err := Pick(KindFavorVariety, Input{Members: members})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if variety.ProductID != "plain" || variety.Because != "Next up: Plain · rotates through 1" {
+		t.Fatalf("variety %+v", variety)
+	}
+}
+
+func TestPickBestDealSaleSkipsNoRestock(t *testing.T) {
+	fancy, plain := 30, 80
+	in := Input{
+		Members: []Member{
+			{ProductID: "fancy", Name: "Fancy", NoRestock: true},
+			{ProductID: "plain", Name: "Plain"},
+		},
+		Deals: []shopping.Deal{
+			{ItemID: "fancy", PriceCents: &fancy, RegularPriceCents: intPtr(90)},
+			{ItemID: "plain", PriceCents: &plain, RegularPriceCents: intPtr(100)},
+		},
+	}
+	got, err := Pick(KindBestDeal, in)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.ProductID != "plain" || got.Because != "On sale for $0.80, usually $1.00." {
+		t.Fatalf("%+v", got)
+	}
+}
+
+func TestPickAllNoRestockBuysNothing(t *testing.T) {
+	members := []Member{
+		{ProductID: "a", Name: "A", NoRestock: true, LastStockedAt: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)},
+		{ProductID: "b", Name: "B", NoRestock: true},
+	}
+	for _, kind := range []Kind{KindSameAsRanOut, KindFavorite, KindBestDeal, KindFavorVariety} {
+		got, err := Pick(kind, Input{Members: members, PinnedProductID: "a"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got.ProductID != "" || got.Because != everyNoRestock {
+			t.Fatalf("%s %+v", kind, got)
+		}
+	}
+}
+
 func TestPickUnknownRule(t *testing.T) {
 	if _, err := Pick("nope", Input{}); err == nil {
 		t.Fatal("expected an error")

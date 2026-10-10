@@ -106,6 +106,72 @@ func TestShoppingListUsesGroups(t *testing.T) {
 			},
 		},
 		{
+			name: "favor variety buys the product stocked least recently and skips don't restock",
+			setup: func(env testEnv) {
+				createItemViaStockIn(env.T, env.DB, env.ProductStore, "user-1", "prod-early", "Bran muffin", "item-early")
+				createItemViaStockIn(env.T, env.DB, env.ProductStore, "user-1", "prod-late", "Blueberry muffin", "item-late")
+				createItemViaStockIn(env.T, env.DB, env.ProductStore, "user-1", "prod-fancy", "Lehi roller", "item-fancy")
+				mustExec(env, `UPDATE products SET unit_of_measure = 'box', net_base_value = ?, net_dimension = 'mass', net_size_origin = 'manual' WHERE id IN ('prod-early', 'prod-late', 'prod-fancy')`, 14.5*oz)
+				early := time.Date(2024, 3, 1, 0, 0, 0, 0, time.UTC)
+				late := time.Date(2026, 3, 1, 0, 0, 0, 0, time.UTC)
+				mustExec(env, `DELETE FROM stock_in_events WHERE product_id IN ('prod-early', 'prod-late', 'prod-fancy')`)
+				insertStockIn(env.T, env.DB, "prod-early", early)
+				insertStockIn(env.T, env.DB, "prod-late", late)
+				ounces := 48.0
+				view, err := group.NewGroups(env.DB).Create(env.T.Context(), "Muffin mix", []string{"prod-early", "prod-late", "prod-fancy"}, &group.TargetInput{
+					Quantity: &ounces, Dimension: product.DimensionMass,
+				})
+				if err != nil {
+					env.T.Fatal(err)
+				}
+				if _, err := group.NewGroups(env.DB).SetRule(env.T.Context(), view.ID, "favor_variety", nil, true); err != nil {
+					env.T.Fatal(err)
+				}
+				if _, err := group.NewGroups(env.DB).SetMemberRestock(env.T.Context(), view.ID, "prod-fancy", true); err != nil {
+					env.T.Fatal(err)
+				}
+				beginUsing(env.T, env.DB, time.Now())
+			},
+			httpExchange: httpExchange{
+				method:         "POST",
+				path:           "/api/shopping-list/fill",
+				expectedStatus: http.StatusOK,
+				assertions: []assertion{
+					{path: "$[0].itemId", value: "item-early"},
+					{path: "$[0].group.rule", value: "favor_variety"},
+					{path: "$[1]", absent: true},
+				},
+				bodyContains: []string{"Next up: Bran muffin · rotates through 2"},
+			},
+		},
+		{
+			name: "a group of only don't-restock products adds nothing",
+			setup: func(env testEnv) {
+				createItemViaStockIn(env.T, env.DB, env.ProductStore, "user-1", "prod-only", "Only fancy", "item-only")
+				mustExec(env, `UPDATE products SET unit_of_measure = 'box', net_base_value = ?, net_dimension = 'mass', net_size_origin = 'manual' WHERE id = 'prod-only'`, 14.5*oz)
+				ounces := 48.0
+				view, err := group.NewGroups(env.DB).Create(env.T.Context(), "Fancy only", []string{"prod-only"}, &group.TargetInput{
+					Quantity: &ounces, Dimension: product.DimensionMass,
+				})
+				if err != nil {
+					env.T.Fatal(err)
+				}
+				if _, err := group.NewGroups(env.DB).SetRule(env.T.Context(), view.ID, "favor_variety", nil, true); err != nil {
+					env.T.Fatal(err)
+				}
+				if _, err := group.NewGroups(env.DB).SetMemberRestock(env.T.Context(), view.ID, "prod-only", true); err != nil {
+					env.T.Fatal(err)
+				}
+				beginUsing(env.T, env.DB, time.Now())
+			},
+			httpExchange: httpExchange{
+				method:         "POST",
+				path:           "/api/shopping-list/fill",
+				expectedStatus: http.StatusOK,
+				assertions:     []assertion{{path: "$[0]", absent: true}},
+			},
+		},
+		{
 			name: "a missing size counts items",
 			setup: func(env testEnv) {
 				createItemViaStockIn(env.T, env.DB, env.ProductStore, "user-1", "prod-a", "Can A", "item-a")

@@ -198,6 +198,7 @@ func loadFacts(ctx context.Context, tx *sql.Tx, phase Phase) ([]Fact, error) {
 		SELECT i.id, i.product_id, p.name,
 			p.net_base_value, COALESCE(p.net_dimension, ''),
 			g.id, COALESCE(g.rule, ''), COALESCE(g.pinned_product_id, ''),
+			COALESCE(gm.no_restock, 0),
 			g.window_months, g.quantity_base_value, COALESCE(g.quantity_dimension, ''),
 			(SELECT COUNT(*) FROM item_instances inst
 			 WHERE inst.item_id = i.id AND inst.removed_at IS NULL)
@@ -216,14 +217,14 @@ func loadFacts(ctx context.Context, tx *sql.Tx, phase Phase) ([]Fact, error) {
 	var order []ProductID
 	for rows.Next() {
 		var itemID, id, name, netDimension, rule, pin, qtyDimension string
-		var onHand int
+		var onHand, noRestock int
 		var netBase, qtyBase sql.NullFloat64
 		var groupID sql.NullString
 		var window sql.NullInt64
 		if err := rows.Scan(
 			&itemID, &id, &name,
 			&netBase, &netDimension,
-			&groupID, &rule, &pin,
+			&groupID, &rule, &pin, &noRestock,
 			&window, &qtyBase, &qtyDimension,
 			&onHand,
 		); err != nil {
@@ -241,6 +242,7 @@ func loadFacts(ctx context.Context, tx *sql.Tx, phase Phase) ([]Fact, error) {
 				fact.Group = GroupID(groupID.String)
 				fact.Rule = rule
 				fact.Pinned = pin
+				fact.NoRestock = noRestock != 0
 				if window.Valid {
 					fact.GroupWindow = int(window.Int64)
 				}

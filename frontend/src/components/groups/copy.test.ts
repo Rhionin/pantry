@@ -111,6 +111,10 @@ describe('bin sentences', () => {
       .toBe('Lowest price per ounce, or Creamy peanut butter if no price is known.');
     expect(ruleSentence({ rule: 'best_deal', ruleConfirmed: true }, [], 'detail'))
       .toBe('Lowest price per ounce.');
+    expect(ruleSentence({ rule: 'favor_variety', ruleConfirmed: true }, [], 'detail'))
+      .toBe("Rotate to the product you've had least recently.");
+    expect(ruleSentence({ rule: 'favor_variety', ruleConfirmed: true }, [], 'brief'))
+      .toBe("Rotate to the product you've had least recently.");
   });
 
   it('matches the restock picker to the pill words', () => {
@@ -118,10 +122,12 @@ describe('bin sentences', () => {
       { id: 'same_as_ran_out', label: 'Same product', hint: 'Rebuy the exact product you used last.' },
       { id: 'favorite', label: 'Favorite', hint: 'Always buy one product.' },
       { id: 'best_deal', label: 'Best deal', hint: 'Lowest price per ounce.' },
+      { id: 'favor_variety', label: 'Favor variety', hint: "Rotate to the product you've had least recently." },
     ]);
     expect(rulePillLabel({ rule: 'same_as_ran_out', ruleConfirmed: true }, [])).toBe(ruleChoices[0].label);
     expect(rulePillLabel({ rule: 'favorite', ruleConfirmed: true }, [])).toBe(ruleChoices[1].label);
     expect(rulePillLabel({ rule: 'best_deal', ruleConfirmed: true }, [])).toBe(ruleChoices[2].label);
+    expect(rulePillLabel({ rule: 'favor_variety', ruleConfirmed: true }, [])).toBe('Favor variety');
   });
 
   it('does not fill the bin when a stocked package has no size', () => {

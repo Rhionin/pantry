@@ -146,6 +146,7 @@ type Fact struct {
 	LastStocked    time.Time
 	Rule           string
 	Pinned         string
+	NoRestock      bool
 	GroupWindow    int
 	GroupHasQty    bool
 	GroupBase      float64
