@@ -614,6 +614,58 @@ func waitForRefresh(t *testing.T, refresher *Refresher) {
 	}
 }
 
+func TestRefresh_SavesWhenLookupContextIsCanceled(t *testing.T) {
+	const productID = "012345678905"
+
+	catalog := newRefreshCatalog(t)
+	if err := catalog.CreateProduct(context.Background(), Product{
+		ID:     productID,
+		Name:   "Old Name",
+		Source: SourceExternal,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	refresher := &Refresher{
+		Catalog:               catalog,
+		Upstream:              &cancelingUpstream{cancel: cancel, result: ProductSummary{Name: "New Name"}},
+		ExternalLookupEnabled: true,
+		BackgroundTimeout:     time.Second,
+	}
+
+	outcome, err := refresher.Refresh(ctx, productID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if outcome != OutcomeUpdated {
+		t.Fatalf("outcome: want %q, got %q", OutcomeUpdated, outcome)
+	}
+
+	got, err := catalog.GetProductByID(context.Background(), productID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got == nil {
+		t.Fatal("product missing after refresh")
+	}
+	if got.Name != "New Name" {
+		t.Fatalf("name: want %q, got %q", "New Name", got.Name)
+	}
+}
+
+type cancelingUpstream struct {
+	cancel context.CancelFunc
+	result ProductSummary
+}
+
+func (u *cancelingUpstream) LookupIn(ctx context.Context, source ExternalSource, barcode string) (*ProductSummary, error) {
+	u.cancel()
+	out := u.result
+	out.ID = barcode
+	return &out, nil
+}
+
 func TestScheduleRefresh_CallerCancelDoesNotAbortLookup(t *testing.T) {
 	const productID = "012345678905"
 

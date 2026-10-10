@@ -287,6 +287,8 @@ func (r *Refresher) ScheduleRefresh(ctx context.Context, productID string) {
 			r.wg.Done()
 		}()
 
+		// The caller cancels ctx when it finishes the response. Detach so that
+		// cancellation does not abort the revalidation.
 		bgCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), r.backgroundTimeout())
 		defer cancel()
 
