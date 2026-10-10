@@ -107,7 +107,7 @@ export const AppMenu = ({ onCredentialsChanged }: AppMenuProps) => {
               )}
               onClick={() => {
                 setOpened(false);
-                navigate('/groups/suggestions');
+                navigate('/inventory?review=1');
               }}
             >
               {suggestionReviewLabel(suggestionCount)}
@@ -130,7 +130,7 @@ export const AppMenu = ({ onCredentialsChanged }: AppMenuProps) => {
           {loaded && loadError !== '' && editable.length === 0 && (
             <Menu.Item disabled>{loadError}</Menu.Item>
           )}
-          <Menu.Item onClick={() => navigate('/groups')}>Product groups</Menu.Item>
+          <Menu.Item onClick={() => navigate('/inventory?filter=groups&rescan=1')}>Look for more groups</Menu.Item>
           <Menu.Item onClick={() => navigate('/diagnostics')}>Diagnostics</Menu.Item>
           <div className="app-menu-about">
             <Menu.Divider />

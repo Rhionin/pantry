@@ -19,9 +19,10 @@ here.
 
 ## How to get to it (user POV)
 
-- Open Product groups from the header menu, then open a group. The route is
-  `/groups/:id`.
-- Creating a group from Product groups opens that group's page immediately.
+- On Inventory, expand a group and choose `Open group settings ›`. The route is
+  `/groups/:id`. `/groups` itself opens Inventory with the Groups filter.
+- Start a group with this, or New group on the add sheet, opens that group's
+  page immediately.
 
 ## Driving it with Playwright
 

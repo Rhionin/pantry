@@ -1,40 +1,59 @@
 import { memo, useRef, type ReactNode } from 'react';
-import { Avatar, Badge, Button, Card, Checkbox, Divider, Group, Stack, Text, Title } from '@mantine/core';
-import type { InventoryItem } from '../../types';
+import { ActionIcon, Badge, Checkbox, Menu } from '@mantine/core';
+import type { GroupSuggestion, InventoryItem } from '../../types';
 import { ProvenanceBadge } from '../product/ProvenanceBadge';
 import { visibleCategory } from './inventoryUtils';
+import { ProductPhoto } from './ProductPhoto';
 
 export interface ItemRowProps {
   inventoryItem: InventoryItem;
+  hand: string;
+  suggestion?: GroupSuggestion | null;
   selected: boolean;
   controlsId: string;
   onSelect: () => void;
+  onAdd: () => void;
+  onStartGroup: () => void;
+  onOpenSuggestion?: () => void;
   selecting?: boolean;
   checked?: boolean;
   onChecked?: (checked: boolean) => void;
   onLongPress?: () => void;
-  membership?: ReactNode;
   children?: ReactNode;
+}
+
+function KebabIcon() {
+  return (
+    <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
+      <circle cx="8" cy="3.1" r="1.35" fill="currentColor" />
+      <circle cx="8" cy="8" r="1.35" fill="currentColor" />
+      <circle cx="8" cy="12.9" r="1.35" fill="currentColor" />
+    </svg>
+  );
 }
 
 export const ItemRow = memo(({
   inventoryItem,
+  hand,
+  suggestion = null,
   selected,
   controlsId,
   onSelect,
+  onAdd,
+  onStartGroup,
+  onOpenSuggestion,
   selecting = false,
   checked = false,
   onChecked,
   onLongPress,
-  membership,
   children,
 }: ItemRowProps) => {
-  const { item, instanceCount, nearExpiryCount, expiredCount } = inventoryItem;
+  const { item, nearExpiryCount, expiredCount } = inventoryItem;
   const category = visibleCategory(item.product.category);
   const hold = useRef<number | null>(null);
 
   const startHold = () => {
-    if (!onLongPress) return;
+    if (!onLongPress || selecting) return;
     hold.current = window.setTimeout(() => onLongPress(), 500);
   };
   const clearHold = () => {
@@ -45,63 +64,66 @@ export const ItemRow = memo(({
   };
 
   return (
-    <Card
-      component="article"
-      withBorder
-      padding="sm"
+    <article
+      className="shelf-row"
       onPointerDown={startHold}
       onPointerUp={clearHold}
       onPointerLeave={clearHold}
       onPointerCancel={clearHold}
     >
-      <Stack gap="xs">
-        <Group gap="xs" wrap="nowrap" align="flex-start">
-          {selecting && (
-            <Checkbox
-              aria-label={`Select ${item.product.name}`}
-              checked={checked}
-              onChange={(event) => onChecked?.(event.currentTarget.checked)}
-              mt={4}
-            />
-          )}
-          <Avatar src={item.product.imageUrl} name={item.product.name} radius="sm" size="lg" />
-          <Stack gap={2} style={{ flex: 1, minWidth: 0 }}>
-            <Title order={3} size="h5">{item.product.name}</Title>
-            {category !== null && <Text size="sm" c="dimmed">{category}</Text>}
-            <ProvenanceBadge quiet externalSource={item.product.externalSource} />
-            <Group justify="flex-start" align="center" gap="xs" wrap="wrap">
-              <Group gap={6} wrap="wrap">
-                <Text size="sm">{instanceCount} {item.product.unitOfMeasure}</Text>
-                {nearExpiryCount > 0 && (
-                  <Badge size="sm" color="yellow">{nearExpiryCount} near expiry</Badge>
-                )}
-                {expiredCount > 0 && <Badge size="sm" color="red">{expiredCount} expired</Badge>}
-              </Group>
-              <Button
-                variant="subtle"
-                color="gray"
-                size="compact-sm"
-                px={4}
-                style={{ flex: '0 0 auto' }}
-                aria-expanded={selected}
-                aria-controls={controlsId}
-                onClick={onSelect}
-              >
-                {selected ? 'Hide instances' : 'View instances'}
-                <span aria-hidden="true">{selected ? ' ▴' : ' ▾'}</span>
-              </Button>
-              {membership}
-            </Group>
-          </Stack>
-        </Group>
-        {selected && children != null && (
-          <>
-            <Divider />
-            {children}
-          </>
+      <div className="shelf-head">
+        {selecting && (
+          <Checkbox
+            aria-label={`Select ${item.product.name}`}
+            checked={checked}
+            onChange={(event) => onChecked?.(event.currentTarget.checked)}
+            onPointerDown={(event) => event.stopPropagation()}
+          />
         )}
-      </Stack>
-    </Card>
+        <ProductPhoto src={item.product.imageUrl} name={item.product.name} />
+        <div className="shelf-copy">
+          <h3 className="shelf-name">{item.product.name}</h3>
+          {category !== null && <p className="shelf-category">{category}</p>}
+          <div className="shelf-meta">
+            <span>{hand}</span>
+            {nearExpiryCount > 0 && <Badge size="sm" color="yellow">{nearExpiryCount} near expiry</Badge>}
+            {expiredCount > 0 && <Badge size="sm" color="red">{expiredCount} expired</Badge>}
+          </div>
+          <ProvenanceBadge quiet externalSource={item.product.externalSource} />
+          {suggestion && (
+            <button type="button" className="shelf-suggestion" onClick={onOpenSuggestion}>
+              {`suggested group: ${suggestion.title}`}
+            </button>
+          )}
+        </div>
+        {!selecting && (
+          <Menu position="bottom-end" withinPortal withInitialFocusPlaceholder={false} transitionProps={{ duration: 0 }}>
+            <Menu.Target>
+              <ActionIcon
+                variant="subtle"
+                className="shelf-menu"
+                aria-label={`Actions for ${item.product.name}`}
+                onPointerDown={(event) => event.stopPropagation()}
+              >
+                <KebabIcon />
+              </ActionIcon>
+            </Menu.Target>
+            <Menu.Dropdown className="bin-member-menu">
+              <Menu.Item onClick={onAdd}>Add to a group…</Menu.Item>
+              <Menu.Item onClick={onStartGroup}>Start a group with this</Menu.Item>
+              <Menu.Item aria-expanded={selected} aria-controls={controlsId} onClick={onSelect}>
+                {selected ? 'Hide instances' : 'View instances'}
+              </Menu.Item>
+            </Menu.Dropdown>
+          </Menu>
+        )}
+      </div>
+      {selected && children != null && (
+        <div id={controlsId} className="shelf-details">
+          {children}
+        </div>
+      )}
+    </article>
   );
 });
 

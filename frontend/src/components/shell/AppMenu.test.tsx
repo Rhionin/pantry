@@ -44,8 +44,7 @@ const renderMenu = (
         <Routes>
           <Route path="/shopping" element={<AppMenu onCredentialsChanged={onCredentialsChanged} />} />
           <Route path="/diagnostics" element={<h1>Diagnostics</h1>} />
-          <Route path="/groups" element={<h1>Product groups</h1>} />
-          <Route path="/groups/suggestions" element={<h1>Group suggestions</h1>} />
+          <Route path="/inventory" element={<h1>Inventory</h1>} />
         </Routes>
       </MemoryRouter>
     </MantineProvider>,
@@ -166,8 +165,8 @@ describe('AppMenu', () => {
     renderMenu([provider()], () => undefined, [{ id: 'a' }, { id: 'b' }]);
     expect(await screen.findByText('2')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Menu' }));
-    fireEvent.click(await screen.findByRole('menuitem', { name: 'Product groups' }));
-    expect(await screen.findByRole('heading', { name: 'Product groups' })).toBeInTheDocument();
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Look for more groups' }));
+    expect(await screen.findByRole('heading', { name: 'Inventory' })).toBeInTheDocument();
   });
 
   it('reviews pending group suggestions from the first menu item', async () => {
@@ -183,7 +182,7 @@ describe('AppMenu', () => {
         <MemoryRouter initialEntries={['/shopping']}>
           <AppMenu onCredentialsChanged={() => undefined} />
           <Routes>
-            <Route path="/groups/suggestions" element={<h1>Group suggestions</h1>} />
+            <Route path="/inventory" element={<h1>Inventory</h1>} />
           </Routes>
         </MemoryRouter>
       </MantineProvider>,
@@ -196,12 +195,12 @@ describe('AppMenu', () => {
     expect(items[0]).toBe(review);
     expect(review).toHaveTextContent('2');
     expect(screen.getAllByText('2')).toHaveLength(2);
-    expect(screen.getByRole('menuitem', { name: 'Product groups' })).toBeInTheDocument();
+    expect(screen.getByRole('menuitem', { name: 'Look for more groups' })).toBeInTheDocument();
 
     fireEvent.click(review);
-    expect(await screen.findByRole('heading', { name: 'Group suggestions' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Inventory' })).toBeInTheDocument();
     await waitFor(() => {
-      expect(screen.queryByRole('menuitem', { name: 'Product groups' })).not.toBeInTheDocument();
+      expect(screen.queryByRole('menuitem', { name: 'Look for more groups' })).not.toBeInTheDocument();
     });
     expect(screen.getByRole('button', { name: 'Menu' })).toBeInTheDocument();
   });
@@ -218,7 +217,7 @@ describe('AppMenu', () => {
   it('hides the suggestion review when nothing is pending', async () => {
     renderMenu([provider()]);
     fireEvent.click(screen.getByRole('button', { name: 'Menu' }));
-    await screen.findByRole('menuitem', { name: 'Product groups' });
+    await screen.findByRole('menuitem', { name: 'Look for more groups' });
     expect(screen.queryByRole('menuitem', { name: /group suggestion/i })).not.toBeInTheDocument();
     expect(screen.queryByText('0')).not.toBeInTheDocument();
   });
@@ -254,7 +253,7 @@ describe('AppMenu', () => {
   it('hides log out on the LAN listener', async () => {
     renderMenu([provider()]);
     fireEvent.click(screen.getByRole('button', { name: 'Menu' }));
-    await screen.findByRole('menuitem', { name: 'Product groups' });
+    await screen.findByRole('menuitem', { name: 'Look for more groups' });
     expect(screen.queryByRole('menuitem', { name: 'Log out' })).not.toBeInTheDocument();
   });
 

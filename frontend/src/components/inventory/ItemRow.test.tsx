@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import { MantineProvider } from '@mantine/core';
 import { describe, expect, it, vi } from 'vitest';
 import { ItemRow } from './ItemRow';
@@ -32,9 +32,12 @@ const renderRow = (
   <MantineProvider>
     <ItemRow
       inventoryItem={item}
+      hand={`${item.instanceCount} ${item.item.product.unitOfMeasure}`}
       selected={props.selected ?? false}
       controlsId="controls-item-1"
       onSelect={vi.fn()}
+      onAdd={vi.fn()}
+      onStartGroup={vi.fn()}
     >
       {props.children}
     </ItemRow>
@@ -75,9 +78,12 @@ describe('ItemRow', () => {
         <MantineProvider>
           <ItemRow
             inventoryItem={withProduct({ category })}
+            hand="3 carton"
             selected={false}
             controlsId="controls-item-1"
             onSelect={vi.fn()}
+            onAdd={vi.fn()}
+            onStartGroup={vi.fn()}
           />
         </MantineProvider>,
       );
@@ -96,8 +102,8 @@ describe('ItemRow', () => {
 
     const article = screen.getByRole('article');
     expect(within(article).getByText('Stocked in Jan 1, 2026')).toBeInTheDocument();
-    const disclosure = within(article).getByRole('button', { name: 'Hide instances' });
-    expect(disclosure).toHaveAttribute('data-variant', 'subtle');
-    expect(disclosure).not.toHaveStyle({ width: '100%' });
+    fireEvent.click(within(article).getByRole('button', { name: 'Actions for Milk' }));
+    const disclosure = screen.getByRole('menuitem', { name: 'Hide instances' });
+    expect(disclosure).toBeInTheDocument();
   });
 });

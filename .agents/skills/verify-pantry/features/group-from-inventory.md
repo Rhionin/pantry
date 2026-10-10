@@ -1,23 +1,26 @@
 # Group from inventory
 
-An ungrouped inventory product can join an existing product group from its
-inventory card. A product that is already in a group says so and can move to
-another group. Creating a group from Product groups opens that group so it can
-be filled in immediately.
+Inventory is one list of groups and ungrouped products. An ungrouped product
+can join an existing group, or start a new one, from its menu. A product that
+is already in a group is a row inside that group and can move to another
+group. Creating a group opens that group so it can be filled in immediately.
 
 ## Sub-features
 
-- `inventory-add-to-group` on an ungrouped inventory card, Add to group lists
-  existing groups and adds the product to the one chosen.
+- `inventory-add-to-group` on an ungrouped product, the menu's Add to a group…
+  opens a sheet of existing groups. Choosing one adds the product.
 - `inventory-move-group` a product shown inside its group can move to another
-  group. With no other groups, the dialog says it is already in this one.
-- `create-group-opens` New group on Product groups opens the new group's page.
+  group. The sheet says which group it is already in and omits that group.
+- `create-group-opens` Start a group with this, or New group on the add sheet,
+  opens the new group's page.
 
 ## How to get to it (user POV)
 
-- Inventory (`/inventory`). Ungrouped products show Add to group. Products
-  already in a group are the group card; Show products, then Move to.
-- Product groups in the header menu (`/groups`), then New group.
+- Inventory (`/inventory`). Ungrouped products have a menu with Add to a group…
+  and Start a group with this. Groups expand in place; each member has Move to
+  another group.
+- The header has no Product groups page. `/groups` opens Inventory with the
+  Groups filter.
 
 ## Driving it with Playwright
 
@@ -28,21 +31,22 @@ Preconditions:
   is in no group. Seed them with `createKnownProduct`, commit stock-in scans,
   then `POST /api/groups`.
 
-- **Add to a group.** On Inventory, click `Add Rice crackers to a group`. The
-  dialog lists the existing groups. Choose one and click `Add to group`. The
-  product leaves its own card and shows under that group.
-- **Move.** Show products on that group, click `Move Rice crackers to another
-  group`. The dialog says `Already in` the current group and omits that group
-  from the choices. Choose the other group and click `Move to this group`.
-- **Create and open.** On Product groups, click `New group`, enter a name, and
-  click `Create group`. The address is `/groups/:id` and the heading is the new
-  name, with `Add a product` available.
+- **Add to a group.** On Inventory, open `Actions for Rice crackers` and choose
+  `Add to a group…`. The sheet is titled `Add Rice crackers to…` and lists the
+  existing groups. Choose one. The product leaves its own row and shows inside
+  that group.
+- **Move.** Expand that group, open `Actions for Rice crackers`, and choose
+  `Move to another group`. The sheet says `Already in` the current group and
+  omits that group. Choose the other group.
+- **Create and open.** On an ungrouped product, choose `Start a group with
+  this`. The address is `/groups/:id` and the heading is the product name, with
+  `Add a product` available.
 
 ## Gotchas
 
-- Grouped products are one inventory card named for the group, not one card per
-  product. Add to group is only on an ungrouped product card.
+- Grouped products are one inventory row named for the group, not one row per
+  product. Add to a group is only on an ungrouped product.
 - A product can belong to one group. Moving sends `fromGroupId`. Adding without
   it is refused when the product is already grouped.
-- The dialogs are `position: fixed`. Capture the viewport, not a full-page shot
-  that misses the open dialog.
+- The add sheet is a bottom drawer. Capture the viewport, not a full-page shot
+  that misses the open sheet.

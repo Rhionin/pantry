@@ -52,7 +52,7 @@ const MemberCard = ({
   </article>
 );
 
-export const InboxPage = () => {
+export const InboxPage = ({ embedded = false, focusId }: { embedded?: boolean; focusId?: string }) => {
   const [cards, setCards] = useState<GroupSuggestion[]>([]);
   const [index, setIndex] = useState(0);
   const [checks, setChecks] = useState<{ cardId: string; values: Record<string, boolean> } | null>(null);
@@ -82,6 +82,14 @@ export const InboxPage = () => {
   useEffect(() => {
     void Promise.resolve().then(load);
   }, [load]);
+
+  const [focusedId, setFocusedId] = useState<string | undefined>(undefined);
+  const focusIndex = focusId ? cards.findIndex((row) => row.id === focusId) : -1;
+  // Jump to the suggestion the inventory row asked for, once that card is loaded.
+  if (focusId && focusId !== focusedId && focusIndex >= 0) {
+    setFocusedId(focusId);
+    setIndex(focusIndex);
+  }
 
   const card = cards[index];
   const checked = checks !== null && card !== undefined && checks.cardId === card.id
@@ -163,9 +171,9 @@ export const InboxPage = () => {
 
   return (
     <Stack gap="sm" className="bin-page">
-      <Anchor component={Link} to="/groups" size="sm">Product groups</Anchor>
+      {!embedded && <Anchor component={Link} to="/inventory?filter=groups" size="sm">Inventory</Anchor>}
       <Group justify="space-between" align="center" wrap="wrap">
-        <Title order={1} size="h3">Suggestions</Title>
+        {!embedded && <Title order={1} size="h3">Suggestions</Title>}
         <Button size="sm" variant="default" className="suggestion-rescan" loading={scanning} onClick={() => void rescan()}>
           Look for more groups
         </Button>

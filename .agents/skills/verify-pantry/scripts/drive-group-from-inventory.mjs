@@ -28,9 +28,16 @@ try {
     category: 'Snacks',
     unitOfMeasure: 'box',
   });
+  await createKnownProduct(page, {
+    barcode: '166000000044',
+    name: 'Rice cakes',
+    category: 'Snacks',
+    unitOfMeasure: 'bag',
+  });
   await stock(page, '166000000011');
   await stock(page, '166000000022');
   await stock(page, '166000000033');
+  await stock(page, '166000000044');
 
   const sesameGroup = await page.request.post(`${API_URL}/api/groups`, {
     data: { name: 'Sesame snacks', productIds: [sesame.id] },
@@ -43,52 +50,49 @@ try {
   if (!barleyGroup.ok()) throw new Error(await barleyGroup.text());
 
   await page.goto('/inventory');
-  await page.getByRole('heading', { name: 'Rice crackers' }).waitFor({ state: 'visible', timeout: 15_000 });
-  const addButton = page.getByRole('button', { name: 'Add Rice crackers to a group' });
-  await addButton.waitFor({ state: 'visible' });
-  await addButton.scrollIntoViewIfNeeded();
+  const crackers = page.getByRole('article').filter({ has: page.getByRole('heading', { name: 'Rice crackers' }) });
+  await crackers.waitFor({ state: 'visible', timeout: 15_000 });
+  const actions = crackers.getByRole('button', { name: 'Actions for Rice crackers' });
+  await actions.waitFor({ state: 'visible' });
+  await actions.scrollIntoViewIfNeeded();
   await shot(page, 'after-inventory-add-button-390');
 
   await page.setViewportSize(DESKTOP);
-  await page.getByRole('button', { name: 'Add Rice crackers to a group' }).waitFor({ state: 'visible' });
+  await crackers.getByRole('button', { name: 'Actions for Rice crackers' }).waitFor({ state: 'visible' });
   await shot(page, 'after-inventory-add-button-1280');
   await page.setViewportSize(PHONE);
 
-  await page.getByRole('button', { name: 'Add Rice crackers to a group' }).click();
-  const addDialog = page.getByRole('dialog', { name: 'Add to group' });
-  await addDialog.getByRole('radio', { name: 'Sesame snacks' }).waitFor({ state: 'visible' });
-  await addDialog.getByRole('radio', { name: 'Barley drinks' }).waitFor({ state: 'visible' });
+  await crackers.getByRole('button', { name: 'Actions for Rice crackers' }).click();
+  await page.getByRole('menuitem', { name: 'Add to a group…' }).click();
+  const addDialog = page.getByRole('dialog', { name: 'Add Rice crackers to…' });
+  await addDialog.getByRole('button', { name: /Sesame snacks/ }).waitFor({ state: 'visible' });
+  await addDialog.getByRole('button', { name: /Barley drinks/ }).waitFor({ state: 'visible' });
   await shot(page, 'after-add-to-group-dialog-390');
-  await addDialog.getByRole('radio', { name: 'Sesame snacks' }).check();
-  await addDialog.getByRole('button', { name: 'Add to group' }).click();
+  await addDialog.getByRole('button', { name: /Sesame snacks/ }).click();
   await addDialog.waitFor({ state: 'hidden' });
   await page.getByRole('heading', { name: 'Rice crackers' }).waitFor({ state: 'detached' });
 
   const sesameCard = page.getByRole('article').filter({ has: page.getByRole('heading', { name: 'Sesame snacks' }) });
-  await sesameCard.getByRole('button', { name: 'Show products' }).click();
-  const moveButton = sesameCard.getByRole('button', { name: 'Move Rice crackers to another group' });
-  await moveButton.waitFor({ state: 'visible' });
-  await moveButton.scrollIntoViewIfNeeded();
+  await sesameCard.getByRole('button', { name: 'Expand Sesame snacks' }).click();
+  const memberActions = sesameCard.getByRole('button', { name: 'Actions for Rice crackers' });
+  await memberActions.waitFor({ state: 'visible' });
+  await memberActions.scrollIntoViewIfNeeded();
   await shot(page, 'after-inventory-product-in-group-390');
 
-  await moveButton.click();
-  const moveDialog = page.getByRole('dialog', { name: 'Move to another group' });
+  await memberActions.click();
+  await page.getByRole('menuitem', { name: 'Move to another group' }).click();
+  const moveDialog = page.getByRole('dialog', { name: 'Move Rice crackers to…' });
   await moveDialog.getByText('Already in Sesame snacks.').waitFor({ state: 'visible' });
   await shot(page, 'after-move-to-group-dialog-390');
-  await moveDialog.getByRole('radio', { name: 'Barley drinks' }).check();
-  await moveDialog.getByRole('button', { name: 'Move to this group' }).click();
+  await moveDialog.getByRole('button', { name: /Barley drinks/ }).click();
   await moveDialog.waitFor({ state: 'hidden' });
-  await sesameCard.getByText('Rice crackers · 1 on hand').waitFor({ state: 'detached' });
+  await sesameCard.getByText('Rice crackers').waitFor({ state: 'detached' });
 
-  await page.goto('/groups');
-  await page.getByRole('heading', { name: 'Product groups' }).waitFor({ state: 'visible' });
-  await page.getByRole('button', { name: 'New group' }).click();
-  const createDialog = page.getByRole('dialog', { name: 'New group' });
-  await createDialog.getByLabel('Name').fill('Rice cakes');
+  const cakes = page.getByRole('article').filter({ has: page.getByRole('heading', { name: 'Rice cakes' }) });
+  await cakes.getByRole('button', { name: 'Actions for Rice cakes' }).click();
   await shot(page, 'after-new-group-modal-390');
-  await createDialog.getByRole('button', { name: 'Create group' }).click();
+  await page.getByRole('menuitem', { name: 'Start a group with this' }).click();
   await page.getByRole('heading', { name: 'Rice cakes' }).waitFor({ state: 'visible', timeout: 10_000 });
-  await page.getByText('This group has no products yet.').waitFor({ state: 'visible' });
   await page.getByRole('button', { name: 'Add a product' }).waitFor({ state: 'visible' });
   await shot(page, 'after-created-group-opens-390');
 

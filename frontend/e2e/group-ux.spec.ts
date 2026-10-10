@@ -30,6 +30,7 @@ async function createProduct(
 
 test('add an inventory item to a group, and open a group just created', async ({ page, request }) => {
   test.setTimeout(60_000)
+  expect((await request.post('/api/onboarding/complete')).ok()).toBe(true)
   const barley = await createProduct(request, {
     name: 'Lemon barley water', category: 'Drinks', unitOfMeasure: 'bottle', barcode: '166000000001',
   })
@@ -38,6 +39,9 @@ test('add an inventory item to a group, and open a group just created', async ({
   })
   await createProduct(request, {
     name: 'Rice crackers', category: 'Snacks', unitOfMeasure: 'box', barcode: '166000000003',
+  })
+  await createProduct(request, {
+    name: 'Rice cakes', category: 'Snacks', unitOfMeasure: 'bag', barcode: '166000000004',
   })
 
   const sesameGroup = await request.post('/api/groups', {
@@ -51,40 +55,50 @@ test('add an inventory item to a group, and open a group just created', async ({
 
   await page.setViewportSize({ width: 390, height: 844 })
   await page.goto('/inventory')
-  await expect(page.getByRole('heading', { name: 'Rice crackers' })).toBeVisible()
-  await page.getByRole('button', { name: 'Add Rice crackers to a group' }).click()
-  const addDialog = page.getByRole('dialog', { name: 'Add to group' })
-  await expect(addDialog.getByText('Rice crackers', { exact: true })).toBeVisible()
-  await expect(addDialog.getByRole('radio', { name: 'Barley drinks' })).toBeVisible()
-  await addDialog.getByRole('radio', { name: 'Sesame snacks' }).check()
-  await addDialog.getByRole('button', { name: 'Add to group' }).click()
-  await expect(addDialog).toBeHidden()
+  const crackers = page.getByRole('article').filter({ has: page.getByRole('heading', { name: 'Rice crackers' }) })
+  await expect(crackers).toBeVisible()
+  await crackers.getByRole('button', { name: 'Actions for Rice crackers' }).click()
+  await page.getByRole('menuitem', { name: 'Add to a group…' }).click()
+  const addSheet = page.getByRole('dialog', { name: 'Add Rice crackers to…' })
+  await expect(addSheet.getByRole('button', { name: /Barley drinks/ })).toBeVisible()
+  await addSheet.getByRole('button', { name: /Sesame snacks/ }).click()
+  await expect(addSheet).toBeHidden()
   await expect(page.getByRole('heading', { name: 'Rice crackers' })).toHaveCount(0)
 
   const sesameCard = page.getByRole('article').filter({ has: page.getByRole('heading', { name: 'Sesame snacks' }) })
-  await sesameCard.getByRole('button', { name: 'Show products' }).click()
-  await expect(sesameCard.getByText('Rice crackers · 1 on hand')).toBeVisible()
+  await sesameCard.getByRole('button', { name: 'Expand Sesame snacks' }).click()
+  await expect(sesameCard.getByText('Rice crackers')).toBeVisible()
+  await expect(sesameCard.getByText('box, 1 on hand')).toBeVisible()
 
-  await sesameCard.getByRole('button', { name: 'Move Rice crackers to another group' }).click()
-  const moveDialog = page.getByRole('dialog', { name: 'Move to another group' })
-  await expect(moveDialog.getByText('Already in Sesame snacks.')).toBeVisible()
-  await expect(moveDialog.getByRole('radio', { name: 'Sesame snacks' })).toHaveCount(0)
-  await moveDialog.getByRole('radio', { name: 'Barley drinks' }).check()
-  await moveDialog.getByRole('button', { name: 'Move to this group' }).click()
-  await expect(moveDialog).toBeHidden()
-  await expect(sesameCard.getByText('Rice crackers · 1 on hand')).toHaveCount(0)
+  await sesameCard.getByRole('button', { name: 'Actions for Rice crackers' }).click()
+  await page.getByRole('menuitem', { name: 'Move to another group' }).click()
+  const moveSheet = page.getByRole('dialog', { name: 'Move Rice crackers to…' })
+  await expect(moveSheet.getByText('Already in Sesame snacks.')).toBeVisible()
+  await expect(moveSheet.getByRole('button', { name: /Sesame snacks/ })).toHaveCount(0)
+  await moveSheet.getByRole('button', { name: /Barley drinks/ }).click()
+  await expect(moveSheet).toBeHidden()
+  await expect(sesameCard.getByText('Rice crackers')).toHaveCount(0)
 
   const barleyCard = page.getByRole('article').filter({ has: page.getByRole('heading', { name: 'Barley drinks' }) })
-  await barleyCard.getByRole('button', { name: 'Show products' }).click()
-  await expect(barleyCard.getByText('Rice crackers · 1 on hand')).toBeVisible()
+  await barleyCard.getByRole('button', { name: 'Expand Barley drinks' }).click()
+  await expect(barleyCard.getByText('Rice crackers')).toBeVisible()
 
-  await page.goto('/groups')
-  await page.getByRole('button', { name: 'New group' }).click()
-  const createDialog = page.getByRole('dialog', { name: 'New group' })
-  await createDialog.getByLabel('Name').fill('Rice cakes')
-  await createDialog.getByRole('button', { name: 'Create group' }).click()
+  const cakes = page.getByRole('article').filter({ has: page.getByRole('heading', { name: 'Rice cakes' }) })
+  await cakes.getByRole('button', { name: 'Actions for Rice cakes' }).click()
+  await page.getByRole('menuitem', { name: 'Start a group with this' }).click()
   await expect(page.getByRole('heading', { name: 'Rice cakes' })).toBeVisible()
   await expect(page).toHaveURL(/\/groups\/[^/]+$/)
-  await expect(page.getByText('This group has no products yet.')).toBeVisible()
   await expect(page.getByRole('button', { name: 'Add a product' })).toBeVisible()
+  await expect(page.getByText('Rice cakes')).toBeVisible()
+})
+
+test.afterEach(async ({ request }) => {
+  const listed = await request.get('/api/groups')
+  if (!listed.ok()) return
+  const groups = await listed.json() as { id: string; name: string }[]
+  for (const group of groups) {
+    if (group.name === 'Sesame snacks' || group.name === 'Barley drinks' || group.name === 'Rice cakes') {
+      await request.delete(`/api/groups/${group.id}`)
+    }
+  }
 })
