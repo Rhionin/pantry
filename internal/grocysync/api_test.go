@@ -126,6 +126,95 @@ func TestAPIOmitsBodyWhenGrocySendsNoMessage(t *testing.T) {
 	}
 }
 
+func TestAddStockUsesGrocy4TransactionID(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/stock/products/84/add" {
+			t.Errorf("path = %s", r.URL.Path)
+		}
+		_, _ = w.Write([]byte(`[{"id":12,"transaction_id":"6acae98caaf07","stock_id":"abc","undone":0}]`))
+	}))
+	defer srv.Close()
+	api, err := NewAPI(srv.URL, "secret-key")
+	if err != nil {
+		t.Fatal(err)
+	}
+	booking, err := api.AddStock(context.Background(), 84, addStockBody{Amount: 1, Note: "pantry-instance:i"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if booking.TransactionID != "6acae98caaf07" || booking.StockID != "abc" {
+		t.Fatalf("booking = %#v", booking)
+	}
+}
+
+func TestAddStockRejectsARowArrayWithoutTransactionID(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`[{"id":12,"stock_id":"abc"}]`))
+	}))
+	defer srv.Close()
+	api, err := NewAPI(srv.URL, "key")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = api.AddStock(context.Background(), 1, addStockBody{Amount: 1})
+	if err == nil || !strings.Contains(err.Error(), "Grocy did not return a stock transaction") {
+		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestAddStockAcceptsALegacyTransactionObject(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{"id":"tx-old","stock_id":"st1"}`))
+	}))
+	defer srv.Close()
+	api, err := NewAPI(srv.URL, "key")
+	if err != nil {
+		t.Fatal(err)
+	}
+	booking, err := api.AddStock(context.Background(), 1, addStockBody{Amount: 1})
+	if err != nil || booking.TransactionID != "tx-old" || booking.StockID != "st1" {
+		t.Fatalf("booking = %#v %v", booking, err)
+	}
+}
+
+func TestConsumeIncludesGrocyErrorText(t *testing.T) {
+	const msg = "Amount to consume is bigger than the current stock amount"
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = w.Write([]byte(`{"error_message":"` + msg + `","api_key":"secret-key"}`))
+	}))
+	defer srv.Close()
+	api, err := NewAPI(srv.URL, "secret-key")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = api.Consume(context.Background(), 84, consumeBody{Amount: 1})
+	if err == nil || !strings.Contains(err.Error(), msg) || !strings.Contains(err.Error(), "/stock/products/84/consume") {
+		t.Fatalf("err = %v", err)
+	}
+	if strings.Contains(err.Error(), "secret-key") {
+		t.Fatalf("error leaked the API key: %v", err)
+	}
+}
+
+func TestStockEntriesReadsTheEntriesArray(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/stock/products/84/entries" {
+			t.Errorf("path = %s", r.URL.Path)
+		}
+		_, _ = w.Write([]byte(`[{"stock_id":"st1","amount":"2","note":"pantry-instance:i","best_before_date":"2026-06-01","purchased_date":"2026-01-02"}]`))
+	}))
+	defer srv.Close()
+	api, err := NewAPI(srv.URL, "key")
+	if err != nil {
+		t.Fatal(err)
+	}
+	entries, err := api.StockEntries(context.Background(), 84)
+	if err != nil || len(entries) != 1 || entries[0].StockID != "st1" || entries[0].note() != "pantry-instance:i" || float64(entries[0].Amount) != 2 {
+		t.Fatalf("entries = %#v %v", entries, err)
+	}
+}
+
 func TestVersionReadsGrocySystemInfo(t *testing.T) {
 	fake := newFakeGrocy()
 	srv := fake.server()
