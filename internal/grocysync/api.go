@@ -186,6 +186,22 @@ func (a *API) PutUserfields(ctx context.Context, productID int, fields map[strin
 	return a.do(ctx, http.MethodPut, fmt.Sprintf("/userfields/products/%d", productID), fields, nil)
 }
 
+func (a *API) Userfields(ctx context.Context, productID int) (map[string]string, error) {
+	var raw map[string]any
+	if err := a.do(ctx, http.MethodGet, fmt.Sprintf("/userfields/products/%d", productID), nil, &raw); err != nil {
+		return nil, err
+	}
+	out := map[string]string{}
+	for key, value := range raw {
+		s, ok := value.(string)
+		if !ok || strings.TrimSpace(s) == "" {
+			continue
+		}
+		out[key] = s
+	}
+	return out, nil
+}
+
 type addStockBody struct {
 	Amount          float64 `json:"amount"`
 	BestBefore      string  `json:"best_before_date"`

@@ -22,6 +22,7 @@ type fakeGrocy struct {
 	txs            map[string]*fakeTx
 	calls          []string
 	bodies         []string
+	fields         map[int]map[string]string
 	productError   string
 	systemInfoCode int
 }
@@ -47,6 +48,7 @@ func newFakeGrocy() *fakeGrocy {
 		key:     "test-key",
 		objects: map[string]map[int]map[string]any{},
 		txs:     map[string]*fakeTx{},
+		fields:  map[int]map[string]string{},
 	}
 }
 
@@ -96,8 +98,28 @@ func (f *fakeGrocy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		f.objectsRoute(w, r, parts[1:], raw)
 		return
 	}
-	if len(parts) >= 3 && parts[0] == "userfields" && parts[1] == "products" && r.Method == http.MethodPut {
-		w.WriteHeader(http.StatusNoContent)
+	if len(parts) >= 3 && parts[0] == "userfields" && parts[1] == "products" {
+		id, _ := strconv.Atoi(parts[2])
+		switch r.Method {
+		case http.MethodPut:
+			var patch map[string]string
+			_ = json.Unmarshal(raw, &patch)
+			if f.fields[id] == nil {
+				f.fields[id] = map[string]string{}
+			}
+			for key, value := range patch {
+				f.fields[id][key] = value
+			}
+			w.WriteHeader(http.StatusNoContent)
+		case http.MethodGet:
+			vals := f.fields[id]
+			if vals == nil {
+				vals = map[string]string{}
+			}
+			_ = json.NewEncoder(w).Encode(vals)
+		default:
+			http.NotFound(w, r)
+		}
 		return
 	}
 	if len(parts) >= 3 && parts[0] == "stock" && parts[1] == "products" {
@@ -152,7 +174,7 @@ func (f *fakeGrocy) objectsRoute(w http.ResponseWriter, r *http.Request, parts [
 	case len(parts) == 1 && r.Method == http.MethodPost:
 		obj := map[string]any{}
 		_ = json.Unmarshal(raw, &obj)
-		if !f.acceptProductWrite(w, entity, obj) {
+		if !f.acceptProductWrite(w, entity, 0, obj) {
 			return
 		}
 		f.next++
@@ -169,7 +191,7 @@ func (f *fakeGrocy) objectsRoute(w http.ResponseWriter, r *http.Request, parts [
 		}
 		patch := map[string]any{}
 		_ = json.Unmarshal(raw, &patch)
-		if !f.acceptProductWrite(w, entity, patch) {
+		if !f.acceptProductWrite(w, entity, id, patch) {
 			return
 		}
 		for k, v := range patch {
@@ -185,7 +207,7 @@ func (f *fakeGrocy) objectsRoute(w http.ResponseWriter, r *http.Request, parts [
 	}
 }
 
-func (f *fakeGrocy) acceptProductWrite(w http.ResponseWriter, entity string, obj map[string]any) bool {
+func (f *fakeGrocy) acceptProductWrite(w http.ResponseWriter, entity string, id int, obj map[string]any) bool {
 	if entity != "products" {
 		return true
 	}
@@ -193,11 +215,28 @@ func (f *fakeGrocy) acceptProductWrite(w http.ResponseWriter, entity string, obj
 		writeGrocyError(w, fmt.Sprintf("SQLSTATE[HY000]: General error: 1 table products has no column named %s", col))
 		return false
 	}
+	if name, ok := obj["name"].(string); ok && strings.TrimSpace(name) != "" && f.productWithName(name, id) != 0 {
+		writeGrocyError(w, "UNIQUE constraint failed: products.name")
+		return false
+	}
 	if f.productError != "" {
 		writeGrocyError(w, f.productError)
 		return false
 	}
 	return true
+}
+
+func (f *fakeGrocy) productWithName(name string, except int) int {
+	want := strings.ToLower(strings.TrimSpace(name))
+	for id, obj := range f.objects["products"] {
+		if id == except {
+			continue
+		}
+		if strings.ToLower(strings.TrimSpace(strField(obj, "name"))) == want {
+			return id
+		}
+	}
+	return 0
 }
 
 func writeGrocyError(w http.ResponseWriter, message string) {

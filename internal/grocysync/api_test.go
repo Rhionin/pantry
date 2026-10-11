@@ -101,6 +101,10 @@ func TestCreateRejectsUnknownProductColumn(t *testing.T) {
 	if _, err := api.Create(context.Background(), "locations", map[string]any{"name": "Pantry", "is_freezer": 0}); err != nil {
 		t.Fatal(err)
 	}
+	_, err = api.Create(context.Background(), "products", map[string]any{"name": "milk", "location_id": 1, "qu_id_purchase": 1, "qu_id_stock": 1})
+	if err == nil || !strings.Contains(err.Error(), "UNIQUE constraint failed: products.name") {
+		t.Fatalf("err = %v", err)
+	}
 }
 
 func TestAPIOmitsBodyWhenGrocySendsNoMessage(t *testing.T) {

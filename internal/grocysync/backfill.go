@@ -52,6 +52,9 @@ func ApplyHistory(ctx context.Context, opts HistoryOptions) (HistoryResult, erro
 	if err := journalInUse(opts.DBPath); err != nil {
 		return HistoryResult{}, err
 	}
+	if err := grocyDBWritable(opts.DBPath); err != nil {
+		return HistoryResult{}, err
+	}
 	if opts.Now.IsZero() {
 		opts.Now = time.Now().UTC()
 	}
@@ -165,6 +168,21 @@ func ApplyHistory(ctx context.Context, opts HistoryOptions) (HistoryResult, erro
 		return result, fmt.Errorf("could not write stock history. Restore from %s. %s", backup, RestoreSteps(backup, opts.DBPath))
 	}
 	return result, nil
+}
+
+func grocyDBWritable(path string) error {
+	f, err := os.OpenFile(path, os.O_RDWR, 0)
+	if err == nil {
+		f.Close()
+		return nil
+	}
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if os.IsPermission(err) {
+		return fmt.Errorf("grocy.db is not writable by this process. Backfill must run as Grocy's data owner (uid 1001). The grocy-sync image runs as uid 65532. Nothing was changed")
+	}
+	return fmt.Errorf("could not open grocy.db")
 }
 
 func journalInUse(path string) error {
