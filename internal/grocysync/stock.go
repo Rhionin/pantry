@@ -3,6 +3,7 @@ package grocysync
 import (
 	"context"
 	"fmt"
+	"strconv"
 
 	"github.com/Rhionin/pantry/internal/syncsnap"
 )
@@ -39,16 +40,8 @@ func (r *Reconciler) syncStock(ctx context.Context, snap syncsnap.Snapshot, prod
 }
 
 func (r *Reconciler) ensureInstance(ctx context.Context, inst syncsnap.Instance, products map[string]int) error {
-	if consume, ok, err := r.Map.Get(linkConsume, inst.ID); err != nil {
+	if err := r.undoConsumeLink(ctx, inst.ID); err != nil {
 		return err
-	} else if ok && consume.GrocyRef != "" {
-		// The unit is back on the shelf. Undo the consume, then keep or replace the purchase.
-		if err := r.Grocy.Undo(ctx, consume.GrocyRef); err != nil {
-			return fmt.Errorf("could not undo a Grocy booking")
-		}
-		if err := r.Map.Delete(linkConsume, inst.ID); err != nil {
-			return err
-		}
 	}
 	hash := instanceHash(inst)
 	link, ok, err := r.Map.Get(linkInstance, inst.ID)
@@ -62,12 +55,22 @@ func (r *Reconciler) ensureInstance(ctx context.Context, inst syncsnap.Instance,
 	note := instancePrefix + inst.ID
 	wantBest := bestBefore(inst.ExpiresAt, r.Loc)
 	wantPurchased := day(inst.StockInAt, r.Loc)
-	if found, err := r.findEntry(ctx, grocyID, note); err != nil {
+	kept, err := r.collapsePurchases(ctx, grocyID, note)
+	if err != nil {
 		return err
-	} else if found.StockID != "" && sameDay(found.BestBefore, wantBest) && sameDay(found.Purchased, wantPurchased) {
-		ref := ""
-		if ok {
+	}
+	found, err := r.findEntry(ctx, grocyID, note)
+	if err != nil {
+		return err
+	}
+	if found.StockID != "" && sameDay(found.BestBefore, wantBest) && sameDay(found.Purchased, wantPurchased) {
+		ref := kept.TransactionID.String()
+		if ref == "" && ok {
 			ref = link.GrocyRef
+		}
+		detail := packDetail(inst.StockMoveID, found.StockID)
+		if ok && link.Hash == hash && link.GrocyRef == ref && link.Detail == detail {
+			return nil
 		}
 		return r.Map.Put(Link{
 			PantryType: linkInstance,
@@ -75,49 +78,50 @@ func (r *Reconciler) ensureInstance(ctx context.Context, inst syncsnap.Instance,
 			GrocyType:  "stock",
 			GrocyRef:   ref,
 			Hash:       hash,
-			Detail:     packDetail(inst.StockMoveID, found.StockID),
+			Detail:     detail,
 		})
 	}
-	if ok && link.Hash == hash && link.GrocyRef != "" {
-		return nil
-	}
-	if ok && link.GrocyRef != "" {
-		if err := r.Grocy.Undo(ctx, link.GrocyRef); err != nil {
-			return fmt.Errorf("could not undo a Grocy booking")
+	if kept.TransactionID.String() != "" {
+		if err := r.Grocy.Undo(ctx, kept.TransactionID.String()); err != nil {
+			return fmt.Errorf("could not undo a Grocy booking: %w", err)
 		}
-	} else if found, err := r.findEntry(ctx, grocyID, note); err != nil {
-		return err
+	} else if ok && link.GrocyRef != "" && found.StockID != "" {
+		if err := r.Grocy.Undo(ctx, link.GrocyRef); err != nil {
+			return fmt.Errorf("could not undo a Grocy booking: %w", err)
+		}
 	} else if found.StockID != "" {
-		// The map was lost and the dates changed. Consume the old row, then re-post.
 		if _, err := r.Grocy.Consume(ctx, grocyID, consumeBody{
 			Amount:          1,
 			TransactionType: "consume",
 			LocationID:      r.locationID,
 			StockEntryID:    found.StockID,
 		}); err != nil {
-			return fmt.Errorf("could not undo a Grocy booking")
+			return fmt.Errorf("could not undo a Grocy booking: %w", err)
 		}
 	}
-	ref, err := r.Grocy.AddStock(ctx, grocyID, addStockBody{
+	booking, err := r.Grocy.AddStock(ctx, grocyID, addStockBody{
 		Amount:          1,
-		BestBefore:      bestBefore(inst.ExpiresAt, r.Loc),
-		Purchased:       day(inst.StockInAt, r.Loc),
+		BestBefore:      wantBest,
+		Purchased:       wantPurchased,
 		TransactionType: "purchase",
 		LocationID:      r.locationID,
 		Note:            note,
 	})
 	if err != nil {
-		return fmt.Errorf("could not add stock in Grocy")
+		return fmt.Errorf("could not add stock in Grocy: %w", err)
 	}
-	stockID, err := r.stockID(ctx, grocyID, note)
-	if err != nil {
-		return err
+	stockID := booking.StockID
+	if stockID == "" {
+		stockID, err = r.stockID(ctx, grocyID, note)
+		if err != nil {
+			return err
+		}
 	}
 	return r.Map.Put(Link{
 		PantryType: linkInstance,
 		PantryID:   inst.ID,
 		GrocyType:  "stock",
-		GrocyRef:   ref,
+		GrocyRef:   booking.TransactionID,
 		Hash:       hash,
 		Detail:     packDetail(inst.StockMoveID, stockID),
 	})
@@ -126,21 +130,49 @@ func (r *Reconciler) ensureInstance(ctx context.Context, inst syncsnap.Instance,
 func (r *Reconciler) dropInstance(ctx context.Context, link Link, moves map[string]bool, removals map[string]syncsnap.Removal, products map[string]int) error {
 	moveID, stockID := unpackDetail(link.Detail)
 	inMoveAlive := moveID != "" && moves[moveID]
+	grocyID, err := r.grocyProduct(productIDFromHash(link.Hash), products)
+	if err != nil {
+		return err
+	}
+	note := instancePrefix + link.PantryID
+	purchases, err := r.openPurchases(ctx, grocyID, note)
+	if err != nil {
+		return err
+	}
 	if inMoveAlive {
 		if consume, ok, err := r.Map.Get(linkConsume, link.PantryID); err != nil {
 			return err
 		} else if ok && consume.GrocyRef != "" {
-			return nil
+			return r.clearLeftover(ctx, grocyID, note, purchases)
 		}
-		grocyID, err := r.grocyProduct(productIDFromHash(link.Hash), products)
-		if err != nil {
+		if len(purchases) > 1 {
+			// Undoing one purchase deletes the shared stock row, so put a single unit back and then record the use.
+			sample := purchases[0]
+			if err := r.undoPurchases(ctx, purchases, ""); err != nil {
+				return err
+			}
+			booking, err := r.Grocy.AddStock(ctx, grocyID, addStockBody{
+				Amount:          1,
+				BestBefore:      sample.BestBefore,
+				Purchased:       sample.Purchased,
+				TransactionType: "purchase",
+				LocationID:      r.locationID,
+				Note:            note,
+			})
+			if err != nil {
+				return fmt.Errorf("could not add stock in Grocy: %w", err)
+			}
+			stockID = booking.StockID
+		} else if found, err := r.findEntry(ctx, grocyID, note); err != nil {
 			return err
+		} else if found.StockID != "" {
+			stockID = found.StockID
 		}
 		spoiled := false
 		if rm, ok := removals[link.PantryID]; ok && rm.Reason == "expired" {
 			spoiled = true
 		}
-		ref, err := r.Grocy.Consume(ctx, grocyID, consumeBody{
+		booking, err := r.Grocy.Consume(ctx, grocyID, consumeBody{
 			Amount:          1,
 			TransactionType: "consume",
 			Spoiled:         spoiled,
@@ -148,32 +180,147 @@ func (r *Reconciler) dropInstance(ctx context.Context, link Link, moves map[stri
 			StockEntryID:    stockID,
 		})
 		if err != nil {
-			return fmt.Errorf("could not record a use in Grocy")
+			return fmt.Errorf("could not record a use in Grocy: %w", err)
 		}
 		return r.Map.Put(Link{
 			PantryType: linkConsume,
 			PantryID:   link.PantryID,
 			GrocyType:  "stock",
-			GrocyRef:   ref,
+			GrocyRef:   booking.TransactionID,
 			Detail:     link.Detail,
 		})
 	}
-	if consume, ok, err := r.Map.Get(linkConsume, link.PantryID); err != nil {
+	if err := r.undoConsumeLink(ctx, link.PantryID); err != nil {
 		return err
-	} else if ok && consume.GrocyRef != "" {
-		if err := r.Grocy.Undo(ctx, consume.GrocyRef); err != nil {
-			return fmt.Errorf("could not undo a Grocy booking")
-		}
-		if err := r.Map.Delete(linkConsume, link.PantryID); err != nil {
-			return err
-		}
 	}
-	if link.GrocyRef != "" {
-		if err := r.Grocy.Undo(ctx, link.GrocyRef); err != nil {
-			return fmt.Errorf("could not undo a Grocy booking")
-		}
+	if err := r.undoPurchases(ctx, purchases, link.GrocyRef); err != nil {
+		return err
 	}
 	return r.Map.Delete(linkInstance, link.PantryID)
+}
+
+func (r *Reconciler) undoConsumeLink(ctx context.Context, instanceID string) error {
+	consume, ok, err := r.Map.Get(linkConsume, instanceID)
+	if err != nil {
+		return err
+	}
+	if !ok || consume.GrocyRef == "" {
+		return nil
+	}
+	if err := r.Grocy.Undo(ctx, consume.GrocyRef); err != nil {
+		return fmt.Errorf("could not undo a Grocy booking: %w", err)
+	}
+	return r.Map.Delete(linkConsume, instanceID)
+}
+
+func (r *Reconciler) clearLeftover(ctx context.Context, productID int, note string, purchases []StockLog) error {
+	found, err := r.findEntry(ctx, productID, note)
+	if err != nil {
+		return err
+	}
+	if found.StockID == "" {
+		return nil
+	}
+	// A purchase undo removes the whole stock row, so the newest extra takes the leftover amount with it.
+	for i := len(purchases) - 1; i >= 0; i-- {
+		if err := r.Grocy.Undo(ctx, purchases[i].TransactionID.String()); err != nil {
+			return fmt.Errorf("could not undo a Grocy booking: %w", err)
+		}
+		found, err = r.findEntry(ctx, productID, note)
+		if err != nil {
+			return err
+		}
+		if found.StockID == "" {
+			return nil
+		}
+	}
+	found, err = r.findEntry(ctx, productID, note)
+	if err != nil {
+		return err
+	}
+	if found.StockID == "" {
+		return nil
+	}
+	if _, err := r.Grocy.Consume(ctx, productID, consumeBody{
+		Amount:          1,
+		TransactionType: "consume",
+		LocationID:      r.locationID,
+		StockEntryID:    found.StockID,
+	}); err != nil {
+		return fmt.Errorf("could not record a use in Grocy: %w", err)
+	}
+	return nil
+}
+
+func (r *Reconciler) collapsePurchases(ctx context.Context, productID int, note string) (StockLog, error) {
+	rows, err := r.openPurchases(ctx, productID, note)
+	if err != nil || len(rows) == 0 {
+		return StockLog{}, err
+	}
+	if len(rows) == 1 {
+		return rows[0], nil
+	}
+	// Two purchases with one pantry-instance note share a stock_id and summed amount.
+	// Undoing either purchase deletes that stock row, and an older booking cannot be
+	// undone while a newer one on the same stock_id is still open. Undo newest first,
+	// then the caller adds the single unit back.
+	if err := r.undoPurchases(ctx, rows, ""); err != nil {
+		return StockLog{}, err
+	}
+	return StockLog{}, nil
+}
+
+func (r *Reconciler) undoPurchases(ctx context.Context, rows []StockLog, also string) error {
+	seen := map[string]bool{}
+	for i := len(rows) - 1; i >= 0; i-- {
+		id := rows[i].TransactionID.String()
+		seen[id] = true
+		if err := r.Grocy.Undo(ctx, id); err != nil {
+			return fmt.Errorf("could not undo a Grocy booking: %w", err)
+		}
+	}
+	if also != "" && !seen[also] {
+		if err := r.Grocy.Undo(ctx, also); err != nil {
+			return fmt.Errorf("could not undo a Grocy booking: %w", err)
+		}
+	}
+	return nil
+}
+
+func (r *Reconciler) openPurchases(ctx context.Context, productID int, note string) ([]StockLog, error) {
+	rows, err := r.Grocy.StockLogs(ctx, productID)
+	if err != nil {
+		return nil, err
+	}
+	var out []StockLog
+	for _, row := range rows {
+		if row.note() != note || row.undone() || row.TransactionType != "purchase" || row.TransactionID.String() == "" {
+			continue
+		}
+		out = append(out, row)
+	}
+	for i := 1; i < len(out); i++ {
+		row := out[i]
+		j := i
+		for j > 0 && earlierLog(row, out[j-1]) {
+			out[j] = out[j-1]
+			j--
+		}
+		out[j] = row
+	}
+	return out, nil
+}
+
+func earlierLog(a, b StockLog) bool {
+	ai, aerr := strconv.Atoi(a.ID.String())
+	bi, berr := strconv.Atoi(b.ID.String())
+	if aerr == nil && berr == nil && ai != bi {
+		return ai < bi
+	}
+	if a.Created != b.Created {
+		return a.Created < b.Created
+	}
+	return a.TransactionID.String() < b.TransactionID.String()
 }
 
 func (r *Reconciler) grocyProduct(pantryID string, fresh map[string]int) (int, error) {
@@ -208,6 +355,5 @@ func (r *Reconciler) findEntry(ctx context.Context, productID int, note string) 
 			return entry, nil
 		}
 	}
-	// An empty list means this Grocy reply did not include entries. Callers can still undo by transaction id.
 	return StockEntry{}, nil
 }

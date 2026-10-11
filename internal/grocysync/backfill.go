@@ -376,10 +376,25 @@ func historySame(ex existingHistory, row historyRow) bool {
 	return ex.Undone == 0 &&
 		ex.Type == row.Type &&
 		ex.Amount == row.Amount &&
-		ex.Stamp == row.Stamp &&
+		canonicalStamp(ex.Stamp) == canonicalStamp(row.Stamp) &&
 		ex.Spoiled == row.Spoiled &&
-		ex.Best == row.BestBefore &&
-		ex.Purchased == row.Purchased
+		sameDay(ex.Best, row.BestBefore) &&
+		sameDay(ex.Purchased, row.Purchased)
+}
+
+// canonicalStamp compares journal times when the sqlite driver rewrites a
+// datetime column as RFC3339. The clock time is the value Grocy stored.
+func canonicalStamp(s string) string {
+	s = strings.TrimSpace(s)
+	s = strings.ReplaceAll(s, "T", " ")
+	s = strings.TrimSuffix(s, "Z")
+	if dot := strings.IndexByte(s, '.'); dot >= 0 {
+		s = s[:dot]
+	}
+	if len(s) >= 19 {
+		return s[:19]
+	}
+	return s
 }
 
 func loadHistory(ctx context.Context, db *sql.DB, cols map[string]bool) (map[string]existingHistory, error) {

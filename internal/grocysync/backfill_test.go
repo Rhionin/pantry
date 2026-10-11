@@ -137,6 +137,20 @@ func TestApplyHistoryWritesRealDatesAndIsIdempotent(t *testing.T) {
 	})
 }
 
+func TestHistorySameAcceptsTheDriverDatetimeForm(t *testing.T) {
+	row := historyRow{
+		Type: "purchase", Amount: 1, Stamp: "2024-11-02 23:30:00",
+		BestBefore: "2025-11-02", Purchased: "2024-11-02",
+	}
+	ex := existingHistory{
+		Type: "purchase", Amount: 1, Stamp: "2024-11-02T23:30:00Z",
+		Best: "2025-11-02T00:00:00Z", Purchased: "2024-11-02T00:00:00Z",
+	}
+	if !historySame(ex, row) {
+		t.Fatal("a datetime the sqlite driver rewrote was treated as a different journal time")
+	}
+}
+
 func TestApplyHistoryRefusesUnknownProductsBeforeBackup(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "grocy.db")
 	db := openGrocyDB(t, path)

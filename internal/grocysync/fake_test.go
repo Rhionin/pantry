@@ -19,11 +19,14 @@ type fakeGrocy struct {
 	next           int
 	objects        map[string]map[int]map[string]any
 	stock          []fakeStock
+	logs           []fakeLog
 	txs            map[string]*fakeTx
 	calls          []string
 	bodies         []string
 	fields         map[int]map[string]string
 	productError   string
+	bookingError   string
+	undoError      string
 	systemInfoCode int
 }
 
@@ -41,6 +44,19 @@ type fakeTx struct {
 	Kind   string
 	Undone bool
 	Entry  fakeStock
+}
+
+type fakeLog struct {
+	ID         int
+	ProductID  int
+	Amount     float64
+	BestBefore string
+	Purchased  string
+	Type       string
+	Undone     int
+	TxID       string
+	StockID    string
+	Note       string
 }
 
 func newFakeGrocy() *fakeGrocy {
@@ -68,6 +84,10 @@ func (f *fakeGrocy) count(method, fragment string) int {
 	return n
 }
 
+func (f *fakeGrocy) saw(method, fragment string) bool {
+	return f.count(method, fragment) > 0
+}
+
 func (f *fakeGrocy) productByMarker(marker string) map[string]any {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -87,7 +107,7 @@ func (f *fakeGrocy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	raw, _ := io.ReadAll(r.Body)
-	f.calls = append(f.calls, r.Method+" "+r.URL.Path)
+	f.calls = append(f.calls, r.Method+" "+r.URL.RequestURI())
 	if len(raw) > 0 {
 		f.bodies = append(f.bodies, string(raw))
 	}
@@ -129,8 +149,11 @@ func (f *fakeGrocy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			f.addStock(w, id, raw)
 		case len(parts) == 4 && parts[3] == "consume" && r.Method == http.MethodPost:
 			f.consume(w, id, raw)
+		case len(parts) == 4 && parts[3] == "entries" && r.Method == http.MethodGet:
+			f.listEntries(w, id)
 		case len(parts) == 3 && r.Method == http.MethodGet:
-			f.listStock(w, id)
+			// Product details. Grocy 4 does not include stock_entries here.
+			_ = json.NewEncoder(w).Encode(map[string]any{"product": map[string]any{"id": id}})
 		default:
 			http.NotFound(w, r)
 		}
@@ -160,6 +183,10 @@ func (f *fakeGrocy) systemInfo(w http.ResponseWriter) {
 
 func (f *fakeGrocy) objectsRoute(w http.ResponseWriter, r *http.Request, parts []string, raw []byte) {
 	entity := parts[0]
+	if entity == "stock_log" && len(parts) == 1 && r.Method == http.MethodGet {
+		f.listStockLogs(w, r)
+		return
+	}
 	if f.objects[entity] == nil {
 		f.objects[entity] = map[int]map[string]any{}
 	}
@@ -276,27 +303,63 @@ var grocyProductColumns = map[string]bool{
 }
 
 func (f *fakeGrocy) addStock(w http.ResponseWriter, productID int, raw []byte) {
+	if f.bookingError != "" {
+		writeAPIError(w, http.StatusBadRequest, f.bookingError)
+		return
+	}
 	var body addStockBody
 	_ = json.Unmarshal(raw, &body)
-	f.next++
-	entry := fakeStock{
-		ProductID:  productID,
-		Amount:     body.Amount,
-		BestBefore: body.BestBefore,
-		Purchased:  body.Purchased,
-		StockID:    "st" + strconv.Itoa(f.next),
-		Note:       body.Note,
-		LocationID: body.LocationID,
+	if body.Amount == 0 {
+		body.Amount = 1
 	}
-	f.stock = append(f.stock, entry)
+	kind := body.TransactionType
+	if kind == "" {
+		kind = "purchase"
+	}
+	f.next++
 	tx := "tx" + strconv.Itoa(f.next)
-	f.txs[tx] = &fakeTx{Kind: "purchase", Entry: entry}
-	_ = json.NewEncoder(w).Encode(map[string]any{"id": tx})
+	stockID := ""
+	merged := -1
+	for i, entry := range f.stock {
+		if entry.ProductID == productID && entry.LocationID == body.LocationID && entry.BestBefore == body.BestBefore && entry.Purchased == body.Purchased && entry.Note == body.Note {
+			merged = i
+			break
+		}
+	}
+	if merged >= 0 {
+		f.stock[merged].Amount += body.Amount
+		stockID = f.stock[merged].StockID
+	} else {
+		stockID = "st" + strconv.Itoa(f.next)
+		f.stock = append(f.stock, fakeStock{
+			ProductID:  productID,
+			Amount:     body.Amount,
+			BestBefore: body.BestBefore,
+			Purchased:  body.Purchased,
+			StockID:    stockID,
+			Note:       body.Note,
+			LocationID: body.LocationID,
+		})
+	}
+	booked := fakeStock{ProductID: productID, Amount: body.Amount, BestBefore: body.BestBefore, Purchased: body.Purchased, StockID: stockID, Note: body.Note, LocationID: body.LocationID}
+	f.txs[tx] = &fakeTx{Kind: "purchase", Entry: booked}
+	f.logs = append(f.logs, fakeLog{
+		ID: f.next, ProductID: productID, Amount: body.Amount, BestBefore: body.BestBefore, Purchased: body.Purchased,
+		Type: kind, TxID: tx, StockID: stockID, Note: body.Note,
+	})
+	f.writeBooking(w, f.logs[len(f.logs)-1])
 }
 
 func (f *fakeGrocy) consume(w http.ResponseWriter, productID int, raw []byte) {
+	if f.bookingError != "" {
+		writeAPIError(w, http.StatusBadRequest, f.bookingError)
+		return
+	}
 	var body consumeBody
 	_ = json.Unmarshal(raw, &body)
+	if body.Amount == 0 {
+		body.Amount = 1
+	}
 	idx := -1
 	for i, entry := range f.stock {
 		if entry.ProductID != productID {
@@ -308,19 +371,49 @@ func (f *fakeGrocy) consume(w http.ResponseWriter, productID int, raw []byte) {
 		idx = i
 		break
 	}
-	if idx < 0 {
-		http.Error(w, "no stock", http.StatusBadRequest)
+	if idx < 0 || f.stock[idx].Amount+1e-9 < body.Amount {
+		writeAPIError(w, http.StatusBadRequest, "Amount to be consumed cannot be > current stock amount (if supplied, at the desired location)")
 		return
 	}
 	entry := f.stock[idx]
-	f.stock = append(f.stock[:idx], f.stock[idx+1:]...)
+	entry.Amount -= body.Amount
+	if entry.Amount <= 1e-9 {
+		f.stock = append(f.stock[:idx], f.stock[idx+1:]...)
+	} else {
+		f.stock[idx] = entry
+	}
 	f.next++
 	tx := "tx" + strconv.Itoa(f.next)
-	f.txs[tx] = &fakeTx{Kind: "consume", Entry: entry}
-	_ = json.NewEncoder(w).Encode(map[string]any{"id": tx})
+	taken := entry
+	taken.Amount = body.Amount
+	f.txs[tx] = &fakeTx{Kind: "consume", Entry: taken}
+	f.logs = append(f.logs, fakeLog{
+		ID: f.next, ProductID: productID, Amount: -body.Amount, BestBefore: entry.BestBefore, Purchased: entry.Purchased,
+		Type: "consume", TxID: tx, StockID: entry.StockID, Note: entry.Note,
+	})
+	f.writeBooking(w, f.logs[len(f.logs)-1])
 }
 
-func (f *fakeGrocy) listStock(w http.ResponseWriter, productID int) {
+func (f *fakeGrocy) writeBooking(w http.ResponseWriter, log fakeLog) {
+	_ = json.NewEncoder(w).Encode([]map[string]any{f.logJSON(log)})
+}
+
+func (f *fakeGrocy) logJSON(log fakeLog) map[string]any {
+	return map[string]any{
+		"id":               log.ID,
+		"product_id":       log.ProductID,
+		"amount":           log.Amount,
+		"best_before_date": log.BestBefore,
+		"purchased_date":   log.Purchased,
+		"transaction_type": log.Type,
+		"undone":           log.Undone,
+		"transaction_id":   log.TxID,
+		"stock_id":         log.StockID,
+		"note":             log.Note,
+	}
+}
+
+func (f *fakeGrocy) listEntries(w http.ResponseWriter, productID int) {
 	var entries []map[string]any
 	for _, entry := range f.stock {
 		if entry.ProductID != productID {
@@ -337,17 +430,94 @@ func (f *fakeGrocy) listStock(w http.ResponseWriter, productID int) {
 	if entries == nil {
 		entries = []map[string]any{}
 	}
-	_ = json.NewEncoder(w).Encode(map[string]any{"stock_entries": entries})
+	_ = json.NewEncoder(w).Encode(entries)
+}
+
+func (f *fakeGrocy) listStockLogs(w http.ResponseWriter, r *http.Request) {
+	queries := r.URL.Query()["query[]"]
+	var rows []map[string]any
+	for _, log := range f.logs {
+		ok := true
+		for _, q := range queries {
+			match, valid := logMatches(log, q)
+			if !valid {
+				writeAPIError(w, http.StatusBadRequest, "Invalid query")
+				return
+			}
+			if !match {
+				ok = false
+				break
+			}
+		}
+		if ok {
+			rows = append(rows, f.logJSON(log))
+		}
+	}
+	if rows == nil {
+		rows = []map[string]any{}
+	}
+	_ = json.NewEncoder(w).Encode(rows)
+}
+
+func logMatches(log fakeLog, q string) (match bool, valid bool) {
+	field, op, value, ok := splitQuery(q)
+	if !ok || strings.Contains(value, ":") {
+		return false, false
+	}
+	var got string
+	switch field {
+	case "product_id":
+		got = strconv.Itoa(log.ProductID)
+	case "note":
+		got = log.Note
+	case "transaction_type":
+		got = log.Type
+	default:
+		return false, false
+	}
+	switch op {
+	case "=":
+		return got == value, true
+	case "~":
+		return strings.Contains(got, value), true
+	default:
+		return false, false
+	}
+}
+
+func splitQuery(q string) (field, op, value string, ok bool) {
+	for _, candidate := range []string{"!=", ">=", "<=", "!~", "~", "="} {
+		if i := strings.Index(q, candidate); i > 0 {
+			return q[:i], candidate, q[i+len(candidate):], true
+		}
+	}
+	return "", "", "", false
 }
 
 func (f *fakeGrocy) undo(w http.ResponseWriter, id string) {
-	tx := f.txs[id]
-	if tx == nil || tx.Undone {
-		http.Error(w, "missing", http.StatusBadRequest)
+	if f.undoError != "" {
+		writeAPIError(w, http.StatusBadRequest, f.undoError)
 		return
 	}
+	tx := f.txs[id]
+	if tx == nil || tx.Undone {
+		writeAPIError(w, http.StatusBadRequest, "This transaction was not found or already undone")
+		return
+	}
+	for _, log := range f.logs {
+		if log.StockID == tx.Entry.StockID && log.Undone == 0 && log.TxID != id && log.ID > f.logID(id) {
+			writeAPIError(w, http.StatusBadRequest, "Booking has subsequent dependent bookings, undo not possible")
+			return
+		}
+	}
 	tx.Undone = true
+	for i := range f.logs {
+		if f.logs[i].TxID == id {
+			f.logs[i].Undone = 1
+		}
+	}
 	if tx.Kind == "purchase" {
+		// Grocy deletes the stock row. A second purchase only raised the amount; it does not survive.
 		kept := f.stock[:0]
 		for _, entry := range f.stock {
 			if entry.StockID != tx.Entry.StockID {
@@ -356,9 +526,72 @@ func (f *fakeGrocy) undo(w http.ResponseWriter, id string) {
 		}
 		f.stock = kept
 	} else if tx.Kind == "consume" {
-		f.stock = append(f.stock, tx.Entry)
+		f.restore(tx.Entry)
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func (f *fakeGrocy) logID(txID string) int {
+	for _, log := range f.logs {
+		if log.TxID == txID {
+			return log.ID
+		}
+	}
+	return 0
+}
+
+func (f *fakeGrocy) changeAmount(stockID string, delta float64) error {
+	for i, entry := range f.stock {
+		if entry.StockID != stockID {
+			continue
+		}
+		entry.Amount += delta
+		if entry.Amount <= 1e-9 {
+			f.stock = append(f.stock[:i], f.stock[i+1:]...)
+			return nil
+		}
+		f.stock[i] = entry
+		return nil
+	}
+	return fmt.Errorf("The transaction could not be undone")
+}
+
+func (f *fakeGrocy) restore(entry fakeStock) {
+	for i, row := range f.stock {
+		if row.StockID == entry.StockID {
+			row.Amount += entry.Amount
+			f.stock[i] = row
+			return
+		}
+	}
+	f.stock = append(f.stock, entry)
+}
+
+// duplicatePurchase models the live failure: a second purchase with the same
+// pantry-instance note shares the stock row and raises its amount.
+func (f *fakeGrocy) duplicatePurchase(note string) string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for _, log := range f.logs {
+		if log.Note != note || log.Type != "purchase" || log.Undone != 0 {
+			continue
+		}
+		f.next++
+		tx := "tx" + strconv.Itoa(f.next)
+		_ = f.changeAmount(log.StockID, log.Amount)
+		f.logs = append(f.logs, fakeLog{
+			ID: f.next, ProductID: log.ProductID, Amount: log.Amount, BestBefore: log.BestBefore, Purchased: log.Purchased,
+			Type: "purchase", TxID: tx, StockID: log.StockID, Note: log.Note,
+		})
+		f.txs[tx] = &fakeTx{Kind: "purchase", Entry: fakeStock{ProductID: log.ProductID, Amount: log.Amount, BestBefore: log.BestBefore, Purchased: log.Purchased, StockID: log.StockID, Note: log.Note}}
+		return tx
+	}
+	return ""
+}
+
+func writeAPIError(w http.ResponseWriter, status int, msg string) {
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(map[string]string{"error_message": msg})
 }
 
 func strField(obj map[string]any, key string) string {
