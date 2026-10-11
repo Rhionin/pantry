@@ -1,7 +1,11 @@
 package grocysync
 
 import (
+	"context"
 	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -63,5 +67,96 @@ func TestNewAPIRejectsANonHTTPURL(t *testing.T) {
 	api, err := NewAPI("http://grocy:80/", "key")
 	if err != nil || api.Base != "http://grocy:80/api" {
 		t.Fatalf("api = %+v %v", api, err)
+	}
+}
+
+func TestCreateRejectsUnknownProductColumn(t *testing.T) {
+	fake := newFakeGrocy()
+	srv := fake.server()
+	defer srv.Close()
+	api, err := NewAPI(srv.URL, fake.key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = api.Create(context.Background(), "products", map[string]any{
+		"name":                        "Milk",
+		"qu_factor_purchase_to_stock": 1,
+		"description":                 "do-not-leak-this-body",
+	})
+	if err == nil || !strings.Contains(err.Error(), "no column named qu_factor_purchase_to_stock") {
+		t.Fatalf("err = %v", err)
+	}
+	if strings.Contains(err.Error(), "do-not-leak-this-body") || strings.Contains(err.Error(), fake.key) {
+		t.Fatalf("error leaked request data: %v", err)
+	}
+	id, err := api.Create(context.Background(), "products", map[string]any{
+		"name": "Milk", "qu_id_purchase": 1, "qu_id_stock": 1, "location_id": 1, "active": 1,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := api.Update(context.Background(), "products", id, map[string]any{"active": 0}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := api.Create(context.Background(), "locations", map[string]any{"name": "Pantry", "is_freezer": 0}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestAPIOmitsBodyWhenGrocySendsNoMessage(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+		_, _ = w.Write([]byte(`{"request":"do-not-leak","api_key":"secret-key"}`))
+	}))
+	defer srv.Close()
+	api, err := NewAPI(srv.URL, "secret-key")
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = api.do(context.Background(), http.MethodGet, "/system/info", nil, nil)
+	if err == nil || err.Error() != "Grocy returned 500 for /system/info" {
+		t.Fatalf("err = %v", err)
+	}
+	if strings.Contains(err.Error(), "do-not-leak") || strings.Contains(err.Error(), "secret-key") {
+		t.Fatalf("error leaked the reply: %v", err)
+	}
+}
+
+func TestVersionReadsGrocySystemInfo(t *testing.T) {
+	fake := newFakeGrocy()
+	srv := fake.server()
+	defer srv.Close()
+	api, err := NewAPI(srv.URL, fake.key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ver, err := api.Version(context.Background())
+	if err != nil || ver != "4.7.1" {
+		t.Fatalf("version = %q %v", ver, err)
+	}
+
+	stringSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{"grocy_version":"4.7.1"}`))
+	}))
+	defer stringSrv.Close()
+	stringAPI, err := NewAPI(stringSrv.URL, "key")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ver, err = stringAPI.Version(context.Background())
+	if err != nil || ver != "4.7.1" {
+		t.Fatalf("string version = %q %v", ver, err)
+	}
+
+	emptySrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{"grocy_version":{"ReleaseDate":"2026-09-04"}}`))
+	}))
+	defer emptySrv.Close()
+	emptyAPI, err := NewAPI(emptySrv.URL, "key")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := emptyAPI.Version(context.Background()); err == nil {
+		t.Fatal("expected a missing version")
 	}
 }

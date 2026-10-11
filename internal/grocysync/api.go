@@ -249,6 +249,39 @@ func (a *API) StockEntries(ctx context.Context, productID int) ([]StockEntry, er
 	return resp.Entries, nil
 }
 
+// Version reads grocy_version from /api/system/info.
+// Grocy 4 returns an object with Version; older replies used a string.
+func (a *API) Version(ctx context.Context) (string, error) {
+	var info struct {
+		GrocyVersion json.RawMessage `json:"grocy_version"`
+	}
+	if err := a.do(ctx, http.MethodGet, "/system/info", nil, &info); err != nil {
+		return "", err
+	}
+	return parseGrocyVersion(info.GrocyVersion)
+}
+
+func parseGrocyVersion(raw json.RawMessage) (string, error) {
+	raw = bytes.TrimSpace(raw)
+	if len(raw) == 0 || string(raw) == "null" {
+		return "", fmt.Errorf("Grocy did not report a version")
+	}
+	if raw[0] == '"' {
+		var s string
+		if err := json.Unmarshal(raw, &s); err != nil || strings.TrimSpace(s) == "" {
+			return "", fmt.Errorf("Grocy did not report a version")
+		}
+		return strings.TrimSpace(s), nil
+	}
+	var obj struct {
+		Version string `json:"Version"`
+	}
+	if err := json.Unmarshal(raw, &obj); err != nil || strings.TrimSpace(obj.Version) == "" {
+		return "", fmt.Errorf("Grocy did not report a version")
+	}
+	return strings.TrimSpace(obj.Version), nil
+}
+
 func (a *API) do(ctx context.Context, method, path string, body any, dest any) error {
 	var rdr io.Reader
 	if body != nil {
@@ -277,7 +310,7 @@ func (a *API) do(ctx context.Context, method, path string, body any, dest any) e
 		return fmt.Errorf("could not read Grocy's reply")
 	}
 	if resp.StatusCode >= 300 {
-		return fmt.Errorf("Grocy returned %d for %s", resp.StatusCode, path)
+		return grocyStatusError(resp.StatusCode, path, raw)
 	}
 	if dest == nil || len(bytes.TrimSpace(raw)) == 0 {
 		return nil
@@ -286,4 +319,26 @@ func (a *API) do(ctx context.Context, method, path string, body any, dest any) e
 		return fmt.Errorf("could not read Grocy's reply for %s", path)
 	}
 	return nil
+}
+
+func grocyStatusError(status int, path string, raw []byte) error {
+	msg := grocyErrorMessage(raw)
+	if msg == "" {
+		return fmt.Errorf("Grocy returned %d for %s", status, path)
+	}
+	return fmt.Errorf("Grocy returned %d for %s: %s", status, path, msg)
+}
+
+func grocyErrorMessage(raw []byte) string {
+	var body struct {
+		Message string `json:"error_message"`
+	}
+	if err := json.Unmarshal(raw, &body); err != nil {
+		return ""
+	}
+	msg := strings.TrimSpace(body.Message)
+	if len(msg) > 500 {
+		msg = msg[:500]
+	}
+	return msg
 }
