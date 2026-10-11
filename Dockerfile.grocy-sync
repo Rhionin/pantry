@@ -1,0 +1,20 @@
+# syntax=docker/dockerfile:1
+
+# Sidecar only. The Pantry image still builds the web UI; this one does not.
+FROM --platform=$BUILDPLATFORM golang:1.26-alpine AS build
+ARG TARGETOS TARGETARCH
+WORKDIR /src
+COPY go.mod go.sum ./
+RUN go mod download
+COPY . .
+RUN mkdir -p /data && chown 65532:65532 /data
+RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} \
+    go build -trimpath -ldflags="-s -w" -o /out/grocy-sync ./cmd/grocy-sync
+
+FROM gcr.io/distroless/static-debian12:nonroot
+COPY --from=build /out/grocy-sync /usr/local/bin/grocy-sync
+COPY --from=build --chown=nonroot:nonroot /data /data
+ENV GROCY_SYNC_MAP=/data/map.db
+VOLUME ["/data"]
+USER nonroot:nonroot
+ENTRYPOINT ["/usr/local/bin/grocy-sync"]

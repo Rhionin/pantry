@@ -185,6 +185,7 @@ jobs:
         run: |
           # Build common tags array - always include commit hash
           TAGS="ghcr.io/rhionin/pantry:${{ github.sha }}"
+          SIDECAR="ghcr.io/rhionin/pantry-grocy-sync:${{ github.sha }}"
           
           # Add branch name tag for all builds (PR and master)
           if [ "${{ github.event_name }}" = "pull_request" ]; then
@@ -194,12 +195,15 @@ jobs:
             # Replace slashes with dashes for valid tag
             BRANCH_NAME="${BRANCH_NAME//\//-}"
             TAGS="$TAGS,ghcr.io/rhionin/pantry:$BRANCH_NAME"
+            SIDECAR="$SIDECAR,ghcr.io/rhionin/pantry-grocy-sync:$BRANCH_NAME"
           else
             # On master commit, add latest and master tags
             TAGS="$TAGS,ghcr.io/rhionin/pantry:latest,ghcr.io/rhionin/pantry:master"
+            SIDECAR="$SIDECAR,ghcr.io/rhionin/pantry-grocy-sync:latest,ghcr.io/rhionin/pantry-grocy-sync:master"
           fi
           
           echo "tags=$TAGS" >> $GITHUB_OUTPUT
+          echo "sidecar_tags=$SIDECAR" >> $GITHUB_OUTPUT
 
       - name: Read commit identity
         id: commit
@@ -223,8 +227,8 @@ jobs:
           platforms: linux/arm64
           push: true
           provenance: false
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: type=gha,scope=pantry
+          cache-to: type=gha,mode=max,scope=pantry
           tags: ${{ steps.tags.outputs.tags }}
           build-args: |
             COMMIT_HASH=${{ github.sha }}
@@ -232,6 +236,18 @@ jobs:
             COMMIT_SUBJECT_B64=${{ steps.commit.outputs.subject_b64 }}
             BUILD_TIME=${{ steps.commit.outputs.built_at }}
             VERSION=${{ steps.commit.outputs.version }}
+
+      - name: Build and push grocy-sync image
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: Dockerfile.grocy-sync
+          platforms: linux/arm64
+          push: true
+          provenance: false
+          cache-from: type=gha,scope=grocy-sync
+          cache-to: type=gha,mode=max,scope=grocy-sync
+          tags: ${{ steps.tags.outputs.sidecar_tags }}
 
       # The image is already in the registry. This asks the Pi to pull it now.
       # The step is a no-op until DEPLOY_HOOK_SECRET exists, so a repo without

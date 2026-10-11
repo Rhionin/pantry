@@ -52,6 +52,9 @@ elif [[ "$mode" == acme ]]; then
     echo "PUBLIC_HOST is set but /opt/pantry/auth.caddy is missing; leaving the public proxy stopped. Run: sudo ./setup.sh" >&2
   fi
 fi
+while IFS= read -r arg; do
+  [[ -n "$arg" ]] && compose+=("$arg")
+done < <(grocy_compose_suffix)
 
 # uid 65532 is the distroless nonroot user that writes the trigger file.
 mkdir -p /opt/pantry/deploy-trigger

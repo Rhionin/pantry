@@ -555,6 +555,11 @@ All configuration is handled through environment variables in `/opt/pantry/.env`
 | `SCANNER_DEVICE` | `/dev/input/pantry-scanner` | Path to the scanner's stable symlink created by the udev rule. Point at a concrete `/dev/input/eventN` to bypass the symlink while debugging |
 | `SCANNER_GID` | `65532` | Numeric group ID the container process joins so it can read the `0640` scanner node |
 | `DEPLOY_HOOK_SECRET` | generated | Shared HMAC secret for `POST /api/deploy-hook`. `sudo ./setup.sh` fills this in when it is empty and never replaces a value already set. The same value is the GitHub Actions secret `DEPLOY_HOOK_SECRET`. Print it with `sudo ./setup.sh deploy-secret` |
+| `GROCY_URL` | empty | Grocy base URL from the sidecar, usually `http://grocy:80`. Empty keeps grocy-sync off. See [Grocy sync](#grocy-sync) |
+| `GROCY_API_KEY` | empty | API key created in the Grocy UI. Stored only in `/opt/pantry/.env` |
+| `PANTRY_SYNC_TOKEN` | empty | Read-only secret the sidecar sends to Pantry. Generate with `openssl rand -hex 32` |
+| `GROCY_SYNC_INTERVAL` | `5m` | How often the sidecar re-reads Pantry and writes Grocy |
+| `TZ` | empty | Time zone for stock dates. Set it to the same value as the Grocy container |
 
 **Note:** The variables `ADDR` and `DB_PATH` are pinned by the Docker Compose file and should not be overridden. To change the host port, use `HOST_PORT` instead of modifying `ADDR`.
 
@@ -930,6 +935,88 @@ The credentials are stored in root's Docker config, which is the identity the up
 - `PANTRY_WEBHOOK_KEY` — bearer token. The workflow sends it as `Authorization: Bearer <key>` and does not print it.
 
 If either secret is empty, the run logs a notice and exits successfully. Otherwise it POSTs JSON built with `jq` from the event payload: `repo`, `action`, `issue_number`, `title`, `html_url`, `author_login`, `assignee_login` (the user just assigned, otherwise the issue's assignee, or null), and `created_at`. Runs for the same issue number share a concurrency group so a burst of events does not pile up. The workflow grants the GitHub token no permissions.
+
+## Grocy sync
+
+Pantry can copy itself into [Grocy](https://grocy.info/) on the same Pi. Pantry stays the source of truth. Grocy being down does not stop Pantry, and Pantry being down does not stop Grocy. The copy is a separate container, `pantry-grocy-sync`, and it stays off until the three values below are set.
+
+Grocy itself is not in this repository. On this Pi it is the linuxserver image, container name `grocy`, started from `/home/pantrybot/grocy`, and attached to the Docker network `pantry_cf-tunnel`. Other containers reach it at `http://grocy:80`.
+
+### Turn it on
+
+1. In Grocy, open the user menu and create an API key. That key is not a Pantry password.
+2. On the Pi, edit `/opt/pantry/.env`. This file is never committed. Leave the values empty in git.
+
+```bash
+openssl rand -hex 32
+```
+
+Paste the output into `/opt/pantry/.env` with the Grocy URL and the API key. Docker Compose does not run shell substitutions in this file, so the token is the hex string itself.
+
+```
+GROCY_URL=http://grocy:80
+GROCY_API_KEY=paste-the-key-from-the-grocy-screen
+PANTRY_SYNC_TOKEN=paste-the-hex-from-openssl
+GROCY_SYNC_INTERVAL=5m
+TZ=America/New_York
+```
+
+`TZ` must be the same zone the Grocy container uses, or a stock-in late in the evening can land on the previous day in Grocy. The sidecar image has the zone database; the zone name is enough.
+
+3. Recreate Pantry so it loads the token, and start the sidecar. From `/opt/pantry`, after `sudo ./setup.sh` has copied `docker-compose.grocy.yml`:
+
+```bash
+cd /opt/pantry
+sudo ./setup.sh
+sudo docker compose -f docker-compose.yml -f docker-compose.grocy.yml --profile grocy up -d grocy-sync
+sudo docker logs pantry-grocy-sync --tail=40
+```
+
+`sudo ./setup.sh` also starts the sidecar once all three values are in `/opt/pantry/.env`. A plain `docker compose up` does not. The update timer uses the same rule, so later image pulls recreate `pantry-grocy-sync` when the values stay set.
+
+The sidecar is limited to 64 MB. It has no published ports. It joins the Compose project network (hostname `pantry`) and the existing network `pantry_cf-tunnel` (hostname `grocy`). That second network only hands out dynamic addresses from `10.77.77.4/30`, and Grocy already uses one. If `up` says the pool is exhausted, another container is holding the remaining address. Do not pin this service to `10.77.77.2` or `10.77.77.3`.
+
+The first reconcile creates a Grocy location named Pantry, a quantity unit named Piece, products, barcodes, current stock, and a shopping list named Pantry. Grocy's own default shopping list is left alone. After that it repeats every five minutes, and sooner when Pantry's event stream reports a change.
+
+### Past uses, once
+
+New uses are written through Grocy's API when they happen. Grocy's API cannot backdate a consume, so older Pantry history is a separate command. It is not part of the five-minute sync. It writes one row per Pantry stock move into Grocy's `stock_log` with the real date, after copying `grocy.db`.
+
+Stop Grocy first. The database is `data/grocy.db` inside the directory the linuxserver image mounts at `/config`. On this Pi that compose file is `/home/pantrybot/grocy`; confirm the host path before you mount it. The mount has to be writable: the command writes a `grocy.db.bak-<timestamp>` beside the live file, then the journal rows.
+
+```bash
+sudo docker stop grocy
+cd /opt/pantry
+sudo docker compose -f docker-compose.yml -f docker-compose.grocy.yml --profile grocy run --rm --no-deps \
+  -v /home/pantrybot/grocy/config:/grocy \
+  grocy-sync backfill --db /grocy/data/grocy.db --confirm
+sudo docker start grocy
+```
+
+Run a reconcile (the sidecar's normal start) before the first backfill, so Grocy already has the products and the Pantry location. Running it again updates rows that changed and marks removed moves undone. It does not change the on-hand `stock` table, so current counts stay with the API sync.
+
+If Grocy is still running, the backup fails and nothing is written. If the backup succeeds and a later write fails, the log prints the restore steps. They are:
+
+```bash
+sudo docker stop grocy
+# Move the live grocy.db aside, copy grocy.db.bak-<timestamp> to grocy.db,
+# and delete grocy.db-wal and grocy.db-shm if those files exist.
+sudo docker start grocy
+```
+
+### What didn't map
+
+- Group rules, pinned products, and "don't restock" are notes on the Grocy product. They do not change how Grocy shops.
+- A time window or a grams/milliliters target is not a Grocy minimum stock. Minimum stock is set only where Pantry has a fixed item count (`target_quantity`). Parent products roll that count up from their members.
+- A barcode override replaces the global barcode. Grocy stores one product per barcode and does not keep the source.
+- Package size stays a note and a `pantry_size` userfield. Grocy still counts pieces. There is no unit conversion.
+- Prices, deals, and brands are not sent.
+- Product pictures are not uploaded.
+- Scans waiting for approval, suggestions, and the staged cart are not copied.
+- Grocy recipes, chores, batteries, equipment, and locations other than Pantry are left alone. So is Grocy's default shopping list.
+- A consume written through the API is stamped when Grocy receives it. Only the one-time backfill keeps the original past date.
+- Correcting a backfilled journal row is applied the next time you run `backfill`. Correcting current stock undoes the matching Grocy booking and posts it again on the next sync.
+- One household (`user-1`). Parent products are a single level. When a product is in a Pantry group, that group's name is the Grocy product group. The Pantry category is a product group only for products that are not in a Pantry group; otherwise the category is a note.
 
 ## Troubleshooting
 
