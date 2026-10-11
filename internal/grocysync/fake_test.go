@@ -2,9 +2,11 @@ package grocysync
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -12,14 +14,16 @@ import (
 
 // fakeGrocy is the slice of Grocy's API this sidecar calls.
 type fakeGrocy struct {
-	mu      sync.Mutex
-	key     string
-	next    int
-	objects map[string]map[int]map[string]any
-	stock   []fakeStock
-	txs     map[string]*fakeTx
-	calls   []string
-	bodies  []string
+	mu             sync.Mutex
+	key            string
+	next           int
+	objects        map[string]map[int]map[string]any
+	stock          []fakeStock
+	txs            map[string]*fakeTx
+	calls          []string
+	bodies         []string
+	productError   string
+	systemInfoCode int
 }
 
 type fakeStock struct {
@@ -114,7 +118,22 @@ func (f *fakeGrocy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		f.undo(w, parts[2])
 		return
 	}
+	if len(parts) == 2 && parts[0] == "system" && parts[1] == "info" && r.Method == http.MethodGet {
+		f.systemInfo(w)
+		return
+	}
 	http.NotFound(w, r)
+}
+
+func (f *fakeGrocy) systemInfo(w http.ResponseWriter) {
+	if f.systemInfoCode >= 300 {
+		w.WriteHeader(f.systemInfoCode)
+		_, _ = w.Write([]byte(`{"unused":"do-not-leak"}`))
+		return
+	}
+	_ = json.NewEncoder(w).Encode(map[string]any{
+		"grocy_version": map[string]string{"Version": "4.7.1", "ReleaseDate": "2026-09-04"},
+	})
 }
 
 func (f *fakeGrocy) objectsRoute(w http.ResponseWriter, r *http.Request, parts []string, raw []byte) {
@@ -133,6 +152,9 @@ func (f *fakeGrocy) objectsRoute(w http.ResponseWriter, r *http.Request, parts [
 	case len(parts) == 1 && r.Method == http.MethodPost:
 		obj := map[string]any{}
 		_ = json.Unmarshal(raw, &obj)
+		if !f.acceptProductWrite(w, entity, obj) {
+			return
+		}
 		f.next++
 		id := f.next
 		obj["id"] = id
@@ -147,6 +169,9 @@ func (f *fakeGrocy) objectsRoute(w http.ResponseWriter, r *http.Request, parts [
 		}
 		patch := map[string]any{}
 		_ = json.Unmarshal(raw, &patch)
+		if !f.acceptProductWrite(w, entity, patch) {
+			return
+		}
 		for k, v := range patch {
 			obj[k] = v
 		}
@@ -158,6 +183,57 @@ func (f *fakeGrocy) objectsRoute(w http.ResponseWriter, r *http.Request, parts [
 	default:
 		http.NotFound(w, r)
 	}
+}
+
+func (f *fakeGrocy) acceptProductWrite(w http.ResponseWriter, entity string, obj map[string]any) bool {
+	if entity != "products" {
+		return true
+	}
+	if col := unknownProductColumn(obj); col != "" {
+		writeGrocyError(w, fmt.Sprintf("SQLSTATE[HY000]: General error: 1 table products has no column named %s", col))
+		return false
+	}
+	if f.productError != "" {
+		writeGrocyError(w, f.productError)
+		return false
+	}
+	return true
+}
+
+func writeGrocyError(w http.ResponseWriter, message string) {
+	w.WriteHeader(http.StatusBadRequest)
+	_ = json.NewEncoder(w).Encode(map[string]string{"error_message": message})
+}
+
+func unknownProductColumn(obj map[string]any) string {
+	var bad []string
+	for key := range obj {
+		if !grocyProductColumns[key] {
+			bad = append(bad, key)
+		}
+	}
+	sort.Strings(bad)
+	if len(bad) == 0 {
+		return ""
+	}
+	return bad[0]
+}
+
+// grocyProductColumns is the products table in Grocy 4.7.1.
+// qu_factor_purchase_to_stock was removed in 4.0.0; the objects API writes this table, not products_view.
+var grocyProductColumns = map[string]bool{
+	"id": true, "name": true, "description": true, "product_group_id": true, "active": true,
+	"location_id": true, "shopping_location_id": true, "qu_id_purchase": true, "qu_id_stock": true,
+	"min_stock_amount": true, "default_best_before_days": true, "default_best_before_days_after_open": true,
+	"default_best_before_days_after_freezing": true, "default_best_before_days_after_thawing": true,
+	"picture_file_name": true, "enable_tare_weight_handling": true, "tare_weight": true,
+	"not_check_stock_fulfillment_for_recipes": true, "parent_product_id": true, "calories": true,
+	"cumulate_min_stock_amount_of_sub_products": true, "due_type": true, "quick_consume_amount": true,
+	"hide_on_stock_overview": true, "default_stock_label_type": true, "should_not_be_frozen": true,
+	"treat_opened_as_out_of_stock": true, "no_own_stock": true, "default_consume_location_id": true,
+	"move_on_open": true, "row_created_timestamp": true, "qu_id_consume": true,
+	"auto_reprint_stock_label": true, "quick_open_amount": true, "qu_id_price": true,
+	"disable_open": true, "default_purchase_price_type": true,
 }
 
 func (f *fakeGrocy) addStock(w http.ResponseWriter, productID int, raw []byte) {

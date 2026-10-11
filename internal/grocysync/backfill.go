@@ -49,6 +49,9 @@ func ApplyHistory(ctx context.Context, opts HistoryOptions) (HistoryResult, erro
 	if strings.Contains(opts.DBPath, "'") {
 		return HistoryResult{}, fmt.Errorf("the database path cannot contain a quote")
 	}
+	if err := journalInUse(opts.DBPath); err != nil {
+		return HistoryResult{}, err
+	}
 	if opts.Now.IsZero() {
 		opts.Now = time.Now().UTC()
 	}
@@ -61,6 +64,12 @@ func ApplyHistory(ctx context.Context, opts HistoryOptions) (HistoryResult, erro
 	}
 	defer db.Close()
 	db.SetMaxOpenConns(1)
+	if _, err := db.ExecContext(ctx, `PRAGMA busy_timeout = 200`); err != nil {
+		return HistoryResult{}, fmt.Errorf("could not open grocy.db")
+	}
+	if err := lockAvailable(ctx, db); err != nil {
+		return HistoryResult{}, err
+	}
 	if _, err := db.ExecContext(ctx, `PRAGMA busy_timeout = 5000`); err != nil {
 		return HistoryResult{}, fmt.Errorf("could not open grocy.db")
 	}
@@ -156,6 +165,42 @@ func ApplyHistory(ctx context.Context, opts HistoryOptions) (HistoryResult, erro
 		return result, fmt.Errorf("could not write stock history. Restore from %s. %s", backup, RestoreSteps(backup, opts.DBPath))
 	}
 	return result, nil
+}
+
+func journalInUse(path string) error {
+	for _, suffix := range []string{"-wal", "-shm"} {
+		_, err := os.Stat(path + suffix)
+		if err == nil {
+			return fmt.Errorf("grocy.db looks in use (grocy.db%s is present). Stop Grocy with docker stop grocy, then run backfill again. Nothing was changed", suffix)
+		}
+		if err != nil && !errors.Is(err, os.ErrNotExist) {
+			return fmt.Errorf("could not check whether grocy.db is in use. Nothing was changed")
+		}
+	}
+	return nil
+}
+
+func lockAvailable(ctx context.Context, db *sql.DB) error {
+	conn, err := db.Conn(ctx)
+	if err != nil {
+		return fmt.Errorf("could not open grocy.db")
+	}
+	defer conn.Close()
+	if _, err := conn.ExecContext(ctx, `BEGIN IMMEDIATE`); err != nil {
+		if sqliteBusy(err) {
+			return fmt.Errorf("grocy.db looks in use. Stop Grocy with docker stop grocy, then run backfill again. Nothing was changed")
+		}
+		return fmt.Errorf("could not open grocy.db")
+	}
+	if _, err := conn.ExecContext(ctx, `ROLLBACK`); err != nil {
+		return fmt.Errorf("could not open grocy.db")
+	}
+	return nil
+}
+
+func sqliteBusy(err error) bool {
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "sqlite_busy") || strings.Contains(msg, "database is locked")
 }
 
 // nextBackupPath picks a free grocy.db.bak-* name. A second run in the same

@@ -295,6 +295,58 @@ func TestReconcileDeletesAProductThatLeft(t *testing.T) {
 	}
 }
 
+func TestReconcileIncludesGrocyProductError(t *testing.T) {
+	const msg = "SQLSTATE[HY000]: General error: 1 table products has no column named qu_factor_purchase_to_stock"
+	for _, tc := range []struct {
+		name string
+		snap syncsnap.Snapshot
+		want string
+	}{
+		{
+			name: "group",
+			snap: syncsnap.Snapshot{
+				Groups:   []syncsnap.Group{{ID: "g1", Name: "Beans", Rule: "favorite"}},
+				Products: []syncsnap.Product{{ID: "p1", Name: "Chickpeas", GroupID: "g1"}},
+			},
+			want: "could not save the Beans group in Grocy",
+		},
+		{
+			name: "product",
+			snap: syncsnap.Snapshot{
+				Products: []syncsnap.Product{{ID: "p1", Name: "Chickpeas"}},
+			},
+			want: "could not save Chickpeas in Grocy",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			fake := newFakeGrocy()
+			fake.productError = msg
+			srv := fake.server()
+			defer srv.Close()
+			api, err := NewAPI(srv.URL, fake.key)
+			if err != nil {
+				t.Fatal(err)
+			}
+			m, err := OpenMap(filepath.Join(t.TempDir(), "map.db"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer m.Close()
+			rec := &Reconciler{Pantry: &fixedSource{snap: tc.snap}, Grocy: api, Map: m, Loc: time.UTC}
+			err = rec.Reconcile(context.Background())
+			if err == nil || !strings.Contains(err.Error(), msg) || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("err = %v", err)
+			}
+			if !strings.Contains(err.Error(), "could not save the product in Grocy") {
+				t.Fatalf("upsert error dropped: %v", err)
+			}
+			if strings.Contains(err.Error(), fake.key) {
+				t.Fatalf("error leaked the API key: %v", err)
+			}
+		})
+	}
+}
+
 func floatPtr(v float64) *float64 { return &v }
 
 func TestReconcileAdoptsExistingProductAfterMapLoss(t *testing.T) {

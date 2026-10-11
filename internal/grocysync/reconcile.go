@@ -150,19 +150,18 @@ func (r *Reconciler) ensureUserfields(ctx context.Context) error {
 }
 
 type productWrite struct {
-	Name              string  `json:"name"`
-	Description       string  `json:"description"`
-	LocationID        int     `json:"location_id"`
-	QUIDPurchase      int     `json:"qu_id_purchase"`
-	QUIDStock         int     `json:"qu_id_stock"`
-	QUFactor          float64 `json:"qu_factor_purchase_to_stock"`
-	MinStock          int     `json:"min_stock_amount"`
-	DefaultBestBefore int     `json:"default_best_before_days"`
-	ParentProductID   *int    `json:"parent_product_id"`
-	ProductGroupID    *int    `json:"product_group_id"`
-	Cumulate          int     `json:"cumulate_min_stock_amount_of_sub_products"`
-	NoOwnStock        int     `json:"no_own_stock"`
-	Active            int     `json:"active"`
+	Name              string `json:"name"`
+	Description       string `json:"description"`
+	LocationID        int    `json:"location_id"`
+	QUIDPurchase      int    `json:"qu_id_purchase"`
+	QUIDStock         int    `json:"qu_id_stock"`
+	MinStock          int    `json:"min_stock_amount"`
+	DefaultBestBefore int    `json:"default_best_before_days"`
+	ParentProductID   *int   `json:"parent_product_id"`
+	ProductGroupID    *int   `json:"product_group_id"`
+	Cumulate          int    `json:"cumulate_min_stock_amount_of_sub_products"`
+	NoOwnStock        int    `json:"no_own_stock"`
+	Active            int    `json:"active"`
 }
 
 func baseProduct(name, desc string, location, unit, minStock, cumulate, noOwn int, parent, group *int) productWrite {
@@ -172,7 +171,6 @@ func baseProduct(name, desc string, location, unit, minStock, cumulate, noOwn in
 		LocationID:        location,
 		QUIDPurchase:      unit,
 		QUIDStock:         unit,
-		QUFactor:          1,
 		MinStock:          minStock,
 		DefaultBestBefore: -1,
 		ParentProductID:   parent,
@@ -239,7 +237,7 @@ func (r *Reconciler) syncParents(ctx context.Context, snap syncsnap.Snapshot, la
 		fields := productFields(marker, "", ruleNote(g))
 		id, err := r.upsertProduct(ctx, linkParent, g.ID, marker, body, fields, listed)
 		if err != nil {
-			return nil, fmt.Errorf("could not save the %s group in Grocy", g.Name)
+			return nil, fmt.Errorf("could not save the %s group in Grocy: %w", g.Name, err)
 		}
 		out[g.ID] = id
 		listed.byMarker[marker] = id
@@ -293,7 +291,7 @@ func (r *Reconciler) syncProducts(ctx context.Context, snap syncsnap.Snapshot, l
 		fields := productFields(p.ID, sizeNote(p), "")
 		id, err := r.upsertProduct(ctx, linkProduct, p.ID, p.ID, body, fields, listed)
 		if err != nil {
-			return nil, fmt.Errorf("could not save %s in Grocy", p.Name)
+			return nil, fmt.Errorf("could not save %s in Grocy: %w", p.Name, err)
 		}
 		out[p.ID] = id
 		listed.byMarker[p.ID] = id
@@ -339,13 +337,13 @@ func (r *Reconciler) upsertProduct(ctx context.Context, linkType, pantryID, mark
 	}
 	if id > 0 {
 		if err := r.Grocy.Update(ctx, "products", id, body); err != nil {
-			return 0, err
+			return 0, fmt.Errorf("could not save the product in Grocy: %w", err)
 		}
 	} else {
 		var err error
 		id, err = r.Grocy.Create(ctx, "products", body)
 		if err != nil {
-			return 0, err
+			return 0, fmt.Errorf("could not save the product in Grocy: %w", err)
 		}
 	}
 	if err := r.Grocy.PutUserfields(ctx, id, fields); err != nil {

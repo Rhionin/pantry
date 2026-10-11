@@ -958,7 +958,7 @@ GROCY_URL=http://grocy:80
 GROCY_API_KEY=paste-the-key-from-the-grocy-screen
 PANTRY_SYNC_TOKEN=paste-the-hex-from-openssl
 GROCY_SYNC_INTERVAL=5m
-TZ=America/New_York
+TZ=America/Denver
 ```
 
 `TZ` must be the same zone the Grocy container uses, or a stock-in late in the evening can land on the previous day in Grocy. The sidecar image has the zone database; the zone name is enough.
@@ -995,7 +995,7 @@ sudo docker start grocy
 
 Run a reconcile (the sidecar's normal start) before the first backfill, so Grocy already has the products and the Pantry location. Running it again updates rows that changed and marks removed moves undone. It does not change the on-hand `stock` table, so current counts stay with the API sync.
 
-If Grocy is still running, the backup fails and nothing is written. If the backup succeeds and a later write fails, the log prints the restore steps. They are:
+If grocy.db-wal or grocy.db-shm is present, or the database is locked, backfill stops before it copies or writes anything. Stop Grocy and run it again. If the backup succeeds and a later write fails, the log prints the restore steps. They are:
 
 ```bash
 sudo docker stop grocy
