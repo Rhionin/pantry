@@ -347,6 +347,117 @@ func TestReconcileIncludesGrocyProductError(t *testing.T) {
 	}
 }
 
+func TestAssignGrocyNamesKeepsBothClashTypesStable(t *testing.T) {
+	small := 170.0
+	large := 340.0
+	snap := syncsnap.Snapshot{
+		Groups: []syncsnap.Group{{ID: "g-bake", Name: "Baking powder"}},
+		Products: []syncsnap.Product{
+			{ID: "bake", Name: "Baking Powder"},
+			{ID: "hunt", Name: "Tomato paste", Brand: "Hunt's"},
+			{ID: "cont", Name: "Tomato paste", Brand: "Contadina"},
+			{ID: "oats-a", Name: "Oats", Brand: "Quaker", NetBaseValue: &small, NetDimension: "mass"},
+			{ID: "oats-b", Name: "Oats", Brand: "Quaker", NetBaseValue: &large, NetDimension: "mass"},
+			{ID: "product-aaaa-1111", Name: "Salt"},
+			{ID: "product-bbbb-2222", Name: "Salt"},
+		},
+	}
+	parents, products := assignGrocyNames(snap)
+	againParents, againProducts := assignGrocyNames(snap)
+	if parents["g-bake"] != "Baking powder (group)" || againParents["g-bake"] != parents["g-bake"] {
+		t.Fatalf("parent = %#v", parents)
+	}
+	if products["bake"] != "Baking Powder" {
+		t.Fatalf("member = %q", products["bake"])
+	}
+	if products["hunt"] != "Tomato paste (Hunt's)" || products["cont"] != "Tomato paste (Contadina)" {
+		t.Fatalf("brands = %#v", products)
+	}
+	if products["oats-a"] != "Oats (170 g)" || products["oats-b"] != "Oats (340 g)" {
+		t.Fatalf("sizes = %#v", products)
+	}
+	if products["product-aaaa-1111"] != "Salt (product-a)" || products["product-bbbb-2222"] != "Salt (product-b)" {
+		t.Fatalf("ids = %#v", products)
+	}
+	if againProducts["hunt"] != products["hunt"] || againProducts["product-bbbb-2222"] != products["product-bbbb-2222"] {
+		t.Fatal("names changed between calls")
+	}
+}
+
+func TestReconcileRenamesClashingProductsInPlace(t *testing.T) {
+	fake := newFakeGrocy()
+	srv := fake.server()
+	defer srv.Close()
+	api, err := NewAPI(srv.URL, fake.key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	bakeID, err := api.Create(ctx, "products", map[string]any{
+		"name": "Baking Powder", "description": "created earlier", "location_id": 1, "qu_id_purchase": 1, "qu_id_stock": 1,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := api.PutUserfields(ctx, bakeID, map[string]string{"pantry_id": "bake"}); err != nil {
+		t.Fatal(err)
+	}
+	pasteID, err := api.Create(ctx, "products", map[string]any{
+		"name": "Tomato paste", "description": "created earlier", "location_id": 1, "qu_id_purchase": 1, "qu_id_stock": 1,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := api.PutUserfields(ctx, pasteID, map[string]string{"pantry_id": "paste-a"}); err != nil {
+		t.Fatal(err)
+	}
+	m, err := OpenMap(filepath.Join(t.TempDir(), "map.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer m.Close()
+	snap := syncsnap.Snapshot{
+		Groups: []syncsnap.Group{{ID: "g-bake", Name: "Baking powder", Rule: "favorite", MemberIDs: []string{"bake"}}},
+		Products: []syncsnap.Product{
+			{ID: "bake", Name: "Baking Powder", GroupID: "g-bake"},
+			{ID: "paste-a", Name: "Tomato paste", Brand: "Hunt's"},
+			{ID: "paste-b", Name: "Tomato paste", Brand: "Contadina"},
+		},
+	}
+	rec := &Reconciler{Pantry: &fixedSource{snap: snap}, Grocy: api, Map: m, Loc: time.UTC}
+	if err := rec.Reconcile(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if got := len(fake.objects["products"]); got != 4 {
+		t.Fatalf("products = %d, want the two existing rows renamed plus Contadina and the group", got)
+	}
+	bake := fake.objects["products"][bakeID]
+	if strField(bake, "name") != "Baking Powder" {
+		t.Fatalf("baking powder = %#v", bake)
+	}
+	paste := fake.objects["products"][pasteID]
+	if strField(paste, "name") != "Tomato paste (Hunt's)" || !strings.Contains(strField(paste, "description"), "Name: Tomato paste") {
+		t.Fatalf("tomato paste = %#v", paste)
+	}
+	if fake.fields[pasteID]["pantry_id"] != "paste-a" || fake.fields[pasteID]["pantry_name"] != "Tomato paste" {
+		t.Fatalf("fields = %#v", fake.fields[pasteID])
+	}
+	parent := fake.productByMarker("group:g-bake")
+	if parent == nil || strField(parent, "name") != "Baking powder (group)" {
+		t.Fatalf("parent = %#v", parent)
+	}
+	if fake.fields[numField(parent, "id")]["pantry_name"] != "Baking powder" {
+		t.Fatalf("parent fields = %#v", fake.fields[numField(parent, "id")])
+	}
+	posts := fake.count("POST", "/objects/products")
+	if err := rec.Reconcile(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if fake.count("POST", "/objects/products") != posts {
+		t.Fatal("second reconcile duplicated a clashing product")
+	}
+}
+
 func floatPtr(v float64) *float64 { return &v }
 
 func TestReconcileAdoptsExistingProductAfterMapLoss(t *testing.T) {

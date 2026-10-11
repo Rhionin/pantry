@@ -7,6 +7,8 @@ import (
 	"database/sql"
 	"sort"
 	"time"
+
+	"github.com/Rhionin/pantry/internal/group"
 )
 
 const householdUser = "user-1"
@@ -29,6 +31,7 @@ type Product struct {
 	Name           string   `json:"name"`
 	Category       string   `json:"category,omitempty"`
 	UnitOfMeasure  string   `json:"unitOfMeasure,omitempty"`
+	Brand          string   `json:"brand,omitempty"`
 	NetBaseValue   *float64 `json:"netBaseValue,omitempty"`
 	NetDimension   string   `json:"netDimension,omitempty"`
 	PackCount      *int     `json:"packCount,omitempty"`
@@ -120,6 +123,13 @@ func Build(ctx context.Context, db *sql.DB, now time.Time) (Snapshot, error) {
 	}
 	if err := attachMembers(ctx, db, byID, groupByID); err != nil {
 		return Snapshot{}, err
+	}
+	for i := range products {
+		title := ""
+		if g := groupByID[products[i].GroupID]; g != nil {
+			title = g.Name
+		}
+		products[i].Brand = group.ProductBrand(products[i].Name, title)
 	}
 	for i := range products {
 		sort.Strings(products[i].Barcodes)

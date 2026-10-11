@@ -213,6 +213,32 @@ func TestApplyHistoryRefusesWhenDatabaseLooksInUse(t *testing.T) {
 	}
 }
 
+func TestApplyHistoryRefusesWhenDatabaseIsNotWritable(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "grocy.db")
+	db := openGrocyDB(t, path)
+	db.Close()
+	if err := os.Chmod(path, 0o444); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(path, 0o644) })
+	_, err := ApplyHistory(context.Background(), HistoryOptions{
+		DBPath:     path,
+		LocationID: 1,
+		Products:   map[string]int{"p1": 9},
+		Confirm:    true,
+		Now:        time.Date(2026, 10, 10, 0, 0, 0, 0, time.UTC),
+		Snap: syncsnap.Snapshot{Moves: []syncsnap.Move{{
+			ID: "m1", ProductID: "p1", Direction: "in", Quantity: 1, At: time.Now(),
+		}}},
+	})
+	if err == nil || !strings.Contains(err.Error(), "uid 1001") || !strings.Contains(err.Error(), "65532") || !strings.Contains(err.Error(), "Nothing was changed") {
+		t.Fatalf("err = %v", err)
+	}
+	if backups(t, path) != 0 {
+		t.Fatal("unwritable database was backed up")
+	}
+}
+
 func TestRestoreStepsNamesTheFiles(t *testing.T) {
 	text := RestoreSteps("/data/grocy.db.bak-1", "/data/grocy.db")
 	for _, part := range []string{"docker stop grocy", "/data/grocy.db.bak-1", "/data/grocy.db-wal", "/data/grocy.db-shm"} {

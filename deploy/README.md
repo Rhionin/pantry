@@ -978,16 +978,20 @@ The sidecar is limited to 64 MB. It has no published ports. It joins the Compose
 
 The first reconcile creates a Grocy location named Pantry, a quantity unit named Piece, products, barcodes, current stock, and a shopping list named Pantry. Grocy's own default shopping list is left alone. After that it repeats every five minutes, and sooner when Pantry's event stream reports a change.
 
+Grocy product names are unique regardless of case. A group that shares a name with a product is the parent `Name (group)`. Products that share a name are told apart with a brand, a package size, or a short Pantry id. The original name stays in the `pantry_name` userfield. Existing Grocy products are matched by that `pantry_id` userfield and renamed in place.
+
 ### Past uses, once
 
 New uses are written through Grocy's API when they happen. Grocy's API cannot backdate a consume, so older Pantry history is a separate command. It is not part of the five-minute sync. It writes one row per Pantry stock move into Grocy's `stock_log` with the real date, after copying `grocy.db`.
 
 Stop Grocy first. The database is `data/grocy.db` inside the directory the linuxserver image mounts at `/config`. On this Pi that compose file is `/home/pantrybot/grocy`; confirm the host path before you mount it. The mount has to be writable: the command writes a `grocy.db.bak-<timestamp>` beside the live file, then the journal rows.
 
+The sidecar image runs as uid 65532. Grocy's files on this Pi are owned by uid 1001, so backfill has to run as that user. Without `--user 1001:1001` the command stops before it copies or writes anything.
+
 ```bash
 sudo docker stop grocy
 cd /opt/pantry
-sudo docker compose -f docker-compose.yml -f docker-compose.grocy.yml --profile grocy run --rm --no-deps \
+sudo docker compose -f docker-compose.yml -f docker-compose.grocy.yml --profile grocy run --rm --no-deps --user 1001:1001 \
   -v /home/pantrybot/grocy/config:/grocy \
   grocy-sync backfill --db /grocy/data/grocy.db --confirm
 sudo docker start grocy
@@ -1010,7 +1014,7 @@ sudo docker start grocy
 - A time window or a grams/milliliters target is not a Grocy minimum stock. Minimum stock is set only where Pantry has a fixed item count (`target_quantity`). Parent products roll that count up from their members.
 - A barcode override replaces the global barcode. Grocy stores one product per barcode and does not keep the source.
 - Package size stays a note and a `pantry_size` userfield. Grocy still counts pieces. There is no unit conversion.
-- Prices, deals, and brands are not sent.
+- Prices and deals are not sent. Brand is not its own Grocy field.
 - Product pictures are not uploaded.
 - Scans waiting for approval, suggestions, and the staged cart are not copied.
 - Grocy recipes, chores, batteries, equipment, and locations other than Pantry are left alone. So is Grocy's default shopping list.

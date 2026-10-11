@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"strings"
 	"time"
 
 	"github.com/Rhionin/pantry/internal/syncsnap"
@@ -128,6 +129,7 @@ func (r *Reconciler) ensureUserfields(ctx context.Context) error {
 	}
 	want := []struct{ name, caption string }{
 		{"pantry_id", "Pantry id"},
+		{"pantry_name", "Pantry name"},
 		{"pantry_size", "Pantry size"},
 		{"pantry_rule", "Pantry group rule"},
 	}
@@ -226,6 +228,7 @@ func (r *Reconciler) syncParents(ctx context.Context, snap syncsnap.Snapshot, la
 	if err != nil {
 		return nil, err
 	}
+	parentNames, _ := assignGrocyNames(snap)
 	out := map[string]int{}
 	for _, g := range snap.Groups {
 		marker := parentMarker(g.ID)
@@ -233,14 +236,17 @@ func (r *Reconciler) syncParents(ctx context.Context, snap syncsnap.Snapshot, la
 		if id, ok := labels[labelKey(g.Name)]; ok {
 			groupID = &id
 		}
-		body := baseProduct(g.Name, description(marker, "Rule: "+ruleNote(g)), r.locationID, r.unitID, 0, 1, 1, nil, groupID)
+		grocyName := parentNames[g.ID]
+		body := baseProduct(grocyName, description(marker, nameLines(grocyName, g.Name, "Rule: "+ruleNote(g))...), r.locationID, r.unitID, 0, 1, 1, nil, groupID)
 		fields := productFields(marker, "", ruleNote(g))
+		fields["pantry_name"] = strings.TrimSpace(g.Name)
 		id, err := r.upsertProduct(ctx, linkParent, g.ID, marker, body, fields, listed)
 		if err != nil {
 			return nil, fmt.Errorf("could not save the %s group in Grocy: %w", g.Name, err)
 		}
 		out[g.ID] = id
 		listed.byMarker[marker] = id
+		listed.byPantry[marker] = id
 		listed.ids[id] = true
 	}
 	return out, nil
@@ -255,6 +261,7 @@ func (r *Reconciler) syncProducts(ctx context.Context, snap syncsnap.Snapshot, l
 	for _, g := range snap.Groups {
 		groups[g.ID] = g
 	}
+	_, productNames := assignGrocyNames(snap)
 	out := map[string]int{}
 	for _, p := range snap.Products {
 		var parent *int
@@ -287,14 +294,17 @@ func (r *Reconciler) syncProducts(ctx context.Context, snap syncsnap.Snapshot, l
 		if p.NoRestock {
 			lines = append(lines, "Not restocked")
 		}
-		body := baseProduct(p.Name, description(p.ID, lines...), r.locationID, r.unitID, minStock, 0, 0, parent, group)
+		grocyName := productNames[p.ID]
+		body := baseProduct(grocyName, description(p.ID, nameLines(grocyName, p.Name, lines...)...), r.locationID, r.unitID, minStock, 0, 0, parent, group)
 		fields := productFields(p.ID, sizeNote(p), "")
+		fields["pantry_name"] = strings.TrimSpace(p.Name)
 		id, err := r.upsertProduct(ctx, linkProduct, p.ID, p.ID, body, fields, listed)
 		if err != nil {
 			return nil, fmt.Errorf("could not save %s in Grocy: %w", p.Name, err)
 		}
 		out[p.ID] = id
 		listed.byMarker[p.ID] = id
+		listed.byPantry[p.ID] = id
 		listed.ids[id] = true
 	}
 	return out, nil
@@ -302,6 +312,7 @@ func (r *Reconciler) syncProducts(ctx context.Context, snap syncsnap.Snapshot, l
 
 type productIndex struct {
 	byMarker map[string]int
+	byPantry map[string]int
 	ids      map[int]bool
 }
 
@@ -310,11 +321,18 @@ func (r *Reconciler) indexProducts(ctx context.Context) (productIndex, error) {
 	if err != nil {
 		return productIndex{}, err
 	}
-	idx := productIndex{byMarker: map[string]int{}, ids: map[int]bool{}}
+	idx := productIndex{byMarker: map[string]int{}, byPantry: map[string]int{}, ids: map[int]bool{}}
 	for _, row := range rows {
 		idx.ids[row.ID] = true
 		if marker := markerID(row.description()); marker != "" {
 			idx.byMarker[marker] = row.ID
+		}
+		fields, err := r.Grocy.Userfields(ctx, row.ID)
+		if err != nil {
+			return productIndex{}, err
+		}
+		if pantryID := strings.TrimSpace(fields["pantry_id"]); pantryID != "" {
+			idx.byPantry[pantryID] = row.ID
 		}
 	}
 	return idx, nil
@@ -332,6 +350,8 @@ func (r *Reconciler) upsertProduct(ctx context.Context, linkType, pantryID, mark
 	id := 0
 	if ok && link.GrocyID > 0 && listed.ids[link.GrocyID] {
 		id = link.GrocyID
+	} else if existing, found := listed.byPantry[marker]; found {
+		id = existing
 	} else if existing, found := listed.byMarker[marker]; found {
 		id = existing
 	}
