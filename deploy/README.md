@@ -106,7 +106,7 @@ The script's `.env` handling is idempotent: it creates `.env` from `.env.example
 sudo ./setup.sh rule
 ```
 
-This detects your scanner and writes `/etc/udev/rules.d/99-pantry-scanner.rules` with a symlink at `/dev/input/pantry-scanner`. See [Headless Scanner Input](#headless-scanner-input) for how to do it manually or for a Bluetooth scanner. This step is optional — Pantry runs without it — but scanning won't work until a matching rule exists.
+This detects your scanner and writes `/etc/udev/rules.d/99-pantry-scanner.rules` with a symlink at `/dev/input/pantry-scanner`. The generated match uses the input parent's vendor and product IDs, which covers USB HID and Bluetooth HID. See [Headless Scanner Input](#headless-scanner-input) to write the rule by hand. This step is optional — Pantry runs without it — but scanning won't work until a matching rule exists.
 
 ### 4. Start Pantry
 
@@ -617,13 +617,13 @@ Pantry reads barcode scans directly from the scanner's evdev device (`/dev/input
    sudo cp /opt/pantry/udev/99-pantry-scanner.rules /etc/udev/rules.d/
    ```
 
-   **For USB scanners**, uncomment the USB example and set the vendor/product IDs. The rule matches on `ENV{ID_VENDOR_ID}` and `ENV{ID_MODEL_ID}` (set directly on the event device by udev's `input_id` builtin) rather than `ATTRS{idVendor}`/`ATTRS{idProduct}`, which must walk the parent chain and are order-sensitive:
+   Uncomment the example and set the vendor/product IDs. The same rule covers USB HID and Bluetooth HID. It matches the input parent's `ATTRS{id/vendor}` and `ATTRS{id/product}` (the `Vendor=` / `Product=` values from `/proc/bus/input/devices`). `ENV{ID_VENDOR_ID}` and `ENV{ID_MODEL_ID}` are imported only when the device has a USB ancestor, so they do not match a Bluetooth scanner:
    ```
-   SUBSYSTEM=="input", KERNEL=="event*", ENV{ID_VENDOR_ID}=="XXXX", ENV{ID_MODEL_ID}=="YYYY", \
+   SUBSYSTEM=="input", KERNEL=="event*", ATTRS{id/vendor}=="XXXX", ATTRS{id/product}=="YYYY", \
      SYMLINK+="input/pantry-scanner", GROUP="65532", MODE="0640"
    ```
 
-   **For Bluetooth scanners**, match by device name instead:
+   If the device has no vendor and product IDs, match by name instead:
    ```
    SUBSYSTEM=="input", KERNEL=="event*", ATTRS{name}=="*Scanner*", \
      SYMLINK+="input/pantry-scanner", GROUP="65532", MODE="0640"
@@ -676,7 +676,7 @@ First, distinguish the two very different situations that both show `connected: 
 
 | `lastError` | Meaning | Fix |
 |---|---|---|
-| `ENOENT` / no such file | The udev rule did not match, so no symlink was created | Fix the rule's match keys (`ENV{ID_VENDOR_ID}`/`ENV{ID_MODEL_ID}` for USB, `ATTRS{name}` for Bluetooth) and re-run `sudo ./setup.sh rule` |
+| `ENOENT` / no such file | The udev rule did not match, so no symlink was created | Fix the rule's match keys (`ATTRS{id/vendor}`/`ATTRS{id/product}`, or `ATTRS{name}` when those IDs are absent) and re-run `sudo ./setup.sh rule` |
 | `EACCES` / permission denied | The node's group is not 65532 | Fix `GROUP` in the rule or `SCANNER_GID` in `.env`, then reload udev |
 | `EPERM` / operation not permitted | The device cgroup denied the open | `device_cgroup_rules` is not taking effect — do **not** fall back to `privileged: true` or reintroduce a `devices:` entry; see `ACCEPTANCE.md` |
 
@@ -1074,7 +1074,7 @@ Note the image is distroless, so `docker exec pantry sh` does not work — use l
    ```bash
    ls -l /dev/input/pantry-scanner
    ```
-   If it is missing while the scanner is attached — and especially if the scanner's keystrokes are appearing in the Pi's terminal — the udev rule is not matching. The scanner echoing to the console is the tell: the rule that would grant the node to GID 65532 and create the symlink never fired. Regenerate it with `sudo ./setup.sh rule` (which now matches USB scanners on vendor/product IDs) and confirm with `ls -l /dev/input/pantry-scanner`.
+   If it is missing while the scanner is attached — and especially if the scanner's keystrokes are appearing in the Pi's terminal — the udev rule is not matching. The scanner echoing to the console is the tell: the rule that would grant the node to GID 65532 and create the symlink never fired. Regenerate it with `sudo ./setup.sh rule` (it matches USB and Bluetooth HID scanners on the input parent's vendor/product IDs) and confirm with `ls -l /dev/input/pantry-scanner`.
 
 5. **Check the container's mounts** (there is no longer a `Devices` array — the scanner is a directory bind mount now):
    ```bash
@@ -1087,7 +1087,7 @@ Note the image is distroless, so `docker exec pantry sh` does not work — use l
    lsusb                              # USB
    cat /proc/bus/input/devices        # any input device
    ```
-   Ensure the `ENV{ID_VENDOR_ID}`/`ENV{ID_MODEL_ID}` (USB) or `ATTRS{name}` (Bluetooth) in `/etc/udev/rules.d/99-pantry-scanner.rules` match your scanner, then re-run `sudo ./setup.sh rule`.
+   Ensure `ATTRS{id/vendor}`/`ATTRS{id/product}` in `/etc/udev/rules.d/99-pantry-scanner.rules` match your scanner (`ATTRS{name}` only when those IDs are absent), then re-run `sudo ./setup.sh rule`.
 
 ### Updates Failing
 
