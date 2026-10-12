@@ -8,9 +8,7 @@ import (
 	"testing"
 )
 
-// postUnknownLength sends a request whose length the server cannot know ahead
-// of time. Browsers usually set Content-Length. A chunked client does not.
-func postUnknownLength(t *testing.T, handler http.Handler, path, body string) (int64, *http.Response) {
+func postUnknownLength(t *testing.T, handler http.Handler, path, body string) *http.Response {
 	t.Helper()
 	var seen int64
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -34,12 +32,12 @@ func postUnknownLength(t *testing.T, handler http.Handler, path, body string) (i
 	if seen != -1 {
 		t.Fatalf("server ContentLength = %d, want -1 (chunked)", seen)
 	}
-	return seen, res
+	return res
 }
 
 func TestChunkedJSONBodyIsApplied(t *testing.T) {
 	handler, _ := setupTestWithDB(t)
-	_, res := postUnknownLength(t, handler, "/api/products", `{"name":"Chunked Oats"}`)
+	res := postUnknownLength(t, handler, "/api/products", `{"name":"Chunked Oats"}`)
 	payload, err := io.ReadAll(res.Body)
 	if err != nil {
 		t.Fatal(err)
@@ -55,7 +53,7 @@ func TestChunkedJSONBodyIsApplied(t *testing.T) {
 func TestChunkedOversizedJSONIsRejected(t *testing.T) {
 	handler, _ := setupTestWithDB(t)
 	body := `{"name":"` + strings.Repeat("a", maxJSONBodyBytes) + `"}`
-	_, res := postUnknownLength(t, handler, "/api/products", body)
+	res := postUnknownLength(t, handler, "/api/products", body)
 	payload, err := io.ReadAll(res.Body)
 	if err != nil {
 		t.Fatal(err)
@@ -68,9 +66,24 @@ func TestChunkedOversizedJSONIsRejected(t *testing.T) {
 	}
 }
 
+func TestUnknownLengthEmptyBodyIsAnEmptyWrite(t *testing.T) {
+	handler, _ := setupTestWithDB(t)
+	req := httptest.NewRequest(http.MethodPost, "/api/products", io.NopCloser(strings.NewReader("")))
+	req.ContentLength = -1
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, body = %s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "name is required") {
+		t.Fatalf("body = %s", rec.Body.String())
+	}
+}
+
 func TestChunkedInvalidJSONIsRejected(t *testing.T) {
 	handler, _ := setupTestWithDB(t)
-	_, res := postUnknownLength(t, handler, "/api/products", `{"name":`)
+	res := postUnknownLength(t, handler, "/api/products", `{"name":`)
 	payload, err := io.ReadAll(res.Body)
 	if err != nil {
 		t.Fatal(err)
