@@ -709,6 +709,110 @@ set -e
 have "$(cat /tmp/pantry-chown-skip.out)" "[warn] Could not give" "skip-root chown failure is a warning"
 unset CURL_SESSION_CODE CURL_SESSION_BODY
 
-rm -rf "$lan" "$pub" "$first" "$bad" "$incomplete" "$opt" "$mdns" "$split" "$badip" "$mdns_bin" "$tun" "$notoken" "$unready" "$tunsplit" "$mode_dir" "$custom" "$updates" "$unavailable" "$owned" "$own_bin" "$fail_bin"
+# Scanner udev rules match the input parent's id/vendor and id/product.
+# udev imports ID_VENDOR_ID / ID_MODEL_ID only for a device with a USB
+# ancestor, so a Bluetooth HID (uhid) scanner never matches ENV keys.
+# The same ATTRS form is what a USB scanner gets.
+assert_rule() {
+  local file="$1"
+  local label="$2"
+  local want="$3"
+  [[ -f "$file" ]] || fail "$label (rule file missing)"
+  local got
+  got=$(cat "$file")
+  want="${want%$'\n'}"
+  if [[ "$got" != "$want" ]]; then
+    printf 'FAIL: %s\n--- got ---\n%s\n--- want ---\n%s\n' "$label" "$got" "$want" >&2
+    exit 1
+  fi
+}
+
+rule_fix=$(mktemp -d)
+bt_devices="$rule_fix/bt-devices"
+bt_rule="$rule_fix/rules/99-pantry-scanner.rules"
+mkdir -p "$rule_fix/rules"
+cat > "$bt_devices" << 'EOF'
+I: Bus=0003 Vendor=046d Product=c31c Version=0111
+N: Name="Logitech USB Keyboard"
+
+I: Bus=0005 Vendor=04E8 Product=7021 Version=0110
+N: Name="Netum Barcode Scanner"
+EOF
+# The broken rule a previous setup.sh would have installed.
+cat > "$bt_rule" << 'EOF'
+# Pantry Scanner udev rule - auto-generated for "Netum Barcode Scanner"
+SUBSYSTEM=="input", KERNEL=="event*", ENV{ID_VENDOR_ID}=="04e8", ENV{ID_MODEL_ID}=="7021", \
+  SYMLINK+="input/pantry-scanner", GROUP="65532", MODE="0640"
+EOF
+write_env "$rule_fix" \
+  "HOST_PORT=8080" \
+  "PUBLIC_HOST=" \
+  "BASIC_AUTH_PASSWORD="
+PANTRY_INPUT_DEVICES="$bt_devices" PANTRY_UDEV_RULE_FILE="$bt_rule" \
+  run_setup "$rule_fix"
+[[ "$LAST_RC" -eq 0 ]] || fail "setup with bluetooth scanner exited $LAST_RC: $LAST_OUT"
+have "$LAST_OUT" "Matching on vendor=04e8 product=7021" "setup logs the scanner ids"
+bt_want='# Pantry Scanner udev rule - auto-generated for "Netum Barcode Scanner"
+SUBSYSTEM=="input", KERNEL=="event*", ATTRS{id/vendor}=="04e8", ATTRS{id/product}=="7021", \
+  SYMLINK+="input/pantry-scanner", GROUP="65532", MODE="0640"
+'
+assert_rule "$bt_rule" "setup replaces ENV match for a bluetooth scanner" "$bt_want"
+lack "$(cat "$bt_rule")" "ENV{ID_VENDOR_ID}" "installed rule no longer matches ENV vendor id"
+lack "$(cat "$bt_rule")" "ENV{ID_MODEL_ID}" "installed rule no longer matches ENV model id"
+
+# `rule` writes the same form for a USB scanner, and leaves a keyboard alone.
+usb_dir=$(mktemp -d)
+usb_devices="$usb_dir/devices"
+usb_rule="$usb_dir/99-pantry-scanner.rules"
+cat > "$usb_devices" << 'EOF'
+I: Bus=0003 Vendor=05e0 Product=1200 Version=0110
+N: Name="Symbol Bar Code Scanner"
+EOF
+PANTRY_INPUT_DEVICES="$usb_devices" PANTRY_UDEV_RULE_FILE="$usb_rule" \
+  run_setup "$usb_dir" rule
+[[ "$LAST_RC" -eq 0 ]] || fail "usb rule exited $LAST_RC: $LAST_OUT"
+usb_want='# Pantry Scanner udev rule - auto-generated for "Symbol Bar Code Scanner"
+SUBSYSTEM=="input", KERNEL=="event*", ATTRS{id/vendor}=="05e0", ATTRS{id/product}=="1200", \
+  SYMLINK+="input/pantry-scanner", GROUP="65532", MODE="0640"
+'
+assert_rule "$usb_rule" "usb scanner uses input parent ids" "$usb_want"
+usb_before=$(cat "$usb_rule")
+PANTRY_INPUT_DEVICES="$usb_devices" PANTRY_UDEV_RULE_FILE="$usb_rule" \
+  run_setup "$usb_dir" rule
+[[ "$LAST_RC" -eq 0 ]] || fail "second usb rule exited $LAST_RC: $LAST_OUT"
+have "$LAST_OUT" "already up to date" "second rule run leaves a matching rule in place"
+[[ "$(cat "$usb_rule")" == "$usb_before" ]] || fail "second rule run changed the usb rule"
+
+# No vendor/product: keep the name match.
+name_dir=$(mktemp -d)
+name_devices="$name_dir/devices"
+name_rule="$name_dir/99-pantry-scanner.rules"
+cat > "$name_devices" << 'EOF'
+N: Name="Handheld Scanner"
+EOF
+PANTRY_INPUT_DEVICES="$name_devices" PANTRY_UDEV_RULE_FILE="$name_rule" \
+  run_setup "$name_dir" rule
+[[ "$LAST_RC" -eq 0 ]] || fail "name fallback exited $LAST_RC: $LAST_OUT"
+name_want='# Pantry Scanner udev rule - auto-generated
+SUBSYSTEM=="input", KERNEL=="event*", ATTRS{name}=="Handheld Scanner", \
+  SYMLINK+="input/pantry-scanner", GROUP="65532", MODE="0640"
+'
+assert_rule "$name_rule" "missing ids fall back to device name" "$name_want"
+
+# Nothing that looks like a scanner: `rule` fails and does not invent a match.
+none_dir=$(mktemp -d)
+none_devices="$none_dir/devices"
+none_rule="$none_dir/99-pantry-scanner.rules"
+cat > "$none_devices" << 'EOF'
+I: Bus=0003 Vendor=046d Product=c31c Version=0111
+N: Name="Logitech USB Keyboard"
+EOF
+PANTRY_INPUT_DEVICES="$none_devices" PANTRY_UDEV_RULE_FILE="$none_rule" \
+  run_setup "$none_dir" rule
+[[ "$LAST_RC" -ne 0 ]] || fail "rule with no scanner should fail"
+have "$LAST_OUT" "$none_rule" "failure names the rule path"
+[[ ! -e "$none_rule" ]] || fail "rule with no scanner wrote $none_rule"
+
+rm -rf "$lan" "$pub" "$first" "$bad" "$incomplete" "$opt" "$mdns" "$split" "$badip" "$mdns_bin" "$tun" "$notoken" "$unready" "$tunsplit" "$mode_dir" "$custom" "$updates" "$unavailable" "$owned" "$own_bin" "$fail_bin" "$rule_fix" "$usb_dir" "$name_dir" "$none_dir"
 rm -f /tmp/pantry-chown-fail.out /tmp/pantry-chown-skip.out
 echo "setup_apply_test ok"
