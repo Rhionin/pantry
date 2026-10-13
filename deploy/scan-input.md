@@ -33,15 +33,18 @@ The symlink is created under `/dev/input/` because the container bind-mounts tha
    ```
    Output looks like: `Bus 001 Device 005: ID XXXX:YYYY Symbol Technologies, Inc. Scanner`
 
-2. Create the udev rule at `/etc/udev/rules.d/99-pantry-scanner.rules`. Match on
-   `ENV{ID_VENDOR_ID}`/`ENV{ID_MODEL_ID}` (set directly on the event device by
-   udev's `input_id` builtin) rather than `ATTRS{idVendor}`/`ATTRS{idProduct}`,
-   which must walk the parent chain and are order-sensitive:
+2. Create the udev rule at `/etc/udev/rules.d/99-pantry-scanner.rules`. Match the
+   input device parent on `ATTRS{id/vendor}`/`ATTRS{id/product}`. The kernel sets
+   those sysfs attributes for USB HID and Bluetooth HID (uhid), and both keys are
+   on that same parent. `ENV{ID_VENDOR_ID}`/`ENV{ID_MODEL_ID}` are imported only
+   for a device with a USB ancestor, so they do not match a Bluetooth scanner.
+   The values are the `Vendor=` / `Product=` fields from `/proc/bus/input/devices`
+   (4 lowercase hex digits):
    ```
-   SUBSYSTEM=="input", KERNEL=="event*", ENV{ID_VENDOR_ID}=="XXXX", ENV{ID_MODEL_ID}=="YYYY", \
+   SUBSYSTEM=="input", KERNEL=="event*", ATTRS{id/vendor}=="XXXX", ATTRS{id/product}=="YYYY", \
      SYMLINK+="input/pantry-scanner", GROUP="65532", MODE="0640"
    ```
-   Replace `XXXX` and `YYYY` with your scanner's actual vendor and product IDs.
+   Replace `XXXX` and `YYYY` with your scanner's vendor and product IDs.
 
 3. Reload udev and trigger:
    ```bash
@@ -70,9 +73,18 @@ Bluetooth scanners appear as input devices and won't show in `lsusb`. Instead:
    cat /proc/bus/input/devices | grep -A5 -B5 -i scanner
    ```
 
-2. Create the udev rule at `/etc/udev/rules.d/99-pantry-scanner.rules`. Bluetooth
-   devices are matched by `ATTRS{name}`, since that attribute lives on the input
-   device itself:
+2. Create the udev rule at `/etc/udev/rules.d/99-pantry-scanner.rules` with the
+   same match as a USB scanner: the input parent's `ATTRS{id/vendor}` and
+   `ATTRS{id/product}`. Those attributes are present on Bluetooth HID (uhid)
+   devices. A rule that matches `ENV{ID_VENDOR_ID}`/`ENV{ID_MODEL_ID}` does not
+   fire for them, because udev does not set those properties without a USB ancestor:
+   ```
+   SUBSYSTEM=="input", KERNEL=="event*", ATTRS{id/vendor}=="XXXX", ATTRS{id/product}=="YYYY", \
+     SYMLINK+="input/pantry-scanner", GROUP="65532", MODE="0640"
+   ```
+   Replace `XXXX` and `YYYY` with the vendor and product from `/proc/bus/input/devices`.
+
+   If that device has no vendor and product IDs, match its name instead:
    ```
    SUBSYSTEM=="input", KERNEL=="event*", ATTRS{name}=="*Scanner*", \
      SYMLINK+="input/pantry-scanner", GROUP="65532", MODE="0640"

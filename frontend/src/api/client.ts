@@ -591,3 +591,26 @@ export async function logout(): Promise<void> {
     throw new ApiError(res.status, 'Could not sign out.');
   }
 }
+
+export interface PushSubscriptionInput {
+  endpoint: string;
+  keys: { p256dh: string; auth: string };
+}
+
+export function getVapidPublicKey(): Promise<{ publicKey: string }> {
+  return apiFetch('/api/push/vapid-public-key');
+}
+
+export function savePushSubscription(body: PushSubscriptionInput): Promise<{ endpoint: string }> {
+  return apiFetch('/api/push/subscriptions', {
+    method: 'POST',
+    body: JSON.stringify(body),
+  });
+}
+
+export function deletePushSubscription(endpoint: string): Promise<void> {
+  return apiFetch('/api/push/subscriptions', {
+    method: 'DELETE',
+    body: JSON.stringify({ endpoint }),
+  });
+}

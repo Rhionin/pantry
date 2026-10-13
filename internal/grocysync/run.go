@@ -93,6 +93,11 @@ func Run(ctx context.Context, cfg Config) error {
 	if err != nil {
 		return err
 	}
+	if ver, err := api.Version(ctx); err != nil {
+		log.Printf("grocy-sync: could not read the Grocy version (%v)", err)
+	} else {
+		log.Printf("grocy-sync: Grocy %s", ver)
+	}
 	pantry := NewPantryClient(cfg.PantryURL, cfg.PantryToken)
 	rec := &Reconciler{Pantry: pantry, Grocy: api, Map: m, Now: time.Now, Loc: cfg.Loc}
 	return loop(ctx, cfg.Interval, rec, pantry)

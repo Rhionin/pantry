@@ -27,7 +27,8 @@ evidence, and cleanup mechanics.
   `Inventory` (`/inventory`), and `Shopping List` (`/shopping`), reachable from
   the header links. The header menu's `Diagnostics` item opens `/diagnostics`
   for page-load timings from `GET /api/telemetry`. `Settings` sits immediately
-  above the `Build` label and opens `/settings` for the supply length and wipe.
+  above the `Build` label and opens `/settings` for the supply length, scan
+  alerts on this device, and wipe.
   The same menu's `Manage Kroger connection` item edits credentials and, while
   connected, disconnects. The version and build id are in that menu's `Build`
   section.
@@ -78,7 +79,8 @@ behavior, then uses exactly these four H2 sections in order:
 - [Scan sessions](./scan-sessions.md) — Stock in and Stock out group pending
   scans into session cards with a 5-minute gap. Proven by
   `scripts/drive-scan-sessions.mjs`.
-- [Scan alerts](./scan-alerts.md) — ask before notifying, then alert immediately
+- [Scan alerts](./scan-alerts.md) — turn on scan alerts for this browser in
+  Settings, then alert immediately
   for a failed or unrecognized scan and once when an in/out batch has been
   quiet for 5 minutes. Proven by `scripts/drive-scan-alerts.mjs`.
 - [Scan with the device camera](./camera-scan.md) — opt in to the camera (or type

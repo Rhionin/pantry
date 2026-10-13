@@ -103,10 +103,18 @@ export interface TargetChoice {
   target: GroupTarget;
 }
 
-const quantityUnit = (dimension?: NetDimension) => (dimension === 'volume' ? 'fluid ounces' : 'ounces');
+const ounceLabel = (member: Pick<TargetConflictMember, 'amount' | 'dimension'>): string | null => {
+  if (member.amount === undefined) return null;
+  if (member.dimension === 'volume') return `${formatAmount(member.amount)} fluid ounces`;
+  if (member.dimension === 'mass') return `${formatAmount(member.amount)} ounces`;
+  return null;
+};
 
-export const conflictAmount = (member: Pick<TargetConflictMember, 'quantity' | 'dimension' | 'windowMonths'>) => {
-  if (member.quantity !== undefined) return `${member.quantity} ${quantityUnit(member.dimension)}`;
+export const conflictAmount = (member: Pick<TargetConflictMember, 'quantity' | 'amount' | 'dimension' | 'windowMonths'>) => {
+  const ounces = ounceLabel(member);
+  if (member.quantity !== undefined && ounces) return `${member.quantity} on hand (${ounces})`;
+  if (ounces) return ounces;
+  if (member.quantity !== undefined) return `${member.quantity} on hand`;
   if (member.windowMonths !== undefined) return `${member.windowMonths} months`;
   return '';
 };
@@ -118,11 +126,13 @@ export const conflictLine = (member: TargetConflictMember) => {
 };
 
 const memberTarget = (member: TargetConflictMember): { key: string; amount: string; target: GroupTarget } | null => {
-  if (member.quantity !== undefined) {
-    const dimension = member.dimension === 'volume' || member.dimension === 'mass' ? member.dimension : undefined;
-    const target: GroupTarget = { quantity: member.quantity };
-    if (dimension) target.dimension = dimension;
-    return { key: `quantity:${member.quantity}:${dimension ?? ''}`, amount: conflictAmount(member), target };
+  const ounces = ounceLabel(member);
+  if (ounces && member.amount !== undefined && (member.dimension === 'mass' || member.dimension === 'volume')) {
+    return {
+      key: `amount:${member.amount}:${member.dimension}`,
+      amount: ounces,
+      target: { quantity: member.amount, dimension: member.dimension },
+    };
   }
   if (member.windowMonths !== undefined) {
     return {

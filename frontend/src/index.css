@@ -225,58 +225,169 @@ code {
   color: var(--mantine-color-red-filled);
 }
 
-.scan-alert-prompt {
+/* Device scan alerts. The title and scope use the same label and description
+   as the other settings. The switch is pulled out of that stack and centered
+   on the title line, so the scope keeps the description's own spacing. */
+.scan-alert-setting {
   display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px 12px;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--mantine-spacing-xs);
+  width: min(100%, 34rem);
+  margin: 0;
 }
 
-.scan-alert-prompt p {
-  flex: 1 1 18rem;
-  max-width: 36rem;
+.scan-alert-head {
+  position: relative;
+  width: 100%;
+  line-height: var(--mantine-line-height);
+}
+
+.scan-alert-label {
+  max-width: calc(100% - 48px - 16px);
+  cursor: pointer;
+}
+
+.scan-alert-label[data-disabled] {
+  color: var(--mantine-color-disabled-color);
+  cursor: not-allowed;
+}
+
+/* The switch is centered on the title, so its track hangs into the first
+   line of this description. Keep the words in the title's column. */
+#scan-alert-scope {
+  padding-right: calc(48px + 16px);
+}
+
+.scan-alert-switch {
+  position: absolute;
+  top: calc((var(--mantine-font-size-md) * var(--mantine-line-height) - 28px) / 2);
+  right: 0;
+  width: 48px;
+  height: 28px;
   margin: 0;
-  font-size: 0.75rem;
-  line-height: 1.35;
-  color: var(--mantine-color-dimmed);
+}
+
+.scan-alert-switch input {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  width: 48px;
+  height: 28px;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.scan-alert-switch input:disabled {
+  cursor: not-allowed;
+}
+
+.scan-alert-switch-track {
+  display: block;
+  width: 48px;
+  height: 28px;
+  border-radius: 999px;
+  background: var(--mantine-color-gray-4);
+  position: relative;
+}
+
+.scan-alert-switch-track::after {
+  content: "";
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 2px rgba(28, 32, 36, 0.28);
+  transition: left 150ms ease;
+}
+
+.scan-alert-switch input:checked + .scan-alert-switch-track {
+  background: #1c7c4e;
+}
+
+.scan-alert-switch input:checked + .scan-alert-switch-track::after {
+  left: 23px;
+}
+
+.scan-alert-switch input:focus-visible + .scan-alert-switch-track {
+  outline: 2px solid var(--mantine-color-text);
+  outline-offset: 3px;
+}
+
+.scan-alert-switch input:disabled + .scan-alert-switch-track {
+  opacity: 0.5;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .scan-alert-switch-track::after {
+    transition: none;
+  }
+}
+
+.scan-alert-status {
+  margin: 0;
+  max-width: 34rem;
+  font-size: 0.875rem;
+  line-height: 1.45;
   text-wrap: pretty;
 }
 
-.scan-alert-enable {
-  flex: none;
+.scan-alert-status--quiet {
+  color: var(--mantine-color-dimmed);
+}
+
+.scan-alert-status--off {
+  color: var(--mantine-color-text);
+}
+
+.scan-alert-status--on {
+  color: var(--mantine-color-green-9);
+}
+
+.scan-alert-status--problem {
+  color: var(--mantine-color-red-9);
+}
+
+[data-mantine-color-scheme='dark'] .scan-alert-status--on {
+  color: var(--mantine-color-green-4);
+}
+
+[data-mantine-color-scheme='dark'] .scan-alert-status--problem {
+  color: var(--mantine-color-red-4);
+}
+
+.scan-alert-retry {
   margin: 0;
-  min-height: 36px;
-  padding: 7px 12px;
-  border: 0;
+  min-height: 32px;
+  padding: 6px 12px;
+  border: 1px solid var(--mantine-color-default-border);
   border-radius: var(--mantine-radius-sm);
-  background: #1c7c4e;
-  color: #fff;
+  background: var(--mantine-color-body);
+  color: var(--mantine-color-text);
   font: inherit;
   font-size: 0.8125rem;
-  font-weight: 650;
+  font-weight: 600;
   line-height: 1.2;
   cursor: pointer;
-  -webkit-tap-highlight-color: transparent;
 }
 
-.scan-alert-enable:disabled {
-  cursor: default;
-  opacity: 0.72;
-}
-
-.scan-alert-enable:focus-visible {
+.scan-alert-retry:focus-visible {
   outline: 2px solid var(--mantine-color-text);
   outline-offset: 2px;
 }
 
 @media (hover: hover) {
-  .scan-alert-enable:hover {
-    background: #176b43;
+  .scan-alert-retry:hover {
+    background: var(--mantine-color-gray-0);
   }
-}
 
-.scan-alert-enable:active {
-  background: #145c3a;
+  [data-mantine-color-scheme='dark'] .scan-alert-retry:hover {
+    background: var(--mantine-color-dark-6);
+  }
 }
 
 .scan-view-tabs .mantine-Tabs-list {

@@ -25,9 +25,27 @@ export const API_URL = process.env.PANTRY_API_URL ?? 'http://127.0.0.1:18080';
 export const EVIDENCE_DIR = process.env.PANTRY_EVIDENCE_DIR ?? process.cwd();
 export const USER_ID = 'user-1';
 
-export async function openBrowser({ args, viewport, permissions, timezoneId, headless, channel, colorScheme, deviceScaleFactor } = {}) {
+export async function openBrowser({ args, viewport, permissions, timezoneId, headless, channel, colorScheme, deviceScaleFactor, persistentDir } = {}) {
   // headless Playwright Chromium reports notification permission as denied, so
   // a drive that must see the permission ask can pass channel: 'chrome'.
+  // A normal newContext is an incognito window, and Chrome refuses the Push
+  // API there. persistentDir is a real profile so a subscription can be stored.
+  if (persistentDir) {
+    const context = await chromium.launchPersistentContext(persistentDir, {
+      ...(headless === undefined ? {} : { headless }),
+      ...(channel ? { channel } : {}),
+      ...(args ? { args } : {}),
+      baseURL: WEB_URL,
+      locale: 'en-US',
+      ...(timezoneId ? { timezoneId } : {}),
+      ...(viewport ? { viewport } : {}),
+      ...(colorScheme ? { colorScheme } : {}),
+      ...(deviceScaleFactor ? { deviceScaleFactor } : {}),
+      ...(permissions ? { permissions } : {}),
+    });
+    const page = context.pages()[0] ?? await context.newPage();
+    return { browser: context, context, page };
+  }
   const browser = await chromium.launch({
     ...(headless === undefined ? {} : { headless }),
     ...(channel ? { channel } : {}),

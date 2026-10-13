@@ -8,7 +8,6 @@ import { BarcodeInputField } from '../scanner/BarcodeInputField';
 import { CameraScanner } from '../scanner/CameraScanner';
 import { BatchReviewPanel } from './BatchReviewPanel';
 import { ProcessingScanCard } from './ProcessingScanCard';
-import { ScanAlertPrompt } from './ScanAlertPrompt';
 import { ScanEntryCard } from './ScanEntryCard';
 import { ScanSessionCard } from './ScanSessionCard';
 import { SCAN_ALERT_OPEN, takeScanAlertDirection, type ScanAlertOpenDetail } from './browserScanAlert';
@@ -204,12 +203,21 @@ export const ScanQueuePage = ({ userId = DEFAULT_USER_ID }: ScanQueuePageProps) 
 
   // A notification click names the tab that holds the scans. The stored
   // direction covers a queue that was not mounted when the click happened.
+  // A cold open from the service worker puts the same direction in the URL.
   useEffect(() => {
     const openDirection = (direction: unknown) => {
       if (direction !== 'stock_in' && direction !== 'stock_out') return;
       void applyScannerMode(direction);
     };
-    openDirection(takeScanAlertDirection());
+    const params = new URLSearchParams(window.location.search);
+    const fromQuery = params.get('scanAlert');
+    if (fromQuery === 'stock_in' || fromQuery === 'stock_out') {
+      params.delete('scanAlert');
+      const rest = params.toString();
+      const path = window.location.pathname || '/';
+      window.history.replaceState(null, '', rest === '' ? path : `${path}?${rest}`);
+    }
+    openDirection(fromQuery === 'stock_in' || fromQuery === 'stock_out' ? fromQuery : takeScanAlertDirection());
     const onOpen = (event: Event) => {
       takeScanAlertDirection();
       openDirection((event as CustomEvent<ScanAlertOpenDetail>).detail?.direction);
@@ -331,7 +339,6 @@ export const ScanQueuePage = ({ userId = DEFAULT_USER_ID }: ScanQueuePageProps) 
             )}
           </Text>
         )}
-        <ScanAlertPrompt />
         <Tabs
           value={scannerMode}
           onChange={handleViewChange}

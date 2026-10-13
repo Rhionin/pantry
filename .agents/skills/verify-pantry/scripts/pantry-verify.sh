@@ -85,6 +85,9 @@ start_api() {
   local db_path="$1"
   log "starting go server on $API_URL (db=$db_path, external lookup disabled)"
   DB_PATH="$db_path" ADDR="127.0.0.1:${API_PORT}" DISABLE_EXTERNAL_PRODUCT_LOOKUP=true \
+    VAPID_PUBLIC_KEY="${VAPID_PUBLIC_KEY:-}" \
+    VAPID_PRIVATE_KEY="${VAPID_PRIVATE_KEY:-}" \
+    VAPID_SUBJECT="${VAPID_SUBJECT:-}" \
     "$SERVER_BIN" >"$RUN_DIR/api.log" 2>&1 &
   API_PID=$!
   wait_for_url "$API_URL/health" "go server" 30

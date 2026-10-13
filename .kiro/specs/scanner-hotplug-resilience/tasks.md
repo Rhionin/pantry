@@ -116,10 +116,10 @@ See design "Rejected Alternative" for why the systemd approach is excluded.
       commented examples. This is a requirement, not a preference: udev writes a relative
       symlink, so `/dev/pantry-scanner -> input/eventN` would neither exist nor resolve inside
       a container that mounts only `/dev/input`
-    - Change the USB example to match `ENV{ID_VENDOR_ID}` and `ENV{ID_MODEL_ID}` rather than
-      `ATTRS{idVendor}` and `ATTRS{idProduct}`, with a comment explaining that udev's
-      `input_id` builtin sets those properties directly on the event device while `ATTRS{}`
-      must walk up the parent chain and is order-sensitive. Keep `ATTRS{name}` for Bluetooth
+    - Match USB and Bluetooth HID on the input parent's `ATTRS{id/vendor}` and
+      `ATTRS{id/product}` (both keys live on that parent). `ENV{ID_VENDOR_ID}` and
+      `ENV{ID_MODEL_ID}` are imported only when a USB ancestor exists, so they miss
+      Bluetooth HID (uhid). Keep `ATTRS{name}` only when vendor and product are absent
     - Keep `GROUP="65532"` and `MODE="0640"`
     - Rewrite the header comment to stay truthful: state that the symlink is now at
       `/dev/input/pantry-scanner`, that it must live under `/dev/input` for the reason above,
@@ -197,8 +197,8 @@ See design "Rejected Alternative" for why the systemd approach is excluded.
       keyboards. With multiple candidates, show a numbered picker when interactive and fail
       with the candidate list when not; never guess
     - Emit `/etc/udev/rules.d/99-pantry-scanner.rules` with one active rule of the form
-      `SUBSYSTEM=="input", KERNEL=="event*", ENV{ID_VENDOR_ID}=="<vid>", ENV{ID_MODEL_ID}=="<pid>", SYMLINK+="input/pantry-scanner", GROUP="65532", MODE="0640"`,
-      using `ATTRS{name}` instead for a Bluetooth device
+      `SUBSYSTEM=="input", KERNEL=="event*", ATTRS{id/vendor}=="<vid>", ATTRS{id/product}=="<pid>", SYMLINK+="input/pantry-scanner", GROUP="65532", MODE="0640"`
+      for USB HID and Bluetooth HID. Use `ATTRS{name}` only when vendor and product are absent
     - Write the file only when its content differs from what is installed, so re-runs are quiet
     - Then `udevadm control --reload` and `udevadm trigger --subsystem-match=input --action=add`.
       Scope the trigger — a bare `udevadm trigger --action=add` re-fires `add` for every device

@@ -169,7 +169,7 @@ _For any_ number of repeated setup-script runs, every value already present in `
 
 1. **Move the symlink inside the mounted directory.** Change `SYMLINK+="pantry-scanner"` to `SYMLINK+="input/pantry-scanner"` in both examples. This is a requirement, not a preference: udev writes a *relative* symlink, so `/dev/pantry-scanner -> input/eventN` would not exist inside a container that mounts only `/dev/input`, and its target would not resolve there either.
 
-2. **Match on `ENV{ID_VENDOR_ID}` / `ENV{ID_MODEL_ID}`** for USB scanners instead of `ATTRS{idVendor}` / `ATTRS{idProduct}`. udev's `input_id` builtin sets those properties directly on the event device, whereas `ATTRS{}` must walk up the parent chain to the USB node and is order-sensitive. Keep `ATTRS{name}` for Bluetooth, since that attribute is on the input device itself.
+2. **Match USB and Bluetooth HID on the input parent's `ATTRS{id/vendor}` / `ATTRS{id/product}`.** The kernel sets those sysfs attributes for both buses, and both keys live on that same parent. `ENV{ID_VENDOR_ID}` / `ENV{ID_MODEL_ID}` are imported only when a USB ancestor exists, so they do not match Bluetooth HID (uhid). Use `ATTRS{name}` only when vendor and product are absent.
 
 3. **Keep `GROUP="65532"` and `MODE="0640"`,** which are now the sole mechanism scoping access to one device, and update the header comment to say so rather than implying the container sees only one node.
 

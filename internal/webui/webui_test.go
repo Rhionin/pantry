@@ -407,3 +407,29 @@ func TestMissingHashedAssetDoesNotServeTheShell(t *testing.T) {
 		t.Fatalf("favicon Cache-Control = %q", iconRec.Header().Get("Cache-Control"))
 	}
 }
+
+func TestServiceWorkerIsUncompressedAtTheSiteRoot(t *testing.T) {
+	handler := NewHandlerFS(fstest.MapFS{
+		"index.html": &fstest.MapFile{Data: []byte("<html>shell</html>")},
+		"sw.js":      &fstest.MapFile{Data: []byte("self.addEventListener('push', function () {});\n")},
+	})
+	req := httptest.NewRequest(http.MethodGet, "/sw.js", nil)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d", w.Code)
+	}
+	if got := w.Header().Get("Content-Type"); !strings.HasPrefix(got, "text/javascript") {
+		t.Fatalf("Content-Type = %q", got)
+	}
+	// Values, not Get: a repeated field is what browsers join into "/, /".
+	if got := w.Header().Values("Cache-Control"); len(got) != 1 || got[0] != "no-cache, no-transform" {
+		t.Fatalf("Cache-Control = %#v, want exactly one %q", got, "no-cache, no-transform")
+	}
+	if got := w.Header().Values("Service-Worker-Allowed"); len(got) != 1 || got[0] != "/" {
+		t.Fatalf("Service-Worker-Allowed = %#v, want exactly one %q", got, "/")
+	}
+	if !strings.Contains(w.Body.String(), "addEventListener('push'") {
+		t.Fatalf("body = %q", w.Body.String())
+	}
+}

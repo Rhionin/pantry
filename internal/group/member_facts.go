@@ -6,6 +6,11 @@ import (
 	"unicode/utf8"
 )
 
+// ProductBrand is the brand written in a product name, compared with the group title.
+func ProductBrand(name, title string) string {
+	return memberBrand(name, title)
+}
+
 // memberBrand is a brand already written in the product name.
 // Words in front of the suggestion title are that brand. A listed store
 // brand that sits after the food name is still recognized. Anything else
