@@ -418,6 +418,7 @@ export interface TargetConflictMember {
   name: string;
   windowMonths?: number;
   quantity?: number;
+  amount?: number;
   dimension?: NetDimension;
 }
 
