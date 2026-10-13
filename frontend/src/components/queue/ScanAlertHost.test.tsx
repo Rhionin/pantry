@@ -3,6 +3,7 @@ import { render, screen } from '@testing-library/react';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import type { ProcessingFailure, ScanEntry } from '../../types';
 import { ScanAlertHost } from './ScanAlertHost';
+import { setBackgroundAlerts } from './pushAlerts';
 
 class FakeNotification {
   static permission: NotificationPermission = 'granted';
@@ -67,6 +68,7 @@ describe('ScanAlertHost', () => {
     sessionStorage.clear();
     FakeNotification.instances = [];
     FakeEventSource.instances = [];
+    setBackgroundAlerts(false);
   });
 
   const renderHost = (path = '/inventory') => {
@@ -115,5 +117,16 @@ describe('ScanAlertHost', () => {
     notification?.onclick?.();
     expect(screen.getByTestId('location')).toHaveTextContent('/');
     expect(sessionStorage.getItem('pantry-scan-alert-direction')).toBe('stock_in');
+  });
+
+  it('leaves the visible notification to the service worker when push is subscribed', () => {
+    const source = renderHost();
+    setBackgroundAlerts(true);
+    source.dispatch('scan_processing_failed', {
+      id: 'lookup-1',
+      barcode: '999',
+      message: "Couldn't look up that barcode.",
+    } satisfies ProcessingFailure);
+    expect(FakeNotification.instances).toEqual([]);
   });
 });

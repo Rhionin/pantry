@@ -4,6 +4,7 @@ import { MantineProvider } from '@mantine/core';
 import { ScanAlertPrompt } from './ScanAlertPrompt';
 import { ScanQueuePage } from './ScanQueuePage';
 import { openScanAlert } from './browserScanAlert';
+import { setBackgroundAlerts } from './pushAlerts';
 
 class FakeNotification {
   static permission: NotificationPermission = 'default';
@@ -36,6 +37,9 @@ describe('ScanAlertPrompt', () => {
   afterEach(() => {
     vi.unstubAllGlobals();
     sessionStorage.clear();
+    setBackgroundAlerts(false);
+    Reflect.deleteProperty(navigator, 'serviceWorker');
+    window.history.replaceState(null, '', '/');
   });
 
   it('asks only after the button is used', async () => {
@@ -58,11 +62,62 @@ describe('ScanAlertPrompt', () => {
     });
   });
 
-  it('stays quiet once permission is already granted', () => {
+  it('says alerts stay in this tab when push is not available', async () => {
     FakeNotification.permission = 'granted';
     vi.stubGlobal('Notification', FakeNotification);
-    const { container } = render(<ScanAlertPrompt />);
-    expect(container).toBeEmptyDOMElement();
+    render(<ScanAlertPrompt />);
+    expect(await screen.findByRole('status')).toHaveTextContent('Scan alerts are on while this tab is open.');
+    expect(screen.queryByRole('button', { name: 'Notify me about scans' })).not.toBeInTheDocument();
+  });
+
+  it('stores a push subscription and says alerts work while Pantry is closed', async () => {
+    FakeNotification.permission = 'granted';
+    vi.stubGlobal('Notification', FakeNotification);
+    vi.stubGlobal('PushManager', class PushManager {});
+    const subscription = {
+      endpoint: 'https://push.example/device',
+      unsubscribe: () => Promise.resolve(true),
+      toJSON: () => ({
+        endpoint: 'https://push.example/device',
+        keys: { p256dh: 'p256', auth: 'auth' },
+      }),
+    };
+    const registration = {
+      pushManager: {
+        getSubscription: () => Promise.resolve(null),
+        subscribe: () => Promise.resolve(subscription),
+      },
+    };
+    Object.defineProperty(navigator, 'serviceWorker', {
+      configurable: true,
+      value: {
+        register: () => Promise.resolve(registration),
+        ready: Promise.resolve(registration),
+        getRegistration: () => Promise.resolve(registration),
+        addEventListener: () => {},
+        removeEventListener: () => {},
+      },
+    });
+    const posted: unknown[] = [];
+    vi.stubGlobal('fetch', (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith('/api/push/vapid-public-key')) {
+        return Promise.resolve(jsonResponse({ publicKey: 'BElk' }));
+      }
+      if (url.endsWith('/api/push/subscriptions') && init?.method === 'POST') {
+        posted.push(JSON.parse(String(init.body)));
+        return Promise.resolve(jsonResponse({ endpoint: 'https://push.example/device' }));
+      }
+      throw new Error(`Unexpected request: ${url}`);
+    });
+
+    render(<ScanAlertPrompt />);
+    expect(await screen.findByRole('status')).toHaveTextContent(
+      'Scan alerts are on for this browser, including when Pantry is closed.',
+    );
+    expect(posted).toEqual([
+      { endpoint: 'https://push.example/device', keys: { p256dh: 'p256', auth: 'auth' } },
+    ]);
   });
 
   it('explains a blocked permission without asking again', () => {
@@ -87,6 +142,8 @@ describe('ScanQueuePage scan alerts', () => {
   afterEach(() => {
     vi.unstubAllGlobals();
     sessionStorage.clear();
+    setBackgroundAlerts(false);
+    window.history.replaceState(null, '', '/');
   });
 
   it('does not request notification permission while the queue loads', async () => {
@@ -143,5 +200,36 @@ describe('ScanQueuePage scan alerts', () => {
     expect(await screen.findByRole('tab', { name: /^Stock out/ })).toHaveAttribute('aria-selected', 'true');
     await waitFor(() => expect(modePosts).toEqual(['stock_out']));
     expect(screen.getByText('Scans remove from stock')).toBeInTheDocument();
+  });
+
+  it('selects the tab named by a service worker open', async () => {
+    const modePosts: string[] = [];
+    window.history.replaceState(null, '', '/?scanAlert=stock_out');
+    vi.stubGlobal('EventSource', FakeEventSource);
+    vi.stubGlobal('fetch', (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith('/api/scanner/mode') && init?.method === 'POST') {
+        const body = JSON.parse(String(init.body)) as { mode: string };
+        modePosts.push(body.mode);
+        return Promise.resolve(jsonResponse({ mode: body.mode }));
+      }
+      if (url.includes('status=pending') || url.includes('status=flagged')) return Promise.resolve(jsonResponse([]));
+      if (url === '/api/inventory' || url === '/api/products') return Promise.resolve(jsonResponse([]));
+      if (url.endsWith('/api/scanner/config')) {
+        return Promise.resolve(jsonResponse({
+          stockInBarcode: 'STOCK_IN',
+          stockOutBarcode: 'STOCK_OUT',
+          currentMode: 'stock_in',
+          connected: true,
+        }));
+      }
+      throw new Error(`Unexpected request: ${url}`);
+    });
+
+    render(<MantineProvider><ScanQueuePage /></MantineProvider>);
+
+    expect(await screen.findByRole('tab', { name: /^Stock out/ })).toHaveAttribute('aria-selected', 'true');
+    await waitFor(() => expect(modePosts).toEqual(['stock_out']));
+    expect(window.location.search).not.toContain('scanAlert');
   });
 });

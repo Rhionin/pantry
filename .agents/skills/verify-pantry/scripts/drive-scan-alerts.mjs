@@ -70,6 +70,19 @@ try {
     await page.evaluate(() => Notification.permission) === 'granted',
     'permission is granted only after Notify me about scans',
   );
+  const status = page.getByRole('status');
+  await status.waitFor({ state: 'visible', timeout: 10_000 });
+  const statusText = await status.innerText();
+  assert(
+    statusText === 'Scan alerts are on while this tab is open.'
+      || statusText === 'Scan alerts are on for this browser, including when Pantry is closed.',
+    `scan alert status is missing (got ${statusText})`,
+  );
+  await captureProof(page, 'scan-alert-status', {
+    feature: 'scan-alerts',
+    step: 'permission-granted',
+    status: statusText,
+  });
 
   const unknownCard = await scanBarcode(page, UNKNOWN);
   await unknownCard.getByText('Flagged').waitFor({ state: 'visible' });

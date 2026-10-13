@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import type { ProcessingFailure, ScanEntry } from '../../types';
 import { openScanAlert, showScanAlert } from './browserScanAlert';
+import { directionFromAlertURL, ensurePushSubscription } from './pushAlerts';
 import { ScanAttention, type AttentionNotice } from './scanAttention';
 
 const parseEvent = <T,>(message: Event): T | null => {
@@ -26,6 +27,12 @@ export function ScanAlertHost() {
   }, [navigate]);
 
   useEffect(() => {
+    if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+      void ensurePushSubscription();
+    }
+  }, []);
+
+  useEffect(() => {
     const open = (notice: AttentionNotice) => {
       window.focus();
       openScanAlert(notice.direction);
@@ -43,9 +50,25 @@ export function ScanAlertHost() {
       const failure = parseEvent<ProcessingFailure>(message);
       if (failure !== null) attention.noteFailure(failure);
     });
+    const onMessage = (event: MessageEvent) => {
+      const data = event.data as { type?: string; url?: string } | null;
+      if (data?.type !== 'pantry-scan-alert') return;
+      open({
+        title: '',
+        body: '',
+        tag: '',
+        direction: directionFromAlertURL(typeof data.url === 'string' ? data.url : ''),
+      });
+    };
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.addEventListener('message', onMessage);
+    }
     return () => {
       attention.dispose();
       source.close();
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.removeEventListener('message', onMessage);
+      }
     };
   }, []);
 
