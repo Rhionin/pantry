@@ -20,7 +20,7 @@ const group = (extra: Partial<ProductGroup> = {}): ProductGroup => ({
 const conflict = {
   error: 'Choose what this group should keep on hand.',
   code: 'target_decision_required',
-  members: [{ productId: 'glacier', name: 'Gatorade Glacier Freeze', quantity: 12, dimension: 'mass' as const }],
+  members: [{ productId: 'glacier', name: 'Gatorade Glacier Freeze', quantity: 4, amount: 48, dimension: 'mass' as const }],
 };
 
 describe('GroupSelectBar', () => {
@@ -41,13 +41,13 @@ describe('GroupSelectBar', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Add to group' }));
     expect(await screen.findByRole('button', { name: "Keep the group's 6 months" })).toBeInTheDocument();
-    expect(screen.getByText('Gatorade Glacier Freeze: 12 ounces')).toBeInTheDocument();
+    expect(screen.getByText('Gatorade Glacier Freeze: 4 on hand (48 ounces)')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Use ounces' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Use months' })).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Use 12 ounces (from Gatorade Glacier Freeze)' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Use 48 ounces (from Gatorade Glacier Freeze)' }));
     await waitFor(() => expect(posts).toHaveLength(2));
-    expect(posts[1]).toEqual({ productIds: ['glacier'], target: { quantity: 12, dimension: 'mass' } });
+    expect(posts[1]).toEqual({ productIds: ['glacier'], target: { quantity: 48, dimension: 'mass' } });
   });
 
   it('keeps the household default for a new group and cancel sends nothing else', async () => {
