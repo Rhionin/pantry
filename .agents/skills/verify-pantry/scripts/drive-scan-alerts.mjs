@@ -22,17 +22,20 @@ const { browser, context, page } = await openBrowser({
 let failed = false;
 try {
   await page.clock.install();
-  await page.goto(WEB_URL);
-  const ask = page.getByRole('button', { name: 'Notify me about scans' });
+  await page.goto(`${WEB_URL}/settings`);
+  const ask = page.getByRole('switch', { name: 'Scan alerts on this device' });
   await ask.waitFor({ state: 'visible', timeout: 15_000 });
   await ask.focus();
   assert(
-    (await ask.getAttribute('aria-describedby')) === 'scan-alert-explainer',
-    'the scan alert button describes what the alerts do',
+    (await ask.getAttribute('aria-describedby')) === 'scan-alert-scope',
+    'the scan alert switch describes that it is this browser only',
   );
+  const before = page.locator('#scan-alert-status');
+  await before.waitFor({ state: 'visible' });
+  assert((await before.innerText()) === 'Off', `scan alerts start off (got ${await before.innerText()})`);
   await captureProof(page, 'scan-alert-cta', {
     feature: 'scan-alerts',
-    step: 'permission-cta',
+    step: 'settings-switch-off',
     permission: await page.evaluate(() => Notification.permission),
   });
 
@@ -65,17 +68,23 @@ try {
 
   await context.grantPermissions(['notifications']);
   await ask.click();
-  await ask.waitFor({ state: 'hidden', timeout: 10_000 });
   assert(
     await page.evaluate(() => Notification.permission) === 'granted',
-    'permission is granted only after Notify me about scans',
+    'permission is granted only after the scan alert switch is turned on',
   );
-  const status = page.locator('.scan-alert-prompt').getByRole('status');
-  await status.waitFor({ state: 'visible', timeout: 10_000 });
+  const status = page.locator('#scan-alert-status');
+  await page.waitForFunction(
+    () => {
+      const text = document.querySelector('#scan-alert-status')?.textContent ?? '';
+      return text.startsWith('On:') || text.includes('this tab is open');
+    },
+    null,
+    { timeout: 10_000 },
+  );
   const statusText = await status.innerText();
   assert(
-    statusText === 'Scan alerts are on while this tab is open.'
-      || statusText === 'Scan alerts are on for this browser, including when Pantry is closed.',
+    statusText === 'On: alerts arrive even when Pantry is closed'
+      || statusText.includes('this tab is open'),
     `scan alert status is missing (got ${statusText})`,
   );
   await captureProof(page, 'scan-alert-status', {
@@ -84,6 +93,8 @@ try {
     status: statusText,
   });
 
+  await page.getByRole('link', { name: 'Scan Queue' }).click();
+  await page.getByText('Mode: stock_in').waitFor({ state: 'visible', timeout: 10_000 });
   const unknownCard = await scanBarcode(page, UNKNOWN);
   await unknownCard.getByText('Flagged').waitFor({ state: 'visible' });
   await page.waitForFunction(

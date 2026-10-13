@@ -2,7 +2,7 @@ import { useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import type { ProcessingFailure, ScanEntry } from '../../types';
 import { openScanAlert, showScanAlert } from './browserScanAlert';
-import { directionFromAlertURL, ensurePushSubscription } from './pushAlerts';
+import { directionFromAlertURL, ensurePushSubscription, releasePushSubscription, scanAlertsPreferred, setBackgroundAlerts } from './pushAlerts';
 import { ScanAttention, type AttentionNotice } from './scanAttention';
 
 const parseEvent = <T,>(message: Event): T | null => {
@@ -27,9 +27,17 @@ export function ScanAlertHost() {
   }, [navigate]);
 
   useEffect(() => {
-    if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
-      void ensurePushSubscription();
+    if (typeof Notification !== 'undefined' && Notification.permission === 'denied') {
+      setBackgroundAlerts(false);
+      void releasePushSubscription();
+      return;
     }
+    if (!scanAlertsPreferred()) {
+      setBackgroundAlerts(false);
+      void releasePushSubscription();
+      return;
+    }
+    void ensurePushSubscription();
   }, []);
 
   useEffect(() => {
