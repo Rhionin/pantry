@@ -225,6 +225,17 @@ run_setup "$lan"
 [[ "$LAST_RC" -eq 0 ]] || fail "second LAN setup exited $LAST_RC: $LAST_OUT"
 secret2=$(grep '^DEPLOY_HOOK_SECRET=' "$lan/.env" | cut -d= -f2-)
 [[ "$secret1" == "$secret2" ]] || fail "setup rotated DEPLOY_HOOK_SECRET"
+vapid_pub1=$(grep '^VAPID_PUBLIC_KEY=' "$lan/.env" | cut -d= -f2-)
+vapid_priv1=$(grep '^VAPID_PRIVATE_KEY=' "$lan/.env" | cut -d= -f2-)
+vapid_sub1=$(grep '^VAPID_SUBJECT=' "$lan/.env" | cut -d= -f2-)
+[[ $(printf '%s' "$vapid_pub1" | wc -c) -eq 87 ]] || fail "setup did not generate a VAPID public key (got $vapid_pub1)"
+[[ $(printf '%s' "$vapid_priv1" | wc -c) -eq 43 ]] || fail "setup did not generate a VAPID private key"
+[[ "$vapid_sub1" == "mailto:pantry@localhost" ]] || fail "LAN VAPID subject was $vapid_sub1"
+run_setup "$lan"
+[[ "$LAST_RC" -eq 0 ]] || fail "third LAN setup exited $LAST_RC: $LAST_OUT"
+vapid_pub2=$(grep '^VAPID_PUBLIC_KEY=' "$lan/.env" | cut -d= -f2-)
+vapid_priv2=$(grep '^VAPID_PRIVATE_KEY=' "$lan/.env" | cut -d= -f2-)
+[[ "$vapid_pub1" == "$vapid_pub2" && "$vapid_priv1" == "$vapid_priv2" ]] || fail "setup rotated VAPID keys"
 printed=$(PANTRY_DIR="$lan" PANTRY_SETUP_SKIP_ROOT=1 bash "$SETUP" deploy-secret)
 [[ "$printed" == "$secret1" ]] || fail "deploy-secret printed [$printed], want [$secret1]"
 lack "$LAST_DOCKER" "docker-compose.tunnel.yml" "LAN must not select the tunnel file"
@@ -622,11 +633,17 @@ custom=$(mktemp -d)
 write_env "$custom" \
   "DEPLOY_HOOK_SECRET=not-generated" \
   "HOST_PORT=8080" \
-  "PUBLIC_HOST=" \
-  "BASIC_AUTH_PASSWORD="
+  "PUBLIC_HOST=pantry.example.com" \
+  "BASIC_AUTH_PASSWORD=" \
+  "VAPID_PUBLIC_KEY=operator-public" \
+  "VAPID_PRIVATE_KEY=operator-private" \
+  "VAPID_SUBJECT="
 run_setup "$custom"
 [[ "$LAST_RC" -eq 0 ]] || fail "custom secret setup exited $LAST_RC: $LAST_OUT"
 grep -q '^DEPLOY_HOOK_SECRET=not-generated$' "$custom/.env" || fail "setup replaced a custom DEPLOY_HOOK_SECRET"
+grep -q '^VAPID_PUBLIC_KEY=operator-public$' "$custom/.env" || fail "setup replaced a custom VAPID public key"
+grep -q '^VAPID_PRIVATE_KEY=operator-private$' "$custom/.env" || fail "setup replaced a custom VAPID private key"
+grep -q '^VAPID_SUBJECT=mailto:pantry@pantry.example.com$' "$custom/.env" || fail "setup did not fill an empty VAPID subject"
 
 # --with-updates enables the timer and the path unit that the hook trips.
 updates=$(mktemp -d)

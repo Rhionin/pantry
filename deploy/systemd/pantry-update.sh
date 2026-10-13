@@ -84,6 +84,11 @@ if [[ -f /opt/pantry/auth.caddy ]]; then
     exit 1
   fi
 fi
+# shellcheck disable=SC1091
+source /opt/pantry/vapid-env.sh
+if ! ensure_vapid_keys; then
+  echo "Could not generate VAPID keys; scan alerts stay on an open tab until sudo ./setup.sh succeeds." >&2
+fi
 
 trigger_digest() {
   if [[ -f /opt/pantry/deploy-trigger/request ]]; then

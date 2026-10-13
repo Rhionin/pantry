@@ -539,6 +539,9 @@ All configuration is handled through environment variables in `/opt/pantry/.env`
 | `BASIC_AUTH_USER` | `pantry` | Username the login page asks for on the public site. Also accepted in an `Authorization: Basic` header |
 | `BASIC_AUTH_PASSWORD` | empty | Shared password for the public site, 12 to 72 characters. Required the first time the public proxy starts, unless `auth.caddy` already exists. The hash is written to `auth.caddy` and copied to `auth/household`; this value stays in `.env`. Setup does not replace an existing `auth.caddy` |
 | `PANTRY_SESSION_SECRET` | empty | Signs the login cookie. Setup and the update timer fill it in once when `auth.caddy` exists, and do not rotate it. Leave it alone so phones stay signed in |
+| `VAPID_PUBLIC_KEY` | generated | Public half of the Web Push identity for scan alerts while Pantry is closed. `sudo ./setup.sh` fills it once. Not a secret |
+| `VAPID_PRIVATE_KEY` | generated | Private half of that identity. A secret. Setup fills it once and does not rotate a pair that is already set |
+| `VAPID_SUBJECT` | generated | Contact on each push, `mailto:` or `https://`. Setup uses `mailto:pantry@PUBLIC_HOST`, or `mailto:pantry@localhost` when the install is LAN-only |
 | `PANTRY_LAN_FIREWALL` | `on` | `off` leaves `HOST_PORT` reachable from any source. Any other value, including empty, installs the LAN-only rule when compose publishes that port or the public proxy is on |
 | `PANTRY_LAN_IPV4` | empty | Private LAN address of the Pi, such as `192.168.1.203`. Empty detects it. Set this when detection prints a Docker bridge instead of the address phones should open |
 | `PANTRY_SPLIT_DNS` | `off` | `on` answers `PUBLIC_HOST` with `PANTRY_LAN_IPV4` from dnsmasq on the Pi. Public DNS and the shared password stay as they are. Leave off unless clients use the Pi for DNS. Do not forward port 53 |

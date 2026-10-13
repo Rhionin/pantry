@@ -49,6 +49,12 @@ services:
       # user. A root-owned file is unreadable once capabilities are dropped.
       PANTRY_AUTH_FILE: /etc/pantry/auth/household
       PANTRY_SESSION_SECRET: ${PANTRY_SESSION_SECRET:-}
+      # Scan alerts while the pantry tab is closed. setup.sh fills these
+      # once when they are empty and does not rotate them. The private key
+      # stays in /opt/pantry/.env and is not written into the image.
+      VAPID_PUBLIC_KEY: ${VAPID_PUBLIC_KEY:-}
+      VAPID_PRIVATE_KEY: ${VAPID_PRIVATE_KEY:-}
+      VAPID_SUBJECT: ${VAPID_SUBJECT:-}
     volumes:
       - pantry-data:/data
       # The process writes one file here. A host path unit starts the update.
