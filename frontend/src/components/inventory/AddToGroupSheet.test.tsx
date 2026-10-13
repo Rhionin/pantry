@@ -93,7 +93,7 @@ describe('AddToGroupSheet', () => {
         return Promise.resolve(json({
           error: 'Choose what this group should keep on hand.',
           code: 'target_decision_required',
-          members: [{ productId: 'oat', name: 'Oat milk', quantity: 12, dimension: 'mass' }],
+          members: [{ productId: 'oat', name: 'Oat milk', quantity: 4, amount: 48, dimension: 'mass' }],
         }, 409));
       }
       return Promise.resolve(json(group({ windowMonths: 6 })));
@@ -104,10 +104,10 @@ describe('AddToGroupSheet', () => {
       suggestions: [],
     });
     fireEvent.click(screen.getByRole('button', { name: 'Peanut butter' }));
-    fireEvent.click(await screen.findByRole('button', { name: 'Use 12 ounces (from Oat milk)' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Use 48 ounces (from Oat milk)' }));
     await waitFor(() => expect(posts[1]).toEqual({
       productIds: ['oat'],
-      target: { quantity: 12, dimension: 'mass' },
+      target: { quantity: 48, dimension: 'mass' },
     }));
     expect(onChanged).toHaveBeenCalled();
   });

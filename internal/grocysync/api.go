@@ -186,6 +186,22 @@ func (a *API) PutUserfields(ctx context.Context, productID int, fields map[strin
 	return a.do(ctx, http.MethodPut, fmt.Sprintf("/userfields/products/%d", productID), fields, nil)
 }
 
+func (a *API) Userfields(ctx context.Context, productID int) (map[string]string, error) {
+	var raw map[string]any
+	if err := a.do(ctx, http.MethodGet, fmt.Sprintf("/userfields/products/%d", productID), nil, &raw); err != nil {
+		return nil, err
+	}
+	out := map[string]string{}
+	for key, value := range raw {
+		s, ok := value.(string)
+		if !ok || strings.TrimSpace(s) == "" {
+			continue
+		}
+		out[key] = s
+	}
+	return out, nil
+}
+
 type addStockBody struct {
 	Amount          float64 `json:"amount"`
 	BestBefore      string  `json:"best_before_date"`
@@ -203,30 +219,54 @@ type consumeBody struct {
 	StockEntryID    string  `json:"stock_entry_id,omitempty"`
 }
 
-func (a *API) AddStock(ctx context.Context, productID int, body addStockBody) (string, error) {
-	var resp struct {
-		ID flexID `json:"id"`
-	}
-	if err := a.do(ctx, http.MethodPost, fmt.Sprintf("/stock/products/%d/add", productID), body, &resp); err != nil {
-		return "", err
-	}
-	if resp.ID.String() == "" {
-		return "", fmt.Errorf("Grocy did not return a stock transaction")
-	}
-	return resp.ID.String(), nil
+// StockBooking is the transaction Grocy recorded for an add or a consume.
+// Undo uses TransactionID. Grocy 4's numeric stock_log id is a different booking.
+type StockBooking struct {
+	TransactionID string
+	StockID       string
 }
 
-func (a *API) Consume(ctx context.Context, productID int, body consumeBody) (string, error) {
-	var resp struct {
-		ID flexID `json:"id"`
+// StockLog is one Grocy stock_log row.
+type StockLog struct {
+	ID              flexID    `json:"id"`
+	Amount          flexFloat `json:"amount"`
+	BestBefore      string    `json:"best_before_date"`
+	Purchased       string    `json:"purchased_date"`
+	TransactionType string    `json:"transaction_type"`
+	Undone          flexFloat `json:"undone"`
+	TransactionID   flexID    `json:"transaction_id"`
+	StockID         string    `json:"stock_id"`
+	Note            *string   `json:"note"`
+	Created         string    `json:"row_created_timestamp"`
+}
+
+func (s StockLog) note() string {
+	if s.Note == nil {
+		return ""
 	}
-	if err := a.do(ctx, http.MethodPost, fmt.Sprintf("/stock/products/%d/consume", productID), body, &resp); err != nil {
-		return "", err
+	return *s.Note
+}
+
+func (s StockLog) undone() bool { return float64(s.Undone) != 0 }
+
+func (a *API) AddStock(ctx context.Context, productID int, body addStockBody) (StockBooking, error) {
+	return a.stockBooking(ctx, http.MethodPost, fmt.Sprintf("/stock/products/%d/add", productID), body)
+}
+
+func (a *API) Consume(ctx context.Context, productID int, body consumeBody) (StockBooking, error) {
+	return a.stockBooking(ctx, http.MethodPost, fmt.Sprintf("/stock/products/%d/consume", productID), body)
+}
+
+func (a *API) stockBooking(ctx context.Context, method, path string, body any) (StockBooking, error) {
+	var raw json.RawMessage
+	if err := a.do(ctx, method, path, body, &raw); err != nil {
+		return StockBooking{}, err
 	}
-	if resp.ID.String() == "" {
-		return "", fmt.Errorf("Grocy did not return a stock transaction")
+	booking, err := parseStockBooking(raw)
+	if err != nil {
+		return StockBooking{}, err
 	}
-	return resp.ID.String(), nil
+	return booking, nil
 }
 
 func (a *API) Undo(ctx context.Context, transactionID string) error {
@@ -236,17 +276,115 @@ func (a *API) Undo(ctx context.Context, transactionID string) error {
 	return a.do(ctx, http.MethodPost, "/stock/transactions/"+url.PathEscape(transactionID)+"/undo", map[string]any{}, nil)
 }
 
+// StockEntries lists open stock for one product.
+// Grocy 4 serves this at /stock/products/{id}/entries, not on the product details.
 func (a *API) StockEntries(ctx context.Context, productID int) ([]StockEntry, error) {
-	var resp struct {
-		Entries []StockEntry `json:"stock_entries"`
-	}
-	if err := a.do(ctx, http.MethodGet, fmt.Sprintf("/stock/products/%d", productID), nil, &resp); err != nil {
+	var entries []StockEntry
+	if err := a.do(ctx, http.MethodGet, fmt.Sprintf("/stock/products/%d/entries", productID), nil, &entries); err != nil {
 		return nil, err
 	}
-	if resp.Entries == nil {
-		resp.Entries = []StockEntry{}
+	if entries == nil {
+		entries = []StockEntry{}
 	}
-	return resp.Entries, nil
+	return entries, nil
+}
+
+// StockLogs lists stock_log rows for one product whose note mentions a Pantry unit.
+// Grocy's query grammar rejects ':' in a value, and pantry-instance notes contain one,
+// so the filter is a contains-match and callers compare the note exactly.
+func (a *API) StockLogs(ctx context.Context, productID int) ([]StockLog, error) {
+	rows, err := a.stockLogs(ctx, productID, true)
+	if err != nil && strings.Contains(err.Error(), "Invalid query") {
+		return a.stockLogs(ctx, productID, false)
+	}
+	return rows, err
+}
+
+func (a *API) stockLogs(ctx context.Context, productID int, filterNote bool) ([]StockLog, error) {
+	q := url.Values{}
+	q.Add("query[]", fmt.Sprintf("product_id=%d", productID))
+	if filterNote {
+		q.Add("query[]", "note~pantry-instance")
+	}
+	var rows []StockLog
+	if err := a.do(ctx, http.MethodGet, "/objects/stock_log?"+q.Encode(), nil, &rows); err != nil {
+		return nil, err
+	}
+	if rows == nil {
+		rows = []StockLog{}
+	}
+	return rows, nil
+}
+
+// parseStockBooking reads Grocy 4's array of stock_log rows.
+// A single object is accepted for older replies, where "id" was the transaction id.
+// Inside an array, "id" is the numeric stock_log row and must not be used to undo.
+func parseStockBooking(raw json.RawMessage) (StockBooking, error) {
+	raw = bytes.TrimSpace(raw)
+	if len(raw) == 0 || string(raw) == "null" {
+		return StockBooking{}, fmt.Errorf("Grocy did not return a stock transaction")
+	}
+	type row struct {
+		ID            flexID `json:"id"`
+		TransactionID flexID `json:"transaction_id"`
+		StockID       string `json:"stock_id"`
+	}
+	var rows []row
+	if raw[0] == '[' {
+		if err := json.Unmarshal(raw, &rows); err != nil {
+			return StockBooking{}, fmt.Errorf("could not read Grocy's stock reply")
+		}
+		for _, item := range rows {
+			if id := item.TransactionID.String(); id != "" {
+				return StockBooking{TransactionID: id, StockID: item.StockID}, nil
+			}
+		}
+		return StockBooking{}, fmt.Errorf("Grocy did not return a stock transaction")
+	}
+	var one row
+	if err := json.Unmarshal(raw, &one); err != nil {
+		return StockBooking{}, fmt.Errorf("could not read Grocy's stock reply")
+	}
+	if id := one.TransactionID.String(); id != "" {
+		return StockBooking{TransactionID: id, StockID: one.StockID}, nil
+	}
+	if id := one.ID.String(); id != "" {
+		return StockBooking{TransactionID: id, StockID: one.StockID}, nil
+	}
+	return StockBooking{}, fmt.Errorf("Grocy did not return a stock transaction")
+}
+
+// Version reads grocy_version from /api/system/info.
+// Grocy 4 returns an object with Version; older replies used a string.
+func (a *API) Version(ctx context.Context) (string, error) {
+	var info struct {
+		GrocyVersion json.RawMessage `json:"grocy_version"`
+	}
+	if err := a.do(ctx, http.MethodGet, "/system/info", nil, &info); err != nil {
+		return "", err
+	}
+	return parseGrocyVersion(info.GrocyVersion)
+}
+
+func parseGrocyVersion(raw json.RawMessage) (string, error) {
+	raw = bytes.TrimSpace(raw)
+	if len(raw) == 0 || string(raw) == "null" {
+		return "", fmt.Errorf("Grocy did not report a version")
+	}
+	if raw[0] == '"' {
+		var s string
+		if err := json.Unmarshal(raw, &s); err != nil || strings.TrimSpace(s) == "" {
+			return "", fmt.Errorf("Grocy did not report a version")
+		}
+		return strings.TrimSpace(s), nil
+	}
+	var obj struct {
+		Version string `json:"Version"`
+	}
+	if err := json.Unmarshal(raw, &obj); err != nil || strings.TrimSpace(obj.Version) == "" {
+		return "", fmt.Errorf("Grocy did not report a version")
+	}
+	return strings.TrimSpace(obj.Version), nil
 }
 
 func (a *API) do(ctx context.Context, method, path string, body any, dest any) error {
@@ -277,7 +415,7 @@ func (a *API) do(ctx context.Context, method, path string, body any, dest any) e
 		return fmt.Errorf("could not read Grocy's reply")
 	}
 	if resp.StatusCode >= 300 {
-		return fmt.Errorf("Grocy returned %d for %s", resp.StatusCode, path)
+		return grocyStatusError(resp.StatusCode, path, raw)
 	}
 	if dest == nil || len(bytes.TrimSpace(raw)) == 0 {
 		return nil
@@ -286,4 +424,26 @@ func (a *API) do(ctx context.Context, method, path string, body any, dest any) e
 		return fmt.Errorf("could not read Grocy's reply for %s", path)
 	}
 	return nil
+}
+
+func grocyStatusError(status int, path string, raw []byte) error {
+	msg := grocyErrorMessage(raw)
+	if msg == "" {
+		return fmt.Errorf("Grocy returned %d for %s", status, path)
+	}
+	return fmt.Errorf("Grocy returned %d for %s: %s", status, path, msg)
+}
+
+func grocyErrorMessage(raw []byte) string {
+	var body struct {
+		Message string `json:"error_message"`
+	}
+	if err := json.Unmarshal(raw, &body); err != nil {
+		return ""
+	}
+	msg := strings.TrimSpace(body.Message)
+	if len(msg) > 500 {
+		msg = msg[:500]
+	}
+	return msg
 }

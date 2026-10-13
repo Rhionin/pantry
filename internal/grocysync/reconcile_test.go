@@ -254,6 +254,191 @@ func TestReconcileRewritesPurchaseDate(t *testing.T) {
 	}
 }
 
+func TestReconcileKeepsOnePurchaseWhenGrocyAlreadyHasTheNote(t *testing.T) {
+	fake := newFakeGrocy()
+	srv := fake.server()
+	defer srv.Close()
+	api, err := NewAPI(srv.URL, fake.key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m, err := OpenMap(filepath.Join(t.TempDir(), "map.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer m.Close()
+	inAt := time.Date(2026, 3, 1, 12, 0, 0, 0, time.UTC)
+	snap := syncsnap.Snapshot{
+		Products:  []syncsnap.Product{{ID: "p1", Name: "Milk"}},
+		Instances: []syncsnap.Instance{{ID: "i1", ProductID: "p1", StockInAt: inAt, StockMoveID: "in1"}},
+		Moves:     []syncsnap.Move{{ID: "in1", ProductID: "p1", Direction: "in", Quantity: 1, At: inAt}},
+	}
+	rec := &Reconciler{Pantry: &fixedSource{snap: snap}, Grocy: api, Map: m, Loc: time.UTC}
+	if err := rec.Reconcile(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	link, ok, err := m.Get(linkInstance, "i1")
+	if err != nil || !ok || link.GrocyRef == "" {
+		t.Fatalf("link = %#v %v", link, err)
+	}
+	saved := link.GrocyRef
+	link.GrocyRef = ""
+	if err := m.Put(link); err != nil {
+		t.Fatal(err)
+	}
+	adds := fake.count("POST", "/stock/products/")
+	if err := rec.Reconcile(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if got := fake.count("POST", "/stock/products/"); got != adds {
+		t.Fatalf("lost reply was added again, posts %d then %d", adds, got)
+	}
+	link, _, err = m.Get(linkInstance, "i1")
+	if err != nil || link.GrocyRef != saved {
+		t.Fatalf("ref = %q, want %q (%v)", link.GrocyRef, saved, err)
+	}
+	if len(fake.stock) != 1 || fake.stock[0].Amount != 1 {
+		t.Fatalf("stock = %#v", fake.stock)
+	}
+
+	if err := m.Delete(linkInstance, "i1"); err != nil {
+		t.Fatal(err)
+	}
+	if err := rec.Reconcile(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if got := fake.count("POST", "/stock/products/"); got != adds {
+		t.Fatalf("missing map row added again, posts %d", got)
+	}
+
+	extra := fake.duplicatePurchase(instancePrefix + "i1")
+	if extra == "" || extra == saved {
+		t.Fatalf("extra = %q", extra)
+	}
+	if len(fake.stock) != 1 || fake.stock[0].Amount != 2 {
+		t.Fatalf("duplicated stock = %#v", fake.stock)
+	}
+	undos := fake.count("POST", "/undo")
+	if err := rec.Reconcile(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	// Undoing the extra purchase deletes the shared stock row, so both bookings are undone and one unit is added back.
+	if got := fake.count("POST", "/stock/products/"); got != adds+1 {
+		t.Fatalf("repair posts = %d, want %d", got, adds+1)
+	}
+	if got := fake.count("POST", "/undo"); got != undos+2 {
+		t.Fatalf("undos = %d, want %d", got, undos+2)
+	}
+	if !fake.saw("POST", "/stock/transactions/"+extra+"/undo") {
+		t.Fatalf("extra transaction %s was not undone: %v", extra, fake.calls)
+	}
+	if len(fake.stock) != 1 || fake.stock[0].Amount != 1 {
+		t.Fatalf("stock after repair = %#v", fake.stock)
+	}
+	adds = fake.count("POST", "/stock/products/")
+	undos = fake.count("POST", "/undo")
+	if err := rec.Reconcile(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if got := fake.count("POST", "/stock/products/"); got != adds {
+		t.Fatalf("third reconcile added stock, posts %d", got)
+	}
+	if got := fake.count("POST", "/undo"); got != undos {
+		t.Fatalf("third reconcile undid again, undos %d", got)
+	}
+}
+
+func TestReconcileConsumesAfterUndoingADuplicatePurchase(t *testing.T) {
+	fake := newFakeGrocy()
+	srv := fake.server()
+	defer srv.Close()
+	api, err := NewAPI(srv.URL, fake.key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m, err := OpenMap(filepath.Join(t.TempDir(), "map.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer m.Close()
+	inAt := time.Date(2026, 3, 1, 12, 0, 0, 0, time.UTC)
+	snap := syncsnap.Snapshot{
+		Products:  []syncsnap.Product{{ID: "p1", Name: "Milk"}},
+		Instances: []syncsnap.Instance{{ID: "i1", ProductID: "p1", StockInAt: inAt, StockMoveID: "in1"}},
+		Moves:     []syncsnap.Move{{ID: "in1", ProductID: "p1", Direction: "in", Quantity: 1, At: inAt}},
+	}
+	rec := &Reconciler{Pantry: &fixedSource{snap: snap}, Grocy: api, Map: m, Loc: time.UTC}
+	if err := rec.Reconcile(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if extra := fake.duplicatePurchase(instancePrefix + "i1"); extra == "" {
+		t.Fatal("no duplicate")
+	}
+	used := snap
+	used.Instances = nil
+	used.Removals = []syncsnap.Removal{{InstanceID: "i1", ProductID: "p1", Reason: "expired", StockMoveID: "in1", RemovedByMoveID: "out1"}}
+	used.Moves = append(append([]syncsnap.Move{}, snap.Moves...), syncsnap.Move{ID: "out1", ProductID: "p1", Direction: "out", Quantity: 1, At: inAt.Add(time.Hour)})
+	rec.Pantry = &fixedSource{snap: used}
+	if err := rec.Reconcile(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if len(fake.stock) != 0 {
+		t.Fatalf("stock = %#v", fake.stock)
+	}
+	if fake.count("POST", "/consume") != 1 {
+		t.Fatalf("consumes = %d", fake.count("POST", "/consume"))
+	}
+}
+
+func TestReconcileIncludesGrocyStockError(t *testing.T) {
+	const msg = "The given best before date is invalid"
+	fake := newFakeGrocy()
+	fake.bookingError = msg
+	srv := fake.server()
+	defer srv.Close()
+	api, err := NewAPI(srv.URL, fake.key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m, err := OpenMap(filepath.Join(t.TempDir(), "map.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer m.Close()
+	inAt := time.Date(2026, 3, 1, 12, 0, 0, 0, time.UTC)
+	rec := &Reconciler{
+		Pantry: &fixedSource{snap: syncsnap.Snapshot{
+			Products:  []syncsnap.Product{{ID: "p1", Name: "Milk"}},
+			Instances: []syncsnap.Instance{{ID: "i1", ProductID: "p1", StockInAt: inAt, StockMoveID: "in1"}},
+			Moves:     []syncsnap.Move{{ID: "in1", ProductID: "p1", Direction: "in", Quantity: 1, At: inAt}},
+		}},
+		Grocy: api, Map: m, Loc: time.UTC,
+	}
+	err = rec.Reconcile(context.Background())
+	if err == nil || !strings.Contains(err.Error(), "could not add stock in Grocy") || !strings.Contains(err.Error(), msg) {
+		t.Fatalf("err = %v", err)
+	}
+	if strings.Contains(err.Error(), fake.key) {
+		t.Fatalf("error leaked the API key: %v", err)
+	}
+
+	fake.bookingError = ""
+	if err := rec.Reconcile(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	fake.undoError = "This transaction was not found or already undone"
+	later := inAt.Add(48 * time.Hour)
+	rec.Pantry = &fixedSource{snap: syncsnap.Snapshot{
+		Products:  []syncsnap.Product{{ID: "p1", Name: "Milk"}},
+		Instances: []syncsnap.Instance{{ID: "i1", ProductID: "p1", StockInAt: later, StockMoveID: "in1"}},
+		Moves:     []syncsnap.Move{{ID: "in1", ProductID: "p1", Direction: "in", Quantity: 1, At: later}},
+	}}
+	err = rec.Reconcile(context.Background())
+	if err == nil || !strings.Contains(err.Error(), "could not undo a Grocy booking") || !strings.Contains(err.Error(), fake.undoError) {
+		t.Fatalf("err = %v", err)
+	}
+}
+
 func TestReconcileDeletesAProductThatLeft(t *testing.T) {
 	fake := newFakeGrocy()
 	srv := fake.server()
@@ -292,6 +477,169 @@ func TestReconcileDeletesAProductThatLeft(t *testing.T) {
 	}
 	if n := len(fake.objects["product_groups"]); n != 0 {
 		t.Fatalf("labels left = %d", n)
+	}
+}
+
+func TestReconcileIncludesGrocyProductError(t *testing.T) {
+	const msg = "SQLSTATE[HY000]: General error: 1 table products has no column named qu_factor_purchase_to_stock"
+	for _, tc := range []struct {
+		name string
+		snap syncsnap.Snapshot
+		want string
+	}{
+		{
+			name: "group",
+			snap: syncsnap.Snapshot{
+				Groups:   []syncsnap.Group{{ID: "g1", Name: "Beans", Rule: "favorite"}},
+				Products: []syncsnap.Product{{ID: "p1", Name: "Chickpeas", GroupID: "g1"}},
+			},
+			want: "could not save the Beans group in Grocy",
+		},
+		{
+			name: "product",
+			snap: syncsnap.Snapshot{
+				Products: []syncsnap.Product{{ID: "p1", Name: "Chickpeas"}},
+			},
+			want: "could not save Chickpeas in Grocy",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			fake := newFakeGrocy()
+			fake.productError = msg
+			srv := fake.server()
+			defer srv.Close()
+			api, err := NewAPI(srv.URL, fake.key)
+			if err != nil {
+				t.Fatal(err)
+			}
+			m, err := OpenMap(filepath.Join(t.TempDir(), "map.db"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer m.Close()
+			rec := &Reconciler{Pantry: &fixedSource{snap: tc.snap}, Grocy: api, Map: m, Loc: time.UTC}
+			err = rec.Reconcile(context.Background())
+			if err == nil || !strings.Contains(err.Error(), msg) || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("err = %v", err)
+			}
+			if !strings.Contains(err.Error(), "could not save the product in Grocy") {
+				t.Fatalf("upsert error dropped: %v", err)
+			}
+			if strings.Contains(err.Error(), fake.key) {
+				t.Fatalf("error leaked the API key: %v", err)
+			}
+		})
+	}
+}
+
+func TestAssignGrocyNamesKeepsBothClashTypesStable(t *testing.T) {
+	small := 170.0
+	large := 340.0
+	snap := syncsnap.Snapshot{
+		Groups: []syncsnap.Group{{ID: "g-bake", Name: "Baking powder"}},
+		Products: []syncsnap.Product{
+			{ID: "bake", Name: "Baking Powder"},
+			{ID: "hunt", Name: "Tomato paste", Brand: "Hunt's"},
+			{ID: "cont", Name: "Tomato paste", Brand: "Contadina"},
+			{ID: "oats-a", Name: "Oats", Brand: "Quaker", NetBaseValue: &small, NetDimension: "mass"},
+			{ID: "oats-b", Name: "Oats", Brand: "Quaker", NetBaseValue: &large, NetDimension: "mass"},
+			{ID: "product-aaaa-1111", Name: "Salt"},
+			{ID: "product-bbbb-2222", Name: "Salt"},
+		},
+	}
+	parents, products := assignGrocyNames(snap)
+	againParents, againProducts := assignGrocyNames(snap)
+	if parents["g-bake"] != "Baking powder (group)" || againParents["g-bake"] != parents["g-bake"] {
+		t.Fatalf("parent = %#v", parents)
+	}
+	if products["bake"] != "Baking Powder" {
+		t.Fatalf("member = %q", products["bake"])
+	}
+	if products["hunt"] != "Tomato paste (Hunt's)" || products["cont"] != "Tomato paste (Contadina)" {
+		t.Fatalf("brands = %#v", products)
+	}
+	if products["oats-a"] != "Oats (170 g)" || products["oats-b"] != "Oats (340 g)" {
+		t.Fatalf("sizes = %#v", products)
+	}
+	if products["product-aaaa-1111"] != "Salt (product-a)" || products["product-bbbb-2222"] != "Salt (product-b)" {
+		t.Fatalf("ids = %#v", products)
+	}
+	if againProducts["hunt"] != products["hunt"] || againProducts["product-bbbb-2222"] != products["product-bbbb-2222"] {
+		t.Fatal("names changed between calls")
+	}
+}
+
+func TestReconcileRenamesClashingProductsInPlace(t *testing.T) {
+	fake := newFakeGrocy()
+	srv := fake.server()
+	defer srv.Close()
+	api, err := NewAPI(srv.URL, fake.key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	bakeID, err := api.Create(ctx, "products", map[string]any{
+		"name": "Baking Powder", "description": "created earlier", "location_id": 1, "qu_id_purchase": 1, "qu_id_stock": 1,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := api.PutUserfields(ctx, bakeID, map[string]string{"pantry_id": "bake"}); err != nil {
+		t.Fatal(err)
+	}
+	pasteID, err := api.Create(ctx, "products", map[string]any{
+		"name": "Tomato paste", "description": "created earlier", "location_id": 1, "qu_id_purchase": 1, "qu_id_stock": 1,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := api.PutUserfields(ctx, pasteID, map[string]string{"pantry_id": "paste-a"}); err != nil {
+		t.Fatal(err)
+	}
+	m, err := OpenMap(filepath.Join(t.TempDir(), "map.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer m.Close()
+	snap := syncsnap.Snapshot{
+		Groups: []syncsnap.Group{{ID: "g-bake", Name: "Baking powder", Rule: "favorite", MemberIDs: []string{"bake"}}},
+		Products: []syncsnap.Product{
+			{ID: "bake", Name: "Baking Powder", GroupID: "g-bake"},
+			{ID: "paste-a", Name: "Tomato paste", Brand: "Hunt's"},
+			{ID: "paste-b", Name: "Tomato paste", Brand: "Contadina"},
+		},
+	}
+	rec := &Reconciler{Pantry: &fixedSource{snap: snap}, Grocy: api, Map: m, Loc: time.UTC}
+	if err := rec.Reconcile(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if got := len(fake.objects["products"]); got != 4 {
+		t.Fatalf("products = %d, want the two existing rows renamed plus Contadina and the group", got)
+	}
+	bake := fake.objects["products"][bakeID]
+	if strField(bake, "name") != "Baking Powder" {
+		t.Fatalf("baking powder = %#v", bake)
+	}
+	paste := fake.objects["products"][pasteID]
+	if strField(paste, "name") != "Tomato paste (Hunt's)" || !strings.Contains(strField(paste, "description"), "Name: Tomato paste") {
+		t.Fatalf("tomato paste = %#v", paste)
+	}
+	if fake.fields[pasteID]["pantry_id"] != "paste-a" || fake.fields[pasteID]["pantry_name"] != "Tomato paste" {
+		t.Fatalf("fields = %#v", fake.fields[pasteID])
+	}
+	parent := fake.productByMarker("group:g-bake")
+	if parent == nil || strField(parent, "name") != "Baking powder (group)" {
+		t.Fatalf("parent = %#v", parent)
+	}
+	if fake.fields[numField(parent, "id")]["pantry_name"] != "Baking powder" {
+		t.Fatalf("parent fields = %#v", fake.fields[numField(parent, "id")])
+	}
+	posts := fake.count("POST", "/objects/products")
+	if err := rec.Reconcile(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if fake.count("POST", "/objects/products") != posts {
+		t.Fatal("second reconcile duplicated a clashing product")
 	}
 }
 

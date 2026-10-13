@@ -110,6 +110,22 @@ http://{$PUBLIC_HOST} {
 				}
 			}
 
+			# /sw.js is the scan-alert service worker. Its scope is the site
+			# root, so the file has to be this exact path. Leave it
+			# uncompressed: Android Firefox has failed to install a gzipped
+			# worker. Do not set Cache-Control or Service-Worker-Allowed
+			# here. Pantry already sends each of those once, and a second
+			# copy is joined into a value the browser rejects. Subscribe and
+			# unsubscribe stay on /api and use the household session cookie,
+			# the same way the rest of the app does.
+			@serviceworker path /sw.js
+			handle @serviceworker {
+				reverse_proxy pantry:8080 {
+					header_up X-Pantry-Entry public
+					header_up X-Pantry-Client-IP {client_ip}
+				}
+			}
+
 			handle {
 				encode gzip
 				reverse_proxy pantry:8080 {

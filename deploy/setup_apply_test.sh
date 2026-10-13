@@ -225,6 +225,17 @@ run_setup "$lan"
 [[ "$LAST_RC" -eq 0 ]] || fail "second LAN setup exited $LAST_RC: $LAST_OUT"
 secret2=$(grep '^DEPLOY_HOOK_SECRET=' "$lan/.env" | cut -d= -f2-)
 [[ "$secret1" == "$secret2" ]] || fail "setup rotated DEPLOY_HOOK_SECRET"
+vapid_pub1=$(grep '^VAPID_PUBLIC_KEY=' "$lan/.env" | cut -d= -f2-)
+vapid_priv1=$(grep '^VAPID_PRIVATE_KEY=' "$lan/.env" | cut -d= -f2-)
+vapid_sub1=$(grep '^VAPID_SUBJECT=' "$lan/.env" | cut -d= -f2-)
+[[ $(printf '%s' "$vapid_pub1" | wc -c) -eq 87 ]] || fail "setup did not generate a VAPID public key (got $vapid_pub1)"
+[[ $(printf '%s' "$vapid_priv1" | wc -c) -eq 43 ]] || fail "setup did not generate a VAPID private key"
+[[ "$vapid_sub1" == "mailto:pantry@localhost" ]] || fail "LAN VAPID subject was $vapid_sub1"
+run_setup "$lan"
+[[ "$LAST_RC" -eq 0 ]] || fail "third LAN setup exited $LAST_RC: $LAST_OUT"
+vapid_pub2=$(grep '^VAPID_PUBLIC_KEY=' "$lan/.env" | cut -d= -f2-)
+vapid_priv2=$(grep '^VAPID_PRIVATE_KEY=' "$lan/.env" | cut -d= -f2-)
+[[ "$vapid_pub1" == "$vapid_pub2" && "$vapid_priv1" == "$vapid_priv2" ]] || fail "setup rotated VAPID keys"
 printed=$(PANTRY_DIR="$lan" PANTRY_SETUP_SKIP_ROOT=1 bash "$SETUP" deploy-secret)
 [[ "$printed" == "$secret1" ]] || fail "deploy-secret printed [$printed], want [$secret1]"
 lack "$LAST_DOCKER" "docker-compose.tunnel.yml" "LAN must not select the tunnel file"
@@ -622,11 +633,17 @@ custom=$(mktemp -d)
 write_env "$custom" \
   "DEPLOY_HOOK_SECRET=not-generated" \
   "HOST_PORT=8080" \
-  "PUBLIC_HOST=" \
-  "BASIC_AUTH_PASSWORD="
+  "PUBLIC_HOST=pantry.example.com" \
+  "BASIC_AUTH_PASSWORD=" \
+  "VAPID_PUBLIC_KEY=operator-public" \
+  "VAPID_PRIVATE_KEY=operator-private" \
+  "VAPID_SUBJECT="
 run_setup "$custom"
 [[ "$LAST_RC" -eq 0 ]] || fail "custom secret setup exited $LAST_RC: $LAST_OUT"
 grep -q '^DEPLOY_HOOK_SECRET=not-generated$' "$custom/.env" || fail "setup replaced a custom DEPLOY_HOOK_SECRET"
+grep -q '^VAPID_PUBLIC_KEY=operator-public$' "$custom/.env" || fail "setup replaced a custom VAPID public key"
+grep -q '^VAPID_PRIVATE_KEY=operator-private$' "$custom/.env" || fail "setup replaced a custom VAPID private key"
+grep -q '^VAPID_SUBJECT=mailto:pantry@pantry.example.com$' "$custom/.env" || fail "setup did not fill an empty VAPID subject"
 
 # --with-updates enables the timer and the path unit that the hook trips.
 updates=$(mktemp -d)
@@ -709,6 +726,110 @@ set -e
 have "$(cat /tmp/pantry-chown-skip.out)" "[warn] Could not give" "skip-root chown failure is a warning"
 unset CURL_SESSION_CODE CURL_SESSION_BODY
 
-rm -rf "$lan" "$pub" "$first" "$bad" "$incomplete" "$opt" "$mdns" "$split" "$badip" "$mdns_bin" "$tun" "$notoken" "$unready" "$tunsplit" "$mode_dir" "$custom" "$updates" "$unavailable" "$owned" "$own_bin" "$fail_bin"
+# Scanner udev rules match the input parent's id/vendor and id/product.
+# udev imports ID_VENDOR_ID / ID_MODEL_ID only for a device with a USB
+# ancestor, so a Bluetooth HID (uhid) scanner never matches ENV keys.
+# The same ATTRS form is what a USB scanner gets.
+assert_rule() {
+  local file="$1"
+  local label="$2"
+  local want="$3"
+  [[ -f "$file" ]] || fail "$label (rule file missing)"
+  local got
+  got=$(cat "$file")
+  want="${want%$'\n'}"
+  if [[ "$got" != "$want" ]]; then
+    printf 'FAIL: %s\n--- got ---\n%s\n--- want ---\n%s\n' "$label" "$got" "$want" >&2
+    exit 1
+  fi
+}
+
+rule_fix=$(mktemp -d)
+bt_devices="$rule_fix/bt-devices"
+bt_rule="$rule_fix/rules/99-pantry-scanner.rules"
+mkdir -p "$rule_fix/rules"
+cat > "$bt_devices" << 'EOF'
+I: Bus=0003 Vendor=046d Product=c31c Version=0111
+N: Name="Logitech USB Keyboard"
+
+I: Bus=0005 Vendor=04E8 Product=7021 Version=0110
+N: Name="Netum Barcode Scanner"
+EOF
+# The broken rule a previous setup.sh would have installed.
+cat > "$bt_rule" << 'EOF'
+# Pantry Scanner udev rule - auto-generated for "Netum Barcode Scanner"
+SUBSYSTEM=="input", KERNEL=="event*", ENV{ID_VENDOR_ID}=="04e8", ENV{ID_MODEL_ID}=="7021", \
+  SYMLINK+="input/pantry-scanner", GROUP="65532", MODE="0640"
+EOF
+write_env "$rule_fix" \
+  "HOST_PORT=8080" \
+  "PUBLIC_HOST=" \
+  "BASIC_AUTH_PASSWORD="
+PANTRY_INPUT_DEVICES="$bt_devices" PANTRY_UDEV_RULE_FILE="$bt_rule" \
+  run_setup "$rule_fix"
+[[ "$LAST_RC" -eq 0 ]] || fail "setup with bluetooth scanner exited $LAST_RC: $LAST_OUT"
+have "$LAST_OUT" "Matching on vendor=04e8 product=7021" "setup logs the scanner ids"
+bt_want='# Pantry Scanner udev rule - auto-generated for "Netum Barcode Scanner"
+SUBSYSTEM=="input", KERNEL=="event*", ATTRS{id/vendor}=="04e8", ATTRS{id/product}=="7021", \
+  SYMLINK+="input/pantry-scanner", GROUP="65532", MODE="0640"
+'
+assert_rule "$bt_rule" "setup replaces ENV match for a bluetooth scanner" "$bt_want"
+lack "$(cat "$bt_rule")" "ENV{ID_VENDOR_ID}" "installed rule no longer matches ENV vendor id"
+lack "$(cat "$bt_rule")" "ENV{ID_MODEL_ID}" "installed rule no longer matches ENV model id"
+
+# `rule` writes the same form for a USB scanner, and leaves a keyboard alone.
+usb_dir=$(mktemp -d)
+usb_devices="$usb_dir/devices"
+usb_rule="$usb_dir/99-pantry-scanner.rules"
+cat > "$usb_devices" << 'EOF'
+I: Bus=0003 Vendor=05e0 Product=1200 Version=0110
+N: Name="Symbol Bar Code Scanner"
+EOF
+PANTRY_INPUT_DEVICES="$usb_devices" PANTRY_UDEV_RULE_FILE="$usb_rule" \
+  run_setup "$usb_dir" rule
+[[ "$LAST_RC" -eq 0 ]] || fail "usb rule exited $LAST_RC: $LAST_OUT"
+usb_want='# Pantry Scanner udev rule - auto-generated for "Symbol Bar Code Scanner"
+SUBSYSTEM=="input", KERNEL=="event*", ATTRS{id/vendor}=="05e0", ATTRS{id/product}=="1200", \
+  SYMLINK+="input/pantry-scanner", GROUP="65532", MODE="0640"
+'
+assert_rule "$usb_rule" "usb scanner uses input parent ids" "$usb_want"
+usb_before=$(cat "$usb_rule")
+PANTRY_INPUT_DEVICES="$usb_devices" PANTRY_UDEV_RULE_FILE="$usb_rule" \
+  run_setup "$usb_dir" rule
+[[ "$LAST_RC" -eq 0 ]] || fail "second usb rule exited $LAST_RC: $LAST_OUT"
+have "$LAST_OUT" "already up to date" "second rule run leaves a matching rule in place"
+[[ "$(cat "$usb_rule")" == "$usb_before" ]] || fail "second rule run changed the usb rule"
+
+# No vendor/product: keep the name match.
+name_dir=$(mktemp -d)
+name_devices="$name_dir/devices"
+name_rule="$name_dir/99-pantry-scanner.rules"
+cat > "$name_devices" << 'EOF'
+N: Name="Handheld Scanner"
+EOF
+PANTRY_INPUT_DEVICES="$name_devices" PANTRY_UDEV_RULE_FILE="$name_rule" \
+  run_setup "$name_dir" rule
+[[ "$LAST_RC" -eq 0 ]] || fail "name fallback exited $LAST_RC: $LAST_OUT"
+name_want='# Pantry Scanner udev rule - auto-generated
+SUBSYSTEM=="input", KERNEL=="event*", ATTRS{name}=="Handheld Scanner", \
+  SYMLINK+="input/pantry-scanner", GROUP="65532", MODE="0640"
+'
+assert_rule "$name_rule" "missing ids fall back to device name" "$name_want"
+
+# Nothing that looks like a scanner: `rule` fails and does not invent a match.
+none_dir=$(mktemp -d)
+none_devices="$none_dir/devices"
+none_rule="$none_dir/99-pantry-scanner.rules"
+cat > "$none_devices" << 'EOF'
+I: Bus=0003 Vendor=046d Product=c31c Version=0111
+N: Name="Logitech USB Keyboard"
+EOF
+PANTRY_INPUT_DEVICES="$none_devices" PANTRY_UDEV_RULE_FILE="$none_rule" \
+  run_setup "$none_dir" rule
+[[ "$LAST_RC" -ne 0 ]] || fail "rule with no scanner should fail"
+have "$LAST_OUT" "$none_rule" "failure names the rule path"
+[[ ! -e "$none_rule" ]] || fail "rule with no scanner wrote $none_rule"
+
+rm -rf "$lan" "$pub" "$first" "$bad" "$incomplete" "$opt" "$mdns" "$split" "$badip" "$mdns_bin" "$tun" "$notoken" "$unready" "$tunsplit" "$mode_dir" "$custom" "$updates" "$unavailable" "$owned" "$own_bin" "$fail_bin" "$rule_fix" "$usb_dir" "$name_dir" "$none_dir"
 rm -f /tmp/pantry-chown-fail.out /tmp/pantry-chown-skip.out
 echo "setup_apply_test ok"

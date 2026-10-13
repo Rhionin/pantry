@@ -19,6 +19,7 @@ import (
 	"github.com/Rhionin/pantry/internal/events"
 	"github.com/Rhionin/pantry/internal/group"
 	"github.com/Rhionin/pantry/internal/product"
+	"github.com/Rhionin/pantry/internal/push"
 	"github.com/Rhionin/pantry/internal/scan"
 	"github.com/Rhionin/pantry/internal/scanlistener"
 	"github.com/Rhionin/pantry/internal/server"
@@ -244,6 +245,7 @@ func main() {
 		server.WithScannerMode(scannerMode),
 		server.WithDeployHook(os.Getenv("DEPLOY_HOOK_SECRET"), os.Getenv("DEPLOY_TRIGGER_PATH")),
 		server.WithSyncToken(os.Getenv("PANTRY_SYNC_TOKEN")),
+		server.WithPush(loadPushConfig()),
 	}
 	if strings.TrimSpace(os.Getenv("DEPLOY_HOOK_SECRET")) == "" {
 		log.Println("deploy hook: DEPLOY_HOOK_SECRET is empty; signed deploys are disabled")
@@ -285,6 +287,22 @@ func main() {
 	if err := srv.ListenAndServe(); err != nil {
 		log.Fatalf("listen: %v", err)
 	}
+}
+
+// loadPushConfig reads the VAPID pair setup stores in the environment.
+// Missing or unusable keys leave background alerts off. An open tab still
+// notifies itself.
+func loadPushConfig() push.Config {
+	cfg := push.ConfigFromEnv(os.Getenv)
+	switch {
+	case cfg.Configured():
+		log.Println("scan alerts: web push is on")
+	case strings.TrimSpace(os.Getenv("VAPID_PUBLIC_KEY")) != "" || strings.TrimSpace(os.Getenv("VAPID_PRIVATE_KEY")) != "":
+		log.Println("scan alerts: VAPID keys are set but not usable; background alerts are off")
+	default:
+		log.Println("scan alerts: web push is off until VAPID keys are set")
+	}
+	return cfg
 }
 
 // loadHouseholdAuth always returns a gate. An unset, empty, or unreadable

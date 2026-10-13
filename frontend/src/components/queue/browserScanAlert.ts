@@ -1,4 +1,5 @@
 import type { ScanDirection } from '../../types';
+import { backgroundAlertsEnabled, scanAlertsPreferred } from './pushAlerts';
 import type { AttentionNotice } from './scanAttention';
 
 export const SCAN_ALERT_OPEN = 'pantry-scan-alert-open';
@@ -27,6 +28,11 @@ export function takeScanAlertDirection(): ScanDirection | null {
 }
 
 export function showScanAlert(notice: AttentionNotice, onClick: () => void): void {
+  // The device switch gates every alert, including the in-page fallback.
+  // A stored push subscription already shows the same alert from the service
+  // worker, including while the tab is open.
+  if (!scanAlertsPreferred()) return;
+  if (backgroundAlertsEnabled()) return;
   if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return;
   try {
     const notification = new Notification(notice.title, {

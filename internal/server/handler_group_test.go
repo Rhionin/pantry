@@ -53,7 +53,11 @@ func TestGroupHandlers(t *testing.T) {
 				mustGroupProduct(env, "p1", "Small")
 				mustGroupProduct(env, "p2", "Large")
 				mustExec(env, `INSERT INTO supply_overrides (product_id, quantity) VALUES ('p1', 4)`)
-				mustExec(env, `UPDATE products SET net_dimension = 'volume' WHERE id = 'p1'`)
+				base, _, err := product.BaseFromAmount(12, "fl oz")
+				if err != nil {
+					env.T.Fatal(err)
+				}
+				mustExec(env, `UPDATE products SET net_base_value = ?, net_dimension = 'volume', net_size_origin = 'manual' WHERE id = 'p1'`, base)
 				mustExec(env, `INSERT INTO supply_overrides (product_id, window_months) VALUES ('p2', 2)`)
 				mustExec(env, `UPDATE products SET net_dimension = 'mass' WHERE id = 'p2'`)
 			},
@@ -66,9 +70,11 @@ func TestGroupHandlers(t *testing.T) {
 					{path: "$.code", value: "target_decision_required"},
 					{path: "$.members[0].productId", value: "p1"},
 					{path: "$.members[0].quantity", value: float64(4)},
+					{path: "$.members[0].amount", value: float64(48)},
 					{path: "$.members[0].dimension", value: "volume"},
 					{path: "$.members[1].windowMonths", value: float64(2)},
 					{path: "$.members[1].dimension", absent: true},
+					{path: "$.members[1].amount", absent: true},
 				},
 			},
 			afterRequest: exchanges(
@@ -86,7 +92,7 @@ func TestGroupHandlers(t *testing.T) {
 					expectedStatus: http.StatusCreated,
 					assertions: []assertion{
 						{path: "$.quantity", value: float64(24)},
-						{path: "$.dimension", value: "mass"},
+						{path: "$.dimension", value: "volume"},
 					},
 				},
 				httpExchange{
@@ -102,6 +108,25 @@ func TestGroupHandlers(t *testing.T) {
 					bodyContains:   []string{`"code":"in_group"`, `"groupId"`},
 				},
 			),
+		},
+		{
+			name: "an unsized quantity override is a count, not ounces",
+			setup: func(env testEnv) {
+				mustGroupProduct(env, "p1", "Small")
+				mustExec(env, `INSERT INTO supply_overrides (product_id, quantity) VALUES ('p1', 4)`)
+				mustExec(env, `UPDATE products SET net_dimension = 'volume' WHERE id = 'p1'`)
+			},
+			httpExchange: httpExchange{
+				method:         http.MethodPost,
+				path:           "/api/groups",
+				body:           `{"name":"Beans","productIds":["p1"]}`,
+				expectedStatus: http.StatusConflict,
+				assertions: []assertion{
+					{path: "$.members[0].quantity", value: float64(4)},
+					{path: "$.members[0].dimension", absent: true},
+					{path: "$.members[0].amount", absent: true},
+				},
+			},
 		},
 		{
 			name: "group usage is ounces per month when a rate qualifies",

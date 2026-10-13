@@ -87,6 +87,11 @@ func TestPublicProxyIsOptIn(t *testing.T) {
 	if !strings.Contains(pantry.Environment["PANTRY_SESSION_SECRET"], "PANTRY_SESSION_SECRET") {
 		t.Fatalf("pantry must receive PANTRY_SESSION_SECRET from .env, got %q", pantry.Environment["PANTRY_SESSION_SECRET"])
 	}
+	for _, key := range []string{"VAPID_PUBLIC_KEY", "VAPID_PRIVATE_KEY", "VAPID_SUBJECT"} {
+		if !strings.Contains(pantry.Environment[key], key) {
+			t.Fatalf("pantry must receive %s from .env, got %q", key, pantry.Environment[key])
+		}
+	}
 	if !hasExactPort(pantry.Volumes, "./auth:/etc/pantry/auth:ro") {
 		t.Fatalf("pantry must mount the household password directory, got %v", pantry.Volumes)
 	}
@@ -154,8 +159,8 @@ func TestPublicProxyIsOptIn(t *testing.T) {
 		}
 	}
 	authedMatchers := pathMatchers(text[authAt:])
-	if strings.Join(authedMatchers, "\n") != "path /api/events" {
-		t.Fatalf("path matchers after the login handle = %#v, want only /api/events", authedMatchers)
+	if strings.Join(authedMatchers, "\n") != "path /api/events\npath /sw.js" {
+		t.Fatalf("path matchers after the login handle = %#v, want /api/events and /sw.js", authedMatchers)
 	}
 	beforeAuth := text[:authAt]
 	for _, closed := range []string{"/api/inventory", "/api/scans", "/api/events", "/health", "/favicon.ico"} {
@@ -177,6 +182,9 @@ func TestPublicProxyIsOptIn(t *testing.T) {
 	}
 	if !strings.Contains(envText, "\nPANTRY_SESSION_SECRET=\n") {
 		t.Fatal(".env.example must leave PANTRY_SESSION_SECRET empty so setup can fill it once")
+	}
+	if !strings.Contains(envText, "\nVAPID_PUBLIC_KEY=\n") || !strings.Contains(envText, "\nVAPID_PRIVATE_KEY=\n") || !strings.Contains(envText, "\nVAPID_SUBJECT=\n") {
+		t.Fatal(".env.example must leave VAPID keys empty so setup can fill them once")
 	}
 
 	setup, err := os.ReadFile(filepath.Join("..", "..", "deploy", "setup.sh"))
@@ -279,6 +287,20 @@ func TestPublicProxyIsOptIn(t *testing.T) {
 	tunnelRoutes := routeBody(tunnelText)
 	if acmeRoutes == "" || acmeRoutes != tunnelRoutes {
 		t.Fatal("certificate and tunnel Caddyfiles must share the same route block")
+	}
+	// Pantry sends these on /sw.js. A second copy from Caddy is joined with
+	// the app's, and the combined Service-Worker-Allowed value is not a scope.
+	// Comment lines may name the headers; a directive must not set them.
+	for _, line := range strings.Split(acmeRoutes, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" || strings.HasPrefix(trimmed, "#") {
+			continue
+		}
+		for _, forbidden := range []string{"Service-Worker-Allowed", "header Cache-Control"} {
+			if strings.Contains(line, forbidden) {
+				t.Fatalf("Caddy route block sets %q; Pantry sends Cache-Control and Service-Worker-Allowed once", forbidden)
+			}
+		}
 	}
 	for _, want := range []string{
 		"http://{$PUBLIC_HOST}",

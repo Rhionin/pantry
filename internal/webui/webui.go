@@ -134,7 +134,16 @@ func (h *handler) serveOpened(w http.ResponseWriter, r *http.Request, name strin
 
 	// Set these only once the body is readable. A long-lived cache header on
 	// an error response would pin the failure to that hashed URL.
-	if strings.HasPrefix(name, "assets/") {
+	// sw.js must not be transformed by a proxy. Android Firefox has failed
+	// to install a compressed worker, and the file has to stay at the site
+	// root so its scope is the whole pantry. Cache-Control and
+	// Service-Worker-Allowed are set here only. A proxy that repeats either
+	// one joins the copies, and "/, /" is not a scope a browser will register.
+	if name == "sw.js" {
+		w.Header().Set("Cache-Control", "no-cache, no-transform")
+		w.Header().Set("Service-Worker-Allowed", "/")
+		w.Header().Set("Content-Type", "text/javascript; charset=utf-8")
+	} else if strings.HasPrefix(name, "assets/") {
 		w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
 	} else {
 		w.Header().Set("Cache-Control", "no-cache")

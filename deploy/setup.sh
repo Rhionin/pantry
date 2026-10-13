@@ -54,6 +54,10 @@ source "$SCRIPT_DIR/auth-migrate.sh"
 PANTRY_DIR="${PANTRY_DIR:-/opt/pantry}"
 # Where systemd units are installed. Tests point this at a temp directory.
 PANTRY_SYSTEMD_UNIT_DIR="${PANTRY_SYSTEMD_UNIT_DIR:-/etc/systemd/system}"
+# Input device table and installed udev rule. Tests point these at temp files
+# so rule generation can be checked without a scanner or root.
+PANTRY_INPUT_DEVICES="${PANTRY_INPUT_DEVICES:-/proc/bus/input/devices}"
+PANTRY_UDEV_RULE_FILE="${PANTRY_UDEV_RULE_FILE:-/etc/udev/rules.d/99-pantry-scanner.rules}"
 # shellcheck disable=SC1091
 source "$SCRIPT_DIR/publish-mode.sh"
 
@@ -151,7 +155,7 @@ copy_deploy_files() {
   log_info "Copying deployment files to ${PANTRY_DIR}..."
   mkdir -p "${PANTRY_DIR}"
   local item src dest
-  for item in docker-compose.yml docker-compose.tunnel.yml docker-compose.grocy.yml .env.example Caddyfile Caddyfile.tunnel publish-mode.sh auth-migrate.sh udev systemd firewall mdns dns; do
+  for item in docker-compose.yml docker-compose.tunnel.yml docker-compose.grocy.yml .env.example Caddyfile Caddyfile.tunnel publish-mode.sh auth-migrate.sh vapid-env.sh udev systemd firewall mdns dns; do
     src="$SCRIPT_DIR/$item"
     dest="${PANTRY_DIR}/$item"
     if [[ ! -e "$src" ]]; then
@@ -622,6 +626,11 @@ cmd_apply() {
   copy_deploy_files
   cmd_reconcile_env
   ensure_deploy_hook_secret
+  # shellcheck disable=SC1091
+  source "$SCRIPT_DIR/vapid-env.sh"
+  if ! ensure_vapid_keys; then
+    fatal "Could not generate VAPID keys for scan alerts"
+  fi
   if [[ -f "$PANTRY_DIR/.env" ]]; then
     chmod 600 "$PANTRY_DIR/.env"
   fi
@@ -904,12 +913,11 @@ cmd_rule() {
   require_root
   log_info "Generating udev rule for barcode scanner..."
 
-  # Find candidates from /proc/bus/input/devices. Each device block has an
-  # "I:" line (Bus/Vendor/Product) and an "N: Name=..." line. We capture both
-  # so a USB scanner can be matched on vendor/product (robust) rather than on
-  # its name string alone.
+  # Find candidates from the input device table. Each device block has an
+  # "I:" line (Bus/Vendor/Product) and an "N: Name=..." line. Vendor and
+  # Product are the input device's ids, for USB HID and Bluetooth HID.
   local candidate_names=() candidate_vids=() candidate_pids=()
-  if [[ -f /proc/bus/input/devices ]]; then
+  if [[ -f "$PANTRY_INPUT_DEVICES" ]]; then
     local cur_vid="" cur_pid=""
     while IFS= read -r line; do
       if [[ "$line" =~ ^I:\ Bus= ]]; then
@@ -930,7 +938,7 @@ cmd_rule() {
         fi
         shopt -u nocasematch
       fi
-    done < /proc/bus/input/devices
+    done < "$PANTRY_INPUT_DEVICES"
   fi
 
   # Show candidates or use first
@@ -939,10 +947,10 @@ cmd_rule() {
       log_warn "No scanner candidates found; leaving udev rules unchanged. Plug in a scanner and run 'sudo ./setup.sh rule' to generate one."
       return 0
     fi
-    log_warn "No scanner candidates found in /proc/bus/input/devices"
+    log_warn "No scanner candidates found in $PANTRY_INPUT_DEVICES"
     log_info "Devices available:"
-    grep "^N: " /proc/bus/input/devices || true
-    fatal "Please manually create the udev rule at /etc/udev/rules.d/99-pantry-scanner.rules"
+    grep "^N: " "$PANTRY_INPUT_DEVICES" || true
+    fatal "Please manually create the udev rule at $PANTRY_UDEV_RULE_FILE"
   fi
 
   if [[ ${#candidate_names[@]} -gt 1 ]]; then
@@ -956,10 +964,12 @@ cmd_rule() {
   local scanner_vid="${candidate_vids[0]}"
   local scanner_pid="${candidate_pids[0]}"
 
-  # Prefer matching on vendor/product IDs when available (robust, not
-  # order-sensitive). udev's input_id builtin lowercases these into
-  # ENV{ID_VENDOR_ID}/ENV{ID_MODEL_ID}. Fall back to the device name for
-  # Bluetooth or when IDs are absent.
+  # Match the input device parent. The kernel exposes id/vendor and
+  # id/product there for USB HID and Bluetooth HID (uhid), and both keys
+  # sit on that same parent. udev imports ENV{ID_VENDOR_ID} and
+  # ENV{ID_MODEL_ID} only when a USB ancestor exists, so a Bluetooth
+  # scanner never matches a rule written with those properties. Fall
+  # back to the device name only when the IDs are absent.
   local rule_content
   if [[ -n "$scanner_vid" && -n "$scanner_pid" ]]; then
     local vid_lc pid_lc
@@ -967,7 +977,7 @@ cmd_rule() {
     pid_lc=$(printf '%s' "$scanner_pid" | tr '[:upper:]' '[:lower:]')
     log_info "Matching on vendor=$vid_lc product=$pid_lc"
     rule_content="# Pantry Scanner udev rule - auto-generated for \"$scanner_name\"
-SUBSYSTEM==\"input\", KERNEL==\"event*\", ENV{ID_VENDOR_ID}==\"$vid_lc\", ENV{ID_MODEL_ID}==\"$pid_lc\", \\
+SUBSYSTEM==\"input\", KERNEL==\"event*\", ATTRS{id/vendor}==\"$vid_lc\", ATTRS{id/product}==\"$pid_lc\", \\
   SYMLINK+=\"input/pantry-scanner\", GROUP=\"65532\", MODE=\"0640\"
 "
   else
@@ -978,14 +988,20 @@ SUBSYSTEM==\"input\", KERNEL==\"event*\", ATTRS{name}==\"$scanner_name\", \\
 "
   fi
 
-  local rule_file="/etc/udev/rules.d/99-pantry-scanner.rules"
+  local rule_file="$PANTRY_UDEV_RULE_FILE"
 
   # Only write if the installed content differs from what we would generate.
   # Comparing the whole content (not just the match key) means an outdated
   # rule — e.g. one from a pre-hotplug version whose SYMLINK was still
-  # "pantry-scanner" instead of "input/pantry-scanner" — is correctly
-  # rewritten on re-run.
-  if [[ ! -f "$rule_file" ]] || [[ "$(cat "$rule_file")" != "$rule_content" ]]; then
+  # "pantry-scanner" instead of "input/pantry-scanner", or an ENV match that
+  # misses Bluetooth HID — is rewritten on re-run. Command substitution
+  # drops the file's trailing newline, so the generated text is compared
+  # the same way.
+  local installed=""
+  if [[ -f "$rule_file" ]]; then
+    installed=$(cat "$rule_file")
+  fi
+  if [[ ! -f "$rule_file" ]] || [[ "$installed" != "${rule_content%$'\n'}" ]]; then
     printf '%s' "$rule_content" > "$rule_file"
     log_success "Wrote $rule_file"
   else
@@ -1044,15 +1060,15 @@ cmd_status() {
   fi
 
   # 4. udev rule exists
-  if [[ -f /etc/udev/rules.d/99-pantry-scanner.rules ]]; then
-    if grep -q "SYMLINK.*input/pantry-scanner" /etc/udev/rules.d/99-pantry-scanner.rules; then
+  if [[ -f "$PANTRY_UDEV_RULE_FILE" ]]; then
+    if grep -q "SYMLINK.*input/pantry-scanner" "$PANTRY_UDEV_RULE_FILE"; then
       log_success "udev rule installed with symlink at /dev/input/pantry-scanner"
     else
       log_error "udev rule exists but does not set symlink to /dev/input/pantry-scanner"
       failed=$((failed + 1))
     fi
   else
-    log_warn "udev rule not installed at /etc/udev/rules.d/99-pantry-scanner.rules"
+    log_warn "udev rule not installed at $PANTRY_UDEV_RULE_FILE"
   fi
 
   # 5. Scanner device resolves to a real node, and 6. that node is group

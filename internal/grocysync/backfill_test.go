@@ -3,6 +3,7 @@ package grocysync
 import (
 	"context"
 	"database/sql"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -136,6 +137,20 @@ func TestApplyHistoryWritesRealDatesAndIsIdempotent(t *testing.T) {
 	})
 }
 
+func TestHistorySameAcceptsTheDriverDatetimeForm(t *testing.T) {
+	row := historyRow{
+		Type: "purchase", Amount: 1, Stamp: "2024-11-02 23:30:00",
+		BestBefore: "2025-11-02", Purchased: "2024-11-02",
+	}
+	ex := existingHistory{
+		Type: "purchase", Amount: 1, Stamp: "2024-11-02T23:30:00Z",
+		Best: "2025-11-02T00:00:00Z", Purchased: "2024-11-02T00:00:00Z",
+	}
+	if !historySame(ex, row) {
+		t.Fatal("a datetime the sqlite driver rewrote was treated as a different journal time")
+	}
+}
+
 func TestApplyHistoryRefusesUnknownProductsBeforeBackup(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "grocy.db")
 	db := openGrocyDB(t, path)
@@ -154,6 +169,87 @@ func TestApplyHistoryRefusesUnknownProductsBeforeBackup(t *testing.T) {
 	}
 	if backups(t, path) != 0 {
 		t.Fatal("failed plan still backed up the database")
+	}
+}
+
+func TestApplyHistoryRefusesWhenDatabaseLooksInUse(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "grocy.db")
+	db := openGrocyDB(t, path)
+	db.Close()
+	if err := os.WriteFile(path+"-wal", []byte{}, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	_, err := ApplyHistory(context.Background(), HistoryOptions{
+		DBPath:     path,
+		LocationID: 1,
+		Products:   map[string]int{"p1": 9},
+		Confirm:    true,
+		Now:        time.Date(2026, 10, 10, 0, 0, 0, 0, time.UTC),
+		Snap: syncsnap.Snapshot{Moves: []syncsnap.Move{{
+			ID: "m1", ProductID: "p1", Direction: "in", Quantity: 1, At: time.Now(),
+		}}},
+	})
+	if err == nil || !strings.Contains(err.Error(), "looks in use") || !strings.Contains(err.Error(), "Nothing was changed") {
+		t.Fatalf("err = %v", err)
+	}
+	if backups(t, path) != 0 {
+		t.Fatal("in-use database was backed up")
+	}
+
+	locked := filepath.Join(t.TempDir(), "grocy.db")
+	open := openGrocyDB(t, locked)
+	open.Close()
+	holder, err := sql.Open("sqlite", locked)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer holder.Close()
+	holder.SetMaxOpenConns(1)
+	if _, err := holder.Exec(`BEGIN IMMEDIATE`); err != nil {
+		t.Fatal(err)
+	}
+	defer holder.Exec(`ROLLBACK`)
+	_, err = ApplyHistory(context.Background(), HistoryOptions{
+		DBPath:     locked,
+		LocationID: 1,
+		Products:   map[string]int{"p1": 9},
+		Confirm:    true,
+		Now:        time.Date(2026, 10, 10, 0, 0, 0, 0, time.UTC),
+		Snap: syncsnap.Snapshot{Moves: []syncsnap.Move{{
+			ID: "m1", ProductID: "p1", Direction: "in", Quantity: 1, At: time.Now(),
+		}}},
+	})
+	if err == nil || !strings.Contains(err.Error(), "looks in use") || !strings.Contains(err.Error(), "Nothing was changed") {
+		t.Fatalf("locked err = %v", err)
+	}
+	if backups(t, locked) != 0 {
+		t.Fatal("locked database was backed up")
+	}
+}
+
+func TestApplyHistoryRefusesWhenDatabaseIsNotWritable(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "grocy.db")
+	db := openGrocyDB(t, path)
+	db.Close()
+	if err := os.Chmod(path, 0o444); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(path, 0o644) })
+	_, err := ApplyHistory(context.Background(), HistoryOptions{
+		DBPath:     path,
+		LocationID: 1,
+		Products:   map[string]int{"p1": 9},
+		Confirm:    true,
+		Now:        time.Date(2026, 10, 10, 0, 0, 0, 0, time.UTC),
+		Snap: syncsnap.Snapshot{Moves: []syncsnap.Move{{
+			ID: "m1", ProductID: "p1", Direction: "in", Quantity: 1, At: time.Now(),
+		}}},
+	})
+	if err == nil || !strings.Contains(err.Error(), "uid 1001") || !strings.Contains(err.Error(), "65532") || !strings.Contains(err.Error(), "Nothing was changed") {
+		t.Fatalf("err = %v", err)
+	}
+	if backups(t, path) != 0 {
+		t.Fatal("unwritable database was backed up")
 	}
 }
 
