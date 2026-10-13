@@ -1,18 +1,20 @@
 # Scan alerts
 
-While Pantry is open in a browser tab, the scan queue offers "Notify me about
-scans". That button is the only way the page asks for notification permission.
-After permission is granted, a failed lookup and an unrecognized product each
-raise a browser notification immediately. A stock in or stock out batch of
-recognized scans raises one notification 5 minutes after the last scan in that
-batch. Clicking a notification focuses the scan queue on the tab that holds
-those scans.
+Scan alerts are turned on from Settings, for this browser only. The switch
+asks for notification permission, then stores a push subscription when this
+pantry has a push key. After that, a failed lookup and an unrecognized product
+each raise a browser notification immediately. A stock in or stock out batch
+of recognized scans raises one notification 5 minutes after the last scan in
+that batch. Clicking a notification focuses the scan queue on the tab that
+holds those scans. Turning the switch off stops those alerts and removes this
+browser's push subscription.
 
 ## Sub-features
 
-- `alert-permission` the scan queue shows "Notify me about scans" until the
-  person uses it. Loading the page does not open the browser permission prompt.
-- `alert-immediate` a failed lookup and an unrecognized barcode notify at once.
+- `alert-permission` Settings shows "Scan alerts on this device". The switch
+  starts off. Loading Scan Queue does not open the browser permission prompt.
+- `alert-immediate` a failed lookup and an unrecognized barcode notify at once
+  while the switch is on.
 - `alert-batch` recognized stock in and stock out scans share a 5-minute quiet
   period per direction. One notification names how many scans are still waiting.
 - `alert-open` choosing the notification focuses Scan Queue. A stock in notice
@@ -20,28 +22,32 @@ those scans.
 
 ## How to get to it (user POV)
 
-- Open `Scan Queue` (`/`). The control sits under the scanner connection line
-  and above the Stock in and Stock out tabs.
-- Use `Notify me about scans`, then allow notifications in the browser prompt.
-- Leave the tab open. Scan from this page or from the scanner.
+- Open the header menu and choose `Settings` (`/settings`). The switch sits
+  under the default group rule.
+- Turn on `Scan alerts on this device`, then allow notifications in the
+  browser prompt.
+- Return to `Scan Queue` (`/`). Leave the tab open. Scan from this page or
+  from the scanner.
 
 ## Driving it with Playwright
 
 Preconditions:
 
 - App is healthy (`doctor` passes) at `http://127.0.0.1:5173`.
-- Notification permission starts unset, so the button is visible.
+- Notification permission starts unset, so the switch is off and the status
+  reads `Off`.
 - Products for a batch are seeded with `createKnownProduct`. An unseeded
   barcode is the unrecognized-product case. External lookup is off.
 - The queue banner reads `Mode: stock_in` before the batch scan.
 
-- **See the ask.** `getByRole('button', { name: 'Notify me about scans' })` is
-  visible, and its description says failed scans and unrecognized products
-  alert right away.
-- **Allow alerts.** `context.grantPermissions(['notifications'])`, then click
-  `Notify me about scans`. The button leaves the page. A status line says
-  alerts work while Pantry is closed when this browser stored a push
-  subscription, or that they stay in this tab when it could not.
+- **See the switch.** On Settings,
+  `getByRole('switch', { name: 'Scan alerts on this device' })` is off. Its
+  description says this browser only. The status line reads `Off`.
+- **Allow alerts.** `context.grantPermissions(['notifications'])`, then turn
+  the switch on. The status line reads `On: alerts arrive even when Pantry is
+  closed` when this browser stored a push subscription. Otherwise it names why
+  push failed and still says alerts arrive while this tab is open, with a
+  `Retry` button.
 - **Unrecognized product.** `scanBarcode` an unseeded barcode. The card shows
   `Flagged`. The notification title is `Unrecognized product`.
 - **Quiet batch.** Scan a seeded product, then advance the page clock by 5
@@ -50,18 +56,19 @@ Preconditions:
 `scripts/drive-scan-alerts.mjs` is this recipe. `scripts/drive-scan-push.mjs`
 repeats the permission step with VAPID keys in the environment and a normal
 Chrome profile. An incognito window cannot subscribe. When the subscription
-is stored, the status says alerts arrive while Pantry is closed.
+is stored, the status says alerts arrive even when Pantry is closed.
 
 ## Gotchas
 
 - A browser that stores a push subscription gets the same three alerts from
   the server, including while Pantry is closed. The page notification is the
   fallback when that subscription is not available, and it still needs the tab.
-- iPhone Safari has no Notification API for a normal tab, so the queue shows
-  "This browser cannot show notifications from an open tab."
+- A browser with no Notification API shows "This browser cannot show
+  notifications." on Settings and the switch stays off.
 - The 5-minute wait is the same gap that splits session cards. A driver proves
   it by installing `page.clock` before navigation and fast-forwarding.
-- Grant notification permission only after the button is on screen. Granting
-  it before load hides the button, because permission is already `granted`.
+- Leave notification permission unset until the switch is on screen. Granting
+  it before Settings loads turns the switch on, because a granted permission
+  is the old opt-in.
 - Choosing a stock in notification selects the Stock in tab, which also sets
   the shared scanner mode, the same as tapping that tab.

@@ -1,4 +1,4 @@
-// drive-scan-push.mjs — proves the notify button stores a push subscription
+// drive-scan-push.mjs — proves the settings switch stores a push subscription
 // when this pantry has VAPID keys. Run through scripts/pantry-verify.sh with
 // VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY, and VAPID_SUBJECT set.
 import { mkdir } from 'node:fs/promises';
@@ -19,16 +19,16 @@ try {
   const logs = [];
   page.on('console', (message) => logs.push(`${message.type()}: ${message.text()}`));
   page.on('pageerror', (error) => logs.push(`pageerror: ${error.message}`));
-  await page.goto(WEB_URL);
-  const ask = page.getByRole('button', { name: 'Notify me about scans' });
+  await page.goto(`${WEB_URL}/settings`);
+  const ask = page.getByRole('switch', { name: 'Scan alerts on this device' });
   await ask.waitFor({ state: 'visible', timeout: 15_000 });
   await context.grantPermissions(['notifications']);
   await ask.click();
-  const status = page.locator('.scan-alert-prompt').getByRole('status');
+  const status = page.locator('#scan-alert-status');
   await status.waitFor({ state: 'visible', timeout: 10_000 });
   try {
     await page.waitForFunction(
-      () => document.querySelector('.scan-alert-prompt [role="status"]')?.textContent?.includes('closed'),
+      () => document.querySelector('#scan-alert-status')?.textContent?.includes('closed'),
       null,
       { timeout: 15_000 },
     );
@@ -46,8 +46,8 @@ try {
     };
   });
   assert(
-    statusText === 'Scan alerts are on while this tab is open.'
-      || statusText === 'Scan alerts are on for this browser, including when Pantry is closed.',
+    statusText === 'On: alerts arrive even when Pantry is closed'
+      || statusText.includes('this tab is open'),
     `scan alert status is missing (got ${statusText})`,
   );
   await captureProof(page, 'scan-alert-push', {
