@@ -1,4 +1,5 @@
 import { useEffect, useId, useRef, useState } from 'react';
+import { Input } from '@mantine/core';
 import {
   disableScanAlerts,
   ensurePushSubscription,
@@ -116,13 +117,10 @@ export function ScanAlertSetting() {
 
   return (
     <div className="scan-alert-setting">
-      <div className="scan-alert-row">
-        <div className="scan-alert-lead">
-          <label htmlFor={switchId} className="scan-alert-label" data-disabled={blocked || undefined}>
-            Scan alerts on this device
-          </label>
-          <p id="scan-alert-scope" className="scan-alert-scope">{scanAlertScopeCopy}</p>
-        </div>
+      <div className="scan-alert-head">
+        <Input.Label htmlFor={switchId} className="scan-alert-label" data-disabled={blocked || undefined}>
+          Scan alerts on this device
+        </Input.Label>
         <span className="scan-alert-switch">
           <input
             id={switchId}
@@ -135,6 +133,9 @@ export function ScanAlertSetting() {
           />
           <span className="scan-alert-switch-track" aria-hidden="true" />
         </span>
+        <Input.Description id="scan-alert-scope">
+          {scanAlertScopeCopy}
+        </Input.Description>
       </div>
       <p id="scan-alert-status" role="status" className={`scan-alert-status scan-alert-status--${status.tone}`}>
         {status.text}

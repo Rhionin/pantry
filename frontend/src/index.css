@@ -225,42 +225,26 @@ code {
   color: var(--mantine-color-red-filled);
 }
 
-/* Device scan alerts. The switch sits with the label; the status is a
-   full-width sentence under that pair so a long failure can wrap on a phone. */
+/* Device scan alerts. The title and scope use the same label and description
+   as the other settings. The switch is pulled out of that stack and centered
+   on the title line, so the scope keeps the description's own spacing. */
 .scan-alert-setting {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  gap: 10px;
+  gap: var(--mantine-spacing-xs);
   width: min(100%, 34rem);
   margin: 0;
-  padding: 2px 0 0;
 }
 
-.scan-alert-row {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 16px;
+.scan-alert-head {
+  position: relative;
   width: 100%;
-}
-
-.scan-alert-lead {
-  display: flex;
-  flex: 1 1 auto;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 4px;
-  min-width: 0;
-  padding-top: 4px;
+  line-height: var(--mantine-line-height);
 }
 
 .scan-alert-label {
-  margin: 0;
-  color: var(--mantine-color-text);
-  font-size: 0.875rem;
-  font-weight: 600;
-  line-height: 1.35;
+  max-width: calc(100% - 48px - 16px);
   cursor: pointer;
 }
 
@@ -269,17 +253,16 @@ code {
   cursor: not-allowed;
 }
 
-.scan-alert-scope {
-  margin: 0;
-  color: var(--mantine-color-dimmed);
-  font-size: 0.875rem;
-  line-height: 1.45;
-  text-wrap: pretty;
+/* The switch is centered on the title, so its track hangs into the first
+   line of this description. Keep the words in the title's column. */
+#scan-alert-scope {
+  padding-right: calc(48px + 16px);
 }
 
 .scan-alert-switch {
-  position: relative;
-  flex: none;
+  position: absolute;
+  top: calc((var(--mantine-font-size-md) * var(--mantine-line-height) - 28px) / 2);
+  right: 0;
   width: 48px;
   height: 28px;
   margin: 0;
