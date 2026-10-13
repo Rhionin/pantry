@@ -18,6 +18,7 @@ import (
 	"github.com/Rhionin/pantry/internal/history"
 	"github.com/Rhionin/pantry/internal/inventory"
 	"github.com/Rhionin/pantry/internal/product"
+	"github.com/Rhionin/pantry/internal/push"
 	"github.com/Rhionin/pantry/internal/scan"
 	"github.com/Rhionin/pantry/internal/scanlistener"
 	"github.com/Rhionin/pantry/internal/shopping"
@@ -51,6 +52,7 @@ type config struct {
 	deployHookPath   string
 	household        *HouseholdAuth
 	syncToken        string
+	push             push.Config
 }
 
 // Option is a functional option for NewHandler.
@@ -137,6 +139,15 @@ func WithDeployHook(secret, path string) Option {
 	return func(c *config) {
 		c.deployHookSecret = secret
 		c.deployHookPath = path
+	}
+}
+
+// WithPush supplies the VAPID keys used to send scan alerts when no tab is
+// open. An unconfigured value leaves the subscribe route explaining that
+// background alerts are not set up, and the open tab still notifies itself.
+func WithPush(cfg push.Config) Option {
+	return func(c *config) {
+		c.push = cfg
 	}
 }
 
@@ -551,6 +562,19 @@ func newAPIMux(
 	}
 	apiMux.HandleFunc("PUT /api/shopping-list/items/{id}/adjustment", HandleJSON(shoppingListAdjustmentHandler.Handle))
 	apiMux.HandleFunc("DELETE /api/shopping-list/items/{id}/adjustment", HandleJSON(shoppingListAdjustmentHandler.Handle))
+
+	var pushCfg push.Config
+	if cfg != nil {
+		pushCfg = cfg.push
+	}
+	pushSubscriptions := push.NewSubscriptions(db)
+	pushHandler := &PushHandler{Subscriptions: pushSubscriptions, Keys: pushCfg}
+	apiMux.HandleFunc("GET /api/push/vapid-public-key", HandleJSON(pushHandler.PublicKey))
+	apiMux.HandleFunc("POST /api/push/subscriptions", HandleJSON(pushHandler.Save))
+	apiMux.HandleFunc("DELETE /api/push/subscriptions", HandleJSON(pushHandler.Delete))
+	// The listener uses the broadcaster this mux already publishes scans on,
+	// including scans from the headless reader when it shares that broadcaster.
+	push.Listen(broadcaster, push.NewSender(pushSubscriptions, pushCfg))
 
 	// Unknown resolution handler
 	unknownResolutionHandler := &UnknownResolutionHandler{

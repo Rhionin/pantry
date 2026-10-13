@@ -155,7 +155,7 @@ copy_deploy_files() {
   log_info "Copying deployment files to ${PANTRY_DIR}..."
   mkdir -p "${PANTRY_DIR}"
   local item src dest
-  for item in docker-compose.yml docker-compose.tunnel.yml docker-compose.grocy.yml .env.example Caddyfile Caddyfile.tunnel publish-mode.sh auth-migrate.sh udev systemd firewall mdns dns; do
+  for item in docker-compose.yml docker-compose.tunnel.yml docker-compose.grocy.yml .env.example Caddyfile Caddyfile.tunnel publish-mode.sh auth-migrate.sh vapid-env.sh udev systemd firewall mdns dns; do
     src="$SCRIPT_DIR/$item"
     dest="${PANTRY_DIR}/$item"
     if [[ ! -e "$src" ]]; then
@@ -626,6 +626,11 @@ cmd_apply() {
   copy_deploy_files
   cmd_reconcile_env
   ensure_deploy_hook_secret
+  # shellcheck disable=SC1091
+  source "$SCRIPT_DIR/vapid-env.sh"
+  if ! ensure_vapid_keys; then
+    fatal "Could not generate VAPID keys for scan alerts"
+  fi
   if [[ -f "$PANTRY_DIR/.env" ]]; then
     chmod 600 "$PANTRY_DIR/.env"
   fi

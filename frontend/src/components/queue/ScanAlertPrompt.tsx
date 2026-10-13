@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { backgroundAlertsEnabled, ensurePushSubscription, onBackgroundAlerts } from './pushAlerts';
 
 type AlertPermission = NotificationPermission | 'unsupported';
 
@@ -7,14 +8,32 @@ const readNotificationPermission = (): AlertPermission => {
   return Notification.permission;
 };
 
-const explainer = 'Failed scans and unrecognized products alert right away. A stock in or stock out batch alerts once, 5 minutes after the last scan. Alerts only arrive while this tab is open.';
+const explainer = 'Failed scans and unrecognized products alert right away. A stock in or stock out batch alerts once, 5 minutes after the last scan. Alerts can also arrive while Pantry is closed.';
 
 // Permission is requested only from this button. Loading the scan queue does not prompt.
 export function ScanAlertPrompt() {
   const [permission, setPermission] = useState(readNotificationPermission);
   const [asking, setAsking] = useState(false);
+  const [background, setBackground] = useState(backgroundAlertsEnabled);
 
-  if (permission === 'granted') return null;
+  useEffect(() => onBackgroundAlerts(setBackground), []);
+
+  useEffect(() => {
+    if (permission !== 'granted') return;
+    void ensurePushSubscription();
+  }, [permission]);
+
+  if (permission === 'granted') {
+    return (
+      <div className="scan-alert-prompt">
+        <p role="status">
+          {background
+            ? 'Scan alerts are on for this browser, including when Pantry is closed.'
+            : 'Scan alerts are on while this tab is open.'}
+        </p>
+      </div>
+    );
+  }
 
   if (permission === 'unsupported') {
     return (
