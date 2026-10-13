@@ -288,6 +288,20 @@ func TestPublicProxyIsOptIn(t *testing.T) {
 	if acmeRoutes == "" || acmeRoutes != tunnelRoutes {
 		t.Fatal("certificate and tunnel Caddyfiles must share the same route block")
 	}
+	// Pantry sends these on /sw.js. A second copy from Caddy is joined with
+	// the app's, and the combined Service-Worker-Allowed value is not a scope.
+	// Comment lines may name the headers; a directive must not set them.
+	for _, line := range strings.Split(acmeRoutes, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" || strings.HasPrefix(trimmed, "#") {
+			continue
+		}
+		for _, forbidden := range []string{"Service-Worker-Allowed", "header Cache-Control"} {
+			if strings.Contains(line, forbidden) {
+				t.Fatalf("Caddy route block sets %q; Pantry sends Cache-Control and Service-Worker-Allowed once", forbidden)
+			}
+		}
+	}
 	for _, want := range []string{
 		"http://{$PUBLIC_HOST}",
 		"admin off",

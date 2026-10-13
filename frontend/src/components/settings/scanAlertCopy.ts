@@ -8,6 +8,7 @@ export const scanAlertScopeCopy = 'This browser only. Another browser, or anothe
 
 const failureCopy: Record<PushSubscribeFailure, string> = {
   'no-push': 'This browser has no push service. Alerts arrive only while this tab is open.',
+  'register-failed': 'The browser could not register the service worker. Alerts arrive only while this tab is open.',
   'empty-vapid': 'This pantry has no push key. Alerts arrive only while this tab is open.',
   'subscribe-rejected': 'The browser refused the push subscription. Alerts arrive only while this tab is open.',
   'save-failed': 'Pantry could not save this device. Alerts arrive only while this tab is open.',

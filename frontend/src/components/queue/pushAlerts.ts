@@ -8,6 +8,7 @@ const preferenceKey = 'pantry-scan-alerts';
 // (permission, or this device has alerts turned off), not a failed subscribe.
 export type PushSubscribeFailure =
   | 'no-push'
+  | 'register-failed'
   | 'empty-vapid'
   | 'subscribe-rejected'
   | 'save-failed';
@@ -18,6 +19,7 @@ export type PushSubscribeResult =
 
 const failureReasons = new Set<PushSubscribeFailure>([
   'no-push',
+  'register-failed',
   'empty-vapid',
   'subscribe-rejected',
   'save-failed',
@@ -176,7 +178,7 @@ export async function ensurePushSubscription(): Promise<PushSubscribeResult> {
       updateViaCache: 'none',
     });
   } catch (error) {
-    return fail('no-push', error);
+    return fail('register-failed', error);
   }
 
   let ready: ServiceWorkerRegistration;
