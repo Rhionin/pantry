@@ -47,7 +47,10 @@ Preconditions:
 - **Quiet batch.** Scan a seeded product, then advance the page clock by 5
   minutes. The notification title is `Stock in batch is ready`.
 
-`scripts/drive-scan-alerts.mjs` is this recipe.
+`scripts/drive-scan-alerts.mjs` is this recipe. `scripts/drive-scan-push.mjs`
+repeats the permission step with VAPID keys in the environment and a normal
+Chrome profile. An incognito window cannot subscribe. When the subscription
+is stored, the status says alerts arrive while Pantry is closed.
 
 ## Gotchas
 

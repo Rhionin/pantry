@@ -70,7 +70,7 @@ try {
     await page.evaluate(() => Notification.permission) === 'granted',
     'permission is granted only after Notify me about scans',
   );
-  const status = page.getByRole('status');
+  const status = page.locator('.scan-alert-prompt').getByRole('status');
   await status.waitFor({ state: 'visible', timeout: 10_000 });
   const statusText = await status.innerText();
   assert(
