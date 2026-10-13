@@ -27,7 +27,11 @@ const subscription = {
   }),
 };
 
-const installPush = (publicKey = 'BElk', existing: typeof subscription | null = subscription) => {
+const installPush = (
+  publicKey = 'BElk',
+  existing: typeof subscription | null = subscription,
+  options?: { register?: () => Promise<unknown> },
+) => {
   vi.stubGlobal('PushManager', class PushManager {});
   let current = existing;
   const registration = {
@@ -42,7 +46,7 @@ const installPush = (publicKey = 'BElk', existing: typeof subscription | null = 
   Object.defineProperty(navigator, 'serviceWorker', {
     configurable: true,
     value: {
-      register: () => Promise.resolve(registration),
+      register: options?.register ?? (() => Promise.resolve(registration)),
       ready: Promise.resolve(registration),
       getRegistration: () => Promise.resolve(registration),
       addEventListener: () => {},
@@ -85,6 +89,9 @@ describe('scan alert status', () => {
       text: 'This browser has no push service. Alerts arrive only while this tab is open.',
       retry: true,
     });
+    expect(scanAlertStatus('granted', true, 'idle', 'register-failed').text).toBe(
+      'The browser could not register the service worker. Alerts arrive only while this tab is open.',
+    );
     expect(scanAlertStatus('granted', true, 'idle', 'empty-vapid').text).toBe(
       'This pantry has no push key. Alerts arrive only while this tab is open.',
     );
@@ -179,6 +186,32 @@ describe('Scan alerts on Settings', () => {
     expect(await screen.findByRole('status')).toHaveTextContent(
       'On: alerts arrive even when Pantry is closed',
     );
+  });
+
+  it('shows a failed service worker registration on the status line', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    FakeNotification.permission = 'default';
+    FakeNotification.requestPermission = vi.fn(() => {
+      FakeNotification.permission = 'granted';
+      return Promise.resolve<NotificationPermission>('granted');
+    });
+    vi.stubGlobal('Notification', FakeNotification);
+    installPush('BElk', null, {
+      register: () => Promise.reject(new Error("The provided scope ('/') is not allowed.")),
+    });
+
+    renderSettings();
+    fireEvent.click(await screen.findByRole('switch', { name: 'Scan alerts on this device' }));
+
+    const status = await screen.findByRole('status');
+    expect(status).toHaveTextContent(
+      'The browser could not register the service worker. Alerts arrive only while this tab is open.',
+    );
+    expect(screen.getByRole('button', { name: 'Retry' })).toHaveAccessibleDescription(
+      'The browser could not register the service worker. Alerts arrive only while this tab is open.',
+    );
+    expect(screen.getByRole('switch', { name: 'Scan alerts on this device' })).toBeChecked();
+    warn.mockRestore();
   });
 
   it('shows an empty push key on the status line with Retry', async () => {

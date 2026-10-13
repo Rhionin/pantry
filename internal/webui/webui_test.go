@@ -422,11 +422,12 @@ func TestServiceWorkerIsUncompressedAtTheSiteRoot(t *testing.T) {
 	if got := w.Header().Get("Content-Type"); !strings.HasPrefix(got, "text/javascript") {
 		t.Fatalf("Content-Type = %q", got)
 	}
-	if got := w.Header().Get("Cache-Control"); got != "no-cache, no-transform" {
-		t.Fatalf("Cache-Control = %q", got)
+	// Values, not Get: a repeated field is what browsers join into "/, /".
+	if got := w.Header().Values("Cache-Control"); len(got) != 1 || got[0] != "no-cache, no-transform" {
+		t.Fatalf("Cache-Control = %#v, want exactly one %q", got, "no-cache, no-transform")
 	}
-	if got := w.Header().Get("Service-Worker-Allowed"); got != "/" {
-		t.Fatalf("Service-Worker-Allowed = %q", got)
+	if got := w.Header().Values("Service-Worker-Allowed"); len(got) != 1 || got[0] != "/" {
+		t.Fatalf("Service-Worker-Allowed = %#v, want exactly one %q", got, "/")
 	}
 	if !strings.Contains(w.Body.String(), "addEventListener('push'") {
 		t.Fatalf("body = %q", w.Body.String())
