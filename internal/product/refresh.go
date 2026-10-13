@@ -207,16 +207,13 @@ func (r *Refresher) Refresh(ctx context.Context, productID string) (RefreshOutco
 	// with no barcodes query.
 	upstream, err := r.Upstream.LookupIn(ctx, target, row.ID)
 	if err != nil {
-		if errors.Is(err, ErrProductNotFound) {
-			if markErr := r.Catalog.MarkRefreshed(ctx, row.ID, now); markErr != nil {
-				return OutcomeUnchanged, markErr
-			}
-			return OutcomeNotFoundUpstream, nil
-		}
-		// Stamp refreshed_at before returning the error so an upstream
-		// outage does not make every subsequent lookup retry immediately.
-		if markErr := r.Catalog.MarkRefreshed(ctx, row.ID, now); markErr != nil {
+		writeCtx, cancel := r.catalogWriteContext(ctx)
+		defer cancel()
+		if markErr := r.Catalog.MarkRefreshed(writeCtx, row.ID, now); markErr != nil {
 			return OutcomeUnchanged, markErr
+		}
+		if errors.Is(err, ErrProductNotFound) {
+			return OutcomeNotFoundUpstream, nil
 		}
 		return OutcomeUnchanged, err
 	}
@@ -227,10 +224,20 @@ func (r *Refresher) Refresh(ctx context.Context, productID string) (RefreshOutco
 	// Legacy_External_Row it is the stamp that records where the data came from.
 	merged.ExternalSource = target
 
-	if err := r.Catalog.SaveRefresh(ctx, merged, now); err != nil {
+	writeCtx, cancel := r.catalogWriteContext(ctx)
+	defer cancel()
+	if err := r.Catalog.SaveRefresh(writeCtx, merged, now); err != nil {
 		return OutcomeUnchanged, err
 	}
 	return classify(*row, merged), nil
+}
+
+// catalogWriteContext bounds a catalog write after LookupIn returns.
+// The lookup context is often already canceled by then, and database/sql
+// drops a write on a done context. A missed refreshed_at stamp makes the
+// next read retry immediately.
+func (r *Refresher) catalogWriteContext(ctx context.Context) (context.Context, context.CancelFunc) {
+	return context.WithTimeout(context.WithoutCancel(ctx), r.backgroundTimeout())
 }
 
 // ScheduleRefresh revalidates productID in the background if, and only if,
@@ -280,12 +287,9 @@ func (r *Refresher) ScheduleRefresh(ctx context.Context, productID string) {
 			r.wg.Done()
 		}()
 
-		// The request context is unusable here: net/http cancels it exactly
-		// when the handler returns, which is precisely when this goroutine
-		// starts. WithoutCancel detaches from ctx's cancellation while
-		// preserving nothing else, and the per-refresh timeout bounds the
-		// goroutine's lifetime so Wait always terminates.
-		bgCtx, cancel := context.WithTimeout(context.WithoutCancel(context.Background()), r.backgroundTimeout())
+		// The caller cancels ctx when it finishes the response. Detach so that
+		// cancellation does not abort the revalidation.
+		bgCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), r.backgroundTimeout())
 		defer cancel()
 
 		if _, err := r.Refresh(bgCtx, productID); err != nil {

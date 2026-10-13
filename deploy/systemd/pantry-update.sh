@@ -52,6 +52,9 @@ elif [[ "$mode" == acme ]]; then
     echo "PUBLIC_HOST is set but /opt/pantry/auth.caddy is missing; leaving the public proxy stopped. Run: sudo ./setup.sh" >&2
   fi
 fi
+while IFS= read -r arg; do
+  [[ -n "$arg" ]] && compose+=("$arg")
+done < <(grocy_compose_suffix)
 
 # uid 65532 is the distroless nonroot user that writes the trigger file.
 mkdir -p /opt/pantry/deploy-trigger
@@ -80,6 +83,11 @@ if [[ -f /opt/pantry/auth.caddy ]]; then
     echo "auth.caddy is present but the login hash was not copied; leaving containers unchanged." >&2
     exit 1
   fi
+fi
+# shellcheck disable=SC1091
+source /opt/pantry/vapid-env.sh
+if ! ensure_vapid_keys; then
+  echo "Could not generate VAPID keys; scan alerts stay on an open tab until sudo ./setup.sh succeeds." >&2
 fi
 
 trigger_digest() {

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 
 	"github.com/Rhionin/pantry/internal/brand"
 	"github.com/Rhionin/pantry/internal/cart"
@@ -14,8 +15,10 @@ import (
 	"github.com/Rhionin/pantry/internal/deployhook"
 	"github.com/Rhionin/pantry/internal/events"
 	"github.com/Rhionin/pantry/internal/group"
+	"github.com/Rhionin/pantry/internal/history"
 	"github.com/Rhionin/pantry/internal/inventory"
 	"github.com/Rhionin/pantry/internal/product"
+	"github.com/Rhionin/pantry/internal/push"
 	"github.com/Rhionin/pantry/internal/scan"
 	"github.com/Rhionin/pantry/internal/scanlistener"
 	"github.com/Rhionin/pantry/internal/shopping"
@@ -48,6 +51,8 @@ type config struct {
 	deployHookSecret string
 	deployHookPath   string
 	household        *HouseholdAuth
+	syncToken        string
+	push             push.Config
 }
 
 // Option is a functional option for NewHandler.
@@ -118,6 +123,15 @@ func WithScannerMode(mode *scannerMode) Option {
 	}
 }
 
+// WithSyncToken enables GET /api/sync/snapshot for the grocy-sync sidecar.
+// An empty token leaves the route looking like it is not there. The token
+// cannot call any other route.
+func WithSyncToken(token string) Option {
+	return func(c *config) {
+		c.syncToken = strings.TrimSpace(token)
+	}
+}
+
 // WithDeployHook enables POST /api/deploy-hook. An empty secret leaves the
 // route in place and rejecting requests, so a missing key cannot be used as
 // an unsigned deploy. path is the trigger file; empty uses the container default.
@@ -125,6 +139,15 @@ func WithDeployHook(secret, path string) Option {
 	return func(c *config) {
 		c.deployHookSecret = secret
 		c.deployHookPath = path
+	}
+}
+
+// WithPush supplies the VAPID keys used to send scan alerts when no tab is
+// open. An unconfigured value leaves the subscribe route explaining that
+// background alerts are not set up, and the open tab still notifies itself.
+func WithPush(cfg push.Config) Option {
+	return func(c *config) {
+		c.push = cfg
 	}
 }
 
@@ -173,6 +196,14 @@ func NewHandler(
 	if cfg.household != nil {
 		handler = cfg.household.Middleware(root)
 	}
+	var syncToken string
+	if cfg != nil {
+		syncToken = cfg.syncToken
+	}
+	// Outside household login so the sidecar can read while the public site
+	// still asks a person to sign in. A wrong or missing token never falls
+	// through to the open LAN listener.
+	handler = syncGate(syncToken, handler)
 	return observeHTTP(reg, secureHeaders(handler)), scanQueue
 }
 
@@ -362,6 +393,9 @@ func newAPIMux(
 	supplySettingsPutHandler := &SupplySettingsPutHandler{Supply: supplySvc}
 	groups := group.NewGroups(db)
 	scanListHandler.Groups = groups
+	createHandler.Groups = groups
+	updateHandler.Groups = groups
+	lookupHandler.Groups = groups
 	supplyOverrideGetHandler := &SupplyOverrideGetHandler{Supply: supplySvc, Groups: groups}
 	supplyOverridePutHandler := &SupplyOverridePutHandler{Supply: supplySvc, Groups: groups}
 	onboardingCompleteHandler := &OnboardingCompleteHandler{Supply: supplySvc}
@@ -372,6 +406,19 @@ func newAPIMux(
 	apiMux.HandleFunc("POST /api/inventory/{itemId}/stock-out", HandleJSON(inventoryStockOutHandler.Handle))
 	apiMux.HandleFunc("DELETE /api/inventory/instances/{instanceId}", HandleJSON(inventoryInstanceDeleteHandler.Handle))
 	apiMux.HandleFunc("POST /api/inventory/wipe", HandleJSON(inventoryWipeHandler.Handle))
+
+	var syncToken string
+	if cfg != nil {
+		syncToken = cfg.syncToken
+	}
+	apiMux.HandleFunc("GET /api/sync/snapshot", (&syncSnapshotHandler{DB: db, Token: syncToken}).ServeHTTP)
+
+	historyHandler := &HistoryHandler{Journal: history.NewJournal(db), Pantry: pantry, Events: broadcaster}
+	apiMux.HandleFunc("GET /api/items/{itemId}/history", HandleJSON(historyHandler.Product))
+	apiMux.HandleFunc("GET /api/groups/{groupId}/history", HandleJSON(historyHandler.Group))
+	apiMux.HandleFunc("PATCH /api/moves/{id}", HandleJSON(historyHandler.SetQuantity))
+	apiMux.HandleFunc("DELETE /api/moves/{id}", HandleJSON(historyHandler.Undo))
+
 	apiMux.HandleFunc("GET /api/settings/supply", HandleJSON(supplySettingsGetHandler.Handle))
 	apiMux.HandleFunc("PUT /api/settings/supply", HandleJSON(supplySettingsPutHandler.Handle))
 	apiMux.HandleFunc("GET /api/products/{id}/supply-override", HandleJSON(supplyOverrideGetHandler.Handle))
@@ -387,9 +434,11 @@ func newAPIMux(
 	apiMux.HandleFunc("DELETE /api/groups/{id}", HandleJSON(groupHandler.Delete))
 	apiMux.HandleFunc("POST /api/groups/{id}/members", HandleJSON(groupHandler.AddMembers))
 	apiMux.HandleFunc("DELETE /api/groups/{id}/members/{productId}", HandleJSON(groupHandler.RemoveMember))
+	apiMux.HandleFunc("PUT /api/groups/{id}/members/{productId}/restock", HandleJSON(groupHandler.PutMemberRestock))
 	apiMux.HandleFunc("PUT /api/groups/{id}/rule", HandleJSON(groupHandler.PutRule))
 	apiMux.HandleFunc("PUT /api/groups/{id}/target", HandleJSON(groupHandler.PutTarget))
 	apiMux.HandleFunc("GET /api/group-suggestions", HandleJSON(groupHandler.ListSuggestions))
+	apiMux.HandleFunc("POST /api/group-suggestions/rescan", HandleJSON(groupHandler.Rescan))
 	apiMux.HandleFunc("POST /api/group-suggestions/from-scan", HandleJSON(groupHandler.NoteFromScan))
 	apiMux.HandleFunc("POST /api/group-suggestions/{id}/accept", HandleJSON(groupHandler.AcceptSuggestion))
 	apiMux.HandleFunc("POST /api/group-suggestions/{id}/dismiss", HandleJSON(groupHandler.DismissSuggestion))
@@ -513,6 +562,19 @@ func newAPIMux(
 	}
 	apiMux.HandleFunc("PUT /api/shopping-list/items/{id}/adjustment", HandleJSON(shoppingListAdjustmentHandler.Handle))
 	apiMux.HandleFunc("DELETE /api/shopping-list/items/{id}/adjustment", HandleJSON(shoppingListAdjustmentHandler.Handle))
+
+	var pushCfg push.Config
+	if cfg != nil {
+		pushCfg = cfg.push
+	}
+	pushSubscriptions := push.NewSubscriptions(db)
+	pushHandler := &PushHandler{Subscriptions: pushSubscriptions, Keys: pushCfg}
+	apiMux.HandleFunc("GET /api/push/vapid-public-key", HandleJSON(pushHandler.PublicKey))
+	apiMux.HandleFunc("POST /api/push/subscriptions", HandleJSON(pushHandler.Save))
+	apiMux.HandleFunc("DELETE /api/push/subscriptions", HandleJSON(pushHandler.Delete))
+	// The listener uses the broadcaster this mux already publishes scans on,
+	// including scans from the headless reader when it shares that broadcaster.
+	push.Listen(broadcaster, push.NewSender(pushSubscriptions, pushCfg))
 
 	// Unknown resolution handler
 	unknownResolutionHandler := &UnknownResolutionHandler{

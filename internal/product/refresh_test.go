@@ -2,6 +2,7 @@ package product
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"runtime"
 	"sync"
@@ -9,6 +10,9 @@ import (
 	"time"
 
 	"pgregory.net/rapid"
+
+	"github.com/Rhionin/pantry/internal/app"
+	_ "modernc.org/sqlite"
 )
 
 // --------------------------------------------------------------------------
@@ -392,6 +396,19 @@ func (c *fakeRefreshCatalog) MarkRefreshed(ctx context.Context, id string, refre
 	return nil
 }
 
+func newRefreshCatalog(t *testing.T) *Catalog {
+	t.Helper()
+	conn, err := sql.Open("sqlite", ":memory:")
+	if err != nil {
+		t.Fatalf("open in-memory SQLite: %v", err)
+	}
+	t.Cleanup(func() { conn.Close() })
+	if err := app.RunMigrations(conn); err != nil {
+		t.Fatalf("RunMigrations: %v", err)
+	}
+	return NewCatalog(conn)
+}
+
 // blockingOpenFoodFacts is a fake OpenFoodFacts client whose LookupBarcode
 // blocks until unblock is called, and counts calls per barcode. The block is
 // what distinguishes "the in-flight guard rejected the duplicates" from
@@ -534,4 +551,207 @@ func TestScheduleRefresh_ConcurrentCallsCollapseToOneUpstreamRequest(t *testing.
 	if got := off.CallCount(productID); got != 2 {
 		t.Fatalf("second ScheduleRefresh after Wait: want upstream call count 2, got %d", got)
 	}
+}
+
+type ctxBoundUpstream struct {
+	mu        sync.Mutex
+	result    ProductSummary
+	started   chan struct{}
+	release   chan struct{}
+	once      sync.Once
+	lookupErr error
+}
+
+func newCtxBoundUpstream(result ProductSummary) *ctxBoundUpstream {
+	return &ctxBoundUpstream{
+		result:  result,
+		started: make(chan struct{}),
+		release: make(chan struct{}),
+	}
+}
+
+func (u *ctxBoundUpstream) LookupIn(ctx context.Context, source ExternalSource, barcode string) (*ProductSummary, error) {
+	u.once.Do(func() { close(u.started) })
+	select {
+	case <-u.release:
+		if err := ctx.Err(); err != nil {
+			u.record(err)
+			return nil, err
+		}
+		out := u.result
+		out.ID = barcode
+		return &out, nil
+	case <-ctx.Done():
+		err := ctx.Err()
+		u.record(err)
+		return nil, err
+	}
+}
+
+func (u *ctxBoundUpstream) record(err error) {
+	u.mu.Lock()
+	u.lookupErr = err
+	u.mu.Unlock()
+}
+
+func (u *ctxBoundUpstream) err() error {
+	u.mu.Lock()
+	defer u.mu.Unlock()
+	return u.lookupErr
+}
+
+func waitForRefresh(t *testing.T, refresher *Refresher) {
+	t.Helper()
+	done := make(chan struct{})
+	go func() {
+		refresher.Wait()
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("background refresh did not finish")
+	}
+}
+
+func TestRefresh_SavesWhenLookupContextIsCanceled(t *testing.T) {
+	const productID = "012345678905"
+
+	catalog := newRefreshCatalog(t)
+	if err := catalog.CreateProduct(context.Background(), Product{
+		ID:     productID,
+		Name:   "Old Name",
+		Source: SourceExternal,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	refresher := &Refresher{
+		Catalog:               catalog,
+		Upstream:              &cancelingUpstream{cancel: cancel, result: ProductSummary{Name: "New Name"}},
+		ExternalLookupEnabled: true,
+		BackgroundTimeout:     time.Second,
+	}
+
+	outcome, err := refresher.Refresh(ctx, productID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if outcome != OutcomeUpdated {
+		t.Fatalf("outcome: want %q, got %q", OutcomeUpdated, outcome)
+	}
+
+	got, err := catalog.GetProductByID(context.Background(), productID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got == nil {
+		t.Fatal("product missing after refresh")
+	}
+	if got.Name != "New Name" {
+		t.Fatalf("name: want %q, got %q", "New Name", got.Name)
+	}
+}
+
+type cancelingUpstream struct {
+	cancel context.CancelFunc
+	result ProductSummary
+}
+
+func (u *cancelingUpstream) LookupIn(ctx context.Context, source ExternalSource, barcode string) (*ProductSummary, error) {
+	u.cancel()
+	out := u.result
+	out.ID = barcode
+	return &out, nil
+}
+
+func TestScheduleRefresh_CallerCancelDoesNotAbortLookup(t *testing.T) {
+	const productID = "012345678905"
+
+	catalog := newRefreshCatalog(t)
+	if err := catalog.CreateProduct(context.Background(), Product{
+		ID:     productID,
+		Name:   "Old Name",
+		Source: SourceExternal,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	upstream := newCtxBoundUpstream(ProductSummary{Name: "New Name"})
+	refresher := &Refresher{
+		Catalog:               catalog,
+		Upstream:              upstream,
+		TTL:                   time.Hour,
+		ExternalLookupEnabled: true,
+		BackgroundTimeout:     time.Second,
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	refresher.ScheduleRefresh(ctx, productID)
+
+	select {
+	case <-upstream.started:
+	case <-time.After(2 * time.Second):
+		t.Fatal("lookup did not start")
+	}
+	cancel()
+	close(upstream.release)
+	waitForRefresh(t, refresher)
+
+	got, err := catalog.GetProductByID(context.Background(), productID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got == nil {
+		t.Fatal("product missing after refresh")
+	}
+	if got.Name != "New Name" {
+		t.Fatalf("name after caller cancel: want %q, got %q", "New Name", got.Name)
+	}
+	if upstream.err() != nil {
+		t.Fatalf("lookup error after caller cancel: %v", upstream.err())
+	}
+}
+
+func TestScheduleRefresh_BackgroundTimeoutStampsRefresh(t *testing.T) {
+	const productID = "012345678905"
+
+	catalog := newRefreshCatalog(t)
+	if err := catalog.CreateProduct(context.Background(), Product{
+		ID:     productID,
+		Name:   "Old Name",
+		Source: SourceExternal,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	upstream := newCtxBoundUpstream(ProductSummary{Name: "New Name"})
+	refresher := &Refresher{
+		Catalog:               catalog,
+		Upstream:              upstream,
+		TTL:                   time.Hour,
+		ExternalLookupEnabled: true,
+		BackgroundTimeout:     30 * time.Millisecond,
+	}
+
+	baseline := runtime.NumGoroutine()
+	refresher.ScheduleRefresh(context.Background(), productID)
+	waitForRefresh(t, refresher)
+
+	if err := upstream.err(); err != context.DeadlineExceeded {
+		t.Fatalf("lookup error: want %v, got %v", context.DeadlineExceeded, err)
+	}
+	got, err := catalog.GetProductByID(context.Background(), productID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got == nil {
+		t.Fatal("product missing after refresh")
+	}
+	if got.Name != "Old Name" {
+		t.Fatalf("name after timeout: want %q, got %q", "Old Name", got.Name)
+	}
+	if got.RefreshedAt == nil {
+		t.Fatal("refreshed_at was not stamped after the upstream timeout")
+	}
+	assertNoLeakedGoroutines(t, baseline)
 }

@@ -38,13 +38,17 @@ type Error struct {
 func (e *Error) Error() string { return e.Msg }
 
 // OverrideNotice is one product that already has its own supply setting.
-// Dimension is the product's weight or volume when the setting is a quantity.
+// Quantity is how many units that setting keeps on hand.
+// Amount is that count in ounces or fluid ounces, and Dimension is mass or
+// volume, only when the unit size is known. A count with no size is not an
+// amount a group target can store.
 type OverrideNotice struct {
-	ProductID    string `json:"productId"`
-	Name         string `json:"name"`
-	WindowMonths *int   `json:"windowMonths,omitempty"`
-	Quantity     *int   `json:"quantity,omitempty"`
-	Dimension    string `json:"dimension,omitempty"`
+	ProductID    string   `json:"productId"`
+	Name         string   `json:"name"`
+	WindowMonths *int     `json:"windowMonths,omitempty"`
+	Quantity     *int     `json:"quantity,omitempty"`
+	Amount       *float64 `json:"amount,omitempty"`
+	Dimension    string   `json:"dimension,omitempty"`
 }
 
 // TargetInput is a group target from a request.
@@ -365,7 +369,7 @@ func (g *Groups) RemoveMember(ctx context.Context, id, productID string) (Group,
 // A nil pin keeps the pin already stored. confirm records that the sheet was saved.
 func (g *Groups) SetRule(ctx context.Context, id, rule string, pin *string, confirm bool) (Group, error) {
 	if !Valid(rule) {
-		return Group{}, invalid("Pick one of the three rules.")
+		return Group{}, invalid("Pick one of the rules.")
 	}
 	tx, err := g.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -403,6 +407,29 @@ func (g *Groups) SetRule(ctx context.Context, id, rule string, pin *string, conf
 		return Group{}, fmt.Errorf("could not save the rule: %w", err)
 	}
 	return g.load(ctx, g.db, id)
+}
+
+// SetMemberRestock keeps a product in the group and out of every shopping rule.
+// noRestock false puts it back in the rotation.
+func (g *Groups) SetMemberRestock(ctx context.Context, groupID, productID string, noRestock bool) (Group, error) {
+	if err := ensureGroup(ctx, g.db, groupID); err != nil {
+		return Group{}, err
+	}
+	flag := 0
+	if noRestock {
+		flag = 1
+	}
+	res, err := g.db.ExecContext(ctx, `
+		UPDATE product_group_members SET no_restock = ?
+		WHERE group_id = ? AND product_id = ?`, flag, groupID, productID)
+	if err != nil {
+		return Group{}, fmt.Errorf("could not update the group: %w", err)
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return Group{}, missing("That product is not in this group.")
+	}
+	return g.load(ctx, g.db, groupID)
 }
 
 // SetTarget saves the group's target and does not change member supply settings.
@@ -455,7 +482,7 @@ func (g *Groups) DefaultRule(ctx context.Context) (Kind, error) {
 // SetDefaultRule stores the account rule.
 func (g *Groups) SetDefaultRule(ctx context.Context, rule string) error {
 	if !Valid(rule) {
-		return invalid("Pick one of the three rules.")
+		return invalid("Pick one of the rules.")
 	}
 	_, err := g.db.ExecContext(ctx, `
 		INSERT INTO app_settings (key, value) VALUES (?, ?)
@@ -466,11 +493,15 @@ func (g *Groups) SetDefaultRule(ctx context.Context, rule string) error {
 	return nil
 }
 
-// ListSuggestions refreshes look-alike cards, then returns the open ones.
+// ListSuggestions refreshes look-alike and same-need cards, then returns the open ones.
 func (g *Groups) ListSuggestions(ctx context.Context) ([]Suggestion, error) {
 	if err := g.RefreshSuggestions(ctx); err != nil {
 		return nil, err
 	}
+	return g.listOpenSuggestions(ctx)
+}
+
+func (g *Groups) listOpenSuggestions(ctx context.Context) ([]Suggestion, error) {
 	rows, err := g.db.QueryContext(ctx, `
 		SELECT id, kind, title, proposed_rule, pinned_product_id, existing_group_id, status
 		FROM group_suggestions
@@ -675,7 +706,7 @@ func insertGroup(ctx context.Context, tx *sql.Tx, name, rule, pin string, produc
 		return "", err
 	}
 	if !Valid(rule) {
-		return "", invalid("Pick one of the three rules.")
+		return "", invalid("Pick one of the rules.")
 	}
 	if err := ensureNameFree(ctx, tx, key, ""); err != nil {
 		return "", err
@@ -849,7 +880,7 @@ func overrideNotices(ctx context.Context, q querier, ids []string) ([]OverrideNo
 		return nil, nil
 	}
 	query := `
-		SELECT o.product_id, p.name, o.window_months, o.quantity, COALESCE(p.net_dimension, '')
+		SELECT o.product_id, p.name, o.window_months, o.quantity, p.net_base_value, COALESCE(p.net_dimension, '')
 		FROM supply_overrides o
 		JOIN products p ON p.id = o.product_id
 		WHERE o.product_id IN (` + placeholders(len(ids)) + `)`
@@ -866,8 +897,9 @@ func overrideNotices(ctx context.Context, q querier, ids []string) ([]OverrideNo
 	for rows.Next() {
 		var n OverrideNotice
 		var window, qty sql.NullInt64
+		var net sql.NullFloat64
 		var dim string
-		if err := rows.Scan(&n.ProductID, &n.Name, &window, &qty, &dim); err != nil {
+		if err := rows.Scan(&n.ProductID, &n.Name, &window, &qty, &net, &dim); err != nil {
 			return nil, fmt.Errorf("could not read supply settings: %w", err)
 		}
 		if window.Valid {
@@ -875,10 +907,13 @@ func overrideNotices(ctx context.Context, q querier, ids []string) ([]OverrideNo
 			n.WindowMonths = &v
 		}
 		if qty.Valid {
-			v := int(qty.Int64)
-			n.Quantity = &v
-			if dim == product.DimensionMass || dim == product.DimensionVolume {
-				n.Dimension = dim
+			count := int(qty.Int64)
+			n.Quantity = &count
+			if net.Valid && net.Float64 > 0 && count > 0 {
+				if ounces, _, ok := product.DisplayNetSize(net.Float64*float64(count), dim); ok {
+					n.Amount = &ounces
+					n.Dimension = dim
+				}
 			}
 		}
 		notices = append(notices, n)
@@ -1048,7 +1083,8 @@ func loadMembers(ctx context.Context, q querier, groupID string) ([]Member, erro
 		       (SELECT MAX(c.consumed_at) FROM consumption_events c
 		         JOIN items i ON i.id = c.item_id
 		         WHERE i.product_id = m.product_id AND i.user_id = ?),
-		       (SELECT MAX(s.at) FROM stock_in_events s WHERE s.product_id = m.product_id)
+		       (SELECT MAX(s.at) FROM stock_in_events s WHERE s.product_id = m.product_id),
+		       m.no_restock
 		FROM product_group_members m
 		JOIN products p ON p.id = m.product_id
 		WHERE m.group_id = ?
@@ -1063,9 +1099,11 @@ func loadMembers(ctx context.Context, q querier, groupID string) ([]Member, erro
 		var itemID, dim sql.NullString
 		var net sql.NullFloat64
 		var consumed, stocked sql.NullString
-		if err := rows.Scan(&m.ProductID, &m.Name, &m.OnHand, &itemID, &net, &dim, &consumed, &stocked); err != nil {
+		var noRestock int
+		if err := rows.Scan(&m.ProductID, &m.Name, &m.OnHand, &itemID, &net, &dim, &consumed, &stocked, &noRestock); err != nil {
 			return nil, fmt.Errorf("could not load the group: %w", err)
 		}
+		m.NoRestock = noRestock != 0
 		if itemID.Valid {
 			m.ItemID = itemID.String
 		}

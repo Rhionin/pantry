@@ -56,7 +56,7 @@ const renderDetail = (
       <MemoryRouter initialEntries={['/groups/g1']}>
         <Routes>
           <Route path="/groups/:id" element={<GroupDetailPage />} />
-          <Route path="/groups" element={<p>Groups list</p>} />
+          <Route path="/inventory" element={<p>Inventory</p>} />
         </Routes>
       </MemoryRouter>
     </MantineProvider>,
@@ -198,7 +198,7 @@ describe('GroupDetailPage', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Add to this group' }));
 
     expect(await screen.findByText('These products have their own supply setting. Which should the whole group use?')).toBeInTheDocument();
-    expect(screen.getByText('Gatorade Glacier Freeze: 12 ounces')).toBeInTheDocument();
+    expect(screen.getByText('Gatorade Glacier Freeze: 12 on hand')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Keep the account window' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Keep 24 ounces' })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Keep the household default' }));
@@ -225,7 +225,7 @@ describe('GroupDetailPage', () => {
           return json({
             error: 'Choose what this group should keep on hand.',
             code: 'target_decision_required',
-            members: [{ productId: 'glacier', name: 'Gatorade Glacier Freeze', quantity: 12, dimension: 'mass' }],
+            members: [{ productId: 'glacier', name: 'Gatorade Glacier Freeze', quantity: 4, amount: 48, dimension: 'mass' }],
           }, 409);
         }
         current = {
@@ -242,7 +242,7 @@ describe('GroupDetailPage', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Add to this group' }));
 
     expect(await screen.findByRole('button', { name: "Keep the group's 6 months" })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Use 12 ounces (from Gatorade Glacier Freeze)' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Use 48 ounces (from Gatorade Glacier Freeze)' })).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: "Keep the group's 6 months" }));
 
     await waitFor(() => expect(bodies).toHaveLength(2));
@@ -266,7 +266,7 @@ describe('GroupDetailPage', () => {
           return json({
             error: 'Choose what this group should keep on hand.',
             code: 'target_decision_required',
-            members: [{ productId: 'glacier', name: 'Gatorade Glacier Freeze', quantity: 12, dimension: 'mass' }],
+            members: [{ productId: 'glacier', name: 'Gatorade Glacier Freeze', quantity: 4, amount: 48, dimension: 'mass' }],
           }, 409);
         }
         return json({
@@ -284,8 +284,8 @@ describe('GroupDetailPage', () => {
     fireEvent.click(checkbox);
     fireEvent.click(screen.getByRole('button', { name: 'Add to this group' }));
 
-    expect(await screen.findByText('Gatorade Glacier Freeze: 12 ounces')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Use 12 ounces (from Gatorade Glacier Freeze)' })).toBeInTheDocument();
+    expect(await screen.findByText('Gatorade Glacier Freeze: 4 on hand (48 ounces)')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Use 48 ounces (from Gatorade Glacier Freeze)' })).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
 
     expect(screen.queryByText('These products have their own supply setting. Which should the whole group use?')).not.toBeInTheDocument();
@@ -294,12 +294,12 @@ describe('GroupDetailPage', () => {
     expect(posts[0]?.target).toBeUndefined();
 
     fireEvent.click(screen.getByRole('button', { name: 'Add to this group' }));
-    fireEvent.click(await screen.findByRole('button', { name: 'Use 12 ounces (from Gatorade Glacier Freeze)' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Use 48 ounces (from Gatorade Glacier Freeze)' }));
 
     await waitFor(() => expect(posts).toHaveLength(3));
     expect(posts[0]?.target).toBeUndefined();
     expect(posts[1]?.target).toBeUndefined();
-    expect(posts[2]?.target).toEqual({ quantity: 12, dimension: 'mass' });
+    expect(posts[2]?.target).toEqual({ quantity: 48, dimension: 'mass' });
   });
 
   it('still renames the group and moves a member', async () => {
@@ -458,5 +458,63 @@ describe('GroupDetailPage', () => {
     expect(screen.getByRole('button', { name: 'Keep on hand time, pinned, 6 months' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Keep on hand amount, about 96 ounces' })).toBeInTheDocument();
     expect(document.querySelector('.bin-fill')).not.toBeNull();
+  });
+
+  it('splits don\'t-restock products out of the rotation and saves favor variety', async () => {
+    let current: ProductGroup = {
+      ...baseGroup(),
+      rule: 'favor_variety',
+      ruleConfirmed: true,
+      quantity: 48,
+      dimension: 'mass',
+      members: [
+        { ...member('plain', 'Kroger bran', 1), lastStockedAt: '2026-06-01T00:00:00Z' },
+        { ...member('fancy', 'Lehi roller', 1), noRestock: true, lastStockedAt: '2024-01-01T00:00:00Z' },
+        member('corn', 'Corn muffin', 0),
+      ],
+    };
+    const calls: { url: string; body?: string }[] = [];
+    renderDetail((url, init) => {
+      const method = init?.method ?? 'GET';
+      if (method !== 'GET') calls.push({ url, body: typeof init?.body === 'string' ? init.body : undefined });
+      if (url === '/api/groups/g1' && method === 'GET') return json(current);
+      if (url === '/api/groups' && method === 'GET') return json([current]);
+      if (url === '/api/products' && method === 'GET') return json([]);
+      if (url === '/api/inventory') return json([]);
+      if (url === '/api/settings/supply') return json({ months: 3, opening: false, wipePhrase: 'WIPE INVENTORY' });
+      if (url.startsWith('/api/products/')) {
+        return json({ barcodes: [], unitOfMeasure: 'box', netAmount: 18, netUnit: 'oz' });
+      }
+      if (url === '/api/groups/g1/members/plain/restock' && method === 'PUT') {
+        current = {
+          ...current,
+          members: current.members.map((item) => (item.productId === 'plain' ? { ...item, noRestock: true } : item)),
+        };
+        return json(current);
+      }
+      if (url === '/api/groups/g1/rule' && method === 'PUT') return json(current);
+      throw new Error(`Unexpected ${method} ${url}`);
+    });
+
+    expect(await screen.findByRole('heading', { name: 'In rotation' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Not restocked' })).toBeInTheDocument();
+    expect(screen.getByText('Next up: Corn muffin · rotates through 2')).toBeInTheDocument();
+    expect(screen.getByText('⊘ no restock')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Change rule, Favor variety' })).toBeInTheDocument();
+    const stock = screen.getByRole('meter', { name: 'Stock on hand' });
+    expect(stock).toHaveAttribute('aria-valuenow', '36');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Remove or move Kroger bran' }));
+    expect(await screen.findByRole('menuitem', { name: /Don't restock/ })).toBeInTheDocument();
+    expect(screen.getByText('Stays in the group and counts toward stock')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('menuitem', { name: /Don't restock/ }));
+    await waitFor(() => expect(calls.some((call) => call.url.endsWith('/restock'))).toBe(true));
+    expect(JSON.parse(calls.find((call) => call.url.endsWith('/restock'))?.body ?? '{}')).toEqual({ noRestock: true });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Change rule, Favor variety' }));
+    const picker = await screen.findByRole('dialog', { name: 'What to buy next' });
+    expect(within(picker).getByRole('radio', { name: 'Favor variety' })).toBeChecked();
+    expect(within(picker).getByText("Rotate to the product you've had least recently.")).toBeInTheDocument();
+    expect(within(picker).getByText('Products marked "Don\'t restock" are skipped.')).toBeInTheDocument();
   });
 });

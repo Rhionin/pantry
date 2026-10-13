@@ -129,7 +129,7 @@ func (a *HouseholdAuth) Middleware(next http.Handler) http.Handler {
 		return next
 	}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if !a.enforced(r) || isPublicPath(r) {
+		if !a.enforced(r) || isPublicPath(r) || syncAuthorized(r) {
 			next.ServeHTTP(w, r)
 			return
 		}

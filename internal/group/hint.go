@@ -17,11 +17,12 @@ type Hint struct {
 }
 
 type hintGroup struct {
-	id      string
-	name    string
-	nameKey string
-	keys    map[string]struct{}
-	members map[string]struct{}
+	id          string
+	name        string
+	nameKey     string
+	keys        map[string]struct{}
+	members     map[string]struct{}
+	memberNames []string
 }
 
 // Hints matches scanned products to existing groups in one pass.
@@ -98,11 +99,48 @@ func hintsFor(ctx context.Context, q querier, names map[string]string) (map[stri
 			pick = loose
 		}
 		if pick == nil {
+			pick = similarHint(name, groups)
+		}
+		if pick == nil {
 			continue
 		}
 		out[productID] = Hint{GroupID: pick.id, Name: pick.name}
 	}
 	return out, nil
+}
+
+// similarHint uses the suggestion matcher when an exact look-alike key misses.
+// Two groups that both match is left unresolved so the scan row does not guess.
+func similarHint(name string, groups []hintGroup) *hintGroup {
+	var found *hintGroup
+	for i := range groups {
+		if !hintSimilar(name, groups[i]) {
+			continue
+		}
+		if found != nil && found.id != groups[i].id {
+			return nil
+		}
+		found = &groups[i]
+	}
+	return found
+}
+
+func hintSimilar(name string, g hintGroup) bool {
+	product := profile{tokens: mustSimilarityTokens(name)}
+	if _, ok := sharedFoodKey(product, profile{tokens: mustSimilarityTokens(g.name)}); ok {
+		return true
+	}
+	for _, member := range g.memberNames {
+		if _, ok := sharedFoodKey(product, profile{tokens: mustSimilarityTokens(member)}); ok {
+			return true
+		}
+	}
+	return false
+}
+
+func mustSimilarityTokens(name string) []string {
+	tokens, _ := similarityTokens(name)
+	return tokens
 }
 
 func loadHintGroups(ctx context.Context, q querier) ([]hintGroup, map[string]string, error) {
@@ -145,6 +183,7 @@ func loadHintGroups(ctx context.Context, q querier) ([]hintGroup, map[string]str
 			continue
 		}
 		g.members[productID.String] = struct{}{}
+		g.memberNames = append(g.memberNames, productName)
 		memberOf[productID.String] = id
 		key, _ := LookAlikeKey(productName, nil)
 		if key != "" {

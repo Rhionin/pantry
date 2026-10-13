@@ -2,9 +2,9 @@
 set -e
 
 # Minimum required line coverage percentage.
-# 79.3 is the clean ./... total, including the public brand mark and legal pages.
+# 79.9 is the clean ./... total, including the public brand mark and legal pages.
 # A cached go test run can report a different total. Do not ratchet from a cached result.
-COVERAGE_THRESHOLD=79.3
+COVERAGE_THRESHOLD=79.9
 
 # Colors for output
 RED='\033[0;31m'

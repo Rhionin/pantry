@@ -10,6 +10,9 @@
   --bin-link: var(--mantine-color-blue-8);
   --bin-row-hover: var(--mantine-color-gray-1);
   --bin-row-active: var(--mantine-color-gray-2);
+  --suggestion-primary-bg: var(--mantine-color-blue-9);
+  --suggestion-primary-ink: var(--mantine-color-white);
+  --suggestion-danger: var(--mantine-color-red-9);
   color: var(--bin-ink);
   /* Mantine dimmed (gray-6), placeholder (gray-5), and anchor (blue-6) miss 4.5:1 on white. */
   --mantine-color-dimmed: var(--bin-muted);
@@ -29,6 +32,9 @@
   --bin-link: var(--mantine-color-blue-4);
   --bin-row-hover: var(--mantine-color-dark-5);
   --bin-row-active: var(--mantine-color-dark-4);
+  --suggestion-primary-bg: var(--mantine-color-blue-8);
+  --suggestion-primary-ink: var(--mantine-color-white);
+  --suggestion-danger: var(--mantine-color-red-4);
 }
 
 .bin-page .bin-action {
@@ -37,8 +43,43 @@
   text-underline-offset: 0.16em;
 }
 
-.bin-page .bin-list-title {
+.bin-page .mantine-Drawer-header,
+.bin-page .mantine-Drawer-title {
+  color: var(--mantine-color-dark-9);
+}
+
+:where([data-mantine-color-scheme='dark']) .bin-page .mantine-Drawer-header,
+:where([data-mantine-color-scheme='dark']) .bin-page .mantine-Drawer-title {
+  color: var(--mantine-color-gray-0);
+}
+
+.bin-page .suggestion-rescan,
+.bin-page .suggestion-dismiss,
+.bin-page .suggestion-skip {
+  --button-bg: var(--bin-well);
+  --button-hover: var(--bin-row-hover);
+  --button-color: var(--bin-ink);
+  --button-bd: 1px solid var(--bin-line);
   color: var(--bin-ink);
+  font-weight: 650;
+}
+
+.bin-page .suggestion-dismiss {
+  --button-color: var(--suggestion-danger);
+  --button-bd: 1px solid var(--suggestion-danger);
+  color: var(--suggestion-danger);
+}
+
+.bin-page .suggestion-member .suggestion-name {
+  color: inherit !important;
+}
+
+.bin-page .suggestion-primary {
+  --button-bg: var(--suggestion-primary-bg);
+  --button-hover: var(--suggestion-primary-bg);
+  --button-color: var(--suggestion-primary-ink);
+  --button-bd: 1px solid transparent;
+  color: var(--suggestion-primary-ink);
 }
 
 /* Pin the field ink and border. A gray-4 edge is about 1.5:1 on white, and a gray-5 placeholder is about 2:1. */
@@ -331,6 +372,33 @@
   min-width: 0;
 }
 
+.rule-block {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--mantine-spacing-xs);
+  min-width: 0;
+  max-width: 100%;
+}
+
+.rule-next,
+.rule-skip-note,
+.bin-section-empty {
+  margin: 0;
+  max-width: 36rem;
+  color: var(--bin-muted);
+  font-size: var(--mantine-font-size-sm);
+  line-height: 1.45;
+}
+
+.rule-skip-note {
+  color: var(--mantine-color-gray-7);
+}
+
+:where([data-mantine-color-scheme='dark']) .rule-skip-note {
+  color: var(--mantine-color-gray-3);
+}
+
 .rule-pill {
   display: inline-flex;
   align-items: center;
@@ -376,6 +444,19 @@
   flex-direction: column;
 }
 
+.bin-section-title {
+  margin: var(--mantine-spacing-lg) 0 var(--mantine-spacing-xs);
+  color: var(--bin-ink);
+  font-size: var(--mantine-font-size-sm);
+  font-weight: 650;
+  line-height: 1.3;
+}
+
+.bin-section-empty {
+  padding: var(--mantine-spacing-md) 0;
+  border-top: 1px solid var(--mantine-color-default-border);
+}
+
 .bin-member {
   display: flex;
   align-items: flex-start;
@@ -402,19 +483,87 @@
   font-weight: 650;
 }
 
+.bin-member.is-aside .bin-member-name,
+.bin-member.is-aside .bin-restock-tag {
+  color: var(--bin-muted);
+}
+
+.bin-restock-tag {
+  display: inline-block;
+  margin-top: var(--mantine-spacing-xs);
+  padding: 0 var(--mantine-spacing-xs);
+  border: 1px solid var(--bin-line);
+  border-radius: var(--mantine-radius-sm);
+  color: var(--bin-muted);
+  font-size: var(--mantine-font-size-xs);
+  font-weight: 650;
+  line-height: 1.6;
+}
+
+.bin-menu-label,
+.bin-menu-hint {
+  display: block;
+  white-space: normal;
+}
+
+.bin-menu-hint {
+  max-width: 16rem;
+  margin-top: 0.15rem;
+  font-size: var(--mantine-font-size-xs);
+  font-weight: 400;
+  line-height: 1.35;
+}
+
+/* The menu is portaled, so it does not inherit the bin page's dimmed override.
+   Gray-6 labels and a faded item fail 4.5:1 on the menu surface. */
+.bin-member-menu {
+  --menu-item-color: var(--mantine-color-dark-9);
+  --mantine-color-text: var(--mantine-color-dark-9);
+  --mantine-color-dimmed: var(--mantine-color-gray-7);
+}
+
+.bin-member-menu .mantine-Menu-item,
+.bin-member-menu .mantine-Menu-itemLabel,
+.bin-member-menu .bin-menu-label {
+  color: var(--mantine-color-dark-9);
+}
+
+.bin-member-menu .mantine-Menu-label,
+.bin-member-menu .bin-menu-hint {
+  color: var(--mantine-color-gray-7);
+}
+
+:where([data-mantine-color-scheme='dark']) .bin-member-menu {
+  --menu-item-color: var(--mantine-color-gray-0);
+  --mantine-color-text: var(--mantine-color-gray-0);
+  --mantine-color-dimmed: var(--mantine-color-gray-3);
+}
+
+:where([data-mantine-color-scheme='dark']) .bin-member-menu .mantine-Menu-item,
+:where([data-mantine-color-scheme='dark']) .bin-member-menu .mantine-Menu-itemLabel,
+:where([data-mantine-color-scheme='dark']) .bin-member-menu .bin-menu-label {
+  color: var(--mantine-color-gray-0);
+}
+
+:where([data-mantine-color-scheme='dark']) .bin-member-menu .mantine-Menu-label,
+:where([data-mantine-color-scheme='dark']) .bin-member-menu .bin-menu-hint {
+  color: var(--mantine-color-gray-3);
+}
+
+.rule-sheet {
+  --mantine-color-dimmed: var(--mantine-color-gray-7);
+  --mantine-color-text: var(--mantine-color-dark-9);
+  color: var(--mantine-color-dark-9);
+}
+
+:where([data-mantine-color-scheme='dark']) .rule-sheet {
+  --mantine-color-dimmed: var(--mantine-color-gray-3);
+  --mantine-color-text: var(--mantine-color-gray-0);
+  color: var(--mantine-color-gray-0);
+}
+
 .seesaw-slot {
   min-width: 0;
-}
-
-.bin-title-row {
-  max-width: 40rem;
-}
-
-.bin-filters {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.4rem 0.9rem;
-  max-width: 36rem;
 }
 
 .bin-chip,
@@ -442,64 +591,9 @@
 }
 
 .bin-chip:focus-visible,
-.bin-row:focus-visible,
 .bin-page .bin-action:focus-visible {
   outline: 2px solid var(--bin-focus);
   outline-offset: 2px;
-}
-
-.bin-list {
-  list-style: none;
-  margin: 0.4rem 0 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 1.15rem;
-  max-width: 40rem;
-}
-
-.bin-row,
-.bin-row:link,
-.bin-row:visited,
-.bin-row:hover,
-.bin-row:active,
-.bin-row:focus {
-  display: flex;
-  align-items: flex-start;
-  gap: 0.85rem;
-  /* Link states must keep the theme ink. A dark hover with the browser's black text is the list-page slab. */
-  color: var(--bin-ink);
-  background: transparent;
-  text-decoration: none;
-  padding: 0.35rem 0.4rem;
-  border-radius: var(--mantine-radius-sm);
-  -webkit-tap-highlight-color: transparent;
-}
-
-.bin-row-copy {
-  min-width: 0;
-}
-
-.bin-row-name {
-  font-weight: 650;
-  text-decoration: underline;
-  text-underline-offset: 0.15em;
-}
-
-.bin-row-summary {
-  display: block;
-  margin-top: 0.15rem;
-  max-width: 48ch;
-  color: var(--bin-muted);
-}
-
-.bin-row:hover,
-.bin-row:focus-visible {
-  background: var(--bin-row-hover);
-}
-
-.bin-row:active {
-  background: var(--bin-row-active);
 }
 
 @media (prefers-reduced-motion: reduce) {

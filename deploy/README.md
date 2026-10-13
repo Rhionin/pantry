@@ -106,7 +106,7 @@ The script's `.env` handling is idempotent: it creates `.env` from `.env.example
 sudo ./setup.sh rule
 ```
 
-This detects your scanner and writes `/etc/udev/rules.d/99-pantry-scanner.rules` with a symlink at `/dev/input/pantry-scanner`. See [Headless Scanner Input](#headless-scanner-input) for how to do it manually or for a Bluetooth scanner. This step is optional — Pantry runs without it — but scanning won't work until a matching rule exists.
+This detects your scanner and writes `/etc/udev/rules.d/99-pantry-scanner.rules` with a symlink at `/dev/input/pantry-scanner`. The generated match uses the input parent's vendor and product IDs, which covers USB HID and Bluetooth HID. See [Headless Scanner Input](#headless-scanner-input) to write the rule by hand. This step is optional — Pantry runs without it — but scanning won't work until a matching rule exists.
 
 ### 4. Start Pantry
 
@@ -539,6 +539,9 @@ All configuration is handled through environment variables in `/opt/pantry/.env`
 | `BASIC_AUTH_USER` | `pantry` | Username the login page asks for on the public site. Also accepted in an `Authorization: Basic` header |
 | `BASIC_AUTH_PASSWORD` | empty | Shared password for the public site, 12 to 72 characters. Required the first time the public proxy starts, unless `auth.caddy` already exists. The hash is written to `auth.caddy` and copied to `auth/household`; this value stays in `.env`. Setup does not replace an existing `auth.caddy` |
 | `PANTRY_SESSION_SECRET` | empty | Signs the login cookie. Setup and the update timer fill it in once when `auth.caddy` exists, and do not rotate it. Leave it alone so phones stay signed in |
+| `VAPID_PUBLIC_KEY` | generated | Public half of the Web Push identity for scan alerts while Pantry is closed. `sudo ./setup.sh` fills it once. Not a secret |
+| `VAPID_PRIVATE_KEY` | generated | Private half of that identity. A secret. Setup fills it once and does not rotate a pair that is already set |
+| `VAPID_SUBJECT` | generated | Contact on each push, `mailto:` or `https://`. Setup uses `mailto:pantry@PUBLIC_HOST`, or `mailto:pantry@localhost` when the install is LAN-only |
 | `PANTRY_LAN_FIREWALL` | `on` | `off` leaves `HOST_PORT` reachable from any source. Any other value, including empty, installs the LAN-only rule when compose publishes that port or the public proxy is on |
 | `PANTRY_LAN_IPV4` | empty | Private LAN address of the Pi, such as `192.168.1.203`. Empty detects it. Set this when detection prints a Docker bridge instead of the address phones should open |
 | `PANTRY_SPLIT_DNS` | `off` | `on` answers `PUBLIC_HOST` with `PANTRY_LAN_IPV4` from dnsmasq on the Pi. Public DNS and the shared password stay as they are. Leave off unless clients use the Pi for DNS. Do not forward port 53 |
@@ -555,6 +558,11 @@ All configuration is handled through environment variables in `/opt/pantry/.env`
 | `SCANNER_DEVICE` | `/dev/input/pantry-scanner` | Path to the scanner's stable symlink created by the udev rule. Point at a concrete `/dev/input/eventN` to bypass the symlink while debugging |
 | `SCANNER_GID` | `65532` | Numeric group ID the container process joins so it can read the `0640` scanner node |
 | `DEPLOY_HOOK_SECRET` | generated | Shared HMAC secret for `POST /api/deploy-hook`. `sudo ./setup.sh` fills this in when it is empty and never replaces a value already set. The same value is the GitHub Actions secret `DEPLOY_HOOK_SECRET`. Print it with `sudo ./setup.sh deploy-secret` |
+| `GROCY_URL` | empty | Grocy base URL from the sidecar, usually `http://grocy:80`. Empty keeps grocy-sync off. See [Grocy sync](#grocy-sync) |
+| `GROCY_API_KEY` | empty | API key created in the Grocy UI. Stored only in `/opt/pantry/.env` |
+| `PANTRY_SYNC_TOKEN` | empty | Read-only secret the sidecar sends to Pantry. Generate with `openssl rand -hex 32` |
+| `GROCY_SYNC_INTERVAL` | `5m` | How often the sidecar re-reads Pantry and writes Grocy |
+| `TZ` | empty | Time zone for stock dates. Set it to the same value as the Grocy container |
 
 **Note:** The variables `ADDR` and `DB_PATH` are pinned by the Docker Compose file and should not be overridden. To change the host port, use `HOST_PORT` instead of modifying `ADDR`.
 
@@ -612,13 +620,13 @@ Pantry reads barcode scans directly from the scanner's evdev device (`/dev/input
    sudo cp /opt/pantry/udev/99-pantry-scanner.rules /etc/udev/rules.d/
    ```
 
-   **For USB scanners**, uncomment the USB example and set the vendor/product IDs. The rule matches on `ENV{ID_VENDOR_ID}` and `ENV{ID_MODEL_ID}` (set directly on the event device by udev's `input_id` builtin) rather than `ATTRS{idVendor}`/`ATTRS{idProduct}`, which must walk the parent chain and are order-sensitive:
+   Uncomment the example and set the vendor/product IDs. The same rule covers USB HID and Bluetooth HID. It matches the input parent's `ATTRS{id/vendor}` and `ATTRS{id/product}` (the `Vendor=` / `Product=` values from `/proc/bus/input/devices`). `ENV{ID_VENDOR_ID}` and `ENV{ID_MODEL_ID}` are imported only when the device has a USB ancestor, so they do not match a Bluetooth scanner:
    ```
-   SUBSYSTEM=="input", KERNEL=="event*", ENV{ID_VENDOR_ID}=="XXXX", ENV{ID_MODEL_ID}=="YYYY", \
+   SUBSYSTEM=="input", KERNEL=="event*", ATTRS{id/vendor}=="XXXX", ATTRS{id/product}=="YYYY", \
      SYMLINK+="input/pantry-scanner", GROUP="65532", MODE="0640"
    ```
 
-   **For Bluetooth scanners**, match by device name instead:
+   If the device has no vendor and product IDs, match by name instead:
    ```
    SUBSYSTEM=="input", KERNEL=="event*", ATTRS{name}=="*Scanner*", \
      SYMLINK+="input/pantry-scanner", GROUP="65532", MODE="0640"
@@ -671,7 +679,7 @@ First, distinguish the two very different situations that both show `connected: 
 
 | `lastError` | Meaning | Fix |
 |---|---|---|
-| `ENOENT` / no such file | The udev rule did not match, so no symlink was created | Fix the rule's match keys (`ENV{ID_VENDOR_ID}`/`ENV{ID_MODEL_ID}` for USB, `ATTRS{name}` for Bluetooth) and re-run `sudo ./setup.sh rule` |
+| `ENOENT` / no such file | The udev rule did not match, so no symlink was created | Fix the rule's match keys (`ATTRS{id/vendor}`/`ATTRS{id/product}`, or `ATTRS{name}` when those IDs are absent) and re-run `sudo ./setup.sh rule` |
 | `EACCES` / permission denied | The node's group is not 65532 | Fix `GROUP` in the rule or `SCANNER_GID` in `.env`, then reload udev |
 | `EPERM` / operation not permitted | The device cgroup denied the open | `device_cgroup_rules` is not taking effect — do **not** fall back to `privileged: true` or reintroduce a `devices:` entry; see `ACCEPTANCE.md` |
 
@@ -931,6 +939,92 @@ The credentials are stored in root's Docker config, which is the identity the up
 
 If either secret is empty, the run logs a notice and exits successfully. Otherwise it POSTs JSON built with `jq` from the event payload: `repo`, `action`, `issue_number`, `title`, `html_url`, `author_login`, `assignee_login` (the user just assigned, otherwise the issue's assignee, or null), and `created_at`. Runs for the same issue number share a concurrency group so a burst of events does not pile up. The workflow grants the GitHub token no permissions.
 
+## Grocy sync
+
+Pantry can copy itself into [Grocy](https://grocy.info/) on the same Pi. Pantry stays the source of truth. Grocy being down does not stop Pantry, and Pantry being down does not stop Grocy. The copy is a separate container, `pantry-grocy-sync`, and it stays off until the three values below are set.
+
+Grocy itself is not in this repository. On this Pi it is the linuxserver image, container name `grocy`, started from `/home/pantrybot/grocy`, and attached to the Docker network `pantry_cf-tunnel`. Other containers reach it at `http://grocy:80`.
+
+### Turn it on
+
+1. In Grocy, open the user menu and create an API key. That key is not a Pantry password.
+2. On the Pi, edit `/opt/pantry/.env`. This file is never committed. Leave the values empty in git.
+
+```bash
+openssl rand -hex 32
+```
+
+Paste the output into `/opt/pantry/.env` with the Grocy URL and the API key. Docker Compose does not run shell substitutions in this file, so the token is the hex string itself.
+
+```
+GROCY_URL=http://grocy:80
+GROCY_API_KEY=paste-the-key-from-the-grocy-screen
+PANTRY_SYNC_TOKEN=paste-the-hex-from-openssl
+GROCY_SYNC_INTERVAL=5m
+TZ=America/Denver
+```
+
+`TZ` must be the same zone the Grocy container uses, or a stock-in late in the evening can land on the previous day in Grocy. The sidecar image has the zone database; the zone name is enough.
+
+3. Recreate Pantry so it loads the token, and start the sidecar. From `/opt/pantry`, after `sudo ./setup.sh` has copied `docker-compose.grocy.yml`:
+
+```bash
+cd /opt/pantry
+sudo ./setup.sh
+sudo docker compose -f docker-compose.yml -f docker-compose.grocy.yml --profile grocy up -d grocy-sync
+sudo docker logs pantry-grocy-sync --tail=40
+```
+
+`sudo ./setup.sh` also starts the sidecar once all three values are in `/opt/pantry/.env`. A plain `docker compose up` does not. The update timer uses the same rule, so later image pulls recreate `pantry-grocy-sync` when the values stay set.
+
+The sidecar is limited to 64 MB. It has no published ports. It joins the Compose project network (hostname `pantry`) and the existing network `pantry_cf-tunnel` (hostname `grocy`). That second network only hands out dynamic addresses from `10.77.77.4/30`, and Grocy already uses one. If `up` says the pool is exhausted, another container is holding the remaining address. Do not pin this service to `10.77.77.2` or `10.77.77.3`.
+
+The first reconcile creates a Grocy location named Pantry, a quantity unit named Piece, products, barcodes, current stock, and a shopping list named Pantry. Grocy's own default shopping list is left alone. After that it repeats every five minutes, and sooner when Pantry's event stream reports a change.
+
+Grocy product names are unique regardless of case. A group that shares a name with a product is the parent `Name (group)`. Products that share a name are told apart with a brand, a package size, or a short Pantry id. The original name stays in the `pantry_name` userfield. Existing Grocy products are matched by that `pantry_id` userfield and renamed in place.
+
+### Past uses, once
+
+New uses are written through Grocy's API when they happen. Grocy's API cannot backdate a consume, so older Pantry history is a separate command. It is not part of the five-minute sync. It writes one row per Pantry stock move into Grocy's `stock_log` with the real date, after copying `grocy.db`.
+
+Stop Grocy first. The database is `data/grocy.db` inside the directory the linuxserver image mounts at `/config`. On this Pi that compose file is `/home/pantrybot/grocy`; confirm the host path before you mount it. The mount has to be writable: the command writes a `grocy.db.bak-<timestamp>` beside the live file, then the journal rows.
+
+The sidecar image runs as uid 65532. Grocy's files on this Pi are owned by uid 1001, so backfill has to run as that user. Without `--user 1001:1001` the command stops before it copies or writes anything.
+
+```bash
+sudo docker stop grocy
+cd /opt/pantry
+sudo docker compose -f docker-compose.yml -f docker-compose.grocy.yml --profile grocy run --rm --no-deps --user 1001:1001 \
+  -v /home/pantrybot/grocy/config:/grocy \
+  grocy-sync backfill --db /grocy/data/grocy.db --confirm
+sudo docker start grocy
+```
+
+Run a reconcile (the sidecar's normal start) before the first backfill, so Grocy already has the products and the Pantry location. Running it again updates rows that changed and marks removed moves undone. It does not change the on-hand `stock` table, so current counts stay with the API sync.
+
+If grocy.db-wal or grocy.db-shm is present, or the database is locked, backfill stops before it copies or writes anything. Stop Grocy and run it again. If the backup succeeds and a later write fails, the log prints the restore steps. They are:
+
+```bash
+sudo docker stop grocy
+# Move the live grocy.db aside, copy grocy.db.bak-<timestamp> to grocy.db,
+# and delete grocy.db-wal and grocy.db-shm if those files exist.
+sudo docker start grocy
+```
+
+### What didn't map
+
+- Group rules, pinned products, and "don't restock" are notes on the Grocy product. They do not change how Grocy shops.
+- A time window or a grams/milliliters target is not a Grocy minimum stock. Minimum stock is set only where Pantry has a fixed item count (`target_quantity`). Parent products roll that count up from their members.
+- A barcode override replaces the global barcode. Grocy stores one product per barcode and does not keep the source.
+- Package size stays a note and a `pantry_size` userfield. Grocy still counts pieces. There is no unit conversion.
+- Prices and deals are not sent. Brand is not its own Grocy field.
+- Product pictures are not uploaded.
+- Scans waiting for approval, suggestions, and the staged cart are not copied.
+- Grocy recipes, chores, batteries, equipment, and locations other than Pantry are left alone. So is Grocy's default shopping list.
+- A consume written through the API is stamped when Grocy receives it. Only the one-time backfill keeps the original past date.
+- Correcting a backfilled journal row is applied the next time you run `backfill`. Correcting current stock undoes the matching Grocy booking and posts it again on the next sync.
+- One household (`user-1`). Parent products are a single level. When a product is in a Pantry group, that group's name is the Grocy product group. The Pantry category is a product group only for products that are not in a Pantry group; otherwise the category is a note.
+
 ## Troubleshooting
 
 ### Public website doesn't load
@@ -983,7 +1077,7 @@ Note the image is distroless, so `docker exec pantry sh` does not work — use l
    ```bash
    ls -l /dev/input/pantry-scanner
    ```
-   If it is missing while the scanner is attached — and especially if the scanner's keystrokes are appearing in the Pi's terminal — the udev rule is not matching. The scanner echoing to the console is the tell: the rule that would grant the node to GID 65532 and create the symlink never fired. Regenerate it with `sudo ./setup.sh rule` (which now matches USB scanners on vendor/product IDs) and confirm with `ls -l /dev/input/pantry-scanner`.
+   If it is missing while the scanner is attached — and especially if the scanner's keystrokes are appearing in the Pi's terminal — the udev rule is not matching. The scanner echoing to the console is the tell: the rule that would grant the node to GID 65532 and create the symlink never fired. Regenerate it with `sudo ./setup.sh rule` (it matches USB and Bluetooth HID scanners on the input parent's vendor/product IDs) and confirm with `ls -l /dev/input/pantry-scanner`.
 
 5. **Check the container's mounts** (there is no longer a `Devices` array — the scanner is a directory bind mount now):
    ```bash
@@ -996,7 +1090,7 @@ Note the image is distroless, so `docker exec pantry sh` does not work — use l
    lsusb                              # USB
    cat /proc/bus/input/devices        # any input device
    ```
-   Ensure the `ENV{ID_VENDOR_ID}`/`ENV{ID_MODEL_ID}` (USB) or `ATTRS{name}` (Bluetooth) in `/etc/udev/rules.d/99-pantry-scanner.rules` match your scanner, then re-run `sudo ./setup.sh rule`.
+   Ensure `ATTRS{id/vendor}`/`ATTRS{id/product}` in `/etc/udev/rules.d/99-pantry-scanner.rules` match your scanner (`ATTRS{name}` only when those IDs are absent), then re-run `sudo ./setup.sh rule`.
 
 ### Updates Failing
 

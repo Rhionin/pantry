@@ -4,6 +4,7 @@ export const ruleLabels: Record<string, string> = {
   same_as_ran_out: 'Same product',
   favorite: 'Always my favorite',
   best_deal: 'Best deal',
+  favor_variety: 'Favor variety',
 };
 
 export const ruleLabel = (rule: string) => ruleLabels[rule] ?? rule;
@@ -12,6 +13,7 @@ export const ruleChoices = [
   { id: 'same_as_ran_out', label: 'Same product', hint: 'Rebuy the exact product you used last.' },
   { id: 'favorite', label: 'Favorite', hint: 'Always buy one product.' },
   { id: 'best_deal', label: 'Best deal', hint: 'Lowest price per ounce.' },
+  { id: 'favor_variety', label: 'Favor variety', hint: "Rotate to the product you've had least recently." },
 ] as const;
 
 export function rulePillLabel(
@@ -24,6 +26,7 @@ export function rulePillLabel(
     return members.find((member) => member.productId === group.pinnedProductId)?.name ?? 'Favorite';
   }
   if (group.rule === 'best_deal') return 'Best deal';
+  if (group.rule === 'favor_variety') return 'Favor variety';
   return ruleLabel(group.rule);
 }
 
@@ -32,6 +35,14 @@ export const kindPhrase = (kind: string) => {
   if (kind === 'from_old_plan') return 'from the old shopping plan';
   if (kind === 'from_scan') return 'from a scan';
   return kind;
+};
+
+// Short reason on an inventory row or the add sheet. Same-need cards come from the old plan.
+export const suggestionReason = (kind: string) => {
+  if (kind === 'from_old_plan') return 'same need';
+  if (kind === 'looks_alike') return 'look alike';
+  if (kind === 'from_scan') return 'from a scan';
+  return kindPhrase(kind);
 };
 
 export const suggestionBanner = (cards: { kind: string }[]) => {
@@ -92,10 +103,18 @@ export interface TargetChoice {
   target: GroupTarget;
 }
 
-const quantityUnit = (dimension?: NetDimension) => (dimension === 'volume' ? 'fluid ounces' : 'ounces');
+const ounceLabel = (member: Pick<TargetConflictMember, 'amount' | 'dimension'>): string | null => {
+  if (member.amount === undefined) return null;
+  if (member.dimension === 'volume') return `${formatAmount(member.amount)} fluid ounces`;
+  if (member.dimension === 'mass') return `${formatAmount(member.amount)} ounces`;
+  return null;
+};
 
-export const conflictAmount = (member: Pick<TargetConflictMember, 'quantity' | 'dimension' | 'windowMonths'>) => {
-  if (member.quantity !== undefined) return `${member.quantity} ${quantityUnit(member.dimension)}`;
+export const conflictAmount = (member: Pick<TargetConflictMember, 'quantity' | 'amount' | 'dimension' | 'windowMonths'>) => {
+  const ounces = ounceLabel(member);
+  if (member.quantity !== undefined && ounces) return `${member.quantity} on hand (${ounces})`;
+  if (ounces) return ounces;
+  if (member.quantity !== undefined) return `${member.quantity} on hand`;
   if (member.windowMonths !== undefined) return `${member.windowMonths} months`;
   return '';
 };
@@ -107,11 +126,13 @@ export const conflictLine = (member: TargetConflictMember) => {
 };
 
 const memberTarget = (member: TargetConflictMember): { key: string; amount: string; target: GroupTarget } | null => {
-  if (member.quantity !== undefined) {
-    const dimension = member.dimension === 'volume' || member.dimension === 'mass' ? member.dimension : undefined;
-    const target: GroupTarget = { quantity: member.quantity };
-    if (dimension) target.dimension = dimension;
-    return { key: `quantity:${member.quantity}:${dimension ?? ''}`, amount: conflictAmount(member), target };
+  const ounces = ounceLabel(member);
+  if (ounces && member.amount !== undefined && (member.dimension === 'mass' || member.dimension === 'volume')) {
+    return {
+      key: `amount:${member.amount}:${member.dimension}`,
+      amount: ounces,
+      target: { quantity: member.amount, dimension: member.dimension },
+    };
   }
   if (member.windowMonths !== undefined) {
     return {
@@ -183,6 +204,9 @@ export interface MemberPackage {
   netUnit?: string;
   packCount?: number;
   barcodes?: string[];
+  noRestock?: boolean;
+  lastStockedAt?: string;
+  lastConsumedAt?: string;
 }
 
 export function memberPackage(
@@ -198,6 +222,9 @@ export function memberPackage(
     netUnit: product?.netUnit,
     packCount: product?.packCount,
     barcodes: product?.barcodes,
+    noRestock: member.noRestock,
+    lastStockedAt: member.lastStockedAt,
+    lastConsumedAt: member.lastConsumedAt,
   };
 }
 
@@ -435,6 +462,7 @@ export function ruleSentence(
       : 'Lowest price per ounce.';
   }
   if (group.rule === 'same_as_ran_out') return ruleChoices[0].hint;
+  if (group.rule === 'favor_variety') return ruleChoices[3].hint;
   return style === 'detail' ? `Buy ${ruleLabel(group.rule)} next.` : `${ruleLabel(group.rule)}.`;
 }
 

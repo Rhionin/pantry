@@ -93,6 +93,7 @@ type previewMember struct {
 	OnHand         int       `json:"onHand"`
 	LastConsumedAt time.Time `json:"lastConsumedAt"`
 	LastStockedAt  time.Time `json:"lastStockedAt"`
+	NoRestock      bool      `json:"noRestock"`
 }
 
 type previewDeal struct {
@@ -201,6 +202,18 @@ func (h *GroupHandler) RemoveMember(req Request[struct{}, groupMemberParams]) (*
 	return &removeMemberResponse{Group: &view}, nil
 }
 
+type restockBody struct {
+	NoRestock bool `json:"noRestock"`
+}
+
+func (h *GroupHandler) PutMemberRestock(req Request[restockBody, groupMemberParams]) (*group.Group, error) {
+	view, err := h.Groups.SetMemberRestock(req.Context, req.PathParams.ID, req.PathParams.ProductID, req.Body.NoRestock)
+	if err != nil {
+		return nil, groupErr(err)
+	}
+	return &view, nil
+}
+
 func (h *GroupHandler) PutRule(req Request[ruleBody, groupIDParams]) (*group.Group, error) {
 	view, err := h.Groups.SetRule(req.Context, req.PathParams.ID, req.Body.Rule, req.Body.PinnedProductID, req.Body.Confirm)
 	if err != nil {
@@ -245,6 +258,17 @@ func (h *GroupHandler) NoteFromScan(req Request[fromScanBody, struct{}]) (NoCont
 		return NoContent{}, groupErr(err)
 	}
 	return NoContent{}, nil
+}
+
+func (h *GroupHandler) Rescan(req Request[struct{}, struct{}]) ([]group.Suggestion, error) {
+	rows, err := h.Groups.Rescan(req.Context)
+	if err != nil {
+		return nil, groupErr(err)
+	}
+	if rows == nil {
+		rows = []group.Suggestion{}
+	}
+	return rows, nil
 }
 
 func (h *GroupHandler) ListSuggestions(req Request[struct{}, struct{}]) ([]group.Suggestion, error) {
@@ -322,6 +346,7 @@ func (h *GroupHandler) Preview(req Request[previewBody, struct{}]) (*previewResp
 				OnHand:         m.OnHand,
 				LastConsumedAt: m.LastConsumedAt,
 				LastStockedAt:  m.LastStockedAt,
+				NoRestock:      m.NoRestock,
 			})
 		}
 	} else if body.GroupID != "" {
@@ -339,7 +364,7 @@ func (h *GroupHandler) Preview(req Request[previewBody, struct{}]) (*previewResp
 		}
 	}
 	if !group.Valid(rule) {
-		return nil, BadRequest("Pick one of the three rules.")
+		return nil, BadRequest("Pick one of the rules.")
 	}
 	if len(body.Deals) > 0 {
 		for _, d := range body.Deals {

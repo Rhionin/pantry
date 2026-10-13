@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"regexp"
@@ -60,9 +61,18 @@ func HandleJSON[TBody, TPathParams, TResp any](fn handlerFunc[TBody, TPathParams
 			return
 		}
 		r.Body = http.MaxBytesReader(w, r.Body, maxJSONBodyBytes)
-
-		if r.ContentLength > 0 {
-			if err := json.UnmarshalRead(r.Body, &body); err != nil {
+		raw, err := io.ReadAll(r.Body)
+		if err != nil {
+			var tooLarge *http.MaxBytesError
+			if errors.As(err, &tooLarge) {
+				writeError(w, http.StatusBadRequest, "request body is too large")
+				return
+			}
+			writeError(w, http.StatusBadRequest, fmt.Sprintf("invalid request body: %v", err))
+			return
+		}
+		if len(raw) > 0 {
+			if err := json.Unmarshal(raw, &body); err != nil {
 				writeError(w, http.StatusBadRequest, fmt.Sprintf("invalid request body: %v", err))
 				return
 			}

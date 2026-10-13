@@ -27,6 +27,7 @@ import type {
   GroupSuggestion,
   GroupTarget,
   GroupPreview,
+  HistoryView,
   TargetConflictMember,
 } from '../types';
 
@@ -253,6 +254,22 @@ export function stockOutItem(itemId: string): Promise<void> {
   return apiFetch(`/api/inventory/${itemId}/stock-out`, { method: 'POST', body: '{}' });
 }
 
+export function getItemHistory(itemId: string): Promise<HistoryView> {
+  return apiFetch(`/api/items/${itemId}/history`);
+}
+
+export function getGroupHistory(groupId: string): Promise<HistoryView> {
+  return apiFetch(`/api/groups/${groupId}/history`);
+}
+
+export function setMoveQuantity(id: string, quantity: number): Promise<HistoryView> {
+  return apiFetch(`/api/moves/${id}`, { method: 'PATCH', body: JSON.stringify({ quantity }) });
+}
+
+export function undoMove(id: string): Promise<HistoryView> {
+  return apiFetch(`/api/moves/${id}`, { method: 'DELETE' });
+}
+
 // Exact phrase POST /api/inventory/wipe requires. Kept in sync with
 // supply.WipePhrase.
 export const WIPE_INVENTORY_CONFIRMATION = 'WIPE INVENTORY';
@@ -438,6 +455,13 @@ export function removeGroupMember(id: string, productId: string): Promise<{ dele
   return apiFetch(`/api/groups/${id}/members/${productId}`, { method: 'DELETE' });
 }
 
+export function setMemberRestock(id: string, productId: string, noRestock: boolean): Promise<ProductGroup> {
+  return apiFetch(`/api/groups/${id}/members/${productId}/restock`, {
+    method: 'PUT',
+    body: JSON.stringify({ noRestock }),
+  });
+}
+
 export function setGroupRule(id: string, rule: string, pinnedProductId = '', confirm = true): Promise<ProductGroup> {
   return apiFetch(`/api/groups/${id}/rule`, {
     method: 'PUT',
@@ -483,6 +507,10 @@ export function noteGroupFromScan(productId: string): Promise<void> {
 
 export function listSuggestions(): Promise<GroupSuggestion[]> {
   return apiFetch('/api/group-suggestions');
+}
+
+export function rescanSuggestions(): Promise<GroupSuggestion[]> {
+  return apiFetch('/api/group-suggestions/rescan', { method: 'POST' });
 }
 
 export function acceptSuggestion(id: string, productIds: string[], name?: string, target?: GroupTarget): Promise<ProductGroup> {
@@ -562,4 +590,27 @@ export async function logout(): Promise<void> {
   if (!res.ok) {
     throw new ApiError(res.status, 'Could not sign out.');
   }
+}
+
+export interface PushSubscriptionInput {
+  endpoint: string;
+  keys: { p256dh: string; auth: string };
+}
+
+export function getVapidPublicKey(): Promise<{ publicKey: string }> {
+  return apiFetch('/api/push/vapid-public-key');
+}
+
+export function savePushSubscription(body: PushSubscriptionInput): Promise<{ endpoint: string }> {
+  return apiFetch('/api/push/subscriptions', {
+    method: 'POST',
+    body: JSON.stringify(body),
+  });
+}
+
+export function deletePushSubscription(endpoint: string): Promise<void> {
+  return apiFetch('/api/push/subscriptions', {
+    method: 'DELETE',
+    body: JSON.stringify({ endpoint }),
+  });
 }

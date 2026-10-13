@@ -11,32 +11,64 @@ import (
 // shoppingChangeMigration is the first migration that changes live shopping rows.
 const shoppingChangeMigration = "012_shopping_list_group.sql"
 
+// restockChangeMigration rebuilds the group rule check and adds no_restock.
+const restockChangeMigration = "013_group_restock.sql"
+
 // snapshotShoppingDB runs once, immediately before shoppingChangeMigration.
 // Tests replace it to simulate a backup that cannot be written.
 var snapshotShoppingDB = writePreGroupsBackup
 
+// snapshotRestockDB runs once, immediately before restockChangeMigration.
+// Tests replace it to simulate a backup that cannot be written.
+var snapshotRestockDB = writePreRestockBackup
+
+type snapshotSpec struct {
+	prefix  string
+	already string
+	wrote   string
+	fail    string
+}
+
 func writePreGroupsBackup(db *sql.DB) error {
+	return writeSnapshot(db, snapshotSpec{
+		prefix:  "pantry-pre-groups",
+		already: "shopping backup already exists",
+		wrote:   "wrote shopping backup",
+		fail:    "could not back up the pantry before updating shopping",
+	})
+}
+
+func writePreRestockBackup(db *sql.DB) error {
+	return writeSnapshot(db, snapshotSpec{
+		prefix:  "pantry-pre-restock",
+		already: "restock backup already exists",
+		wrote:   "wrote restock backup",
+		fail:    "could not back up the pantry before updating restock rules",
+	})
+}
+
+func writeSnapshot(db *sql.DB, spec snapshotSpec) error {
 	path, err := sqliteMainPath(db)
 	if err != nil {
-		return err
+		return fmt.Errorf("%s: %w", spec.fail, err)
 	}
 	if path == "" || path == ":memory:" {
 		return nil
 	}
 	dir := filepath.Dir(path)
-	matches, err := filepath.Glob(filepath.Join(dir, "pantry-pre-groups-*.db"))
+	matches, err := filepath.Glob(filepath.Join(dir, spec.prefix+"-*.db"))
 	if err != nil {
-		return fmt.Errorf("could not back up the pantry before updating shopping: %w", err)
+		return fmt.Errorf("%s: %w", spec.fail, err)
 	}
 	if len(matches) > 0 {
-		log.Printf("shopping backup already exists: %s", matches[0])
+		log.Printf("%s: %s", spec.already, matches[0])
 		return nil
 	}
-	dest := filepath.Join(dir, "pantry-pre-groups-"+time.Now().UTC().Format("20060102T150405Z")+".db")
+	dest := filepath.Join(dir, spec.prefix+"-"+time.Now().UTC().Format("20060102T150405Z")+".db")
 	if _, err := db.Exec(`VACUUM INTO ?`, dest); err != nil {
-		return fmt.Errorf("could not back up the pantry before updating shopping: %w", err)
+		return fmt.Errorf("%s: %w", spec.fail, err)
 	}
-	log.Printf("wrote shopping backup: %s", dest)
+	log.Printf("%s: %s", spec.wrote, dest)
 	return nil
 }
 
@@ -44,7 +76,7 @@ func sqliteMainPath(db *sql.DB) (string, error) {
 	var seq int
 	var name, file string
 	if err := db.QueryRow(`PRAGMA database_list`).Scan(&seq, &name, &file); err != nil {
-		return "", fmt.Errorf("could not back up the pantry before updating shopping: %w", err)
+		return "", err
 	}
 	return file, nil
 }

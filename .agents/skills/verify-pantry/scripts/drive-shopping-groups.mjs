@@ -18,30 +18,42 @@ try {
   assert(corn !== undefined && corn.kind === 'looks_alike', `corn is still a look-alike suggestion (${corn?.kind})`);
 
   await page.goto('/groups/suggestions');
-  await page.getByRole('heading', { name: 'Suggestions' }).waitFor({ state: 'visible', timeout: 10_000 });
-  const cardTitle = page.getByRole('heading', { level: 2 });
+  const review = page.getByRole('dialog', { name: 'Suggestions' });
+  await review.getByRole('heading', { name: 'Suggestions' }).waitFor({ state: 'visible', timeout: 10_000 });
+  const cardName = review.getByLabel('Group name');
   for (let i = 0; i < 6; i++) {
-    const current = (await cardTitle.innerText()).trim();
+    const current = await cardName.inputValue();
     if (current === 'Cut green beans') break;
-    await page.getByRole('button', { name: 'Skip for now' }).click();
-    await cardTitle.filter({ hasNotText: current }).waitFor({ state: 'visible', timeout: 5_000 });
+    await review.getByRole('button', { name: 'Skip for now' }).click();
+    await page.waitForFunction((previous) => {
+      const label = [...document.querySelectorAll('label')].find((el) => el.textContent === 'Group name');
+      const field = label ? document.getElementById(label.htmlFor) : null;
+      return field instanceof HTMLInputElement && field.value !== previous;
+    }, current);
   }
-  await page.getByRole('heading', { level: 2, name: 'Cut green beans' }).waitFor({ state: 'visible', timeout: 10_000 });
+  assert(await cardName.inputValue() === 'Cut green beans', 'the cut green beans suggestion is showing');
   await page.getByText('from the old shopping plan').waitFor({ state: 'visible' });
   await page.getByText('Del Monte Cut Green Beans').waitFor({ state: 'visible' });
   await phoneShot(page, 'pr8-groups-inbox');
 
-  await page.getByRole('button', { name: 'Group', exact: true }).click();
+  await review.getByRole('button', { name: 'Group these' }).click();
   await page.getByText('Choose what this group should keep on hand').waitFor({ state: 'visible' });
   await page.getByLabel('Ounces').fill('48');
   await page.getByRole('button', { name: 'Use ounces' }).click();
   await page.getByRole('heading', { name: 'Kernel corn' }).waitFor({ state: 'visible', timeout: 10_000 });
 
-  await page.goto('/inventory');
+  const listedGroups = await page.request.get(`${API_URL}/api/groups`);
+  if (!listedGroups.ok()) throw new Error(`groups failed: ${listedGroups.status()}`);
+  const beansGroup = (await listedGroups.json()).find((item) => item.name === 'Cut green beans');
+  assert(beansGroup !== undefined, 'cut green beans became a group');
+  const pinned = beansGroup.members[0];
+  const ruled = await page.request.put(`${API_URL}/api/groups/${beansGroup.id}/rule`, {
+    data: { rule: 'favorite', pinnedProductId: pinned?.productId, confirm: true },
+  });
+  if (!ruled.ok()) throw new Error(`rule failed: ${ruled.status()} ${await ruled.text()}`);
+  await page.goto('/inventory?filter=groups');
   const beans = page.getByRole('article').filter({ has: page.getByRole('heading', { name: 'Cut green beans' }) });
-  await beans.getByRole('button', { name: 'Edit rule' }).click();
-  await page.getByRole('button', { name: 'Save rule' }).click();
-  await beans.getByText('Always my favorite').waitFor({ state: 'visible', timeout: 10_000 });
+  await beans.getByText(pinned.name).waitFor({ state: 'visible', timeout: 10_000 });
 
   await page.goto('/shopping');
   await page.getByRole('button', { name: 'Build the list' }).click();
@@ -73,8 +85,8 @@ try {
   assert(looseCorn.length === 2, `two corn lines (got ${looseCorn.length})`);
 
   await page.goto('/groups');
-  await page.getByRole('heading', { name: 'Product groups' }).waitFor({ state: 'visible', timeout: 10_000 });
-  await page.getByText('Cut green beans', { exact: true }).waitFor({ state: 'visible' });
+  await page.getByRole('heading', { name: 'Inventory' }).waitFor({ state: 'visible', timeout: 10_000 });
+  await page.getByRole('heading', { name: 'Cut green beans' }).waitFor({ state: 'visible' });
   await phoneShot(page, 'pr9-groups-still-listed');
 
   await captureProof(page, 'pr8-done', {

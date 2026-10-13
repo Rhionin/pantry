@@ -95,3 +95,21 @@ drop_stale_cloudflared() {
   echo "[info] Removing pantry-cloudflared left from a failed start so it can take 10.77.77.2"
   docker rm -f pantry-cloudflared >/dev/null
 }
+
+# grocy_compose_suffix prints the extra compose arguments that start
+# grocy-sync. All three values have to be set. An empty result leaves the
+# sidecar out, including on a LAN install that has never used Grocy.
+grocy_compose_suffix() {
+  local url key token
+  url=$(publish_env_value GROCY_URL)
+  key=$(publish_env_value GROCY_API_KEY)
+  token=$(publish_env_value PANTRY_SYNC_TOKEN)
+  if [[ -z "$url" || -z "$key" || -z "$token" ]]; then
+    return 0
+  fi
+  if [[ ! -f "${PANTRY_DIR}/docker-compose.grocy.yml" ]]; then
+    echo "GROCY_URL is set but ${PANTRY_DIR}/docker-compose.grocy.yml is missing; leaving grocy-sync stopped." >&2
+    return 0
+  fi
+  printf '%s\n' -f "${PANTRY_DIR}/docker-compose.grocy.yml" --profile grocy
+}

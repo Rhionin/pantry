@@ -7,12 +7,11 @@ import (
 	"sort"
 	"strings"
 	"unicode"
-
-	"github.com/google/uuid"
 )
 
-// RefreshSuggestions inserts look-alike cards that are not already grouped,
-// already open, or fully dismissed. A second call does not copy them.
+// RefreshSuggestions inserts look-alike and same-need cards that are not
+// already grouped, already open, or fully dismissed. A second call does not
+// copy them. Products added after the first seed are included.
 func (g *Groups) RefreshSuggestions(ctx context.Context) error {
 	tx, err := g.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -28,101 +27,65 @@ func (g *Groups) RefreshSuggestions(ctx context.Context) error {
 	return nil
 }
 
-type namedProduct struct {
-	id   string
-	name string
+func refreshSuggestions(ctx context.Context, tx *sql.Tx) error {
+	_, err := seedSuggestions(ctx, tx)
+	return err
 }
 
-func refreshSuggestions(ctx context.Context, tx *sql.Tx) error {
-	products, err := loadNamedProducts(ctx, tx)
+// Rescan runs the same suggestion pass as a refresh and returns only the cards
+// that pass created. An empty slice means nothing new was found.
+func (g *Groups) Rescan(ctx context.Context) ([]Suggestion, error) {
+	tx, err := g.db.BeginTx(ctx, nil)
 	if err != nil {
-		return err
+		return nil, fmt.Errorf("could not refresh suggestions: %w", err)
 	}
-	if len(products) < 2 {
+	defer tx.Rollback()
+	ids, err := seedSuggestions(ctx, tx)
+	if err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("could not refresh suggestions: %w", err)
+	}
+	if len(ids) == 0 {
+		return []Suggestion{}, nil
+	}
+	open, err := g.listOpenSuggestions(ctx)
+	if err != nil {
+		return nil, err
+	}
+	want := map[string]struct{}{}
+	for _, id := range ids {
+		want[id] = struct{}{}
+	}
+	var created []Suggestion
+	for _, card := range open {
+		if _, ok := want[card.ID]; ok {
+			created = append(created, card)
+		}
+	}
+	if created == nil {
+		created = []Suggestion{}
+	}
+	return created, nil
+}
+
+// ConsiderProduct checks one newly created or recognized product against the
+// pantry. Matching groups and ungrouped products become suggestion cards.
+func (g *Groups) ConsiderProduct(ctx context.Context, productID string) error {
+	productID = strings.TrimSpace(productID)
+	if productID == "" {
 		return nil
 	}
-	groupOf, extraKeys, err := loadMembership(ctx, tx)
+	var exists int
+	err := g.db.QueryRowContext(ctx, `SELECT 1 FROM products WHERE id = ?`, productID).Scan(&exists)
+	if err == sql.ErrNoRows {
+		return nil
+	}
 	if err != nil {
-		return err
+		return fmt.Errorf("could not refresh suggestions: %w", err)
 	}
-	dismissed, err := loadDismissed(ctx, tx)
-	if err != nil {
-		return err
-	}
-	openSets, err := loadOpenSets(ctx, tx)
-	if err != nil {
-		return err
-	}
-
-	names := make([]string, len(products))
-	for i, p := range products {
-		names[i] = p.name
-	}
-	matches := ResolveLookAlikes(names, extraKeys)
-	byKey := map[string][]int{}
-	for i, match := range matches {
-		if match.Key == "" {
-			continue
-		}
-		byKey[match.Key] = append(byKey[match.Key], i)
-	}
-	keys := make([]string, 0, len(byKey))
-	for key := range byKey {
-		keys = append(keys, key)
-	}
-	sort.Strings(keys)
-
-	for _, key := range keys {
-		indexes := byKey[key]
-		if len(indexes) < 2 {
-			continue
-		}
-		ids := make([]string, len(indexes))
-		cautionOf := map[string]string{}
-		for i, idx := range indexes {
-			ids[i] = products[idx].id
-			cautionOf[ids[i]] = matches[idx].Caution
-		}
-		sort.Strings(ids)
-		for _, piece := range splitDismissed(ids, dismissed) {
-			if len(piece) < 2 {
-				continue
-			}
-			existing, skip := existingGroup(piece, groupOf)
-			if skip {
-				continue
-			}
-			sig := strings.Join(piece, "\n")
-			if _, already := openSets[sig]; already {
-				continue
-			}
-			if err := insertSuggestion(ctx, tx, titleFromKey(key), existing, piece, cautionOf); err != nil {
-				return err
-			}
-			openSets[sig] = struct{}{}
-		}
-	}
-	return nil
-}
-
-func loadNamedProducts(ctx context.Context, q querier) ([]namedProduct, error) {
-	rows, err := q.QueryContext(ctx, `SELECT id, name FROM products ORDER BY id`)
-	if err != nil {
-		return nil, fmt.Errorf("could not refresh suggestions: %w", err)
-	}
-	defer rows.Close()
-	var out []namedProduct
-	for rows.Next() {
-		var p namedProduct
-		if err := rows.Scan(&p.id, &p.name); err != nil {
-			return nil, fmt.Errorf("could not refresh suggestions: %w", err)
-		}
-		out = append(out, p)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("could not refresh suggestions: %w", err)
-	}
-	return out, nil
+	return g.RefreshSuggestions(ctx)
 }
 
 func loadMembership(ctx context.Context, q querier) (map[string]string, []string, error) {
@@ -365,33 +328,4 @@ func majorityCaution(ids []string, cautionOf map[string]string) string {
 		return labels[i] < labels[j]
 	})
 	return labels[0]
-}
-
-func insertSuggestion(ctx context.Context, tx *sql.Tx, title, existing string, ids []string, cautionOf map[string]string) error {
-	id := uuid.NewString()
-	var existingVal any
-	if existing != "" {
-		existingVal = existing
-	}
-	if _, err := tx.ExecContext(ctx, `
-		INSERT INTO group_suggestions (id, user_id, kind, title, existing_group_id, status)
-		VALUES (?, ?, 'looks_alike', ?, ?, 'open')`,
-		id, householdUser, title, existingVal); err != nil {
-		return fmt.Errorf("could not refresh suggestions: %w", err)
-	}
-	style := majorityCaution(ids, cautionOf)
-	for _, productID := range ids {
-		caution := cautionOf[productID]
-		included := 1
-		if caution != style {
-			included = 0
-		}
-		if _, err := tx.ExecContext(ctx, `
-			INSERT INTO group_suggestion_members (suggestion_id, product_id, included, caution)
-			VALUES (?, ?, ?, ?)`,
-			id, productID, included, caution); err != nil {
-			return fmt.Errorf("could not refresh suggestions: %w", err)
-		}
-	}
-	return nil
 }

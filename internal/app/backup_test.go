@@ -77,6 +77,68 @@ func TestShoppingBackupSkipsWhenOneAlreadyExists(t *testing.T) {
 	}
 }
 
+func TestRestockBackupOnceBeforeTheFlag(t *testing.T) {
+	dir := t.TempDir()
+	conn := openFileDB(t, filepath.Join(dir, "pantry.db"))
+	if err := RunMigrations(conn); err != nil {
+		t.Fatalf("RunMigrations: %v", err)
+	}
+	matches, err := filepath.Glob(filepath.Join(dir, "pantry-pre-restock-*.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(matches) != 1 {
+		t.Fatalf("backups: %v", matches)
+	}
+	if !columnExists(t, conn, "product_group_members", "no_restock") {
+		t.Fatal("live database is missing no_restock")
+	}
+	backup := openFileDB(t, matches[0])
+	if columnExists(t, backup, "product_group_members", "no_restock") {
+		t.Fatal("backup was taken after the restock migration")
+	}
+	if !columnExists(t, backup, "shopping_list_items", "group_id") {
+		t.Fatal("backup was taken before the shopping migration")
+	}
+	if err := RunMigrations(conn); err != nil {
+		t.Fatalf("second RunMigrations: %v", err)
+	}
+	again, err := filepath.Glob(filepath.Join(dir, "pantry-pre-restock-*.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(again) != 1 || again[0] != matches[0] {
+		t.Fatalf("second run wrote another backup: %v", again)
+	}
+}
+
+func TestRestockBackupFailureStopsMigration(t *testing.T) {
+	orig := snapshotRestockDB
+	t.Cleanup(func() { snapshotRestockDB = orig })
+	snapshotRestockDB = func(*sql.DB) error {
+		return fmt.Errorf("disk full")
+	}
+
+	conn := openFileDB(t, filepath.Join(t.TempDir(), "pantry.db"))
+	err := RunMigrations(conn)
+	if err == nil || !strings.Contains(err.Error(), "disk full") {
+		t.Fatalf("RunMigrations err = %v", err)
+	}
+	var count int
+	if err := conn.QueryRow(`SELECT COUNT(*) FROM schema_migrations WHERE filename = ?`, restockChangeMigration).Scan(&count); err != nil {
+		t.Fatal(err)
+	}
+	if count != 0 {
+		t.Fatalf("migration recorded after a failed backup: %d", count)
+	}
+	if columnExists(t, conn, "product_group_members", "no_restock") {
+		t.Fatal("no_restock was added after the backup failed")
+	}
+	if !columnExists(t, conn, "shopping_list_items", "group_id") {
+		t.Fatal("earlier shopping migration did not run")
+	}
+}
+
 func TestShoppingBackupFailureStopsMigration(t *testing.T) {
 	orig := snapshotShoppingDB
 	t.Cleanup(func() { snapshotShoppingDB = orig })

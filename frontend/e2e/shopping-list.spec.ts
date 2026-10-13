@@ -19,8 +19,14 @@ test('inventory gap is derived, purchased, and leaves inventory unchanged', asyn
   await page.getByRole('link', { name: 'Inventory' }).click()
   const riceRow = inventoryRow(page, productName)
   await expect(riceRow.getByText('2 bag', { exact: true })).toBeVisible()
-  await page.getByRole('button', { name: 'This scan is complete' }).click()
-  await expect(page.getByRole('alert', { name: 'Opening inventory' })).toBeHidden()
+  // Opening is one household snapshot. Another spec may already have finished
+  // it; completing it here only matters when these stock-ins are still the
+  // first scan.
+  const finishOpening = page.getByRole('button', { name: 'This scan is complete' })
+  if (await finishOpening.isVisible()) {
+    await finishOpening.click()
+    await expect(page.getByRole('alert', { name: 'Opening inventory' })).toBeHidden()
+  }
 
   // After the snapshot, using one bag is consumption. The list replaces it.
   await page.getByRole('link', { name: 'Scan Queue' }).click()

@@ -6,29 +6,32 @@ describe('targetChoices', () => {
     const choices = targetChoices(
       { windowMonths: 6 },
       [
-        { productId: 'glacier', name: 'Gatorade Glacier Freeze', quantity: 12, dimension: 'mass' },
+        { productId: 'glacier', name: 'Gatorade Glacier Freeze', quantity: 4, amount: 48, dimension: 'mass' },
         { productId: 'lemon', name: 'Lemonade powder', windowMonths: 3 },
-        { productId: 'other', name: 'Other powder', quantity: 12, dimension: 'mass' },
+        { productId: 'other', name: 'Other powder', quantity: 4, amount: 48, dimension: 'mass' },
+        { productId: 'tea', name: 'Loose tea', quantity: 4 },
       ],
     );
 
     expect(choices.map((choice) => choice.label)).toEqual([
       "Keep the group's 6 months",
-      'Use 12 ounces (from Gatorade Glacier Freeze, Other powder)',
+      'Use 48 ounces (from Gatorade Glacier Freeze, Other powder)',
       'Use 3 months (from Lemonade powder)',
     ]);
     expect(choices[0]?.target).toEqual({ windowMonths: 6 });
-    expect(choices[1]?.target).toEqual({ quantity: 12, dimension: 'mass' });
+    expect(choices[1]?.target).toEqual({ quantity: 48, dimension: 'mass' });
     expect(choices[2]?.target).toEqual({ windowMonths: 3 });
-    expect(conflictLine({ productId: 'glacier', name: 'Gatorade Glacier Freeze', quantity: 12, dimension: 'mass' }))
-      .toBe('Gatorade Glacier Freeze: 12 ounces');
+    expect(conflictLine({ productId: 'glacier', name: 'Gatorade Glacier Freeze', quantity: 4, amount: 48, dimension: 'mass' }))
+      .toBe('Gatorade Glacier Freeze: 4 on hand (48 ounces)');
+    expect(conflictLine({ productId: 'tea', name: 'Loose tea', quantity: 4 }))
+      .toBe('Loose tea: 4 on hand');
     expect(conflictLine({ productId: 'lemon', name: 'Lemonade powder', windowMonths: 3 }))
       .toBe('Lemonade powder: 3 months');
   });
 
   it('uses the household default only when the group has no target', () => {
     const choices = targetChoices(null, [
-      { productId: 'glacier', name: 'Gatorade Glacier Freeze', quantity: 12, dimension: 'volume' },
+      { productId: 'glacier', name: 'Gatorade Glacier Freeze', quantity: 4, amount: 12, dimension: 'volume' },
     ]);
 
     expect(choices[0]).toEqual({ label: 'Keep the household default', target: { clear: true } });
@@ -111,6 +114,10 @@ describe('bin sentences', () => {
       .toBe('Lowest price per ounce, or Creamy peanut butter if no price is known.');
     expect(ruleSentence({ rule: 'best_deal', ruleConfirmed: true }, [], 'detail'))
       .toBe('Lowest price per ounce.');
+    expect(ruleSentence({ rule: 'favor_variety', ruleConfirmed: true }, [], 'detail'))
+      .toBe("Rotate to the product you've had least recently.");
+    expect(ruleSentence({ rule: 'favor_variety', ruleConfirmed: true }, [], 'brief'))
+      .toBe("Rotate to the product you've had least recently.");
   });
 
   it('matches the restock picker to the pill words', () => {
@@ -118,10 +125,12 @@ describe('bin sentences', () => {
       { id: 'same_as_ran_out', label: 'Same product', hint: 'Rebuy the exact product you used last.' },
       { id: 'favorite', label: 'Favorite', hint: 'Always buy one product.' },
       { id: 'best_deal', label: 'Best deal', hint: 'Lowest price per ounce.' },
+      { id: 'favor_variety', label: 'Favor variety', hint: "Rotate to the product you've had least recently." },
     ]);
     expect(rulePillLabel({ rule: 'same_as_ran_out', ruleConfirmed: true }, [])).toBe(ruleChoices[0].label);
     expect(rulePillLabel({ rule: 'favorite', ruleConfirmed: true }, [])).toBe(ruleChoices[1].label);
     expect(rulePillLabel({ rule: 'best_deal', ruleConfirmed: true }, [])).toBe(ruleChoices[2].label);
+    expect(rulePillLabel({ rule: 'favor_variety', ruleConfirmed: true }, [])).toBe('Favor variety');
   });
 
   it('does not fill the bin when a stocked package has no size', () => {

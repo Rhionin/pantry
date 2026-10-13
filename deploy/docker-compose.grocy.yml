@@ -1,0 +1,48 @@
+# Optional one-way sync from Pantry into a Grocy container that is not
+# part of this file. A normal `docker compose up` does not start it and
+# does not need the tunnel network.
+#
+# Grocy stays on the network this stack already created for Cloudflare
+# (pantry_cf-tunnel). This service joins that network so it can open
+# http://grocy:80, and the project default network so it can open
+# http://pantry:8080. It is not pinned to 10.77.77.2 or .3.
+#
+# Enable with the steps in README.md under "Grocy sync".
+
+services:
+  grocy-sync:
+    profiles: ["grocy"]
+    image: ghcr.io/rhionin/pantry-grocy-sync:${PANTRY_IMAGE_TAG:-latest}
+    container_name: pantry-grocy-sync
+    restart: unless-stopped
+    mem_limit: 64m
+    memswap_limit: 64m
+    pids_limit: 64
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    tmpfs:
+      - /tmp:mode=1777,noexec,nosuid,size=8m
+    environment:
+      PANTRY_URL: http://pantry:8080
+      PANTRY_SYNC_TOKEN: ${PANTRY_SYNC_TOKEN:-}
+      GROCY_URL: ${GROCY_URL:-}
+      GROCY_API_KEY: ${GROCY_API_KEY:-}
+      GROCY_SYNC_INTERVAL: ${GROCY_SYNC_INTERVAL:-5m}
+      GROCY_SYNC_MAP: /data/map.db
+      TZ: ${TZ:-UTC}
+    volumes:
+      - grocy-sync-data:/data
+    networks:
+      - default
+      - grocy
+
+networks:
+  grocy:
+    external: true
+    name: pantry_cf-tunnel
+
+volumes:
+  grocy-sync-data:

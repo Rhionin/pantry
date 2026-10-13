@@ -1,0 +1,240 @@
+.history-page {
+  --history-used: #8f1d1d;
+  --history-used-bg: #fde8e8;
+  --history-in: #0b6b3a;
+  --history-in-bg: #e5f6ec;
+  --history-line: #0b6b3a;
+  display: flex;
+  flex-direction: column;
+  gap: var(--mantine-spacing-md);
+  padding-bottom: var(--mantine-spacing-md);
+}
+
+:where([data-mantine-color-scheme='dark']) .history-page {
+  --history-used: #ffc9c9;
+  --history-used-bg: #4a1e1e;
+  --history-in: #c6f6d5;
+  --history-in-bg: #143526;
+  --history-line: #c6f6d5;
+}
+
+.history-back {
+  align-self: flex-start;
+  min-height: 2.75rem;
+  display: inline-flex;
+  align-items: center;
+  color: var(--bin-link);
+  font-weight: 650;
+  text-underline-offset: 0.16em;
+}
+
+.history-heading {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.history-name {
+  margin: 0;
+  color: var(--bin-ink);
+  font-size: 1.35rem;
+  line-height: 1.25;
+  font-weight: 650;
+}
+
+.history-detail {
+  margin: 0;
+  color: var(--bin-muted);
+  font-size: var(--mantine-font-size-sm);
+  line-height: 1.35;
+}
+
+.history-pace {
+  display: flex;
+  flex-direction: column;
+  gap: var(--mantine-spacing-sm);
+  padding: var(--mantine-spacing-md);
+  background: var(--bin-well);
+  border-radius: var(--mantine-radius-sm);
+}
+
+.history-pace-figure {
+  margin: 0;
+  color: var(--bin-ink);
+  font-size: 2.75rem;
+  line-height: 1;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+}
+
+.history-pace-unknown {
+  margin: 0;
+  color: var(--bin-ink);
+  font-size: 1.35rem;
+  line-height: 1.25;
+  font-weight: 650;
+}
+
+.history-pace-label,
+.history-pace-note,
+.history-support {
+  margin: 0;
+  color: var(--bin-muted);
+  font-size: var(--mantine-font-size-sm);
+  line-height: 1.35;
+}
+
+.history-pace-label {
+  margin-top: 0.25rem;
+  color: var(--bin-ink);
+  font-weight: 650;
+}
+
+.history-support {
+  color: var(--bin-ink);
+}
+
+.history-spark {
+  display: block;
+  width: 100%;
+  height: 2.75rem;
+}
+
+.history-spark polyline {
+  fill: none;
+  stroke: var(--history-line);
+  stroke-width: 1.5;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+  vector-effect: non-scaling-stroke;
+}
+
+.history-filters {
+  display: flex;
+  gap: var(--mantine-spacing-xs);
+}
+
+.history-filter {
+  flex: 1 1 0;
+  min-height: 2.75rem;
+  padding: 0 var(--mantine-spacing-xs);
+  border: 1px solid var(--bin-line);
+  border-radius: var(--mantine-radius-sm);
+  background: transparent;
+  color: var(--bin-ink);
+  font: inherit;
+  font-weight: 650;
+  line-height: 1.2;
+  cursor: pointer;
+}
+
+.history-filter[aria-pressed='true'] {
+  background: var(--bin-ink);
+  color: var(--bin-pill-ink, #fff);
+  border-color: var(--bin-ink);
+}
+
+.history-filter:focus-visible,
+.history-back:focus-visible,
+.history-menu:focus-visible {
+  outline: 2px solid var(--bin-focus);
+  outline-offset: 2px;
+}
+
+.history-trail {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.history-move {
+  display: flex;
+  align-items: center;
+  gap: var(--mantine-spacing-sm);
+  min-height: 2.75rem;
+  padding: var(--mantine-spacing-sm) 0;
+  border-bottom: 1px solid var(--bin-line);
+}
+
+.history-move-copy {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.history-move-title,
+.history-move-when,
+.history-move-product {
+  margin: 0;
+  line-height: 1.35;
+}
+
+.history-move-title {
+  color: var(--bin-ink);
+  font-weight: 650;
+}
+
+.history-move-when,
+.history-move-product {
+  color: var(--bin-muted);
+  font-size: var(--mantine-font-size-sm);
+}
+
+.history-delta {
+  flex: none;
+  min-width: 2.5rem;
+  padding: 0.15rem 0.4rem;
+  border-radius: var(--mantine-radius-sm);
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+  line-height: 1.4;
+}
+
+.history-delta-out {
+  color: var(--history-used);
+  background: var(--history-used-bg);
+}
+
+.history-delta-in {
+  color: var(--history-in);
+  background: var(--history-in-bg);
+}
+
+.history-menu {
+  flex: none;
+  width: 2.75rem;
+  height: 2.75rem;
+  color: var(--bin-ink);
+}
+
+.history-quantity {
+  font-size: 1rem;
+}
+
+.history-empty {
+  margin: 0;
+  color: var(--bin-muted);
+  line-height: 1.4;
+}
+
+.shelf-history {
+  color: var(--bin-link);
+  font: inherit;
+  font-weight: 650;
+  text-decoration: underline;
+  text-underline-offset: 0.16em;
+  min-height: 2.75rem;
+  display: inline-flex;
+  align-items: center;
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+}
+
+.history-quantity input {
+  font-size: 16px;
+}

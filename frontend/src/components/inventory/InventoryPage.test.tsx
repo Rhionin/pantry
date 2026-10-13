@@ -1,5 +1,6 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MantineProvider } from '@mantine/core';
+import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { InventoryItem } from '../../types';
 import { InventoryPage } from './InventoryPage';
@@ -79,25 +80,18 @@ describe('InventoryPage', () => {
     ])));
     vi.stubGlobal('fetch', fetchMock);
 
-    render(<MantineProvider><InventoryPage /></MantineProvider>);
+    render(<MantineProvider env="test"><MemoryRouter><InventoryPage /></MemoryRouter></MantineProvider>);
 
     await screen.findByText('Whole Milk');
-    const sectionHeadings = screen.getAllByRole('heading', { level: 2 });
-    expect(sectionHeadings.map((heading) => heading.textContent)).toEqual([
-      'Needs Attention',
-      'Inventory items',
-    ]);
-    const attentionSection = screen.getByRole('region', { name: 'Needs Attention' });
-    expect(within(attentionSection).getByText('1 near expiry')).toBeInTheDocument();
-    expect(within(attentionSection).getByText('1 expired')).toBeInTheDocument();
+    expect(screen.getByText('1 near expiry')).toBeInTheDocument();
+    expect(screen.getByText('1 expired')).toBeInTheDocument();
 
-    fireEvent.change(screen.getByLabelText('Search inventory'), {
+    fireEvent.change(screen.getByLabelText('Search products or groups'), {
       target: { value: 'bakery' },
     });
 
     expect(screen.getByText('Sourdough')).toBeInTheDocument();
     expect(screen.queryByText('Whole Milk')).not.toBeInTheDocument();
-    expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(fetchMock).toHaveBeenCalledWith('/api/inventory', expect.any(Object));
   });
 
@@ -111,7 +105,7 @@ describe('InventoryPage', () => {
     ])));
     vi.stubGlobal('fetch', fetchMock);
 
-    render(<MantineProvider><InventoryPage /></MantineProvider>);
+    render(<MantineProvider env="test"><MemoryRouter><InventoryPage /></MemoryRouter></MantineProvider>);
 
     await screen.findByText('Crushed Pineapple');
     expect(screen.queryByText(/^undefined$/i)).not.toBeInTheDocument();
@@ -158,11 +152,11 @@ describe('InventoryPage', () => {
     });
     vi.stubGlobal('fetch', fetchMock);
 
-    render(<MantineProvider><InventoryPage /></MantineProvider>);
+    render(<MantineProvider env="test"><MemoryRouter><InventoryPage /></MemoryRouter></MantineProvider>);
     await screen.findByText('Sourdough');
-    expect(fetchMock).toHaveBeenCalledTimes(2);
 
-    fireEvent.click(screen.getByRole('button', { name: 'View instances' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Actions for Sourdough' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'View instances' }));
 
     const article = screen.getByRole('article');
     await within(article).findByRole('heading', { name: 'Sourdough instances' });
@@ -178,7 +172,7 @@ describe('InventoryPage', () => {
     ])));
     vi.stubGlobal('fetch', fetchMock);
 
-    render(<MantineProvider><InventoryPage /></MantineProvider>);
+    render(<MantineProvider env="test"><MemoryRouter><InventoryPage /></MemoryRouter></MantineProvider>);
     await screen.findByText('Sourdough');
 
     const eventSource = FakeEventSource.instances[0];
@@ -187,8 +181,8 @@ describe('InventoryPage', () => {
 
     eventSource.dispatch('inventory', inventoryItem('bread', 'Sourdough', 'Bakery', true));
 
-    const attentionSection = await screen.findByRole('region', { name: 'Needs Attention' });
-    expect(within(attentionSection).getByText('Sourdough')).toBeInTheDocument();
+    expect(await screen.findByText('1 near expiry')).toBeInTheDocument();
+    expect(screen.getByText('Sourdough')).toBeInTheDocument();
   });
 
   it('ignores a manufactured error event and leaves displayed inventory unchanged', async () => {
@@ -197,21 +191,21 @@ describe('InventoryPage', () => {
     ])));
     vi.stubGlobal('fetch', fetchMock);
 
-    render(<MantineProvider><InventoryPage /></MantineProvider>);
+    render(<MantineProvider env="test"><MemoryRouter><InventoryPage /></MemoryRouter></MantineProvider>);
     await screen.findByText('Sourdough');
 
     const eventSource = FakeEventSource.instances[0];
     eventSource.dispatch('error', {});
 
     expect(screen.getByText('Sourdough')).toBeInTheDocument();
-    expect(screen.queryByRole('region', { name: 'Needs Attention' })).not.toBeInTheDocument();
+    expect(screen.queryByText('1 near expiry')).not.toBeInTheDocument();
   });
 
   it('closes the event stream connection on unmount', async () => {
     const fetchMock = vi.fn(() => Promise.resolve(jsonResponse([])));
     vi.stubGlobal('fetch', fetchMock);
 
-    const { unmount } = render(<MantineProvider><InventoryPage /></MantineProvider>);
+    const { unmount } = render(<MantineProvider env="test"><MemoryRouter><InventoryPage /></MemoryRouter></MantineProvider>);
     await screen.findByText('Your inventory is empty.');
 
     const eventSource = FakeEventSource.instances[0];
@@ -262,24 +256,29 @@ describe('InventoryPage', () => {
     });
     vi.stubGlobal('fetch', fetchMock);
 
-    render(<MantineProvider><InventoryPage /></MantineProvider>);
+    render(<MantineProvider env="test"><MemoryRouter><InventoryPage /></MemoryRouter></MantineProvider>);
     await screen.findByText('Rolled Oats');
     expect(screen.getByText('0 unit')).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: 'View instances' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Actions for Rolled Oats' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'View instances' }));
     const article = screen.getByRole('article');
     expect(within(article).getByRole('button', { name: 'Stock out' })).toBeDisabled();
     expect(within(article).getByText('There is nothing on hand.')).toBeInTheDocument();
 
     fireEvent.click(within(article).getByRole('button', { name: 'Stock in' }));
     await within(article).findByText('1 unit');
-    expect(within(article).getByRole('button', { name: 'Hide instances' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Actions for Rolled Oats' }));
+    expect(screen.getByRole('menuitem', { name: 'Hide instances' })).toBeInTheDocument();
+    fireEvent.keyDown(screen.getByRole('menu'), { key: 'Escape' });
     expect(within(article).getByRole('button', { name: 'Stock out' })).toBeEnabled();
     expect(within(article).queryByText('There is nothing on hand.')).not.toBeInTheDocument();
 
     fireEvent.click(within(article).getByRole('button', { name: 'Stock out' }));
     await within(article).findByText('0 unit');
-    expect(within(article).getByRole('button', { name: 'Hide instances' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Actions for Rolled Oats' }));
+    expect(screen.getByRole('menuitem', { name: 'Hide instances' })).toBeInTheDocument();
+    fireEvent.keyDown(screen.getByRole('menu'), { key: 'Escape' });
     expect(within(article).getByRole('button', { name: 'Stock out' })).toBeDisabled();
     expect(within(article).getByText('There is nothing on hand.')).toBeInTheDocument();
   });
@@ -303,7 +302,7 @@ describe('InventoryPage', () => {
     });
     vi.stubGlobal('fetch', fetchMock);
 
-    render(<MantineProvider><InventoryPage /></MantineProvider>);
+    render(<MantineProvider env="test"><MemoryRouter><InventoryPage /></MemoryRouter></MantineProvider>);
     await screen.findByText('Sourdough');
     expect(screen.getByRole('alert', { name: 'Opening inventory' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Wipe inventory' })).not.toBeInTheDocument();
@@ -341,17 +340,19 @@ describe('InventoryPage', () => {
     });
     vi.stubGlobal('fetch', fetchMock);
 
-    render(<MantineProvider><InventoryPage /></MantineProvider>);
+    render(<MantineProvider env="test"><MemoryRouter><InventoryPage /></MemoryRouter></MantineProvider>);
     const article = await screen.findByRole('article');
     expect(within(article).queryByText(/Barcode:/)).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: 'View instances' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Actions for Sourdough' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'View instances' }));
 
     const barcode = await within(article).findByText('Barcode: 012345678905, 998877665544');
     expect(barcode).toHaveClass('copyable-barcode');
     expect(barcode.closest('button')).toBeNull();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Hide instances' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Actions for Sourdough' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Hide instances' }));
     expect(within(article).queryByText(/Barcode:/)).not.toBeInTheDocument();
   });
 
@@ -390,19 +391,17 @@ describe('InventoryPage', () => {
     });
     vi.stubGlobal('fetch', fetchMock);
 
-    render(<MantineProvider><InventoryPage /></MantineProvider>);
+    render(<MantineProvider env="test"><MemoryRouter><InventoryPage /></MemoryRouter></MantineProvider>);
     expect(await screen.findByRole('heading', { name: 'Cut green beans' })).toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: 'Great Value Cut Green Beans' })).not.toBeInTheDocument();
-    expect(screen.getByText('Still using Same product until you pick a rule.')).toBeInTheDocument();
+    expect(screen.getByText('Pick a rule')).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Show products' }));
-    expect(await screen.findByText('Great Value Cut Green Beans · 3 on hand')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Expand Cut green beans' }));
+    expect(await screen.findByText('Great Value Cut Green Beans')).toBeInTheDocument();
+    expect(screen.getByText('unit, 3 on hand')).toBeInTheDocument();
     expect(screen.getByText('Barcode: 111')).toBeInTheDocument();
-    expect(screen.getByText('5 on hand · Household default · 2 products')).toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole('button', { name: 'Edit rule' }));
-    expect(await screen.findByText('Next trip: Buy the can that ran out.')).toBeInTheDocument();
-    expect(screen.getByText('Now: Household default')).toBeInTheDocument();
+    expect(screen.getByText('5 units on hand')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Open group settings ›' })).toHaveAttribute('href', '/groups/g-beans');
   });
 
   it('groups two selected products', async () => {
@@ -424,7 +423,7 @@ describe('InventoryPage', () => {
     });
     vi.stubGlobal('fetch', fetchMock);
 
-    render(<MantineProvider><InventoryPage /></MantineProvider>);
+    render(<MantineProvider env="test"><MemoryRouter><InventoryPage /></MemoryRouter></MantineProvider>);
     await screen.findByText('Whole Milk');
     fireEvent.click(screen.getByRole('button', { name: 'Select' }));
     fireEvent.click(screen.getByRole('checkbox', { name: 'Select Whole Milk' }));
@@ -436,6 +435,107 @@ describe('InventoryPage', () => {
       method: 'POST',
       body: JSON.stringify({ name: 'Breakfast', productIds: ['product-milk', 'product-oats'] }),
     })));
+  });
+
+  it('adds an ungrouped product to an existing group', async () => {
+    const milk = inventoryItem('milk', 'Whole Milk', 'Dairy', false);
+    const posts: string[] = [];
+    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      const method = init?.method ?? 'GET';
+      if (url === '/api/groups' && method === 'GET') {
+        return Promise.resolve(jsonResponse([{
+          id: 'g-breakfast',
+          name: 'Breakfast',
+          rule: 'same_as_ran_out',
+          ruleConfirmed: false,
+          members: [],
+          runningLow: false,
+        }]));
+      }
+      if (url === '/api/groups/g-breakfast/members' && method === 'POST') {
+        posts.push(String(init?.body));
+        return Promise.resolve(jsonResponse({ id: 'g-breakfast', name: 'Breakfast', members: [] }));
+      }
+      if (url === '/api/settings/supply') {
+        return Promise.resolve(jsonResponse({ months: 3, opening: false, wipePhrase: 'WIPE INVENTORY' }));
+      }
+      return Promise.resolve(jsonResponse([milk]));
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<MantineProvider env="test"><MemoryRouter><InventoryPage /></MemoryRouter></MantineProvider>);
+    fireEvent.click(await screen.findByRole('button', { name: 'Actions for Whole Milk' }));
+    expect(screen.getByRole('menuitem', { name: 'Add to a group…' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Select' }));
+    expect(screen.queryByRole('button', { name: 'Actions for Whole Milk' })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Done' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Actions for Whole Milk' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Add to a group…' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Breakfast' }));
+    await waitFor(() => expect(posts).toEqual([
+      JSON.stringify({ productIds: ['product-milk'] }),
+    ]));
+  });
+
+  it('moves a product that is already in a group', async () => {
+    const group = {
+      id: 'g-beans',
+      name: 'Cut green beans',
+      rule: 'same_as_ran_out',
+      ruleConfirmed: true,
+      onHand: 3,
+      memberCount: 1,
+      members: [{ productId: 'product-gv', name: 'Great Value Cut Green Beans', onHand: 3 }],
+    };
+    const gv = inventoryItem('gv', 'Great Value Cut Green Beans', 'Canned', false);
+    gv.group = group;
+    const posts: string[] = [];
+    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      const method = init?.method ?? 'GET';
+      if (url === '/api/groups' && method === 'GET') {
+        return Promise.resolve(jsonResponse([
+          {
+            id: 'g-beans',
+            name: 'Cut green beans',
+            rule: 'same_as_ran_out',
+            ruleConfirmed: true,
+            members: [{ productId: 'product-gv', name: 'Great Value Cut Green Beans', onHand: 3 }],
+            runningLow: false,
+          },
+          {
+            id: 'g-soup',
+            name: 'Soup',
+            rule: 'same_as_ran_out',
+            ruleConfirmed: false,
+            members: [],
+            runningLow: false,
+          },
+        ]));
+      }
+      if (url === '/api/groups/g-soup/members' && method === 'POST') {
+        posts.push(String(init?.body));
+        return Promise.resolve(jsonResponse({ id: 'g-soup', name: 'Soup', members: [] }));
+      }
+      if (url === '/api/settings/supply') {
+        return Promise.resolve(jsonResponse({ months: 3, opening: false, wipePhrase: 'WIPE INVENTORY' }));
+      }
+      return Promise.resolve(jsonResponse([gv]));
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<MantineProvider env="test"><MemoryRouter><InventoryPage /></MemoryRouter></MantineProvider>);
+    await screen.findByRole('heading', { name: 'Cut green beans' });
+    fireEvent.click(screen.getByRole('button', { name: 'Expand Cut green beans' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Actions for Great Value Cut Green Beans' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Move to another group' }));
+    expect(await screen.findByText('Already in Cut green beans.')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Cut green beans' })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Soup' }));
+    await waitFor(() => expect(posts).toEqual([
+      JSON.stringify({ productIds: ['product-gv'], fromGroupId: 'g-beans' }),
+    ]));
   });
 
   it('reloads when a grouped product changes', async () => {
@@ -461,7 +561,7 @@ describe('InventoryPage', () => {
     });
     vi.stubGlobal('fetch', fetchMock);
 
-    render(<MantineProvider><InventoryPage /></MantineProvider>);
+    render(<MantineProvider env="test"><MemoryRouter><InventoryPage /></MemoryRouter></MantineProvider>);
     await screen.findByText('Cut green beans');
     const before = inventoryCalls;
     FakeEventSource.instances[0]?.dispatch('inventory', gv);

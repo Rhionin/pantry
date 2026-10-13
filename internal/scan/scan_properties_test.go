@@ -717,10 +717,12 @@ func TestRealtimeProperty6_FailedScanMutationPublishesNoEvent(t *testing.T) {
 
 		var err error
 		switch operation {
-		case 0: // CreateScanEntry with a duplicate ID
+		case 0: // CreateScanEntry with a duplicate ID that cannot merge
+			userID := rapid.String().Draw(rt, "userID")
+			barcode := rapid.String().Draw(rt, "barcode")
 			existing, createErr := queue.CreateScanEntry(ctx, scan.ScanEntry{
-				UserID:    rapid.String().Draw(rt, "userID"),
-				Barcode:   rapid.String().Draw(rt, "barcode"),
+				UserID:    userID,
+				Barcode:   barcode,
 				ScannedAt: time.Now(),
 				UnitCount: 1,
 			})
@@ -729,12 +731,14 @@ func TestRealtimeProperty6_FailedScanMutationPublishesNoEvent(t *testing.T) {
 			}
 			// The setup call above may itself have published; reset before
 			// the call under test so only its own behavior is asserted.
+			// A matching user, barcode, and direction merges into the pending
+			// row instead of inserting, so the duplicate id would not fail.
 			broadcaster.scanEvents = nil
 
 			_, err = queue.CreateScanEntry(ctx, scan.ScanEntry{
 				ID:        existing.ID,
-				UserID:    rapid.String().Draw(rt, "userID"),
-				Barcode:   rapid.String().Draw(rt, "barcode"),
+				UserID:    userID + "x",
+				Barcode:   barcode,
 				ScannedAt: time.Now(),
 				UnitCount: 1,
 			})

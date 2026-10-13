@@ -32,7 +32,7 @@ const theme = createTheme({
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <MantineProvider theme={theme} cssVariablesResolver={v8CssVariablesResolver}>
+    <MantineProvider theme={theme} cssVariablesResolver={v8CssVariablesResolver} defaultColorScheme="auto">
       <Notifications pauseResetOnHover="notification" />
       <App />
     </MantineProvider>

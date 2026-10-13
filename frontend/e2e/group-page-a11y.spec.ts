@@ -26,8 +26,10 @@ function violationText(violations: { id: string; help: string; nodes: { target: 
   )).join('\n')
 }
 
-async function expectClean(page: Page) {
-  const results = await new AxeBuilder({ page }).include('.bin-page').analyze()
+async function expectClean(page: Page, extra: string[] = []) {
+  let builder = new AxeBuilder({ page }).include('.bin-page')
+  for (const selector of extra) builder = builder.include(selector)
+  const results = await builder.analyze()
   expect(results.violations, violationText(results.violations)).toEqual([])
 }
 
@@ -49,18 +51,28 @@ function contrast(foreground: string, background: string) {
 }
 
 async function expectListColors(page: Page, scheme: 'light' | 'dark') {
-  const row = page.locator('.bin-row').first()
-  await row.hover()
+  const row = page.locator('.shelf-row').first()
   const sample = await row.evaluate((el) => {
-    const style = getComputedStyle(el)
-    const summary = el.querySelector('.bin-row-summary')
-    const well = el.querySelector('.bin-well')
+    const name = el.querySelector('.shelf-name')
+    const meta = el.querySelector('.shelf-meta')
+    const meter = el.querySelector('.shelf-meter')
     const input = document.querySelector('.bin-page .mantine-Input-input')
+    const walk = (start: Element | null) => {
+      let node = start
+      while (node) {
+        const bg = getComputedStyle(node).backgroundColor
+        const alpha = bg.match(/rgba\(\d+,\s*\d+,\s*\d+,\s*([\d.]+)\)/)
+        if (bg !== 'transparent' && (!alpha || Number(alpha[1]) > 0.05)) return bg
+        node = node.parentElement
+      }
+      return getComputedStyle(document.body).backgroundColor
+    }
+    const background = walk(el)
     return {
-      color: style.color,
-      background: style.backgroundColor,
-      summary: summary ? getComputedStyle(summary).color : '',
-      well: well ? getComputedStyle(well).backgroundColor : '',
+      color: name ? getComputedStyle(name).color : '',
+      background,
+      summary: meta ? getComputedStyle(meta).color : '',
+      well: meter ? getComputedStyle(meter).backgroundColor : '',
       placeholder: input ? getComputedStyle(input, '::placeholder').color : '',
       field: input ? getComputedStyle(input).backgroundColor : '',
       border: input ? getComputedStyle(input).borderTopColor : '',
@@ -82,8 +94,8 @@ async function expectListColors(page: Page, scheme: 'light' | 'dark') {
 
 async function tabTo(page: Page, name: string) {
   const target = page.getByRole('button', { name })
-  await page.getByRole('link', { name: 'Product groups' }).focus()
-  for (let step = 0; step < 16; step += 1) {
+  await page.getByRole('navigation', { name: 'Sections' }).getByRole('link', { name: 'Inventory' }).focus()
+  for (let step = 0; step < 24; step += 1) {
     if (await target.evaluate((el) => document.activeElement === el)) return target
     await page.keyboard.press('Tab')
   }
@@ -173,18 +185,87 @@ test('group page meets axe in light and dark', async ({ page, request }) => {
   await unsetTime.press('Enter')
   await expect(page.getByLabel('Months')).toBeVisible()
 
+  expect((await request.post('/api/onboarding/complete')).ok()).toBe(true)
   await page.goto('/groups')
   await setScheme(page, 'light')
-  await expect(page.getByRole('heading', { name: 'Product groups' })).toBeVisible()
-  await expect(page.getByRole('button', { name: 'All' })).toHaveAttribute('aria-pressed', 'true')
-  await expect(page.getByPlaceholder('Name or product')).toBeVisible()
+  await expect(page).toHaveURL(/\/inventory\?filter=groups/)
+  await expect(page.getByRole('heading', { name: 'Inventory' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Groups', exact: true })).toHaveAttribute('aria-pressed', 'true')
+  await expect(page.getByRole('textbox', { name: 'Search products or groups' })).toBeVisible()
   await expectClean(page)
   await expectListColors(page, 'light')
 
   await setScheme(page, 'dark')
-  await expect(page.getByRole('heading', { name: 'Product groups' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Inventory' })).toBeVisible()
   await expectClean(page)
   await expectListColors(page, 'dark')
+
+  const bran = await createProduct(request, {
+    name: 'Axe bran muffin', category: 'Baking', unitOfMeasure: 'box', netAmount: 16, netUnit: 'oz',
+  })
+  const berry = await createProduct(request, {
+    name: 'Axe blueberry muffin', category: 'Baking', unitOfMeasure: 'box', netAmount: 16, netUnit: 'oz',
+  })
+  const fancy = await createProduct(request, {
+    name: 'Axe lehi roller', category: 'Baking', unitOfMeasure: 'box', netAmount: 16, netUnit: 'oz',
+  })
+  const variety = await request.post('/api/groups', {
+    data: {
+      name: 'Axe muffin mix',
+      productIds: [bran.id, berry.id, fancy.id],
+      target: { quantity: 32, dimension: 'mass' },
+    },
+  })
+  if (!variety.ok()) throw new Error(await variety.text())
+  const varietyGroup = await variety.json() as { id: string }
+  expect((await request.put(`/api/groups/${varietyGroup.id}/rule`, {
+    data: { rule: 'favor_variety', confirm: true },
+  })).ok()).toBe(true)
+  expect((await request.put(`/api/groups/${varietyGroup.id}/members/${fancy.id}/restock`, {
+    data: { noRestock: true },
+  })).ok()).toBe(true)
+
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.goto(`/groups/${varietyGroup.id}`)
+  await setScheme(page, 'light')
+  await expect(page.getByRole('heading', { name: 'Axe muffin mix' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'In rotation' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Not restocked' })).toBeVisible()
+  await expect(page.getByText('⊘ no restock')).toBeVisible()
+  await expect(page.getByText(/Next up: .* · rotates through 2/)).toBeVisible()
+  const asideInk = await page.locator('.bin-member.is-aside .bin-member-name').evaluate((el) => {
+    const color = getComputedStyle(el).color
+    let background = getComputedStyle(document.body).backgroundColor
+    let node = el.parentElement
+    while (node) {
+      const bg = getComputedStyle(node).backgroundColor
+      const alpha = bg.match(/rgba\(\d+,\s*\d+,\s*\d+,\s*([\d.]+)\)/)
+      if (!alpha || Number(alpha[1]) > 0.05) {
+        background = bg
+        break
+      }
+      node = node.parentElement
+    }
+    return { color, background }
+  })
+  expect(contrast(asideInk.color, asideInk.background), JSON.stringify(asideInk)).toBeGreaterThanOrEqual(4.5)
+  await expectClean(page)
+
+  await page.getByRole('button', { name: 'Remove or move Axe bran muffin' }).click()
+  await expect(page.getByRole('menuitem', { name: /Don't restock/ })).toBeVisible()
+  await expectClean(page, ['[role="menu"]'])
+  await page.keyboard.press('Escape')
+
+  await page.getByRole('button', { name: 'Change rule, Favor variety' }).click()
+  const varietyDialog = page.getByRole('dialog', { name: 'What to buy next' })
+  await expect(varietyDialog.getByText('Products marked "Don\'t restock" are skipped.')).toBeVisible()
+  await expectClean(page, ['[role="dialog"]'])
+  await page.keyboard.press('Escape')
+
+  await setScheme(page, 'dark')
+  await expect(page.getByRole('heading', { name: 'Not restocked' })).toBeVisible()
+  await expectClean(page)
+  expect((await request.delete(`/api/groups/${varietyGroup.id}`)).ok()).toBe(true)
 
   await page.goto('/groups/suggestions')
   await expect(page.getByRole('heading', { name: 'Suggestions' })).toBeVisible()
@@ -196,4 +277,15 @@ test('group page meets axe in light and dark', async ({ page, request }) => {
   // Later specs share this database and match the household-default list line.
   expect((await request.delete(`/api/groups/${targetedGroup.id}`)).ok()).toBe(true)
   expect((await request.delete(`/api/groups/${emptyGroup.id}`)).ok()).toBe(true)
+})
+
+test.afterEach(async ({ request }) => {
+  const listed = await request.get('/api/groups')
+  if (!listed.ok()) return
+  const groups = await listed.json() as { id: string; name: string }[]
+  for (const group of groups) {
+    if (group.name.startsWith('Contrast') || group.name.startsWith('Loose contrast') || group.name.startsWith('Axe ')) {
+      await request.delete(`/api/groups/${group.id}`)
+    }
+  }
 })
