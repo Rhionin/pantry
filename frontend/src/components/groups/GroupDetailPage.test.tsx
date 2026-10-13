@@ -198,7 +198,7 @@ describe('GroupDetailPage', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Add to this group' }));
 
     expect(await screen.findByText('These products have their own supply setting. Which should the whole group use?')).toBeInTheDocument();
-    expect(screen.getByText('Gatorade Glacier Freeze: 12 ounces')).toBeInTheDocument();
+    expect(screen.getByText('Gatorade Glacier Freeze: 12 on hand')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Keep the account window' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Keep 24 ounces' })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Keep the household default' }));
@@ -225,7 +225,7 @@ describe('GroupDetailPage', () => {
           return json({
             error: 'Choose what this group should keep on hand.',
             code: 'target_decision_required',
-            members: [{ productId: 'glacier', name: 'Gatorade Glacier Freeze', quantity: 12, dimension: 'mass' }],
+            members: [{ productId: 'glacier', name: 'Gatorade Glacier Freeze', quantity: 4, amount: 48, dimension: 'mass' }],
           }, 409);
         }
         current = {
@@ -242,7 +242,7 @@ describe('GroupDetailPage', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Add to this group' }));
 
     expect(await screen.findByRole('button', { name: "Keep the group's 6 months" })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Use 12 ounces (from Gatorade Glacier Freeze)' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Use 48 ounces (from Gatorade Glacier Freeze)' })).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: "Keep the group's 6 months" }));
 
     await waitFor(() => expect(bodies).toHaveLength(2));
@@ -266,7 +266,7 @@ describe('GroupDetailPage', () => {
           return json({
             error: 'Choose what this group should keep on hand.',
             code: 'target_decision_required',
-            members: [{ productId: 'glacier', name: 'Gatorade Glacier Freeze', quantity: 12, dimension: 'mass' }],
+            members: [{ productId: 'glacier', name: 'Gatorade Glacier Freeze', quantity: 4, amount: 48, dimension: 'mass' }],
           }, 409);
         }
         return json({
@@ -284,8 +284,8 @@ describe('GroupDetailPage', () => {
     fireEvent.click(checkbox);
     fireEvent.click(screen.getByRole('button', { name: 'Add to this group' }));
 
-    expect(await screen.findByText('Gatorade Glacier Freeze: 12 ounces')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Use 12 ounces (from Gatorade Glacier Freeze)' })).toBeInTheDocument();
+    expect(await screen.findByText('Gatorade Glacier Freeze: 4 on hand (48 ounces)')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Use 48 ounces (from Gatorade Glacier Freeze)' })).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
 
     expect(screen.queryByText('These products have their own supply setting. Which should the whole group use?')).not.toBeInTheDocument();
@@ -294,12 +294,12 @@ describe('GroupDetailPage', () => {
     expect(posts[0]?.target).toBeUndefined();
 
     fireEvent.click(screen.getByRole('button', { name: 'Add to this group' }));
-    fireEvent.click(await screen.findByRole('button', { name: 'Use 12 ounces (from Gatorade Glacier Freeze)' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Use 48 ounces (from Gatorade Glacier Freeze)' }));
 
     await waitFor(() => expect(posts).toHaveLength(3));
     expect(posts[0]?.target).toBeUndefined();
     expect(posts[1]?.target).toBeUndefined();
-    expect(posts[2]?.target).toEqual({ quantity: 12, dimension: 'mass' });
+    expect(posts[2]?.target).toEqual({ quantity: 48, dimension: 'mass' });
   });
 
   it('still renames the group and moves a member', async () => {
