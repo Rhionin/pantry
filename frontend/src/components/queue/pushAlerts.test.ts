@@ -30,6 +30,7 @@ const installPush = (options?: {
   publicKey?: string;
   subscribe?: () => Promise<unknown>;
   saveStatus?: number;
+  register?: () => Promise<unknown>;
 }) => {
   const pushManager = options?.pushManager ?? true;
   const serviceWorker = options?.serviceWorker ?? true;
@@ -54,7 +55,7 @@ const installPush = (options?: {
     Object.defineProperty(navigator, 'serviceWorker', {
       configurable: true,
       value: {
-        register: () => Promise.resolve(registration),
+        register: options?.register ?? (() => Promise.resolve(registration)),
         ready: Promise.resolve(registration),
         getRegistration: () => Promise.resolve(registration),
       },
@@ -97,6 +98,27 @@ describe('ensurePushSubscription', () => {
     expect(report).toHaveBeenCalledWith({
       kind: 'js_error',
       message: 'push subscription failed: no-push',
+    });
+    warn.mockRestore();
+  });
+
+  it('names a failed service worker registration and reports the browser error', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    FakeNotification.permission = 'granted';
+    vi.stubGlobal('Notification', FakeNotification);
+    writeScanAlertPreference(true);
+    installPush({
+      register: () => Promise.reject(new Error("The provided scope ('/') is not allowed.")),
+    });
+
+    await expect(ensurePushSubscription()).resolves.toEqual({ ok: false, reason: 'register-failed' });
+    expect(backgroundAlertsEnabled()).toBe(false);
+    expect(warn).toHaveBeenCalledWith(
+      "push subscription failed: register-failed: The provided scope ('/') is not allowed.",
+    );
+    expect(report).toHaveBeenCalledWith({
+      kind: 'js_error',
+      message: "push subscription failed: register-failed: The provided scope ('/') is not allowed.",
     });
     warn.mockRestore();
   });
