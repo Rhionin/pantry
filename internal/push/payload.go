@@ -7,10 +7,9 @@ import (
 	"unicode/utf8"
 )
 
-// maxPushPlaintext is the largest JSON document Notify sends.
-// Mozilla autopush rejects an encrypted message once it passes 4096 bytes.
-// The encryption header and tag take the rest, so the plaintext stays near
-// 2500 bytes and a stock-out batch still reaches Firefox.
+// maxPushPlaintext is the largest JSON document Notify sends. The encrypted
+// record is padded to pushRecordSize, and this cap leaves room for the
+// content-coding header, delimiter, and tag inside that record.
 const maxPushPlaintext = 2500
 
 // wireNotice is what the service worker shows. Names from the batch are

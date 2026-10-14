@@ -16,6 +16,15 @@ import (
 // is asleep. A scan the household already confirmed can still be opened.
 const pushTTL = 24 * 60 * 60
 
+// pushRecordSize is the aes128gcm record webpush-go pads every alert to.
+// An unset RecordSize uses MaxRecordSize (4096), and Mozilla autopush then
+// answers 413. In v1.4.0 the HTTP body is exactly RecordSize: 16-byte salt,
+// 4-byte record size, 1-byte key id length, 65-byte sender key, the
+// plaintext, a 1-byte delimiter, zero padding, and a 16-byte tag. 3070 holds
+// the 2500-byte plaintext cap (2500+103) and stays on the constrained-device
+// limit autopush documents as 3070 bytes.
+const pushRecordSize uint32 = 3070
+
 var pushClient = &http.Client{Timeout: 15 * time.Second}
 
 // Sender delivers a notice to every stored browser and drops subscriptions
@@ -31,8 +40,9 @@ func NewSender(subs *Subscriptions, cfg Config) *Sender {
 }
 
 // Listen follows the same broadcaster the scan queue uses, so a push goes
-// out when no browser tab is open to see the event stream.
-func Listen(b *events.Broadcaster, sender *Sender) {
+// out when no browser tab is open to see the event stream. scans is read
+// when a batch settles, so a scan already confirmed is not announced again.
+func Listen(b *events.Broadcaster, sender *Sender, scans scanReader) {
 	if b == nil || sender == nil || !sender.cfg.CanSend() {
 		return
 	}
@@ -41,7 +51,7 @@ func Listen(b *events.Broadcaster, sender *Sender) {
 		defer unsub()
 		alerts := newAttention(func(notice Notice) {
 			go sender.Notify(context.Background(), notice)
-		}, sender.cfg.settle(), realClock{})
+		}, sender.cfg.settle(), realClock{}, scans)
 		defer alerts.stop()
 		for msg := range msgs {
 			alerts.handle(msg)
@@ -89,6 +99,10 @@ func (s *Sender) deliver(ctx context.Context, sub Subscription, payload []byte) 
 }
 
 func postWebPush(cfg Config, sub Subscription, payload []byte) (int, error) {
+	return deliverWebPush(pushClient, cfg, sub, payload)
+}
+
+func deliverWebPush(client webpush.HTTPClient, cfg Config, sub Subscription, payload []byte) (int, error) {
 	resp, err := webpush.SendNotification(payload, &webpush.Subscription{
 		Endpoint: sub.Endpoint,
 		Keys: webpush.Keys{
@@ -96,12 +110,13 @@ func postWebPush(cfg Config, sub Subscription, payload []byte) (int, error) {
 			Auth:   sub.Auth,
 		},
 	}, &webpush.Options{
-		HTTPClient:      pushClient,
+		HTTPClient:      client,
 		Subscriber:      cfg.subject(),
 		VAPIDPublicKey:  cfg.PublicKey,
 		VAPIDPrivateKey: cfg.PrivateKey,
 		TTL:             pushTTL,
 		Urgency:         webpush.UrgencyHigh,
+		RecordSize:      pushRecordSize,
 	})
 	if resp != nil {
 		defer resp.Body.Close()
