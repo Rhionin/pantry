@@ -678,6 +678,65 @@ func TestReconcileAdoptsExistingProductAfterMapLoss(t *testing.T) {
 	}
 }
 
+func TestReconcileRewritesDriftedShoppingLine(t *testing.T) {
+	fake := newFakeGrocy()
+	srv := fake.server()
+	defer srv.Close()
+	api, err := NewAPI(srv.URL, fake.key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m, err := OpenMap(filepath.Join(t.TempDir(), "map.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer m.Close()
+	snap := syncsnap.Snapshot{
+		Products: []syncsnap.Product{{ID: "p-milk", Name: "Milk"}},
+		ShoppingList: []syncsnap.ShoppingLine{{
+			ID: "line-milk", ProductID: "p-milk", Quantity: 2, Source: "manual",
+		}},
+	}
+	rec := &Reconciler{Pantry: &fixedSource{snap: snap}, Grocy: api, Map: m, Loc: time.UTC}
+	if err := rec.Reconcile(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+
+	var line map[string]any
+	for _, obj := range fake.objects["shopping_list"] {
+		if strField(obj, "note") == "pantry-line:line-milk" {
+			line = obj
+		}
+	}
+	if line == nil {
+		t.Fatal("missing shopping line")
+	}
+	line["done"] = float64(1)
+	line["amount"] = 2.5
+
+	if err := rec.Reconcile(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if numField(line, "done") != 0 {
+		t.Fatalf("done = %v, want 0", line["done"])
+	}
+	amount, ok := line["amount"].(float64)
+	if !ok || amount != 2 {
+		t.Fatalf("amount = %v, want 2", line["amount"])
+	}
+
+	puts := fake.count("PUT", "/objects/shopping_list/")
+	if err := rec.Reconcile(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if got := fake.count("PUT", "/objects/shopping_list/"); got != puts {
+		t.Fatalf("third reconcile updated the shopping line, puts %d then %d", puts, got)
+	}
+	if numField(line, "done") != 0 || line["amount"] != float64(2) {
+		t.Fatalf("line drifted again: %#v", line)
+	}
+}
+
 type fixedSource struct {
 	snap syncsnap.Snapshot
 }

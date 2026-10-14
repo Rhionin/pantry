@@ -497,7 +497,7 @@ func (r *Reconciler) syncShopping(ctx context.Context, snap syncsnap.Snapshot, p
 		}
 		hash := hashState(body, nil)
 		if row, ok := byNote[note]; ok {
-			if row.ProductID != grocyProduct || int(row.Amount) != line.Quantity {
+			if row.ProductID != grocyProduct || float64(row.Amount) != float64(line.Quantity) || float64(row.Done) != 0 {
 				if err := r.Grocy.Update(ctx, "shopping_list", row.ID, body); err != nil {
 					return fmt.Errorf("could not update the Pantry shopping list")
 				}
