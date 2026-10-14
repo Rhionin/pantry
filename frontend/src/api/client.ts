@@ -28,6 +28,7 @@ import type {
   GroupTarget,
   GroupPreview,
   HistoryView,
+  HistoryLedger,
   TargetConflictMember,
 } from '../types';
 
@@ -260,6 +261,13 @@ export function getItemHistory(itemId: string): Promise<HistoryView> {
 
 export function getGroupHistory(groupId: string): Promise<HistoryView> {
   return apiFetch(`/api/groups/${groupId}/history`);
+}
+
+export function getHouseholdHistory(filter?: { direction?: string; q?: string }): Promise<HistoryLedger> {
+  return apiFetch(`/api/history${toQueryString({
+    direction: filter?.direction,
+    q: filter?.q,
+  })}`);
 }
 
 export function setMoveQuantity(id: string, quantity: number): Promise<HistoryView> {

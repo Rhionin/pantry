@@ -210,6 +210,23 @@ export interface HistoryView {
   moves: HistoryMove[];
 }
 
+export interface LedgerMove {
+  id: string;
+  direction: 'in' | 'out';
+  quantity: number;
+  at: string;
+  source: 'scan' | 'manual';
+  productId: string;
+  productName: string;
+  imageUrl?: string;
+  groupId?: string;
+  groupName?: string;
+}
+
+export interface HistoryLedger {
+  moves: LedgerMove[];
+}
+
 export interface GroupPreview {
   productId: string;
   because: string;

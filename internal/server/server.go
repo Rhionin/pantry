@@ -414,6 +414,7 @@ func newAPIMux(
 	apiMux.HandleFunc("GET /api/sync/snapshot", (&syncSnapshotHandler{DB: db, Token: syncToken}).ServeHTTP)
 
 	historyHandler := &HistoryHandler{Journal: history.NewJournal(db), Pantry: pantry, Events: broadcaster}
+	apiMux.HandleFunc("GET /api/history", HandleJSON(historyHandler.Household))
 	apiMux.HandleFunc("GET /api/items/{itemId}/history", HandleJSON(historyHandler.Product))
 	apiMux.HandleFunc("GET /api/groups/{groupId}/history", HandleJSON(historyHandler.Group))
 	apiMux.HandleFunc("PATCH /api/moves/{id}", HandleJSON(historyHandler.SetQuantity))

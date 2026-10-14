@@ -16,8 +16,9 @@ the **web UI** (React + Vite + Mantine, React Router), which talks to the Go API
 under `/api`. Products normally come from Open Food Facts; verification disables
 that external lookup and seeds products locally instead.
 
-**Primary surface: the web UI.** Three routes cover everyday inventory work:
-`/` (Scan Queue), `/inventory` (Inventory), `/shopping` (Shopping List). The
+**Primary surface: the web UI.** Four routes cover everyday inventory work:
+`/` (Scan Queue), `/inventory` (Inventory), `/history` (History), `/shopping`
+(Shopping List). The
 header menu opens `/diagnostics` for page-load timings, manages the Kroger
 connection, and shows the version and build id under a Build heading. `Settings` sits
 immediately above that Build label and opens `/settings` for the default supply

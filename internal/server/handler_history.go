@@ -49,6 +49,18 @@ func (h *HistoryHandler) Group(req Request[struct{}, historyGroupParams]) (histo
 	return view, nil
 }
 
+func (h *HistoryHandler) Household(req Request[struct{}, struct{}]) (history.Ledger, error) {
+	query := req.RawRequest.URL.Query()
+	ledger, err := h.Journal.Household(req.Context, history.LedgerFilter{
+		Direction: query.Get("direction"),
+		Query:     query.Get("q"),
+	})
+	if err != nil {
+		return history.Ledger{}, historyHTTP(err)
+	}
+	return ledger, nil
+}
+
 func (h *HistoryHandler) SetQuantity(req Request[historyQuantityBody, historyMoveParams]) (history.View, error) {
 	view, err := h.Journal.SetQuantity(req.Context, req.PathParams.ID, req.Body.Quantity, time.Now())
 	if err != nil {

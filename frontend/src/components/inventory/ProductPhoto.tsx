@@ -15,17 +15,23 @@ export function ProductPhoto({
   src,
   name,
   stacked = false,
+  decorative = false,
 }: {
   src?: string;
   name: string;
   stacked?: boolean;
+  decorative?: boolean;
 }) {
   const [failed, setFailed] = useState(false);
   const show = Boolean(src) && !failed;
   return (
     <span className={stacked ? 'shelf-photo is-stack' : 'shelf-photo'}>
       {show ? (
-        <img src={src} alt={name} loading="lazy" onError={() => setFailed(true)} />
+        <img src={src} alt={decorative ? '' : name} loading="lazy" onError={() => setFailed(true)} />
+      ) : decorative ? (
+        <span className="shelf-photo-fallback" aria-hidden="true">
+          <PackageIcon />
+        </span>
       ) : (
         <span className="shelf-photo-fallback" role="img" aria-label={`No photo of ${name}`}>
           <PackageIcon />

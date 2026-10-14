@@ -16,6 +16,14 @@ pace follow the correction.
   asks first. Inventory and the pace update.
 - `history-group` a group's history uses the same pace and lists each member
   product on its moves.
+- `history-ledger` the History tab lists every stock in and stock out, newest
+  first, grouped by day. Each row shows the product photo and name, whether it
+  was stocked in or used, the amount, and the time. All, Stocked in, and Used
+  filter the direction. Search matches a product or a group. The row menu
+  changes the quantity or undoes the move, the same actions as one product.
+  A pulse chart above the days draws one line for stocked-in above a zero line
+  and one line for used below it, for the last 7, 30, or 90 days. Overlapping
+  amounts add. It uses the same filters and search.
 
 ## How to get to it (user POV)
 
@@ -23,6 +31,8 @@ pace follow the correction.
 - A group row's `History` link opens `/groups/:groupId/history`.
 - Inside an expanded group, a member's menu has `View history`.
 - Group detail has a `History` link beside `Inventory`.
+- The header `History` tab opens `/history`, the combined ledger. Proven by
+  `scripts/drive-stock-ledger.mjs`.
 
 ## Driving it with Playwright
 
@@ -45,6 +55,15 @@ Preconditions:
 - **Open a group history.** Select the products, name a group, choose
   `Group these`, then the group's `History` link. Member names appear on the
   moves.
+- **Open the household ledger.** Choose `History` in the header. Moves are
+  grouped under `Today` and `Yesterday`, newest first, with the product name,
+  `Stocked in` or `Used`, and the amount. `Stocked in` and `Used` filter the
+  list. `Search products or groups` matches a product or a group. The row menu
+  uses `Change quantity` and `Undo this stock in` or `Undo this use`.
+- **Read the pulse chart.** Above the days, `30 days` is pressed. One line
+  rises for stocked in and one line falls for used. Overlapping moves add
+  together. `7 days` and `90 days` change the window. The chart follows the
+  direction filter and the search.
 
 ## Gotchas
 
