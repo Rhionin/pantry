@@ -409,7 +409,7 @@
 .pulse-stage {
   display: grid;
   grid-template-columns: 2.6rem minmax(0, 1fr);
-  column-gap: 0.2rem;
+  column-gap: 0.45rem;
 }
 
 .pulse-y {
@@ -544,8 +544,8 @@
 .pulse-dates {
   display: grid;
   grid-template-columns: 2.6rem minmax(0, 1fr);
-  column-gap: 0.2rem;
-  margin-top: 0.35rem;
+  column-gap: 0.45rem;
+  margin-top: 0.4rem;
 }
 
 .pulse-dates-track {

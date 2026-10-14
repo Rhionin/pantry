@@ -222,7 +222,11 @@ describe('pulse chart', () => {
     const ticks = pulseDateTicks(series.start, series.end, now);
     expect(ticks[0].align).toBe('start');
     expect(ticks[ticks.length - 1]).toMatchObject({ label: 'Today', align: 'end' });
-    expect(ticks.length).toBeGreaterThanOrEqual(2);
+    expect(ticks.filter((tick) => tick.align === 'center')).toHaveLength(1);
+    const span = series.end.getTime() - series.start.getTime();
+    const middle = (ticks[1].at - series.start.getTime()) / span;
+    expect(middle).toBeGreaterThan(0.25);
+    expect(middle).toBeLessThan(0.75);
     expect(pulseCount(5, 'stocked in')).toBe('5 stocked in');
     expect(pulseCount(0, 'used')).toBe('0 used');
   });

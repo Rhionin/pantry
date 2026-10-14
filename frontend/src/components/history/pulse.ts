@@ -233,16 +233,13 @@ export function pulseDateTicks(start: Date, end: Date, now: Date): PulseDateTick
     align: 'start',
   }];
   if (!sameDay(start, end)) {
-    for (let slot = 1; slot <= 2; slot += 1) {
-      const at = startMs + (span * slot) / 3;
-      const day = startOfDay(new Date(at));
-      if (sameDay(day, start) || sameDay(day, end)) continue;
-      const ratio = (day.getTime() - startMs) / span;
-      if (ratio < 0.18 || ratio > 0.82) continue;
-      if (ticks.some((tick) => Math.abs(tick.at - day.getTime()) / span < 0.16)) continue;
+    const mid = startOfDay(new Date(startMs + span / 2));
+    const ratio = (mid.getTime() - startMs) / span;
+    // One midpoint. A tick near either end collides with the end labels on a phone.
+    if (!sameDay(mid, start) && !sameDay(mid, end) && ratio >= 0.28 && ratio <= 0.72) {
       ticks.push({
-        at: day.getTime(),
-        label: sameDay(day, now) ? 'Today' : pulseStartLabel(day, now),
+        at: mid.getTime(),
+        label: sameDay(mid, now) ? 'Today' : pulseStartLabel(mid, now),
         align: 'center',
       });
     }
