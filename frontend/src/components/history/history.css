@@ -429,6 +429,7 @@
 .pulse-canvas {
   position: relative;
   min-width: 0;
+  touch-action: pan-y;
 }
 
 .pulse-range-button {
@@ -482,14 +483,10 @@
 .pulse-hit {
   position: absolute;
   inset: 0;
+  /* Vertical pan still scrolls the page. Double-tap zoom stays off in Chrome and Firefox. */
   touch-action: pan-y;
   cursor: crosshair;
   -webkit-tap-highlight-color: transparent;
-}
-
-.pulse-hit:focus-visible {
-  outline: 2px solid var(--bin-focus);
-  outline-offset: 2px;
 }
 
 .pulse-tip {

@@ -10,7 +10,6 @@ const { width: plotWidth, height: plotHeight, baseline, amplitude } = pulsePlot;
 
 export interface PulseInspect {
   key: string;
-  scroll: boolean;
 }
 
 interface InspectState {
@@ -30,6 +29,7 @@ export function PulseChart({
   const [range, setRange] = useState<PulseRange>(30);
   const [inspect, setInspect] = useState<{ state: InspectState; signature: string } | null>(null);
   const figureRef = useRef<HTMLElement>(null);
+  const hitRef = useRef<HTMLDivElement>(null);
   const gesture = useRef<{ x: number; y: number; moved: boolean; scrolling: boolean } | null>(null);
   const signature = `${range}|${setupAt ?? ''}|${moves.map((move) => `${move.id}:${move.quantity}:${move.at}`).join()}`;
   const active = inspect?.signature === signature ? inspect.state : null;
@@ -53,7 +53,20 @@ export function PulseChart({
   const days = pulseDays(moves, series.start, series.end, now);
   const dateTicks = pulseDateTicks(series.start, series.end, now);
   const yTicks = pulseYTicks(scale);
-  const dayIndex = active ? Math.max(0, days.findIndex((day) => day.key === active.day.key)) : 0;
+
+  useEffect(() => {
+    const node = hitRef.current;
+    if (!node) return undefined;
+    let lastTap = 0;
+    const end = (event: TouchEvent) => {
+      const now = Date.now();
+      // Android Chrome and Firefox zoom the page on a second tap this soon.
+      if (now - lastTap < 400) event.preventDefault();
+      lastTap = now;
+    };
+    node.addEventListener('touchend', end, { passive: false });
+    return () => node.removeEventListener('touchend', end);
+  }, []);
 
   useEffect(() => {
     if (!active?.locked) return undefined;
@@ -67,13 +80,13 @@ export function PulseChart({
     return () => document.removeEventListener('pointerdown', close);
   }, [active?.locked, onInspect]);
 
-  const showDay = (clientX: number, target: HTMLDivElement, scroll: boolean, lock: boolean) => {
+  const showDay = (clientX: number, target: HTMLDivElement, lock: boolean) => {
     const rect = target.getBoundingClientRect();
     const ratio = Math.min(1, Math.max(0, (clientX - rect.left) / (rect.width || 1)));
     const day = pulseDayFor(days, startMs + ratio * span);
     if (!day) return;
     setInspect({ signature, state: { ratio, day, locked: lock } });
-    onInspect?.({ key: day.key, scroll });
+    onInspect?.({ key: day.key });
   };
 
   const align = tipAlign(active?.ratio ?? 0.5);
@@ -148,24 +161,16 @@ export function PulseChart({
             )}
           </svg>
           <div
+            ref={hitRef}
             className="pulse-hit"
-            role="slider"
-            tabIndex={0}
-            aria-label="Day on the chart"
-            aria-valuemin={0}
-            aria-valuemax={Math.max(0, days.length - 1)}
-            aria-valuenow={dayIndex}
-            aria-valuetext={active
-              ? `${active.day.label}. ${pulseCount(active.day.stockedIn, 'stocked in')}. ${pulseCount(active.day.used, 'used')}.`
-              : 'Move across the chart to read a day.'}
             onPointerDown={(event) => {
               if (event.pointerType === 'mouse' && event.button !== 0) return;
               gesture.current = { x: event.clientX, y: event.clientY, moved: false, scrolling: false };
-              if (event.pointerType === 'mouse') showDay(event.clientX, event.currentTarget, false, false);
+              if (event.pointerType === 'mouse') showDay(event.clientX, event.currentTarget, false);
             }}
             onPointerMove={(event) => {
               if (event.pointerType === 'mouse') {
-                showDay(event.clientX, event.currentTarget, false, false);
+                showDay(event.clientX, event.currentTarget, false);
                 return;
               }
               const start = gesture.current;
@@ -178,14 +183,14 @@ export function PulseChart({
                 start.scrolling = true;
                 return;
               }
-              showDay(event.clientX, event.currentTarget, false, false);
+              showDay(event.clientX, event.currentTarget, false);
             }}
             onPointerUp={(event) => {
               if (event.pointerType === 'mouse') return;
               const start = gesture.current;
               gesture.current = null;
               if (!start || start.scrolling) return;
-              showDay(event.clientX, event.currentTarget, true, true);
+              showDay(event.clientX, event.currentTarget, true);
             }}
             onPointerLeave={(event) => {
               if (event.pointerType !== 'mouse' || active?.locked) return;
@@ -197,21 +202,6 @@ export function PulseChart({
               if (active?.locked) return;
               setInspect(null);
               onInspect?.(null);
-            }}
-            onKeyDown={(event) => {
-              if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight' && event.key !== 'Home' && event.key !== 'End') return;
-              event.preventDefault();
-              if (days.length === 0) return;
-              const current = active ? days.findIndex((day) => day.key === active.day.key) : -1;
-              let next = current;
-              if (event.key === 'ArrowRight') next = Math.min(days.length - 1, current + 1);
-              if (event.key === 'ArrowLeft') next = Math.max(0, current < 0 ? 0 : current - 1);
-              if (event.key === 'Home') next = 0;
-              if (event.key === 'End') next = days.length - 1;
-              const day = days[next];
-              const at = Math.min(endMs, Math.max(startMs, day.at + 12 * 60 * 60 * 1000));
-              setInspect({ signature, state: { ratio: (at - startMs) / span, day, locked: true } });
-              onInspect?.({ key: day.key, scroll: true });
             }}
           />
           {active && (

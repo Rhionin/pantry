@@ -239,13 +239,16 @@ describe('LedgerPage', () => {
     expect(screen.queryByText('The opening stock in is where this chart starts.')).not.toBeInTheDocument();
   });
 
-  it('reads the day under the pointer, and scrolls to it on a tap', async () => {
+  it('reads the day under a tap without scrolling or moving focus', async () => {
     const scroll = vi.fn();
     const originalScroll = Element.prototype.scrollIntoView;
     Element.prototype.scrollIntoView = scroll;
     renderLedger();
 
-    const hit = await screen.findByRole('slider', { name: 'Day on the chart' });
+    await screen.findByRole('img', { name: /Last 30 days/ });
+    const hit = document.querySelector('.pulse-hit');
+    if (!(hit instanceof HTMLElement)) throw new Error('chart hit target missing');
+    expect(hit).not.toHaveAttribute('tabindex');
     hit.getBoundingClientRect = () => ({
       x: 0, y: 0, left: 0, top: 0, right: 1000, bottom: 140, width: 1000, height: 140, toJSON() { return {}; },
     });
@@ -262,9 +265,12 @@ describe('LedgerPage', () => {
 
     fireEvent.pointerDown(hit, { clientX: 1000, clientY: 40, pointerType: 'touch', pointerId: 1 });
     fireEvent.pointerUp(hit, { clientX: 1000, clientY: 40, pointerType: 'touch', pointerId: 1 });
+    fireEvent.pointerDown(hit, { clientX: 1000, clientY: 40, pointerType: 'touch', pointerId: 1 });
+    fireEvent.pointerUp(hit, { clientX: 1000, clientY: 40, pointerType: 'touch', pointerId: 1 });
     expect(await screen.findByRole('tooltip')).toHaveTextContent('6 stocked in');
     expect(screen.getByRole('region', { name: 'Today' })).toHaveClass('is-inspected');
-    expect(scroll).toHaveBeenCalled();
+    expect(scroll).not.toHaveBeenCalled();
+    expect(document.activeElement).not.toBe(hit);
     Element.prototype.scrollIntoView = originalScroll;
   });
 

@@ -82,10 +82,6 @@ export function LedgerPage() {
 
   const onInspect = useCallback((day: PulseInspect | null) => {
     setInspectedKey(day?.key ?? null);
-    if (!day?.scroll) return;
-    const node = document.getElementById(`ledger-day-${day.key}`);
-    const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    node?.closest('section')?.scrollIntoView({ block: 'nearest', behavior: reduce ? 'auto' : 'smooth' });
   }, []);
 
   const saveQuantity = async () => {
