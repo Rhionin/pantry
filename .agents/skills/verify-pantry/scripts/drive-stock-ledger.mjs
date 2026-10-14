@@ -67,7 +67,7 @@ try {
   await today.getByText('Rolled Oats').waitFor({ state: 'visible' });
   await today.getByText('Black Beans').waitFor({ state: 'visible' });
   await page.getByRole('region', { name: 'Yesterday' }).getByText('Black Beans').waitFor({ state: 'visible' });
-  await page.getByText('Beans', { exact: true }).waitFor({ state: 'visible' });
+  await page.getByRole('region', { name: 'Today' }).getByText('Beans', { exact: true }).waitFor({ state: 'visible' });
 
   const ledger = await readLedger(page);
   assert(ledger.moves.length === 3, `ledger has 3 moves (got ${ledger.moves.length})`);
@@ -92,13 +92,13 @@ try {
   await captureProof(page, 'ledger-desktop', { viewport: 'desktop', moves: ledger.moves.length });
   await saveArtifact('ledger-desktop.png', 'history-desktop.png');
 
-  await page.getByRole('button', { name: 'Used' }).click();
+  await page.getByRole('button', { name: 'Used', exact: true }).click();
   await page.getByText('Rolled Oats').waitFor({ state: 'hidden' });
   await page.getByRole('region', { name: 'Today' }).getByText('Black Beans').waitFor({ state: 'visible' });
   const used = await readLedger(page, { direction: 'out' });
   assert(used.moves.length === 1 && used.moves[0].direction === 'out', 'used filter is the one stock out');
 
-  await page.getByRole('button', { name: 'All' }).click();
+  await page.getByRole('button', { name: 'All', exact: true }).click();
   await page.getByRole('textbox', { name: 'Search products or groups' }).fill('Beans');
   await page.getByText('Rolled Oats').waitFor({ state: 'hidden' });
   await page.getByText('Black Beans').first().waitFor({ state: 'visible' });
