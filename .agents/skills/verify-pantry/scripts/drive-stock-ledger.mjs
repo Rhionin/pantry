@@ -1,8 +1,8 @@
 // drive-stock-ledger.mjs — the household history of every stock move.
 //
 // User story: after stocking products in and using one, History lists every
-// move newest first, grouped by day, and the same row menu can correct or
-// undo a move. Run through scripts/pantry-verify.sh:
+// move newest first, grouped by day, charts them as pulses, and the same row
+// menu can correct or undo a move. Run through scripts/pantry-verify.sh:
 //   scripts/pantry-verify.sh drive scripts/drive-stock-ledger.mjs stock-ledger
 import { copyFile, mkdir } from 'node:fs/promises';
 import { execFileSync } from 'node:child_process';
@@ -56,8 +56,10 @@ try {
   assert(oatRow?.instanceCount === 2, `oats on hand is 2 (got ${oatRow?.instanceCount})`);
 
   // The scans are all today. Move the beans stock-in to yesterday so the
-  // ledger shows two days. The moves themselves came from scanning.
+  // ledger shows two days, then add older moves so the pulse chart has a
+  // month of rises and falls. Those older rows are history only.
   shiftToYesterday(process.env.PANTRY_DB_PATH, beans.id);
+  seedEarlierMoves(process.env.PANTRY_DB_PATH, oats.id, beans.id);
 
   await page.getByRole('navigation', { name: 'Sections' }).getByRole('link', { name: 'History' }).click();
   await page.getByRole('heading', { name: 'History', level: 1 }).waitFor({ state: 'visible' });
@@ -70,10 +72,15 @@ try {
   await page.getByRole('region', { name: 'Today' }).getByText('Beans', { exact: true }).waitFor({ state: 'visible' });
 
   const ledger = await readLedger(page);
-  assert(ledger.moves.length === 3, `ledger has 3 moves (got ${ledger.moves.length})`);
+  assert(ledger.moves.length === 12, `ledger has 12 moves (got ${ledger.moves.length})`);
   assert(ledger.moves[0].productName === 'Rolled Oats', 'newest move is the oats stock in');
   assert(ledger.moves[1].direction === 'out', 'the beans use is next');
   assert(ledger.moves[2].direction === 'in' && ledger.moves[2].productName === 'Black Beans', 'yesterday is the beans stock in');
+
+  const chart = page.getByRole('img', { name: 'Last 30 days. 25 units stocked in. 8 units used.' });
+  await chart.waitFor({ state: 'visible' });
+  await page.getByRole('button', { name: '30 days' }).waitFor({ state: 'visible' });
+  await page.getByText('Stocked in rises above the line. Used falls below it. Each line is one day. Height is the number of units.').waitFor({ state: 'visible' });
 
   await captureProof(page, 'ledger-phone', {
     viewport: 'phone',
@@ -92,19 +99,25 @@ try {
   await captureProof(page, 'ledger-desktop', { viewport: 'desktop', moves: ledger.moves.length });
   await saveArtifact('ledger-desktop.png', 'history-desktop.png');
 
+  await page.getByRole('button', { name: '7 days' }).click();
+  await page.getByRole('img', { name: 'Last 7 days. 10 units stocked in. 4 units used.' }).waitFor({ state: 'visible' });
+  await page.getByRole('button', { name: '30 days' }).click();
+
   await page.getByRole('button', { name: 'Used', exact: true }).click();
   await page.getByText('Rolled Oats').waitFor({ state: 'hidden' });
   await page.getByRole('region', { name: 'Today' }).getByText('Black Beans').waitFor({ state: 'visible' });
+  await page.getByRole('img', { name: 'Last 30 days. No units stocked in. 8 units used.' }).waitFor({ state: 'visible' });
   const used = await readLedger(page, { direction: 'out' });
-  assert(used.moves.length === 1 && used.moves[0].direction === 'out', 'used filter is the one stock out');
+  assert(used.moves.length === 4 && used.moves.every((move) => move.direction === 'out'), 'used filter keeps only stock outs');
 
   await page.getByRole('button', { name: 'All', exact: true }).click();
   await page.getByRole('textbox', { name: 'Search products or groups' }).fill('Beans');
   await page.getByText('Rolled Oats').waitFor({ state: 'hidden' });
   await page.getByText('Black Beans').first().waitFor({ state: 'visible' });
+  await page.getByRole('img', { name: 'Last 30 days. 11 units stocked in. 8 units used.' }).waitFor({ state: 'visible' });
   const byGroup = await readLedger(page, { q: 'Beans' });
   assert(byGroup.moves.every((move) => move.productName === 'Black Beans' || move.groupName === 'Beans'), 'search keeps the beans');
-  assert(byGroup.moves.length === 2, `beans search has 2 moves (got ${byGroup.moves.length})`);
+  assert(byGroup.moves.length === 7, `beans search has 7 moves (got ${byGroup.moves.length})`);
 
   await page.getByRole('textbox', { name: 'Search products or groups' }).fill('');
   await page.getByText('Rolled Oats').waitFor({ state: 'visible' });
@@ -130,7 +143,7 @@ try {
   const afterUndo = await readInventory(page);
   assert(afterUndo.find((row) => row.item.id === beanRow.item.id)?.instanceCount === 4, 'undo puts both cans back');
   const remaining = await readLedger(page);
-  assert(remaining.moves.length === 2, 'the undone use leaves the ledger');
+  assert(remaining.moves.length === 11, 'the undone use leaves the ledger');
   assert(remaining.moves.every((move) => move.id !== use.id), 'the undone move is gone');
 
   console.log('PASS: stock ledger — grouped history, filters, quantity, and undo');
@@ -172,6 +185,50 @@ async function readLedger(page, query) {
   const res = await page.request.get(`${API_URL}/api/history${suffix}`);
   if (!res.ok()) throw new Error(`history read failed: ${res.status()} ${await res.text()}`);
   return res.json();
+}
+
+function seedEarlierMoves(dbPath, oatsProductId, beansProductId) {
+  if (!dbPath) throw new Error('PANTRY_DB_PATH is not set');
+  execFileSync('python3', ['-c', `
+import sqlite3, sys
+from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
+db, oats_id, beans_id = sys.argv[1:]
+chicago = ZoneInfo("America/Chicago")
+now = datetime.now(chicago)
+conn = sqlite3.connect(db)
+
+def item_for(product_id):
+    row = conn.execute("SELECT id FROM items WHERE product_id = ? LIMIT 1", (product_id,)).fetchone()
+    if row is None:
+        raise SystemExit("no item for " + product_id)
+    return row[0]
+
+oats_item = item_for(oats_id)
+beans_item = item_for(beans_id)
+plan = [
+    (3, "oats", "in", 1),
+    (5, "beans", "out", 3),
+    (6, "oats", "in", 3),
+    (9, "beans", "in", 5),
+    (12, "beans", "out", 1),
+    (14, "oats", "in", 2),
+    (18, "beans", "out", 3),
+    (21, "oats", "in", 6),
+    (26, "beans", "in", 2),
+]
+for i, (days, which, direction, qty) in enumerate(plan):
+    stamp = (now - timedelta(days=days)).replace(hour=11, minute=15, second=0, microsecond=0)
+    utc = stamp.astimezone(ZoneInfo("UTC")).strftime("%Y-%m-%dT%H:%M:%SZ")
+    product_id = oats_id if which == "oats" else beans_id
+    item_id = oats_item if which == "oats" else beans_item
+    conn.execute(
+        "INSERT INTO stock_moves (id, item_id, product_id, direction, quantity, at, source, tracked) VALUES (?, ?, ?, ?, ?, ?, 'scan', 0)",
+        (f"seed-{i}", item_id, product_id, direction, qty, utc),
+    )
+conn.commit()
+print("seeded", len(plan), "earlier moves")
+`, dbPath, oatsProductId, beansProductId], { stdio: 'inherit' });
 }
 
 function shiftToYesterday(dbPath, productId) {

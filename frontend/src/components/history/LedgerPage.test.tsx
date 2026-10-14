@@ -165,10 +165,49 @@ describe('LedgerPage', () => {
     await vi.waitFor(() => expect(undoMove).toHaveBeenCalledWith('move-milk'));
   });
 
+  it('charts the filtered moves, and leaves older moves in the list', async () => {
+    const flourAt = new Date(2026, 8, 1, 11, 0, 0);
+    getHouseholdHistory.mockImplementation(async (filter?: { direction?: string; q?: string }) => {
+      const base = filtered(filter);
+      if (filter?.direction === 'out' || (filter?.q && filter.q !== '')) return base;
+      return {
+        moves: [
+          {
+            id: 'move-flour',
+            direction: 'in',
+            quantity: 9,
+            at: flourAt.toISOString(),
+            source: 'manual',
+            productId: 'prod-flour',
+            productName: 'Flour',
+          },
+          ...base.moves,
+        ],
+      };
+    });
+    renderLedger();
+
+    const chart = await screen.findByRole('img', { name: 'Last 30 days. 6 units stocked in. 1 unit used.' });
+    expect(chart.querySelectorAll('polygon')).toHaveLength(2);
+    expect(screen.getByRole('button', { name: '30 days' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByText(/Each line is one day/)).toBeInTheDocument();
+    expect(screen.getByText(/Height is the number of units/)).toBeInTheDocument();
+    expect(screen.getByText('Flour')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: '90 days' }));
+    expect(screen.getByRole('img', { name: 'Last 90 days. 15 units stocked in. 1 unit used.' })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: '30 days' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Used' }));
+    expect(await screen.findByRole('img', { name: 'Last 30 days. No units stocked in. 1 unit used.' })).toBeInTheDocument();
+    expect(screen.queryByText('Flour')).not.toBeInTheDocument();
+  });
+
   it('says what to do when nothing has moved, and when a filter matches nothing', async () => {
     getHouseholdHistory.mockResolvedValue({ moves: [] });
     renderLedger();
     expect(await screen.findByText(/No stock moves yet/)).toBeInTheDocument();
+    expect(screen.queryByRole('img', { name: /Last 30 days/ })).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: 'Stocked in' }));
     expect(await screen.findByText('No stocked-in moves in this list.')).toBeInTheDocument();

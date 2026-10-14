@@ -8,6 +8,7 @@ import { ProductPhoto } from '../inventory/ProductPhoto';
 import {
   deltaName, deltaText, directionWord, formatMoveClock, groupMovesByDay, ledgerEmptyCopy, quantityPrompt, undoCopy,
 } from './format';
+import { PulseChart } from './PulseChart';
 import '../groups/groups.css';
 import '../inventory/shelf.css';
 import './history.css';
@@ -140,6 +141,9 @@ export function LedgerPage() {
           ))}
         </div>
       </div>
+      {error === '' && moves !== null && moves.length > 0 && (
+        <PulseChart moves={moves} now={now} />
+      )}
       {loading && moves === null && <Loader aria-label="Loading history" />}
       {error !== '' && editing === null && undoing === null && <Alert color="red">{error}</Alert>}
       {showEmpty && <p className="ledger-empty">{ledgerEmptyCopy(direction, query)}</p>}

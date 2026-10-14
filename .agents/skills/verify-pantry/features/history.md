@@ -21,6 +21,8 @@ pace follow the correction.
   was stocked in or used, the amount, and the time. All, Stocked in, and Used
   filter the direction. Search matches a product or a group. The row menu
   changes the quantity or undoes the move, the same actions as one product.
+  A pulse chart above the days draws stocked-in above a zero line and used
+  below it, for the last 7, 30, or 90 days. It uses the same filters and search.
 
 ## How to get to it (user POV)
 
@@ -57,6 +59,9 @@ Preconditions:
   `Stocked in` or `Used`, and the amount. `Stocked in` and `Used` filter the
   list. `Search products or groups` matches a product or a group. The row menu
   uses `Change quantity` and `Undo this stock in` or `Undo this use`.
+- **Read the pulse chart.** Above the days, `30 days` is pressed. Stocked in
+  rises above the line and used falls below it. `7 days` and `90 days` change
+  the window. The chart follows the direction filter and the search.
 
 ## Gotchas
 
