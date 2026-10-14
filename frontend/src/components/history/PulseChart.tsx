@@ -14,7 +14,9 @@ export function PulseChart({ moves, now }: { moves: LedgerMove[]; now: Date }) {
   const [range, setRange] = useState<PulseRange>(30);
   const model = buildPulseModel(moves, now, range);
   const summary = pulseSummary(model);
-  const half = Math.max(5, (plotWidth / range) * 0.32);
+  // One day is only a few pixels wide on a phone, so each pulse is wider than
+  // a day. Every pulse has the same width. The height carries the amount.
+  const half = Math.min((plotWidth / range) * 2.05, plotWidth * 0.16);
   const startMs = model.start.getTime();
   const endMs = model.end.getTime();
   const span = endMs - startMs || 1;
@@ -51,7 +53,7 @@ export function PulseChart({ moves, now }: { moves: LedgerMove[]; now: Date }) {
               <polygon
                 points={`${x - half},${baseline} ${x},${y} ${x + half},${baseline}`}
                 fill={tone}
-                fillOpacity={0.42}
+                fillOpacity={0.5}
               />
               <line
                 x1={x}

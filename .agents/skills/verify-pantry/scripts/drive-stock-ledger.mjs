@@ -104,7 +104,7 @@ try {
   await page.getByRole('button', { name: '30 days' }).click();
 
   await page.getByRole('button', { name: 'Used', exact: true }).click();
-  await page.getByText('Rolled Oats').waitFor({ state: 'hidden' });
+  await waitForProduct(page, 'Rolled Oats', 0);
   await page.getByRole('region', { name: 'Today' }).getByText('Black Beans').waitFor({ state: 'visible' });
   await page.getByRole('img', { name: 'Last 30 days. No units stocked in. 8 units used.' }).waitFor({ state: 'visible' });
   const used = await readLedger(page, { direction: 'out' });
@@ -112,7 +112,7 @@ try {
 
   await page.getByRole('button', { name: 'All', exact: true }).click();
   await page.getByRole('textbox', { name: 'Search products or groups' }).fill('Beans');
-  await page.getByText('Rolled Oats').waitFor({ state: 'hidden' });
+  await waitForProduct(page, 'Rolled Oats', 0);
   await page.getByText('Black Beans').first().waitFor({ state: 'visible' });
   await page.getByRole('img', { name: 'Last 30 days. 11 units stocked in. 8 units used.' }).waitFor({ state: 'visible' });
   const byGroup = await readLedger(page, { q: 'Beans' });
@@ -120,10 +120,10 @@ try {
   assert(byGroup.moves.length === 7, `beans search has 7 moves (got ${byGroup.moves.length})`);
 
   await page.getByRole('textbox', { name: 'Search products or groups' }).fill('');
-  await page.getByText('Rolled Oats').waitFor({ state: 'visible' });
+  await waitForProduct(page, 'Rolled Oats', 5);
 
   const use = ledger.moves.find((move) => move.direction === 'out');
-  await page.getByRole('button', { name: /Actions for Black Beans, 1 used/ }).click();
+  await page.getByRole('region', { name: 'Today' }).getByRole('button', { name: /Actions for Black Beans, 1 used/ }).click();
   await page.getByRole('menuitem', { name: 'Change quantity' }).click();
   const dialog = page.getByRole('dialog', { name: 'Change quantity' });
   await dialog.getByLabel('How many units were actually used?').fill('2');
@@ -155,6 +155,12 @@ try {
   await browser.close();
 }
 process.exit(failed ? 1 : 0);
+
+async function waitForProduct(page, name, count) {
+  await page.waitForFunction(({ name, count }) => (
+    [...document.querySelectorAll('p.ledger-name')].filter((node) => node.textContent === name).length === count
+  ), { name, count });
+}
 
 async function stockIn(page, barcode, name, units) {
   const card = await scanBarcode(page, barcode);
