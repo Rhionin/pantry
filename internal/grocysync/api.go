@@ -57,6 +57,7 @@ type objectRow struct {
 	Note           *string   `json:"note"`
 	ShoppingListID int       `json:"shopping_list_id"`
 	Amount         flexFloat `json:"amount"`
+	Done           flexFloat `json:"done"`
 	Entity         string    `json:"entity"`
 }
 
