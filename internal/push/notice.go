@@ -7,12 +7,16 @@ import (
 	"github.com/Rhionin/pantry/internal/scan"
 )
 
-// Notice is the JSON body of one push. The service worker shows it and opens URL.
+// Notice is one alert. Title, Body, Tag, and URL are the words the service
+// worker can show. Count and Names belong to a batch: Notify sends only as
+// many names as fit in a compact payload, not the whole list.
 type Notice struct {
-	Title string `json:"title"`
-	Body  string `json:"body"`
-	Tag   string `json:"tag"`
-	URL   string `json:"url"`
+	Title string   `json:"title"`
+	Body  string   `json:"body"`
+	Tag   string   `json:"tag"`
+	URL   string   `json:"url"`
+	Count int      `json:"-"`
+	Names []string `json:"-"`
 }
 
 func failureNotice(failure scan.ProcessingFailure) Notice {
@@ -39,7 +43,7 @@ func unrecognizedNotice(entry scan.ScanEntry) Notice {
 	}
 }
 
-func batchNotice(direction scan.ScanDirection, count int) Notice {
+func batchNotice(direction scan.ScanDirection, count int, names []string) Notice {
 	label := "Stock out"
 	if direction == scan.StockIn {
 		label = "Stock in"
@@ -55,7 +59,16 @@ func batchNotice(direction scan.ScanDirection, count int) Notice {
 		Body:  waiting + ". Open the scan queue to confirm " + pronoun + ".",
 		Tag:   "pantry-scan-batch-" + string(direction),
 		URL:   queuePath(direction),
+		Count: count,
+		Names: names,
 	}
+}
+
+func productName(entry scan.ScanEntry) string {
+	if entry.Product == nil {
+		return ""
+	}
+	return strings.TrimSpace(entry.Product.Name)
 }
 
 func reviewDirection(direction *scan.ScanDirection) scan.ScanDirection {

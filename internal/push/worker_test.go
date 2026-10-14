@@ -22,6 +22,9 @@ func TestServiceWorkerShowsTheScanQueue(t *testing.T) {
 		"pantry-scan-alert",
 		"alertPath",
 		"requireInteraction: true",
+		"payload.url",
+		"payload.title",
+		"payload.body",
 	} {
 		if !strings.Contains(source, want) {
 			t.Errorf("service worker missing %q", want)

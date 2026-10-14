@@ -1,23 +1,19 @@
 // Scan alerts while Pantry is closed. The page registers this file at the
-// site root so a click can open the scan queue. Payloads are JSON from the
-// pantry server. A path that is not on this origin is ignored.
+// site root so a click can open the scan queue. The server sends a compact
+// JSON payload: a short title, a body naming the count and the first item
+// names, and a url on this origin. A path that is not on this origin is ignored.
 
 self.addEventListener('push', (event) => {
-  let payload = {};
-  try {
-    payload = event.data ? event.data.json() : {};
-  } catch {
-    payload = {};
-  }
-  const title = typeof payload.title === 'string' && payload.title !== '' ? payload.title : 'Pantry';
+  const payload = readPayload(event);
+  const title = payload.title !== '' ? payload.title : 'Pantry';
   const options = {
-    body: typeof payload.body === 'string' ? payload.body : '',
+    body: payload.body,
     lang: 'en',
     icon: '/favicon.svg',
     requireInteraction: true,
     data: { url: alertPath(payload.url) },
   };
-  if (typeof payload.tag === 'string' && payload.tag !== '') {
+  if (payload.tag !== '') {
     options.tag = payload.tag;
   }
   event.waitUntil(self.registration.showNotification(title, options));
@@ -29,6 +25,24 @@ self.addEventListener('notificationclick', (event) => {
   const target = new URL(path, self.location.origin).href;
   event.waitUntil(openQueue(path, target));
 });
+
+function readPayload(event) {
+  const empty = { title: '', body: '', tag: '', url: '' };
+  if (!event.data) return empty;
+  let raw;
+  try {
+    raw = event.data.json();
+  } catch {
+    return empty;
+  }
+  if (!raw || typeof raw !== 'object') return empty;
+  return {
+    title: typeof raw.title === 'string' ? raw.title : '',
+    body: typeof raw.body === 'string' ? raw.body : '',
+    tag: typeof raw.tag === 'string' ? raw.tag : '',
+    url: typeof raw.url === 'string' ? raw.url : '',
+  };
+}
 
 function alertPath(value) {
   if (typeof value !== 'string' || !value.startsWith('/') || value.startsWith('//')) return '/';
