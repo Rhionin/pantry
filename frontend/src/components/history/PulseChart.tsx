@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import type { LedgerMove } from '../../types';
 import {
-  buildPulseModel, pulseEmptyCopy, pulseLegend, pulseRanges, pulseStartLabel, pulseSummary,
+  buildPulseModel, pulseEmptyCopy, pulseHumpPath, pulseLegend, pulseRanges, pulseStartLabel, pulseSummary,
   type PulseRange,
 } from './pulse';
 
@@ -48,18 +48,13 @@ export function PulseChart({ moves, now }: { moves: LedgerMove[]; now: Date }) {
           const x = Math.min(plotWidth - half, Math.max(half, raw));
           const y = baseline - mark.magnitude * amplitude;
           const tone = mark.direction === 'in' ? 'var(--history-in)' : 'var(--history-used)';
+          const hump = pulseHumpPath(x, y, half, baseline);
           return (
             <g key={`${mark.at}-${mark.direction}`}>
-              <polygon
-                points={`${x - half},${baseline} ${x},${y} ${x + half},${baseline}`}
-                fill={tone}
-                fillOpacity={0.5}
-              />
-              <line
-                x1={x}
-                y1={baseline}
-                x2={x}
-                y2={y}
+              <path className="pulse-hump" d={hump.fill} fill={tone} fillOpacity={0.5} />
+              <path
+                d={hump.curve}
+                fill="none"
                 stroke={tone}
                 strokeWidth={1.75}
                 strokeLinecap="round"

@@ -71,6 +71,26 @@ export function pulseEmptyCopy(rangeDays: number): string {
   return `Nothing moved in the last ${rangeDays} days.`;
 }
 
+// A cubic smoothstep hump. Each half is monotone, the tangent is flat at the
+// baseline and at the peak, and the height stays between those two values.
+export function pulseHumpY(t: number, peakY: number, baselineY: number): number {
+  const clamped = Math.min(1, Math.max(-1, t));
+  const towardPeak = 1 - Math.abs(clamped);
+  const smooth = towardPeak * towardPeak * (3 - 2 * towardPeak);
+  return baselineY + (peakY - baselineY) * smooth;
+}
+
+export function pulseHumpPath(x: number, peakY: number, half: number, baselineY: number): { fill: string; curve: string } {
+  const left = x - half;
+  const right = x + half;
+  const curve = [
+    `M ${left} ${baselineY}`,
+    `C ${x - (half * 2) / 3} ${baselineY} ${x - half / 3} ${peakY} ${x} ${peakY}`,
+    `C ${x + half / 3} ${peakY} ${x + (half * 2) / 3} ${baselineY} ${right} ${baselineY}`,
+  ].join(' ');
+  return { fill: `${curve} Z`, curve };
+}
+
 export function pulseStartLabel(start: Date, now: Date): string {
   const options: Intl.DateTimeFormatOptions = { month: 'short', day: 'numeric' };
   if (start.getFullYear() !== now.getFullYear()) options.year = 'numeric';

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  buildPulseModel, pulseEmptyCopy, pulseLegend, pulseStartLabel, pulseSummary,
+  buildPulseModel, pulseEmptyCopy, pulseHumpPath, pulseHumpY, pulseLegend, pulseStartLabel, pulseSummary,
 } from './pulse';
 
 const now = new Date(2026, 9, 14, 16, 0, 0);
@@ -66,6 +66,39 @@ describe('pulse chart', () => {
     expect(model.used).toBe(4);
     expect(pulseLegend(model)).toContain('Each line is one day.');
     expect(pulseSummary(model)).toBe('Last 7 days. 6 units stocked in. 4 units used.');
+  });
+
+  it('rounds a pulse into a hump that keeps its height and stays on one side of the line', () => {
+    const baseline = 140;
+    const above = 28;
+    const rising = [-1, -0.75, -0.5, -0.25, 0].map((t) => pulseHumpY(t, above, baseline));
+    const falling = [0, 0.25, 0.5, 0.75, 1].map((t) => pulseHumpY(t, above, baseline));
+    expect(rising[0]).toBe(baseline);
+    expect(rising[4]).toBe(above);
+    expect(falling[4]).toBe(baseline);
+    for (let i = 0; i < rising.length - 1; i += 1) expect(rising[i]).toBeGreaterThan(rising[i + 1]);
+    for (let i = 0; i < falling.length - 1; i += 1) expect(falling[i]).toBeLessThan(falling[i + 1]);
+    for (const y of [...rising, ...falling]) {
+      expect(y).toBeLessThanOrEqual(baseline);
+      expect(y).toBeGreaterThanOrEqual(above);
+    }
+    // The shoulder sits closer to the peak than a straight line would.
+    expect(pulseHumpY(-0.25, above, baseline)).toBeLessThan(baseline + (above - baseline) * 0.75);
+
+    const below = 210;
+    const down = [-1, -0.5, 0, 0.5, 1].map((t) => pulseHumpY(t, below, baseline));
+    expect(down[2]).toBe(below);
+    for (const y of down) {
+      expect(y).toBeGreaterThanOrEqual(baseline);
+      expect(y).toBeLessThanOrEqual(below);
+    }
+    expect(down[1]).toBeGreaterThan(down[0]);
+    expect(down[1]).toBeLessThan(down[2]);
+
+    const path = pulseHumpPath(100, above, 30, baseline);
+    expect(path.curve).toBe('M 70 140 C 80 140 90 28 100 28 C 110 28 120 140 130 140');
+    expect(path.fill.endsWith('Z')).toBe(true);
+    expect(path.curve).not.toContain(' L ');
   });
 
   it('names an empty window and a start date in another year', () => {

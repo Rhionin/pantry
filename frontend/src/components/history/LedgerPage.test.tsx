@@ -188,7 +188,7 @@ describe('LedgerPage', () => {
     renderLedger();
 
     const chart = await screen.findByRole('img', { name: 'Last 30 days. 6 units stocked in. 1 unit used.' });
-    expect(chart.querySelectorAll('polygon')).toHaveLength(2);
+    expect(chart.querySelectorAll('.pulse-hump')).toHaveLength(2);
     expect(screen.getByRole('button', { name: '30 days' })).toHaveAttribute('aria-pressed', 'true');
     expect(screen.getByText(/Each line is one day/)).toBeInTheDocument();
     expect(screen.getByText(/Height is the number of units/)).toBeInTheDocument();
