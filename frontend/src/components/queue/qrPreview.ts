@@ -13,7 +13,7 @@ export function qrPreview(raw: string): string {
 
 function qrHost(value: string): string | null {
   const lower = value.toLowerCase();
-  let candidate = value;
+  let candidate: string;
   if (lower.startsWith('https://') || lower.startsWith('http://')) {
     candidate = value;
   } else if (lower.startsWith('www.')) {
