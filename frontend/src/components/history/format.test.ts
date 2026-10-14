@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
-  daysLeftLabel, deltaName, deltaText, formatMoveWhen, formatPaceNumber, moveTitle, onHandLabel, quantityPrompt, trendLabel, undoCopy,
+  dayHeading, daysLeftLabel, deltaName, deltaText, directionWord, formatMoveClock, formatMoveWhen, formatPaceNumber,
+  groupMovesByDay, ledgerEmptyCopy, moveTitle, onHandLabel, quantityPrompt, trendLabel, undoCopy,
 } from './format';
 
 describe('history wording', () => {
@@ -30,6 +31,43 @@ describe('history wording', () => {
     expect(older).toContain('Oct');
     expect(older).toContain('8');
     expect(older).toContain('by hand');
+  });
+
+  it('groups a household ledger by calendar day, newest first', () => {
+    const today = new Date(2026, 9, 10, 15, 0, 0);
+    const earlier = new Date(2026, 9, 10, 8, 0, 0);
+    const yesterday = new Date(2026, 9, 9, 18, 0, 0);
+    const lastYear = new Date(2025, 11, 2, 9, 0, 0);
+    const older = new Date(2026, 9, 8, 12, 0, 0);
+    expect(dayHeading(today, now)).toBe('Today');
+    expect(dayHeading(yesterday, now)).toBe('Yesterday');
+    expect(dayHeading(older, now)).toBe(new Intl.DateTimeFormat(undefined, {
+      weekday: 'long', month: 'long', day: 'numeric',
+    }).format(older));
+    expect(dayHeading(older, now)).not.toMatch(/2026/);
+    expect(dayHeading(lastYear, now)).toContain('2025');
+    expect(formatMoveClock(today, 'scan')).toMatch(/scan$/);
+    expect(formatMoveClock(yesterday, 'manual')).toMatch(/by hand$/);
+    expect(directionWord('in')).toBe('Stocked in');
+    expect(directionWord('out')).toBe('Used');
+
+    const groups = groupMovesByDay([
+      { at: today.toISOString(), name: 'Milk' },
+      { at: earlier.toISOString(), name: 'Oats' },
+      { at: yesterday.toISOString(), name: 'Chickpeas' },
+    ], now);
+    expect(groups.map((group) => group.heading)).toEqual(['Today', 'Yesterday']);
+    expect(groups[0].moves.map((move) => move.name)).toEqual(['Milk', 'Oats']);
+    expect(groups[1].moves.map((move) => move.name)).toEqual(['Chickpeas']);
+  });
+
+  it('names an empty household history by the filter in use', () => {
+    expect(ledgerEmptyCopy('all', '')).toBe('No stock moves yet. Stock something in or use something, and it shows up here.');
+    expect(ledgerEmptyCopy('all', 'beans')).toBe('No moves match that search.');
+    expect(ledgerEmptyCopy('in', '')).toBe('No stocked-in moves in this list.');
+    expect(ledgerEmptyCopy('in', 'beans')).toBe('No stocked-in moves match that search.');
+    expect(ledgerEmptyCopy('out', '')).toBe('No uses in this list.');
+    expect(ledgerEmptyCopy('out', 'beans')).toBe('No uses match that search.');
   });
 
   it('labels the quantity change and the undo consequence', () => {

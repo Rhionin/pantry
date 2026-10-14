@@ -1,16 +1,21 @@
-.history-page {
+.history-page,
+.ledger-page {
   --history-used: #8f1d1d;
   --history-used-bg: #fde8e8;
   --history-in: #0b6b3a;
   --history-in-bg: #e5f6ec;
   --history-line: #0b6b3a;
+}
+
+.history-page {
   display: flex;
   flex-direction: column;
   gap: var(--mantine-spacing-md);
   padding-bottom: var(--mantine-spacing-md);
 }
 
-:where([data-mantine-color-scheme='dark']) .history-page {
+:where([data-mantine-color-scheme='dark']) .history-page,
+:where([data-mantine-color-scheme='dark']) .ledger-page {
   --history-used: #ffc9c9;
   --history-used-bg: #4a1e1e;
   --history-in: #c6f6d5;
@@ -237,4 +242,129 @@
 
 .history-quantity input {
   font-size: 16px;
+}
+
+.ledger-page {
+  padding-bottom: 1.5rem;
+}
+
+.ledger-title {
+  margin: 0 0 1.25rem;
+}
+
+.ledger-tools {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin-bottom: 1.25rem;
+}
+
+.ledger-search input {
+  font-size: 16px;
+}
+
+.ledger-days {
+  display: flex;
+  flex-direction: column;
+  gap: 1.35rem;
+}
+
+.ledger-day-title {
+  margin: 0 0 0.2rem;
+  color: var(--bin-ink);
+  font-size: 1.05rem;
+  font-weight: 650;
+  line-height: 1.3;
+}
+
+.ledger-moves {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.ledger-move {
+  display: grid;
+  grid-template-columns: 2.5rem minmax(0, 1fr) 5.25rem 2.75rem;
+  column-gap: 0.75rem;
+  align-items: center;
+  min-height: 3.25rem;
+  padding: 0.65rem 0;
+  border-bottom: 1px solid var(--bin-line);
+}
+
+.ledger-moves .ledger-move:last-child {
+  border-bottom: 0;
+}
+
+.ledger-photo {
+  width: 2.5rem;
+  height: 2.5rem;
+}
+
+.ledger-photo .shelf-photo {
+  width: 2.5rem;
+  height: 2.5rem;
+}
+
+.ledger-copy {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+}
+
+.ledger-name,
+.ledger-when,
+.ledger-group {
+  margin: 0;
+  line-height: 1.35;
+}
+
+.ledger-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--bin-ink);
+  font-weight: 650;
+}
+
+.ledger-when,
+.ledger-group {
+  color: var(--bin-muted);
+  font-size: var(--mantine-font-size-sm);
+}
+
+.ledger-amount {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.1rem;
+  line-height: 1.2;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+}
+
+.ledger-amount.is-in {
+  color: var(--history-in);
+}
+
+.ledger-amount.is-out {
+  color: var(--history-used);
+}
+
+.ledger-figure {
+  font-size: 1.15rem;
+}
+
+.ledger-word {
+  font-size: 0.75rem;
+  white-space: nowrap;
+}
+
+.ledger-empty {
+  margin: 0;
+  max-width: 38rem;
+  color: var(--bin-muted);
+  line-height: 1.45;
 }

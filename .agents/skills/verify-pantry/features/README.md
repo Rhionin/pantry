@@ -24,8 +24,8 @@ evidence, and cleanup mechanics.
 ## Driving conventions
 
 - The web UI is the primary surface. Its routes are `Scan Queue` (`/`),
-  `Inventory` (`/inventory`), and `Shopping List` (`/shopping`), reachable from
-  the header links. The header menu's `Diagnostics` item opens `/diagnostics`
+  `Inventory` (`/inventory`), `History` (`/history`), and `Shopping List`
+  (`/shopping`), reachable from the header links. The header menu's `Diagnostics` item opens `/diagnostics`
   for page-load timings from `GET /api/telemetry`. `Settings` sits immediately
   above the `Build` label and opens `/settings` for the supply length, scan
   alerts on this device, and wipe.
@@ -113,4 +113,6 @@ behavior, then uses exactly these four H2 sections in order:
   `scripts/drive-wipe-inventory.mjs`.
 - [Consumption history](./history.md) — open a product or group history, read
   the days between uses and the recent trail, then change a quantity or undo a
-  move. Proven end to end by `scripts/drive-history.mjs`.
+  move. The History tab lists every product's stock in and stock out together.
+  Proven end to end by `scripts/drive-history.mjs` and
+  `scripts/drive-stock-ledger.mjs`.
