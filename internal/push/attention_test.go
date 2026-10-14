@@ -4,6 +4,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Rhionin/pantry/internal/product"
 	"github.com/Rhionin/pantry/internal/scan"
 )
 
@@ -87,13 +88,12 @@ func TestAttentionFailureAndUnrecognized(t *testing.T) {
 	if len(*notices) != 2 {
 		t.Fatalf("notices = %#v", *notices)
 	}
-	if (*notices)[0] != (Notice{
-		Title: "Scan failed",
-		Body:  "Couldn't look up that barcode. Open the scan queue to try again.",
-		Tag:   "pantry-scan-failure-lookup-1",
-		URL:   "/",
-	}) {
-		t.Fatalf("failure notice = %#v", (*notices)[0])
+	got := (*notices)[0]
+	if got.Title != "Scan failed" || got.URL != "/" || got.Tag != "pantry-scan-failure-lookup-1" {
+		t.Fatalf("failure notice = %#v", got)
+	}
+	if got.Body != "Couldn't look up that barcode. Open the scan queue to try again." {
+		t.Fatalf("failure notice = %#v", got)
 	}
 	if (*notices)[1].Title != "Unrecognized product" || (*notices)[1].URL != "/?scanAlert=stock_out" {
 		t.Fatalf("unrecognized notice = %#v", (*notices)[1])
@@ -159,6 +159,30 @@ func TestAttentionConfirmedScansLeaveTheBatch(t *testing.T) {
 	clock.advance(BatchSettle)
 	if len(*notices) != 0 {
 		t.Fatalf("empty batch notified: %#v", *notices)
+	}
+}
+
+func TestAttentionBatchCarriesProductNames(t *testing.T) {
+	alerts, clock, notices := harness()
+	milk := pending("milk", "111", scan.StockOut)
+	milk.Product = &product.ProductSummary{Name: "Whole Milk"}
+	bread := pending("bread", "222", scan.StockOut)
+	bread.Product = &product.ProductSummary{Name: "Rye Bread"}
+	alerts.noteScan(milk)
+	alerts.noteScan(bread)
+	clock.advance(BatchSettle)
+	if len(*notices) != 1 {
+		t.Fatalf("notices = %#v", *notices)
+	}
+	got := (*notices)[0]
+	if got.Count != 2 || len(got.Names) != 2 || got.Names[0] != "Whole Milk" || got.Names[1] != "Rye Bread" {
+		t.Fatalf("names = %#v count %d", got.Names, got.Count)
+	}
+	if got.Title != "Stock out batch is ready" || got.URL != "/?scanAlert=stock_out" {
+		t.Fatalf("notice = %#v", got)
+	}
+	if got.Body != "2 scans are waiting. Open the scan queue to confirm them." {
+		t.Fatalf("body = %q", got.Body)
 	}
 }
 

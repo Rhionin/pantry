@@ -2,7 +2,6 @@ package push
 
 import (
 	"context"
-	"encoding/json"
 	"io"
 	"log"
 	"net/http"
@@ -63,7 +62,7 @@ func (s *Sender) Notify(ctx context.Context, notice Notice) {
 	if len(subs) == 0 {
 		return
 	}
-	payload, err := json.Marshal(notice)
+	payload, err := pushPayload(notice)
 	if err != nil {
 		log.Printf("scan alerts: could not encode a notification")
 		return
