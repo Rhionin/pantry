@@ -1,15 +1,60 @@
 import { describe, expect, it } from 'vitest';
 import {
-  buildPulseModel, pulseEmptyCopy, pulseHumpPath, pulseHumpY, pulseLegend, pulseStartLabel, pulseSummary,
+  buildPulseModel, buildPulseSeries, monotoneSlopes, pulseEmptyCopy, pulseHumpPath, pulseHumpY, pulseLegend,
+  pulseQuantityAt, pulseStartLabel, pulseSummary,
 } from './pulse';
 
 const now = new Date(2026, 9, 14, 16, 0, 0);
+
+function cubicBezier(p0: number, p1: number, p2: number, p3: number, t: number): number {
+  const u = 1 - t;
+  return (u * u * u * p0) + (3 * u * u * t * p1) + (3 * u * t * t * p2) + (t * t * t * p3);
+}
 
 function at(month: number, day: number, hour = 12): string {
   return new Date(2026, month, day, hour, 0, 0).toISOString();
 }
 
 describe('pulse chart', () => {
+  it('sums two same-day moves of 2 and 3 into a peak of 5', () => {
+    const series = buildPulseSeries([
+      { at: new Date(2026, 9, 14, 8, 0, 0).toISOString(), direction: 'in', quantity: 2 },
+      { at: new Date(2026, 9, 14, 15, 0, 0).toISOString(), direction: 'in', quantity: 3 },
+    ], now, 30);
+    expect(series.peakIn).toBe(5);
+    expect(series.peakOut).toBe(0);
+    expect(series.centersIn).toEqual([
+      { at: new Date(2026, 9, 14, 12, 0, 0).getTime(), quantity: 5 },
+    ]);
+  });
+
+  it('adds neighboring days instead of keeping the taller one', () => {
+    const series = buildPulseSeries([
+      { at: new Date(2026, 9, 10, 12, 0, 0).toISOString(), direction: 'in', quantity: 4 },
+      { at: new Date(2026, 9, 11, 12, 0, 0).toISOString(), direction: 'in', quantity: 4 },
+    ], now, 30);
+    const first = new Date(2026, 9, 10, 12, 0, 0).getTime();
+    const between = first + 12 * 60 * 60 * 1000;
+    const atFirst = pulseQuantityAt(series.centersIn, first, series.halfMs);
+    const atGap = pulseQuantityAt(series.centersIn, between, series.halfMs);
+    expect(atFirst).toBeGreaterThan(4);
+    expect(atGap).toBeGreaterThan(4);
+    expect(atGap).toBeGreaterThan(atFirst - 4);
+  });
+
+  it('keeps a monotone span between its endpoints and off the far side of the baseline', () => {
+    const xs = [0, 1, 2];
+    const ys = [140, 28, 140];
+    const slopes = monotoneSlopes(xs, ys);
+    expect(slopes[1]).toBe(0);
+    for (let step = 0; step <= 8; step += 1) {
+      const t = step / 8;
+      const y = cubicBezier(140, 140 + slopes[0] / 3, 28 - slopes[1] / 3, 28, t);
+      expect(y).toBeLessThanOrEqual(140);
+      expect(y).toBeGreaterThanOrEqual(28);
+    }
+  });
+
   it('keeps the last 30 calendar days, including today, and drops older moves', () => {
     const model = buildPulseModel([
       { at: at(9, 14, 15), direction: 'in', quantity: 2 },
@@ -41,8 +86,8 @@ describe('pulse chart', () => {
     expect(model.bucketed).toBe(false);
     expect(model.maxQuantity).toBe(4);
     expect(model.marks.map((mark) => mark.magnitude)).toEqual([0.25, -0.5, 1]);
-    expect(pulseLegend(model)).toBe(
-      'Stocked in rises above the line. Used falls below it. Each line is one move. Height is the number of units.',
+    expect(pulseLegend()).toBe(
+      'Stocked in rises above the line. Used falls below it. Overlapping moves add together. Height is the number of units.',
     );
   });
 
@@ -64,7 +109,7 @@ describe('pulse chart', () => {
     expect(model.marks.find((mark) => mark.direction === 'out' && mark.quantity === 3)?.magnitude).toBe(-0.5);
     expect(model.stockedIn).toBe(6);
     expect(model.used).toBe(4);
-    expect(pulseLegend(model)).toContain('Each line is one day.');
+    expect(pulseLegend()).toContain('Overlapping moves add together.');
     expect(pulseSummary(model)).toBe('Last 7 days. 6 units stocked in. 4 units used.');
   });
 
@@ -105,8 +150,8 @@ describe('pulse chart', () => {
     const empty = buildPulseModel([], now, 30);
     expect(empty.marks).toEqual([]);
     expect(pulseSummary(empty)).toBe('Last 30 days. No units stocked in. No units used.');
-    expect(pulseLegend(empty)).toBe(
-      'Stocked in rises above the line. Used falls below it. Height is the number of units.',
+    expect(pulseLegend()).toBe(
+      'Stocked in rises above the line. Used falls below it. Overlapping moves add together. Height is the number of units.',
     );
     expect(pulseEmptyCopy(30)).toBe('Nothing moved in the last 30 days.');
 

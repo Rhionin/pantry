@@ -80,7 +80,7 @@ try {
   const chart = page.getByRole('img', { name: 'Last 30 days. 25 units stocked in. 8 units used.' });
   await chart.waitFor({ state: 'visible' });
   await page.getByRole('button', { name: '30 days' }).waitFor({ state: 'visible' });
-  await page.getByText('Stocked in rises above the line. Used falls below it. Each line is one day. Height is the number of units.').waitFor({ state: 'visible' });
+  await page.getByText('Stocked in rises above the line. Used falls below it. Overlapping moves add together. Height is the number of units.').waitFor({ state: 'visible' });
 
   await captureProof(page, 'ledger-phone', {
     viewport: 'phone',
