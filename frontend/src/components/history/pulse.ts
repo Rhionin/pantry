@@ -1,4 +1,13 @@
+import { ledgerDayKey } from './format';
+
 export const pulseRanges = [7, 30, 90] as const;
+
+export const pulsePlot = {
+  width: 1000,
+  height: 280,
+  baseline: 140,
+  amplitude: 112,
+};
 
 export type PulseRange = (typeof pulseRanges)[number];
 
@@ -54,8 +63,13 @@ export function buildPulseModel(moves: PulseMove[], now: Date, rangeDays: PulseR
   return { rangeDays, start, end, bucketed, marks, stockedIn, used, maxQuantity };
 }
 
-export function pulseSummary(totals: { rangeDays: number; stockedIn: number; used: number }): string {
-  return `Last ${totals.rangeDays} days. ${unitPhrase(totals.stockedIn, 'stocked in')} ${unitPhrase(totals.used, 'used')}`;
+export function pulseSummary(totals: { rangeDays: number; stockedIn: number; used: number; since?: string }): string {
+  const lead = totals.since ? `Since ${totals.since}.` : `Last ${totals.rangeDays} days.`;
+  return `${lead} ${unitPhrase(totals.stockedIn, 'stocked in')} ${unitPhrase(totals.used, 'used')}`;
+}
+
+export function pulseCount(count: number, what: 'stocked in' | 'used'): string {
+  return `${count} ${what}`;
 }
 
 export function pulseLegend(): string {
@@ -80,6 +94,30 @@ export interface PulseSeries {
   centersIn: PulseCenter[];
   centersOut: PulseCenter[];
   halfMs: number;
+  start: Date;
+  end: Date;
+  fromSetup: boolean;
+  stockedIn: number;
+  used: number;
+}
+
+export interface PulseDay {
+  key: string;
+  at: number;
+  label: string;
+  stockedIn: number;
+  used: number;
+}
+
+export interface PulseDateTick {
+  at: number;
+  label: string;
+  align: 'start' | 'center' | 'end';
+}
+
+export interface PulseYTick {
+  value: number;
+  y: number;
 }
 
 // Matches the chart: a pulse is a bit wider than a day, and never wider than
@@ -90,10 +128,26 @@ export function pulseHalfDays(rangeDays: number): number {
 
 // Same-day moves share one center so their quantities add before the curve is
 // drawn. Centers on different days still add wherever their humps overlap.
-export function buildPulseSeries(moves: PulseMove[], now: Date, rangeDays: PulseRange): PulseSeries {
+
+// The opening stock-in is the chart's start when it falls inside the chosen
+// range. A range that begins after that moment keeps its own start.
+export function pulseWindow(now: Date, rangeDays: number, setupAt?: string): { start: Date; end: Date; fromSetup: boolean } {
   const end = endOfDay(now);
   const start = startOfDay(now);
   start.setDate(start.getDate() - (rangeDays - 1));
+  if (!setupAt) return { start, end, fromSetup: false };
+  const setup = new Date(setupAt);
+  const setupMs = setup.getTime();
+  if (Number.isNaN(setupMs) || setupMs <= start.getTime() || setupMs > end.getTime()) {
+    return { start, end, fromSetup: false };
+  }
+  return { start: setup, end, fromSetup: true };
+}
+
+export function buildPulseSeries(moves: PulseMove[], now: Date, rangeDays: PulseRange, setupAt?: string): PulseSeries {
+  const window = pulseWindow(now, rangeDays, setupAt);
+  const start = window.start;
+  const end = window.end;
   const startMs = start.getTime();
   const endMs = end.getTime();
   const halfMs = pulseHalfDays(rangeDays) * 24 * 60 * 60 * 1000;
@@ -117,7 +171,106 @@ export function buildPulseSeries(moves: PulseMove[], now: Date, rangeDays: Pulse
     centersIn,
     centersOut,
     halfMs,
+    start,
+    end,
+    fromSetup: window.fromSetup,
+    stockedIn: centersIn.reduce((sum, center) => sum + center.quantity, 0),
+    used: centersOut.reduce((sum, center) => sum + center.quantity, 0),
   };
+}
+
+export function pulseDays(moves: PulseMove[], start: Date, end: Date, now: Date): PulseDay[] {
+  const days: PulseDay[] = [];
+  const cursor = startOfDay(start);
+  const last = startOfDay(end).getTime();
+  const endMs = end.getTime();
+  while (cursor.getTime() <= last) {
+    const dayStart = cursor.getTime();
+    const dayEnd = endOfDay(cursor).getTime();
+    const from = Math.max(dayStart, start.getTime());
+    let stockedIn = 0;
+    let used = 0;
+    for (const move of moves) {
+      const at = new Date(move.at).getTime();
+      if (at < from || at > dayEnd || at > endMs || move.quantity <= 0) continue;
+      if (move.direction === 'in') stockedIn += move.quantity;
+      else if (move.direction === 'out') used += move.quantity;
+    }
+    days.push({
+      key: ledgerDayKey(cursor),
+      at: dayStart,
+      label: pulseDayLabel(cursor, now),
+      stockedIn,
+      used,
+    });
+    cursor.setDate(cursor.getDate() + 1);
+  }
+  return days;
+}
+
+export function pulseDayFor(days: PulseDay[], at: number): PulseDay | null {
+  if (days.length === 0) return null;
+  let chosen = days[0];
+  for (const day of days) {
+    if (day.at <= at) chosen = day;
+  }
+  return chosen;
+}
+
+export function pulseDayLabel(day: Date, now: Date): string {
+  const options: Intl.DateTimeFormatOptions = { weekday: 'long', month: 'long', day: 'numeric' };
+  if (day.getFullYear() !== now.getFullYear()) options.year = 'numeric';
+  return new Intl.DateTimeFormat(undefined, options).format(day);
+}
+
+export function pulseDateTicks(start: Date, end: Date, now: Date): PulseDateTick[] {
+  const startMs = start.getTime();
+  const endMs = end.getTime();
+  const span = Math.max(1, endMs - startMs);
+  const ticks: PulseDateTick[] = [{
+    at: startMs,
+    label: sameDay(start, now) ? 'Today' : pulseStartLabel(start, now),
+    align: 'start',
+  }];
+  if (!sameDay(start, end)) {
+    const mid = startOfDay(new Date(startMs + span / 2));
+    const ratio = (mid.getTime() - startMs) / span;
+    // One midpoint. A tick near either end collides with the end labels on a phone.
+    if (!sameDay(mid, start) && !sameDay(mid, end) && ratio >= 0.28 && ratio <= 0.72) {
+      ticks.push({
+        at: mid.getTime(),
+        label: sameDay(mid, now) ? 'Today' : pulseStartLabel(mid, now),
+        align: 'center',
+      });
+    }
+    ticks.push({
+      at: endMs,
+      label: sameDay(end, now) ? 'Today' : pulseStartLabel(end, now),
+      align: 'end',
+    });
+  }
+  return ticks;
+}
+
+export function pulseTickLabel(value: number): string {
+  if (!Number.isFinite(value)) return '0';
+  const rounded = Math.abs(value) >= 10 ? Math.round(Math.abs(value)) : Math.round(Math.abs(value) * 10) / 10;
+  return Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(1);
+}
+
+export function pulseYTicks(scale: number): PulseYTick[] {
+  const { baseline, amplitude } = pulsePlot;
+  const ticks: PulseYTick[] = [{ value: 0, y: baseline }];
+  if (scale > 0) {
+    ticks.push({ value: scale, y: baseline - amplitude }, { value: scale, y: baseline + amplitude });
+    if (scale >= 2) {
+      ticks.push(
+        { value: scale / 2, y: baseline - amplitude / 2 },
+        { value: scale / 2, y: baseline + amplitude / 2 },
+      );
+    }
+  }
+  return ticks;
 }
 
 export function pulseQuantityAt(centers: PulseCenter[], at: number, halfMs: number): number {
@@ -226,15 +379,17 @@ function dailyCenters(moves: PulseMove[], direction: 'in' | 'out', startMs: numb
     const when = new Date(move.at);
     const at = when.getTime();
     if (at < startMs || at > endMs) continue;
-    const key = dayKey(when);
+    const key = ledgerDayKey(when);
+    const center = Math.min(endMs, Math.max(startMs, midday(when)));
     const existing = days.get(key);
     if (existing) existing.quantity += move.quantity;
-    else days.set(key, { at: midday(when), quantity: move.quantity });
+    else days.set(key, { at: center, quantity: move.quantity });
   }
   return [...days.values()];
 }
 
-export function pulseEmptyCopy(rangeDays: number): string {
+export function pulseEmptyCopy(rangeDays: number, fromSetup = false): string {
+  if (fromSetup) return 'Nothing has moved since the pantry was set up.';
   return `Nothing moved in the last ${rangeDays} days.`;
 }
 
@@ -282,7 +437,7 @@ function toMark(move: PulseMove): PulseMark {
 function hasDenseDay(moves: PulseMove[]): boolean {
   const counts = new Map<string, number>();
   for (const move of moves) {
-    const key = dayKey(new Date(move.at));
+    const key = ledgerDayKey(new Date(move.at));
     const count = (counts.get(key) ?? 0) + 1;
     if (count > 1) return true;
     counts.set(key, count);
@@ -294,7 +449,7 @@ function bucketByDay(moves: PulseMove[]): PulseMark[] {
   const days = new Map<string, { at: number; inn: number; out: number }>();
   for (const move of moves) {
     const when = new Date(move.at);
-    const key = dayKey(when);
+    const key = ledgerDayKey(when);
     const day = days.get(key) ?? { at: midday(when), inn: 0, out: 0 };
     if (move.direction === 'in') day.inn += move.quantity;
     else day.out += move.quantity;
@@ -308,8 +463,10 @@ function bucketByDay(moves: PulseMove[]): PulseMark[] {
   return marks;
 }
 
-function dayKey(date: Date): string {
-  return `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
+function sameDay(left: Date, right: Date): boolean {
+  return left.getFullYear() === right.getFullYear()
+    && left.getMonth() === right.getMonth()
+    && left.getDate() === right.getDate();
 }
 
 function startOfDay(date: Date): Date {

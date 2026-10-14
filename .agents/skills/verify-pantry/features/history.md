@@ -23,7 +23,10 @@ pace follow the correction.
   changes the quantity or undoes the move, the same actions as one product.
   A pulse chart above the days draws one line for stocked-in above a zero line
   and one line for used below it, for the last 7, 30, or 90 days. Overlapping
-  amounts add. It uses the same filters and search.
+  amounts add. The opening stock-in is the start of the chart when it falls
+  inside the range, so later moves set the scale. The chart shows unit ticks,
+  date ticks, and the range totals. A tap or hover reads that day's stocked-in
+  and used counts. It uses the same filters and search.
 
 ## How to get to it (user POV)
 
@@ -62,8 +65,11 @@ Preconditions:
   uses `Change quantity` and `Undo this stock in` or `Undo this use`.
 - **Read the pulse chart.** Above the days, `30 days` is pressed. One line
   rises for stocked in and one line falls for used. Overlapping moves add
-  together. `7 days` and `90 days` change the window. The chart follows the
-  direction filter and the search.
+  together. Unit ticks, date ticks, and the range totals sit with the chart.
+  When the opening stock-in is inside the range, the chart starts there and
+  says so. `7 days` and `90 days` change the window. A tap or hover shows that
+  day's date, stocked-in count, and used count, and marks the day in the list.
+  The chart follows the direction filter and the search.
 
 ## Gotchas
 

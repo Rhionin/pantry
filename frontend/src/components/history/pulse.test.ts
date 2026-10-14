@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
-  buildPulseModel, buildPulseSeries, monotoneSlopes, pulseEmptyCopy, pulseHumpPath, pulseHumpY, pulseLegend,
-  pulseQuantityAt, pulseStartLabel, pulseSummary,
+  buildPulseModel, buildPulseSeries, monotoneSlopes, pulseCount, pulseDateTicks, pulseDayFor, pulseDays,
+  pulseEmptyCopy, pulseHumpPath, pulseHumpY, pulseLegend, pulseQuantityAt, pulseStartLabel, pulseSummary,
+  pulseTickLabel, pulseYTicks,
 } from './pulse';
 
 const now = new Date(2026, 9, 14, 16, 0, 0);
@@ -159,5 +160,74 @@ describe('pulse chart', () => {
     const model = buildPulseModel([], january, 30);
     expect(pulseStartLabel(model.start, january)).toContain('2025');
     expect(pulseStartLabel(model.start, now)).not.toContain('2026');
+  });
+
+  it('starts at the opening stock in so later moves set the scale', () => {
+    const setup = new Date(2026, 9, 1, 15, 0, 0).toISOString();
+    const moves = [
+      { at: new Date(2026, 8, 20, 10, 0, 0).toISOString(), direction: 'in', quantity: 80 },
+      { at: new Date(2026, 9, 1, 10, 0, 0).toISOString(), direction: 'in', quantity: 9 },
+      { at: new Date(2026, 9, 1, 16, 0, 0).toISOString(), direction: 'in', quantity: 4 },
+      { at: new Date(2026, 9, 10, 12, 0, 0).toISOString(), direction: 'out', quantity: 1 },
+    ];
+    const series = buildPulseSeries(moves, now, 30, setup);
+
+    expect(series.fromSetup).toBe(true);
+    expect(series.peakIn).toBe(4);
+    expect(series.stockedIn).toBe(4);
+    expect(series.used).toBe(1);
+    expect(series.samples[0].at).toBe(new Date(setup).getTime());
+    expect(series.centersIn).toEqual([
+      { at: new Date(setup).getTime(), quantity: 4 },
+    ]);
+    const since = pulseStartLabel(series.start, now);
+    expect(pulseSummary({ rangeDays: 30, stockedIn: series.stockedIn, used: series.used, since }))
+      .toBe(`Since ${since}. 4 units stocked in. 1 unit used.`);
+    expect(pulseEmptyCopy(30, true)).toBe('Nothing has moved since the pantry was set up.');
+
+    const days = pulseDays(moves, series.start, series.end, now);
+    const openingDay = pulseDayFor(days, new Date(2026, 9, 1, 18, 0, 0).getTime());
+    expect(openingDay?.stockedIn).toBe(4);
+    expect(openingDay?.used).toBe(0);
+  });
+
+  it('keeps the chosen range when setup is already behind it', () => {
+    const series = buildPulseSeries([
+      { at: new Date(2026, 9, 14, 8, 0, 0).toISOString(), direction: 'in', quantity: 2 },
+      { at: new Date(2026, 9, 14, 15, 0, 0).toISOString(), direction: 'in', quantity: 3 },
+    ], now, 30, new Date(2026, 7, 1, 12, 0, 0).toISOString());
+
+    expect(series.fromSetup).toBe(false);
+    expect(series.peakIn).toBe(5);
+    expect(series.samples[0].at).toBe(new Date(2026, 8, 15).getTime());
+    expect(pulseSummary({ rangeDays: 30, stockedIn: series.stockedIn, used: series.used }))
+      .toBe('Last 30 days. 5 units stocked in. No units used.');
+  });
+
+  it('marks units on the scale and names the day under a point', () => {
+    const moves = [
+      { at: new Date(2026, 9, 14, 8, 0, 0).toISOString(), direction: 'in', quantity: 2 },
+      { at: new Date(2026, 9, 14, 15, 0, 0).toISOString(), direction: 'in', quantity: 3 },
+      { at: new Date(2026, 9, 13, 18, 0, 0).toISOString(), direction: 'out', quantity: 1 },
+    ];
+    const series = buildPulseSeries(moves, now, 7);
+    expect(pulseYTicks(series.peakIn).map((tick) => pulseTickLabel(tick.value))).toEqual(['0', '5', '5', '2.5', '2.5']);
+    const days = pulseDays(moves, series.start, series.end, now);
+    const today = pulseDayFor(days, new Date(2026, 9, 14, 20, 0, 0).getTime());
+    expect(today).toMatchObject({ stockedIn: 5, used: 0 });
+    expect(today?.label).toBe(new Intl.DateTimeFormat(undefined, {
+      weekday: 'long', month: 'long', day: 'numeric',
+    }).format(new Date(2026, 9, 14)));
+    expect(pulseDayFor(days, new Date(2026, 9, 13, 1, 0, 0).getTime())).toMatchObject({ stockedIn: 0, used: 1 });
+    const ticks = pulseDateTicks(series.start, series.end, now);
+    expect(ticks[0].align).toBe('start');
+    expect(ticks[ticks.length - 1]).toMatchObject({ label: 'Today', align: 'end' });
+    expect(ticks.filter((tick) => tick.align === 'center')).toHaveLength(1);
+    const span = series.end.getTime() - series.start.getTime();
+    const middle = (ticks[1].at - series.start.getTime()) / span;
+    expect(middle).toBeGreaterThan(0.25);
+    expect(middle).toBeLessThan(0.75);
+    expect(pulseCount(5, 'stocked in')).toBe('5 stocked in');
+    expect(pulseCount(0, 'used')).toBe('0 used');
   });
 });

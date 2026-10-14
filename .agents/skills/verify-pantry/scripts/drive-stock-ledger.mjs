@@ -60,6 +60,7 @@ try {
   // month of rises and falls. Those older rows are history only.
   shiftToYesterday(process.env.PANTRY_DB_PATH, beans.id);
   seedEarlierMoves(process.env.PANTRY_DB_PATH, oats.id, beans.id);
+  stampOpening(process.env.PANTRY_DB_PATH, oats.id);
 
   await page.getByRole('navigation', { name: 'Sections' }).getByRole('link', { name: 'History' }).click();
   await page.getByRole('heading', { name: 'History', level: 1 }).waitFor({ state: 'visible' });
@@ -72,15 +73,23 @@ try {
   await page.getByRole('region', { name: 'Today' }).getByText('Beans', { exact: true }).waitFor({ state: 'visible' });
 
   const ledger = await readLedger(page);
-  assert(ledger.moves.length === 12, `ledger has 12 moves (got ${ledger.moves.length})`);
+  assert(ledger.moves.length === 13, `ledger has 13 moves (got ${ledger.moves.length})`);
   assert(ledger.moves[0].productName === 'Rolled Oats', 'newest move is the oats stock in');
   assert(ledger.moves[1].direction === 'out', 'the beans use is next');
   assert(ledger.moves[2].direction === 'in' && ledger.moves[2].productName === 'Black Beans', 'yesterday is the beans stock in');
 
-  const chart = page.getByRole('img', { name: 'Last 30 days. 25 units stocked in. 8 units used.' });
+  const since = await page.evaluate(() => {
+    const start = new Date();
+    start.setDate(start.getDate() - 20);
+    return new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric' }).format(start);
+  });
+  const chart = page.getByRole('img', { name: `Since ${since}. 17 units stocked in. 8 units used.` });
   await chart.waitFor({ state: 'visible' });
   await page.getByRole('button', { name: '30 days' }).waitFor({ state: 'visible' });
+  await page.getByText('The opening stock in is where this chart starts.').waitFor({ state: 'visible' });
   await page.getByText('Stocked in rises above the line. Used falls below it. Overlapping moves add together. Height is the number of units.').waitFor({ state: 'visible' });
+  const scale = await page.locator('.pulse-y').innerText();
+  assert(!scale.includes('80'), `opening load does not set the scale (${scale})`);
 
   await captureProof(page, 'ledger-phone', {
     viewport: 'phone',
@@ -92,6 +101,27 @@ try {
     })),
   });
   await saveArtifact('ledger-phone.png', 'history-phone.png');
+
+  const hit = page.locator('.pulse-hit');
+  const box = await hit.boundingBox();
+  assert(box !== null, 'the chart can be inspected');
+  await page.evaluate(({ x, y }) => {
+    const target = document.querySelector('.pulse-hit');
+    const init = { bubbles: true, clientX: x, clientY: y, pointerType: 'touch', pointerId: 1, isPrimary: true };
+    target.dispatchEvent(new PointerEvent('pointerdown', init));
+    target.dispatchEvent(new PointerEvent('pointerup', init));
+  }, { x: box.x + box.width - 12, y: box.y + box.height / 2 });
+  const tip = page.getByRole('tooltip');
+  await tip.waitFor({ state: 'visible' });
+  await tip.getByText('2 stocked in').waitFor();
+  await tip.getByText('1 used').waitFor();
+  await page.getByRole('region', { name: 'Today' }).waitFor({ state: 'visible' });
+  const marked = await page.getByRole('region', { name: 'Today' }).evaluate((node) => node.classList.contains('is-inspected'));
+  assert(marked, 'the tapped day is marked in the list');
+  await captureProof(page, 'ledger-tooltip', { viewport: 'phone', tooltip: true });
+  await saveArtifact('ledger-tooltip.png', 'history-tooltip.png');
+  await page.getByRole('heading', { name: 'History', level: 1 }).click();
+  await tip.waitFor({ state: 'hidden' });
 
   await assertNavFits(page, 320);
   await page.setViewportSize(desktop);
@@ -106,7 +136,7 @@ try {
   await page.getByRole('button', { name: 'Used', exact: true }).click();
   await waitForProduct(page, 'Rolled Oats', 0);
   await page.getByRole('region', { name: 'Today' }).getByText('Black Beans').waitFor({ state: 'visible' });
-  await page.getByRole('img', { name: 'Last 30 days. No units stocked in. 8 units used.' }).waitFor({ state: 'visible' });
+  await page.getByRole('img', { name: `Since ${since}. No units stocked in. 8 units used.` }).waitFor({ state: 'visible' });
   const used = await readLedger(page, { direction: 'out' });
   assert(used.moves.length === 4 && used.moves.every((move) => move.direction === 'out'), 'used filter keeps only stock outs');
 
@@ -114,13 +144,13 @@ try {
   await page.getByRole('textbox', { name: 'Search products or groups' }).fill('Beans');
   await waitForProduct(page, 'Rolled Oats', 0);
   await page.getByText('Black Beans').first().waitFor({ state: 'visible' });
-  await page.getByRole('img', { name: 'Last 30 days. 11 units stocked in. 8 units used.' }).waitFor({ state: 'visible' });
+  await page.getByRole('img', { name: `Since ${since}. 9 units stocked in. 8 units used.` }).waitFor({ state: 'visible' });
   const byGroup = await readLedger(page, { q: 'Beans' });
   assert(byGroup.moves.every((move) => move.productName === 'Black Beans' || move.groupName === 'Beans'), 'search keeps the beans');
   assert(byGroup.moves.length === 7, `beans search has 7 moves (got ${byGroup.moves.length})`);
 
   await page.getByRole('textbox', { name: 'Search products or groups' }).fill('');
-  await waitForProduct(page, 'Rolled Oats', 5);
+  await waitForProduct(page, 'Rolled Oats', 6);
 
   const use = ledger.moves.find((move) => move.direction === 'out');
   await page.getByRole('region', { name: 'Today' }).getByRole('button', { name: /Actions for Black Beans, 1 used/ }).click();
@@ -143,7 +173,7 @@ try {
   const afterUndo = await readInventory(page);
   assert(afterUndo.find((row) => row.item.id === beanRow.item.id)?.instanceCount === 4, 'undo puts both cans back');
   const remaining = await readLedger(page);
-  assert(remaining.moves.length === 11, 'the undone use leaves the ledger');
+  assert(remaining.moves.length === 12, 'the undone use leaves the ledger');
   assert(remaining.moves.every((move) => move.id !== use.id), 'the undone move is gone');
 
   console.log('PASS: stock ledger — grouped history, filters, quantity, and undo');
@@ -229,12 +259,39 @@ for i, (days, which, direction, qty) in enumerate(plan):
     product_id = oats_id if which == "oats" else beans_id
     item_id = oats_item if which == "oats" else beans_item
     conn.execute(
-        "INSERT INTO stock_moves (id, item_id, product_id, direction, quantity, at, source, tracked) VALUES (?, ?, ?, ?, ?, ?, 'scan', 0)",
+        "INSERT INTO stock_moves (id, item_id, product_id, direction, quantity, at, source, tracked) VALUES (?, ?, ?, ?, ?, ?, 'scan', 1)",
         (f"seed-{i}", item_id, product_id, direction, qty, utc),
     )
 conn.commit()
 print("seeded", len(plan), "earlier moves")
 `, dbPath, oatsProductId, beansProductId], { stdio: 'inherit' });
+}
+
+function stampOpening(dbPath, oatsProductId) {
+  if (!dbPath) throw new Error('PANTRY_DB_PATH is not set');
+  execFileSync('python3', ['-c', `
+import sqlite3, sys
+from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
+db, oats_id = sys.argv[1:]
+chicago = ZoneInfo("America/Chicago")
+now = datetime.now(chicago)
+setup = (now - timedelta(days=20)).replace(hour=12, minute=0, second=0, microsecond=0)
+opening = setup - timedelta(hours=3)
+setup_utc = setup.astimezone(ZoneInfo("UTC")).strftime("%Y-%m-%dT%H:%M:%SZ")
+opening_utc = opening.astimezone(ZoneInfo("UTC")).strftime("%Y-%m-%dT%H:%M:%SZ")
+conn = sqlite3.connect(db)
+item = conn.execute("SELECT id FROM items WHERE product_id = ? LIMIT 1", (oats_id,)).fetchone()
+if item is None:
+    raise SystemExit("no oats item")
+conn.execute(
+    "INSERT INTO stock_moves (id, item_id, product_id, direction, quantity, at, source, tracked) VALUES (?, ?, ?, 'in', 80, ?, 'manual', 0)",
+    ("opening-load", item[0], oats_id, opening_utc),
+)
+conn.execute("UPDATE app_settings SET value = ? WHERE key = 'onboarding_started_at'", (setup_utc,))
+conn.commit()
+print("opening", opening_utc, "setup", setup_utc)
+`, dbPath, oatsProductId], { stdio: 'inherit' });
 }
 
 function shiftToYesterday(dbPath, productId) {

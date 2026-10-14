@@ -203,6 +203,71 @@ describe('LedgerPage', () => {
     expect(screen.queryByText('Flour')).not.toBeInTheDocument();
   });
 
+  it('starts the chart at the opening stock in when that day is inside the range', async () => {
+    const setupAt = new Date(2026, 9, 1, 12, 0, 0).toISOString();
+    const since = new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric' }).format(new Date(2026, 9, 1, 12, 0, 0));
+    getHouseholdHistory.mockImplementation(async (filter?: { direction?: string; q?: string }) => {
+      const base = filtered(filter);
+      if (filter?.direction === 'out') return { ...base, setupAt };
+      return {
+        setupAt,
+        moves: [
+          {
+            id: 'move-rice',
+            direction: 'in' as const,
+            quantity: 80,
+            at: new Date(2026, 8, 20, 9, 0, 0).toISOString(),
+            source: 'scan' as const,
+            productId: 'prod-rice',
+            productName: 'Rice',
+          },
+          ...base.moves,
+        ],
+      };
+    });
+    renderLedger();
+
+    expect(await screen.findByRole('img', { name: `Since ${since}. 6 units stocked in. 1 unit used.` })).toBeInTheDocument();
+    expect(screen.getByText('The opening stock in is where this chart starts.')).toBeInTheDocument();
+    expect(screen.getByText('6 stocked in')).toBeInTheDocument();
+    expect(screen.getByText('1 used')).toBeInTheDocument();
+    expect(screen.queryByText('80')).not.toBeInTheDocument();
+    expect(screen.getByText('Rice')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: '7 days' }));
+    expect(screen.getByRole('img', { name: 'Last 7 days. 6 units stocked in. 1 unit used.' })).toBeInTheDocument();
+    expect(screen.queryByText('The opening stock in is where this chart starts.')).not.toBeInTheDocument();
+  });
+
+  it('reads the day under the pointer, and scrolls to it on a tap', async () => {
+    const scroll = vi.fn();
+    const originalScroll = Element.prototype.scrollIntoView;
+    Element.prototype.scrollIntoView = scroll;
+    renderLedger();
+
+    const hit = await screen.findByRole('slider', { name: 'Day on the chart' });
+    hit.getBoundingClientRect = () => ({
+      x: 0, y: 0, left: 0, top: 0, right: 1000, bottom: 140, width: 1000, height: 140, toJSON() { return {}; },
+    });
+
+    fireEvent.pointerMove(hit, { clientX: 1000, pointerType: 'mouse' });
+    const tip = await screen.findByRole('tooltip');
+    expect(tip).toHaveTextContent('6 stocked in');
+    expect(tip).toHaveTextContent('0 used');
+    expect(screen.getByRole('region', { name: 'Today' })).toHaveClass('is-inspected');
+    expect(scroll).not.toHaveBeenCalled();
+
+    fireEvent.pointerLeave(hit, { pointerType: 'mouse' });
+    expect(screen.queryByRole('tooltip')).not.toBeInTheDocument();
+
+    fireEvent.pointerDown(hit, { clientX: 1000, clientY: 40, pointerType: 'touch', pointerId: 1 });
+    fireEvent.pointerUp(hit, { clientX: 1000, clientY: 40, pointerType: 'touch', pointerId: 1 });
+    expect(await screen.findByRole('tooltip')).toHaveTextContent('6 stocked in');
+    expect(screen.getByRole('region', { name: 'Today' })).toHaveClass('is-inspected');
+    expect(scroll).toHaveBeenCalled();
+    Element.prototype.scrollIntoView = originalScroll;
+  });
+
   it('says what to do when nothing has moved, and when a filter matches nothing', async () => {
     getHouseholdHistory.mockResolvedValue({ moves: [] });
     renderLedger();
