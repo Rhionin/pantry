@@ -76,13 +76,18 @@ export interface DayGroup<T> {
   moves: T[];
 }
 
+// ledgerDayKey matches a chart day to its section in the list.
+export function ledgerDayKey(at: Date): string {
+  return `${at.getFullYear()}-${at.getMonth()}-${at.getDate()}`;
+}
+
 // groupMovesByDay keeps the incoming order, which is newest first, and
 // starts a new day only when the calendar day changes.
 export function groupMovesByDay<T extends { at: string }>(moves: T[], now: Date): DayGroup<T>[] {
   const groups: DayGroup<T>[] = [];
   for (const move of moves) {
     const at = new Date(move.at);
-    const key = `${at.getFullYear()}-${at.getMonth()}-${at.getDate()}`;
+    const key = ledgerDayKey(at);
     const last = groups[groups.length - 1];
     if (last && last.key === key) {
       last.moves.push(move);

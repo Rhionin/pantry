@@ -307,6 +307,7 @@ func TestHistoryHandler(t *testing.T) {
 				expectedStatus: http.StatusOK,
 				assertions: []assertion{
 					{path: "$.moves", value: []any{}},
+					{path: "$.setupAt", absent: true},
 				},
 			},
 		},
@@ -373,6 +374,7 @@ func TestHistoryHandler(t *testing.T) {
 					{path: "$.moves[2].productName", value: "Oats"},
 					{path: "$.moves[2].imageUrl", value: "https://images.example.com/oats.jpg"},
 					{path: "$.moves[2].source", value: "manual"},
+					{path: "$.setupAt", value: "2026-01-01T00:00:00Z"},
 				},
 			},
 			afterRequest: exchanges(
@@ -384,6 +386,7 @@ func TestHistoryHandler(t *testing.T) {
 					assertions: []assertion{
 						{path: "$.moves[0].productName", value: "Chickpeas"},
 						{path: "$.moves[1]", absent: true},
+						{path: "$.setupAt", value: "2026-01-01T00:00:00Z"},
 					},
 				},
 				httpExchange{

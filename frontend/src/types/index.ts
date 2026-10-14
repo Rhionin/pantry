@@ -225,6 +225,7 @@ export interface LedgerMove {
 
 export interface HistoryLedger {
   moves: LedgerMove[];
+  setupAt?: string;
 }
 
 export interface GroupPreview {

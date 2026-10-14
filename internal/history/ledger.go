@@ -3,6 +3,7 @@ package history
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"strings"
 	"time"
 
@@ -10,8 +11,10 @@ import (
 )
 
 // Ledger is every stock move the household can see, newest first.
+// SetupAt is when the opening stock-in finished, so the chart can start there.
 type Ledger struct {
-	Moves []LedgerMove `json:"moves"`
+	Moves   []LedgerMove `json:"moves"`
+	SetupAt string       `json:"setupAt,omitempty"`
 }
 
 // LedgerMove is one stock in or stock out, with the product it changed.
@@ -53,10 +56,31 @@ func (j *Journal) Household(ctx context.Context, filter LedgerFilter) (Ledger, e
 	if err != nil {
 		return Ledger{}, err
 	}
+	setupAt, err := readSetupAt(ctx, tx)
+	if err != nil {
+		return Ledger{}, err
+	}
 	if err := tx.Commit(); err != nil {
 		return Ledger{}, err
 	}
-	return Ledger{Moves: moves}, nil
+	return Ledger{Moves: moves, SetupAt: setupAt}, nil
+}
+
+func readSetupAt(ctx context.Context, tx *sql.Tx) (string, error) {
+	var raw string
+	err := tx.QueryRowContext(ctx, `SELECT value FROM app_settings WHERE key = 'onboarding_started_at'`).Scan(&raw)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", nil
+	}
+	if err != nil {
+		return "", err
+	}
+	started, err := time.Parse(time.RFC3339, raw)
+	if err != nil {
+		// A bad stamp should not hide the history. The chart keeps its range.
+		return "", nil
+	}
+	return started.UTC().Format(time.RFC3339), nil
 }
 
 func canonicalDirection(raw string) (string, error) {

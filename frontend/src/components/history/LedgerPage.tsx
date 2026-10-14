@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import {
   ActionIcon, Alert, Button, Group, Loader, Menu, Modal, Stack, TextInput, Title,
 } from '@mantine/core';
@@ -8,7 +8,7 @@ import { ProductPhoto } from '../inventory/ProductPhoto';
 import {
   deltaName, deltaText, directionWord, formatMoveClock, groupMovesByDay, ledgerEmptyCopy, quantityPrompt, undoCopy,
 } from './format';
-import { PulseChart } from './PulseChart';
+import { PulseChart, type PulseInspect } from './PulseChart';
 import '../groups/groups.css';
 import '../inventory/shelf.css';
 import './history.css';
@@ -33,6 +33,8 @@ function KebabIcon() {
 
 export function LedgerPage() {
   const [moves, setMoves] = useState<LedgerMove[] | null>(null);
+  const [setupAt, setSetupAt] = useState<string | undefined>();
+  const [inspectedKey, setInspectedKey] = useState<string | null>(null);
   const [direction, setDirection] = useState<Direction>('all');
   const [query, setQuery] = useState('');
   const [loading, setLoading] = useState(true);
@@ -54,6 +56,7 @@ export function LedgerPage() {
         });
         if (!active) return;
         setMoves(next.moves);
+        setSetupAt(next.setupAt);
         setError('');
       } catch (requestError) {
         if (!active) return;
@@ -74,7 +77,16 @@ export function LedgerPage() {
       q: trimmed === '' ? undefined : trimmed,
     });
     setMoves(next.moves);
+    setSetupAt(next.setupAt);
   };
+
+  const onInspect = useCallback((day: PulseInspect | null) => {
+    setInspectedKey(day?.key ?? null);
+    if (!day?.scroll) return;
+    const node = document.getElementById(`ledger-day-${day.key}`);
+    const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    node?.closest('section')?.scrollIntoView({ block: 'nearest', behavior: reduce ? 'auto' : 'smooth' });
+  }, []);
 
   const saveQuantity = async () => {
     if (!editing) return;
@@ -142,7 +154,7 @@ export function LedgerPage() {
         </div>
       </div>
       {error === '' && moves !== null && moves.length > 0 && (
-        <PulseChart moves={moves} now={now} />
+        <PulseChart moves={moves} now={now} setupAt={setupAt} onInspect={onInspect} />
       )}
       {loading && moves === null && <Loader aria-label="Loading history" />}
       {error !== '' && editing === null && undoing === null && <Alert color="red">{error}</Alert>}
@@ -150,7 +162,11 @@ export function LedgerPage() {
       {error === '' && groups.length > 0 && (
         <div className="ledger-days">
           {groups.map((day) => (
-            <section key={day.key} className="ledger-day" aria-labelledby={`ledger-day-${day.key}`}>
+            <section
+              key={day.key}
+              className={day.key === inspectedKey ? 'ledger-day is-inspected' : 'ledger-day'}
+              aria-labelledby={`ledger-day-${day.key}`}
+            >
               <h2 id={`ledger-day-${day.key}`} className="ledger-day-title">{day.heading}</h2>
               <ol className="ledger-moves">
                 {day.moves.map((move) => {
