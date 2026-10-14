@@ -3,7 +3,7 @@ import fc from 'fast-check';
 import type { ProcessingNotice, ScanEntry, ScanStatus } from '../../types';
 import { addProcessingNotice, batchTimeBounds, formatBatchScanCount, formatBatchTimeRange, formatReviewCount, getEntriesForView, groupScansIntoBatches, isValidUnitCount, mergeScanEvent, pruneSelection, removeProcessingNotice, settleProcessingNotice, sortScansNewestFirst, toggleSelectAll, isBatchEligible } from './queueUtils';
 
-const DISPLAYABLE_SCAN_STATUSES: ScanStatus[] = ['pending', 'flagged'];
+const DISPLAYABLE_SCAN_STATUSES: ScanStatus[] = ['pending', 'flagged', 'qr'];
 
 const scanEntry = (overrides: Partial<ScanEntry>): ScanEntry => ({
   id: 'scan-1',
@@ -297,7 +297,7 @@ describe('mergeScanEvent', () => {
   //
   // For any list of displayed scan entries and any incoming Scan_Event, mergeScanEvent
   // SHALL produce a list containing an entry with the event's id, equal to the event,
-  // exactly once when the event's status is pending or flagged, and SHALL produce a list
+  // exactly once when the event's status is pending, flagged, or qr, and SHALL produce a list
   // containing no entry with the event's id when the event's status is committed or
   // cancelled; in both cases every other entry already in the list SHALL remain unchanged
   // and in the same relative order.
@@ -307,6 +307,7 @@ describe('mergeScanEvent', () => {
       'flagged',
       'committed',
       'cancelled',
+      'qr',
     );
     const entryArbitrary = fc.record({
       id: fc.uuid(),

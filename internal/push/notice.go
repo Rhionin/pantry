@@ -28,6 +28,20 @@ func failureNotice(failure scan.ProcessingFailure) Notice {
 	}
 }
 
+func qrNotice(entry scan.ScanEntry) Notice {
+	preview := scan.QRPreview(entry.Barcode)
+	body := "Rescan the barcode."
+	if preview != "" {
+		body = preview + ". Rescan the barcode."
+	}
+	return Notice{
+		Title: "This was a QR code, not the barcode",
+		Body:  body,
+		Tag:   "pantry-scan-qr-" + noticeID(entry.ID, ""),
+		URL:   queuePath(reviewDirection(entry.Direction)),
+	}
+}
+
 func unrecognizedNotice(entry scan.ScanEntry) Notice {
 	barcode := strings.TrimSpace(entry.Barcode)
 	subject := "This barcode"

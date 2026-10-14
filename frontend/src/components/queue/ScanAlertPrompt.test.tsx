@@ -47,7 +47,7 @@ describe('ScanQueuePage scan alerts', () => {
     vi.stubGlobal('EventSource', FakeEventSource);
     vi.stubGlobal('fetch', (input: RequestInfo | URL) => {
       const url = String(input);
-      if (url.includes('status=pending') || url.includes('status=flagged')) return Promise.resolve(jsonResponse([]));
+      if (url.includes('status=pending') || url.includes('status=flagged') || url.includes('status=qr')) return Promise.resolve(jsonResponse([]));
       if (url === '/api/inventory' || url === '/api/products') return Promise.resolve(jsonResponse([]));
       if (url.endsWith('/api/scanner/config')) {
         return Promise.resolve(jsonResponse({
@@ -77,7 +77,7 @@ describe('ScanQueuePage scan alerts', () => {
         modePosts.push(body.mode);
         return Promise.resolve(jsonResponse({ mode: body.mode }));
       }
-      if (url.includes('status=pending') || url.includes('status=flagged')) return Promise.resolve(jsonResponse([]));
+      if (url.includes('status=pending') || url.includes('status=flagged') || url.includes('status=qr')) return Promise.resolve(jsonResponse([]));
       if (url === '/api/inventory' || url === '/api/products') return Promise.resolve(jsonResponse([]));
       if (url.endsWith('/api/scanner/config')) {
         return Promise.resolve(jsonResponse({
@@ -109,7 +109,7 @@ describe('ScanQueuePage scan alerts', () => {
         modePosts.push(body.mode);
         return Promise.resolve(jsonResponse({ mode: body.mode }));
       }
-      if (url.includes('status=pending') || url.includes('status=flagged')) return Promise.resolve(jsonResponse([]));
+      if (url.includes('status=pending') || url.includes('status=flagged') || url.includes('status=qr')) return Promise.resolve(jsonResponse([]));
       if (url === '/api/inventory' || url === '/api/products') return Promise.resolve(jsonResponse([]));
       if (url.endsWith('/api/scanner/config')) {
         return Promise.resolve(jsonResponse({

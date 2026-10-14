@@ -286,6 +286,18 @@ func (l *ScanListener) createEntry(ctx context.Context, barcode string, directio
 	}
 
 	scannedAt := l.now()
+	if scan.IsQRPayload(barcode) {
+		entry := scan.NewQREntry(userID, barcode, &direction, scannedAt)
+		created, err := l.Queue.CreateScanEntry(ctx, entry)
+		if err != nil {
+			log.Printf("scan listener: create scan entry for %q failed: %v", barcode, err)
+			return
+		}
+		log.Printf("scan listener: scan queued: id=%s barcode=%q direction=%s status=%s", created.ID, created.Barcode, direction, created.Status)
+		l.status.setLastScanAt(entry.ScannedAt)
+		return
+	}
+
 	notice := scan.AnnounceProcessing(l.ProcessingPublisher, userID, barcode, &direction, scannedAt)
 
 	lookup, err := l.LookupService.Lookup(ctx, barcode, userID)

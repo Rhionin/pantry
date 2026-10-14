@@ -4,10 +4,11 @@ import { trackEventSource } from '../../telemetry/client';
 import { Alert, Badge, Checkbox, Group, Loader, Tabs, Stack, Text, Title } from '@mantine/core';
 import { createScanEntry, getInventoryList, getScannerConfig, listScanEntries, setScannerMode } from '../../api/client';
 import type { InventoryItem, ProcessingFailure, ProcessingNotice, ScanEntry, ScannerConfig } from '../../types';
-import { BarcodeInputField } from '../scanner/BarcodeInputField';
+import { BarcodeInputField, focusBarcodeScanner } from '../scanner/BarcodeInputField';
 import { CameraScanner } from '../scanner/CameraScanner';
 import { BatchReviewPanel } from './BatchReviewPanel';
 import { ProcessingScanCard } from './ProcessingScanCard';
+import { QrScanCard } from './QrScanCard';
 import { ScanEntryCard } from './ScanEntryCard';
 import { ScanSessionCard } from './ScanSessionCard';
 import { SCAN_ALERT_OPEN, takeScanAlertDirection, type ScanAlertOpenDetail } from './browserScanAlert';
@@ -62,7 +63,9 @@ export const ScanQueuePage = ({ userId = DEFAULT_USER_ID }: ScanQueuePageProps) 
   const stockOutCount = useMemo(() => getEntriesForView(entries, 'stock_out').length, [entries]);
 
   const viewEntries = useMemo(() => getEntriesForView(entries, scannerMode), [entries, scannerMode]);
-  const batches = useMemo(() => groupScansIntoBatches(viewEntries), [viewEntries]);
+  const qrEntries = useMemo(() => viewEntries.filter((entry) => entry.status === 'qr'), [viewEntries]);
+  const sessionEntries = useMemo(() => viewEntries.filter((entry) => entry.status !== 'qr'), [viewEntries]);
+  const batches = useMemo(() => groupScansIntoBatches(sessionEntries), [sessionEntries]);
   const processingForView = useMemo(
     () => processing.filter((notice) => notice.userId === userId && entryMatchesView(notice.direction, scannerMode)),
     [processing, userId, scannerMode],
@@ -76,11 +79,12 @@ export const ScanQueuePage = ({ userId = DEFAULT_USER_ID }: ScanQueuePageProps) 
 
   const loadQueue = useCallback(async () => {
     try {
-      const [pending, flagged] = await Promise.all([
+      const [pending, flagged, qr] = await Promise.all([
         listScanEntries(userId, 'pending'),
         listScanEntries(userId, 'flagged'),
+        listScanEntries(userId, 'qr'),
       ]);
-      setEntries(sortScansNewestFirst([...pending, ...flagged]));
+      setEntries(sortScansNewestFirst([...pending, ...flagged, ...qr]));
       setSelectedIds((current) => current.filter((id) => pending.some((entry) => entry.id === id)));
       setError('');
       void getInventoryList().then(setInventory).catch(() => setInventory([]));
@@ -99,7 +103,7 @@ export const ScanQueuePage = ({ userId = DEFAULT_USER_ID }: ScanQueuePageProps) 
 
   useEffect(() => {
     if (capturedBarcode === '') return;
-    const node = document.querySelector('.scan-entry-card--just-captured, .processing-scan-card--just-captured');
+    const node = document.querySelector('.scan-entry-card--just-captured, .processing-scan-card--just-captured, .qr-scan--just-captured');
     node?.scrollIntoView?.({ block: 'nearest' });
   }, [capturedBarcode, entries, processing]);
 
@@ -364,7 +368,7 @@ export const ScanQueuePage = ({ userId = DEFAULT_USER_ID }: ScanQueuePageProps) 
             </Tabs.Tab>
           </Tabs.List>
         </Tabs>
-        {viewEntries.length > 0 && (
+        {sessionEntries.length > 0 && (
           <Group className="scan-batch-row" justify="flex-start" align="center" wrap="wrap" gap="xs">
             <Checkbox
               size="xs"
@@ -394,6 +398,15 @@ export const ScanQueuePage = ({ userId = DEFAULT_USER_ID }: ScanQueuePageProps) 
         {!showInitialLoader && error === '' && viewEntries.length === 0 && processingForView.length === 0 && (
           <Text c="dimmed" size="sm">No pending scans.</Text>
         )}
+        {qrEntries.map((entry) => (
+          <QrScanCard
+            key={entry.id}
+            entry={entry}
+            justCaptured={capturedBarcode !== '' && entry.barcode === capturedBarcode}
+            onRescan={focusBarcodeScanner}
+            onChanged={() => void loadQueue()}
+          />
+        ))}
         {processingForView.map((notice) => (
           <ProcessingScanCard
             key={notice.id}

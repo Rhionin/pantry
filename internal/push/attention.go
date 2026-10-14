@@ -98,6 +98,14 @@ func (a *attention) noteScan(entry scan.ScanEntry) {
 	if entry.ID == "" {
 		return
 	}
+	if entry.Status == scan.QR {
+		a.drop(entry.ID)
+		if !a.remember("qr:" + entry.ID) {
+			return
+		}
+		a.emit(qrNotice(entry))
+		return
+	}
 	if unrecognized(entry) {
 		a.drop(entry.ID)
 		if !a.remember("unrecognized:" + entry.ID) {

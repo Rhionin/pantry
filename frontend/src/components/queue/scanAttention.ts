@@ -1,4 +1,5 @@
 import type { ProcessingFailure, ScanDirection, ScanEntry } from '../../types';
+import { qrPreview } from './qrPreview';
 import { BATCH_GAP_MS } from './queueUtils';
 
 // The alert waits out the same gap that splits scan sessions. A new in or out
@@ -50,6 +51,16 @@ export const failureNotice = (failure: ProcessingFailure): AttentionNotice => ({
   tag: `pantry-scan-failure-${failure.id || failure.barcode || 'scan'}`,
   direction: null,
 });
+
+export const qrNotice = (entry: ScanEntry): AttentionNotice => {
+  const preview = qrPreview(entry.barcode);
+  return {
+    title: 'This was a QR code, not the barcode',
+    body: preview === '' ? 'Rescan the barcode.' : `${preview}. Rescan the barcode.`,
+    tag: `pantry-scan-qr-${entry.id || 'scan'}`,
+    direction: reviewDirection(entry.direction),
+  };
+};
 
 export const unrecognizedNotice = (entry: ScanEntry): AttentionNotice => {
   const barcode = entry.barcode.trim();
@@ -115,6 +126,14 @@ export class ScanAttention {
 
   noteScan(entry: ScanEntry): void {
     if (entry.id === '') return;
+    if (entry.status === 'qr') {
+      this.drop(entry.id);
+      const key = `qr:${entry.id}`;
+      if (this.announced.has(key)) return;
+      this.announced.add(key);
+      this.emit(qrNotice(entry));
+      return;
+    }
     if (isUnrecognized(entry)) {
       this.drop(entry.id);
       const key = `unrecognized:${entry.id}`;

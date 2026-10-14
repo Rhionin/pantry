@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 	"unicode/utf8"
+
+	"github.com/Rhionin/pantry/internal/scan"
 )
 
 func TestNotifyKeepsALargeBatchUnderTheCap(t *testing.T) {
@@ -175,5 +177,56 @@ func TestPushPayloadKeepsAShortNotice(t *testing.T) {
 	}
 	if wire.Tag != "pantry-scan-failure-lookup-1" {
 		t.Fatalf("tag = %q", wire.Tag)
+	}
+}
+
+func TestQRNoticePayloadNamesTheDomain(t *testing.T) {
+	const longURL = "https://world.openfoodfacts.org/product/3017620422003?utm=campaign"
+	payload, err := pushPayload(qrNotice(scan.ScanEntry{
+		ID:        "qr-1",
+		Barcode:   longURL,
+		Status:    scan.QR,
+		Direction: dirPtr(scan.StockOut),
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(payload) == 0 || len(payload) > maxPushPlaintext {
+		t.Fatalf("payload length = %d, cap %d", len(payload), maxPushPlaintext)
+	}
+	if !utf8.Valid(payload) {
+		t.Fatal("payload is not valid UTF-8")
+	}
+	var wire wireNotice
+	if err := json.Unmarshal(payload, &wire); err != nil {
+		t.Fatal(err)
+	}
+	if wire.Title != "This was a QR code, not the barcode" {
+		t.Fatalf("title = %q", wire.Title)
+	}
+	if wire.URL != "/?scanAlert=stock_out" {
+		t.Fatalf("url = %q", wire.URL)
+	}
+	if !strings.Contains(wire.Body, "world.openfoodfacts.org") || !strings.Contains(wire.Body, "Rescan the barcode.") {
+		t.Fatalf("body = %q", wire.Body)
+	}
+	if strings.Contains(wire.Body, "3017620422003") || strings.Contains(string(payload), longURL) {
+		t.Fatalf("payload kept the full URL: %s", payload)
+	}
+
+	text := strings.Repeat("café ", 80)
+	longPayload, err := pushPayload(qrNotice(scan.ScanEntry{
+		ID:      "qr-2",
+		Barcode: text,
+		Status:  scan.QR,
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(longPayload) > maxPushPlaintext || !utf8.Valid(longPayload) {
+		t.Fatalf("long payload length = %d valid=%v", len(longPayload), utf8.Valid(longPayload))
+	}
+	if strings.Contains(string(longPayload), text) {
+		t.Fatal("payload included the full QR text")
 	}
 }

@@ -224,6 +224,34 @@ describe('ScanAttention', () => {
     expect(notices.map((notice) => notice.title)).toEqual(['Unrecognized product', 'Stock in batch is ready']);
   });
 
+  it('notifies a QR misread immediately and leaves the batch timer alone', () => {
+    const { notices, clock, attention } = harness();
+    attention.noteScan(scan({ id: 'milk' }));
+    clock.advance(4 * 60 * 1000);
+    attention.noteScan(scan({
+      id: 'qr-1',
+      barcode: 'https://example.com/product/3017620422003',
+      status: 'qr',
+      productId: null,
+      product: null,
+    }));
+    attention.noteScan(scan({
+      id: 'qr-1',
+      barcode: 'https://example.com/again',
+      status: 'qr',
+      productId: null,
+      product: null,
+    }));
+    expect(notices.map((notice) => notice.title)).toEqual(['This was a QR code, not the barcode']);
+    expect(notices[0]?.body).toBe('example.com. Rescan the barcode.');
+    expect(notices[0]?.direction).toBe('stock_in');
+    clock.advance(60 * 1000);
+    expect(notices.map((notice) => notice.title)).toEqual([
+      'This was a QR code, not the barcode',
+      'Stock in batch is ready',
+    ]);
+  });
+
   it('does not fire a batch alert after dispose', () => {
     const { notices, clock, attention } = harness();
     attention.noteScan(scan({ id: 'milk' }));
