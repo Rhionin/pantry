@@ -13,7 +13,6 @@ interface ScanRow {
 }
 
 const createdIds: string[] = []
-const runTag = `${Date.now()}`
 
 const formatReviewCount = (count: number) => (count > 99 ? '99+' : String(count))
 
@@ -33,9 +32,10 @@ const seedDirection = async (
   for (let start = 0; start < count; start += chunkSize) {
     const batch = []
     for (let index = start; index < Math.min(count, start + chunkSize); index += 1) {
+      const stamp = String(Date.now() % 10_000_000_000).padStart(10, '0')
       batch.push(request.post('/api/scans', {
         data: {
-          barcode: `76${tag}${runTag}${index}`,
+          barcode: `${tag}${stamp}${String(index).padStart(3, '0')}`,
           userId: 'user-1',
           direction,
         },

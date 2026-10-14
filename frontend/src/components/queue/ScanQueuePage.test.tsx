@@ -97,6 +97,7 @@ describe('ScanQueuePage', () => {
           }),
         ]));
       }
+      if (url.includes('status=qr')) return Promise.resolve(jsonResponse([]));
       if (url.includes('status=flagged')) {
         return Promise.resolve(jsonResponse([
           scanEntry({ id: 'older', barcode: '111', scannedAt: '2026-03-20T09:00:00Z', status: 'flagged' }),
@@ -157,7 +158,7 @@ describe('ScanQueuePage', () => {
         scanPosts.push(body.barcode);
         return Promise.resolve(jsonResponse(scanEntry({ id: 'created', barcode: body.barcode })));
       }
-      if (url.includes('status=pending') || url.includes('status=flagged')) {
+      if (url.includes('status=pending') || url.includes('status=flagged') || url.includes('status=qr')) {
         return Promise.resolve(jsonResponse([]));
       }
       if (url === '/api/inventory' || url === '/api/products') return Promise.resolve(jsonResponse([]));
@@ -205,7 +206,7 @@ describe('ScanQueuePage', () => {
         scanPosts.push(body.barcode);
         return Promise.resolve(jsonResponse(scanEntry({ id: 'created', barcode: body.barcode })));
       }
-      if (url.includes('status=pending') || url.includes('status=flagged')) {
+      if (url.includes('status=pending') || url.includes('status=flagged') || url.includes('status=qr')) {
         return Promise.resolve(jsonResponse([]));
       }
       if (url === '/api/inventory' || url === '/api/products') return Promise.resolve(jsonResponse([]));
@@ -255,7 +256,7 @@ describe('ScanQueuePage', () => {
         return Promise.resolve(jsonResponse(scanPosts.map((post, index) =>
           scanEntry({ id: `created-${index}`, barcode: post.barcode }))));
       }
-      if (url.includes('status=flagged')) return Promise.resolve(jsonResponse([]));
+      if (url.includes('status=flagged') || url.includes('status=qr')) return Promise.resolve(jsonResponse([]));
       if (url === '/api/inventory' || url === '/api/products') return Promise.resolve(jsonResponse([]));
       if (url.endsWith('/api/scanner/config')) {
         return Promise.resolve(jsonResponse({ stockInBarcode: 'STOCK_IN', stockOutBarcode: 'STOCK_OUT', currentMode: 'stock_out' }));
@@ -296,7 +297,7 @@ describe('ScanQueuePage', () => {
         scanPosts.push({ barcode: body.barcode, direction: body.direction });
         return Promise.resolve(jsonResponse(scanEntry({ id: 'created', barcode: body.barcode })));
       }
-      if (url.includes('status=pending') || url.includes('status=flagged')) {
+      if (url.includes('status=pending') || url.includes('status=flagged') || url.includes('status=qr')) {
         return Promise.resolve(jsonResponse([]));
       }
       if (url === '/api/inventory' || url === '/api/products') return Promise.resolve(jsonResponse([]));
@@ -338,7 +339,7 @@ describe('ScanQueuePage', () => {
         scanPosts.push({ barcode: body.barcode, direction: body.direction });
         return Promise.resolve(jsonResponse(scanEntry({ id: 'created', barcode: body.barcode, direction: 'stock_in' })));
       }
-      if (url.includes('status=pending') || url.includes('status=flagged')) {
+      if (url.includes('status=pending') || url.includes('status=flagged') || url.includes('status=qr')) {
         return Promise.resolve(jsonResponse([]));
       }
       if (url === '/api/inventory' || url === '/api/products') return Promise.resolve(jsonResponse([]));
@@ -384,7 +385,7 @@ describe('ScanQueuePage', () => {
           scanPosts.push({ barcode: body.barcode, direction: body.direction });
           return Promise.resolve(jsonResponse(scanEntry({ id: 'created', barcode: body.barcode })));
         }
-        if (url.includes('status=pending') || url.includes('status=flagged')) {
+        if (url.includes('status=pending') || url.includes('status=flagged') || url.includes('status=qr')) {
           return Promise.resolve(jsonResponse([]));
         }
         if (url === '/api/inventory' || url === '/api/products') return Promise.resolve(jsonResponse([]));
@@ -433,7 +434,7 @@ describe('ScanQueuePage', () => {
           const body = init.body ? (JSON.parse(String(init.body)) as { barcode: string }) : { barcode: '' };
           return Promise.resolve(jsonResponse(scanEntry({ id: 'created', barcode: body.barcode })));
         }
-        if (url.includes('status=pending') || url.includes('status=flagged')) {
+        if (url.includes('status=pending') || url.includes('status=flagged') || url.includes('status=qr')) {
           return Promise.resolve(jsonResponse([]));
         }
         if (url === '/api/inventory' || url === '/api/products') return Promise.resolve(jsonResponse([]));
@@ -493,7 +494,7 @@ describe('ScanQueuePage', () => {
         scanPosts.push(body.barcode);
         return Promise.resolve(jsonResponse(scanEntry({ id: 'created', barcode: body.barcode })));
       }
-      if (url.includes('status=pending') || url.includes('status=flagged')) {
+      if (url.includes('status=pending') || url.includes('status=flagged') || url.includes('status=qr')) {
         return Promise.resolve(jsonResponse([]));
       }
       if (url === '/api/inventory' || url === '/api/products') return Promise.resolve(jsonResponse([]));
@@ -519,7 +520,7 @@ describe('ScanQueuePage', () => {
   it('adds a scan pushed over the event stream without an extra fetch', async () => {
     const fetchMock = vi.fn((input: RequestInfo | URL) => {
       const url = String(input);
-      if (url.includes('status=pending') || url.includes('status=flagged')) {
+      if (url.includes('status=pending') || url.includes('status=flagged') || url.includes('status=qr')) {
         return Promise.resolve(jsonResponse([]));
       }
       if (url === '/api/inventory' || url === '/api/products') return Promise.resolve(jsonResponse([]));
@@ -552,7 +553,7 @@ describe('ScanQueuePage', () => {
           scanEntry({ id: 'older', barcode: '111', direction: 'stock_out', scannedAt: '2026-03-20T09:00:00Z' }),
         ]));
       }
-      if (url.includes('status=flagged')) return Promise.resolve(jsonResponse([]));
+      if (url.includes('status=flagged') || url.includes('status=qr')) return Promise.resolve(jsonResponse([]));
       if (url === '/api/inventory' || url === '/api/products') return Promise.resolve(jsonResponse([]));
       if (url.endsWith('/api/scanner/config')) {
         return Promise.resolve(jsonResponse({ stockInBarcode: 'STOCK_IN', stockOutBarcode: 'STOCK_OUT', currentMode: 'stock_out', connected: false }));
@@ -600,7 +601,7 @@ describe('ScanQueuePage', () => {
   it('clears a failed lookup and shows the failure message', async () => {
     vi.stubGlobal('fetch', (input: RequestInfo | URL) => {
       const url = String(input);
-      if (url.includes('status=pending') || url.includes('status=flagged')) {
+      if (url.includes('status=pending') || url.includes('status=flagged') || url.includes('status=qr')) {
         return Promise.resolve(jsonResponse([]));
       }
       if (url === '/api/inventory' || url === '/api/products') return Promise.resolve(jsonResponse([]));
@@ -636,7 +637,7 @@ describe('ScanQueuePage', () => {
   it('shows whether the scanner device is connected', async () => {
     vi.stubGlobal('fetch', (input: RequestInfo | URL) => {
       const url = String(input);
-      if (url.includes('status=pending') || url.includes('status=flagged')) {
+      if (url.includes('status=pending') || url.includes('status=flagged') || url.includes('status=qr')) {
         return Promise.resolve(jsonResponse([]));
       }
       if (url === '/api/inventory' || url === '/api/products') return Promise.resolve(jsonResponse([]));
@@ -656,7 +657,7 @@ describe('ScanQueuePage', () => {
       if (url.includes('status=pending')) {
         return Promise.resolve(jsonResponse([scanEntry({ id: 'existing', barcode: '111' })]));
       }
-      if (url.includes('status=flagged')) return Promise.resolve(jsonResponse([]));
+      if (url.includes('status=flagged') || url.includes('status=qr')) return Promise.resolve(jsonResponse([]));
       if (url === '/api/inventory' || url === '/api/products') return Promise.resolve(jsonResponse([]));
       if (url.endsWith('/api/scanner/config')) {
         return Promise.resolve(jsonResponse({ stockInBarcode: 'STOCK_IN', stockOutBarcode: 'STOCK_OUT', currentMode: 'stock_out' }));
@@ -699,7 +700,7 @@ describe('ScanQueuePage', () => {
           scanEntry({ id: 'scan-2', barcode: '222', direction: 'stock_in' }),
         ]));
       }
-      if (url.includes('status=flagged')) return Promise.resolve(jsonResponse([]));
+      if (url.includes('status=flagged') || url.includes('status=qr')) return Promise.resolve(jsonResponse([]));
       if (url === '/api/inventory' || url === '/api/products') return Promise.resolve(jsonResponse([]));
       // The seeded scanner mode drives the default visible tab; stock_out here.
       if (url.endsWith('/api/scanner/config')) {
@@ -756,7 +757,7 @@ describe('ScanQueuePage', () => {
           scanEntry({ id: 'scan-2', barcode: '222', direction: 'stock_in' }),
         ]));
       }
-      if (url.includes('status=flagged')) return Promise.resolve(jsonResponse([]));
+      if (url.includes('status=flagged') || url.includes('status=qr')) return Promise.resolve(jsonResponse([]));
       if (url === '/api/inventory' || url === '/api/products') return Promise.resolve(jsonResponse([]));
       if (url.endsWith('/api/scanner/config')) {
         return Promise.resolve(jsonResponse({ stockInBarcode: 'STOCK_IN', stockOutBarcode: 'STOCK_OUT', currentMode }));
@@ -808,7 +809,7 @@ describe('ScanQueuePage', () => {
         return Promise.resolve(jsonResponse(entry));
       }
       if (url.includes('status=pending')) return Promise.resolve(jsonResponse(createdEntries));
-      if (url.includes('status=flagged')) return Promise.resolve(jsonResponse([]));
+      if (url.includes('status=flagged') || url.includes('status=qr')) return Promise.resolve(jsonResponse([]));
       if (url === '/api/inventory' || url === '/api/products') return Promise.resolve(jsonResponse([]));
       throw new Error(`Unexpected request: ${url}`);
     });
@@ -841,7 +842,7 @@ describe('ScanQueuePage', () => {
           scanEntry({ id: 'null-direction-1', barcode: '333', direction: null }),
         ]));
       }
-      if (url.includes('status=flagged')) return Promise.resolve(jsonResponse([]));
+      if (url.includes('status=flagged') || url.includes('status=qr')) return Promise.resolve(jsonResponse([]));
       if (url === '/api/inventory' || url === '/api/products') return Promise.resolve(jsonResponse([]));
       if (url.endsWith('/api/scanner/config')) {
         return Promise.resolve(jsonResponse({ stockInBarcode: 'STOCK_IN', stockOutBarcode: 'STOCK_OUT', currentMode: 'stock_out' }));
@@ -875,7 +876,7 @@ describe('ScanQueuePage', () => {
           scanEntry({ id: 'null-direction-1', barcode: '333', direction: null }),
         ]));
       }
-      if (url.includes('status=flagged')) return Promise.resolve(jsonResponse([]));
+      if (url.includes('status=flagged') || url.includes('status=qr')) return Promise.resolve(jsonResponse([]));
       if (url === '/api/inventory' || url === '/api/products') return Promise.resolve(jsonResponse([]));
       if (url.endsWith('/api/scanner/config')) {
         return Promise.resolve(jsonResponse({ stockInBarcode: 'STOCK_IN', stockOutBarcode: 'STOCK_OUT', currentMode: 'stock_out' }));
@@ -904,7 +905,7 @@ describe('ScanQueuePage', () => {
           scanEntry({ id: 'null-direction-1', barcode: '444', direction: null }),
         ]));
       }
-      if (url.includes('status=flagged')) return Promise.resolve(jsonResponse([]));
+      if (url.includes('status=flagged') || url.includes('status=qr')) return Promise.resolve(jsonResponse([]));
       if (url === '/api/inventory' || url === '/api/products') return Promise.resolve(jsonResponse([]));
       if (url.endsWith('/api/scanner/config')) {
         return Promise.resolve(jsonResponse({ stockInBarcode: 'STOCK_IN', stockOutBarcode: 'STOCK_OUT', currentMode: 'stock_out' }));
@@ -936,7 +937,7 @@ describe('ScanQueuePage', () => {
           scanEntry({ id: 'null-direction-1', barcode: '333', direction: null }),
         ]));
       }
-      if (url.includes('status=flagged')) return Promise.resolve(jsonResponse([]));
+      if (url.includes('status=flagged') || url.includes('status=qr')) return Promise.resolve(jsonResponse([]));
       if (url === '/api/inventory' || url === '/api/products') return Promise.resolve(jsonResponse([]));
       if (url.endsWith('/api/scanner/config')) {
         return Promise.resolve(jsonResponse({ stockInBarcode: 'STOCK_IN', stockOutBarcode: 'STOCK_OUT', currentMode: 'stock_out' }));
@@ -977,7 +978,7 @@ describe('ScanQueuePage', () => {
             scanEntry({ id: 'stock-out-1', barcode: '222', direction: 'stock_out' }),
           ]));
         }
-        if (url.includes('status=flagged')) return Promise.resolve(jsonResponse([]));
+        if (url.includes('status=flagged') || url.includes('status=qr')) return Promise.resolve(jsonResponse([]));
         if (url === '/api/inventory' || url === '/api/products') return Promise.resolve(jsonResponse([]));
         if (url.endsWith('/api/scanner/config')) {
         return Promise.resolve(jsonResponse({ stockInBarcode: 'STOCK_IN', stockOutBarcode: 'STOCK_OUT', currentMode: 'stock_out' }));
@@ -1022,7 +1023,7 @@ describe('ScanQueuePage', () => {
             scanEntry({ id: 'stock-out-1', barcode: '222', direction: 'stock_out' }),
           ]));
         }
-        if (url.includes('status=flagged')) return Promise.resolve(jsonResponse([]));
+        if (url.includes('status=flagged') || url.includes('status=qr')) return Promise.resolve(jsonResponse([]));
         if (url === '/api/inventory' || url === '/api/products') return Promise.resolve(jsonResponse([]));
         if (url.endsWith('/api/scanner/config')) {
         return Promise.resolve(jsonResponse({ stockInBarcode: 'STOCK_IN', stockOutBarcode: 'STOCK_OUT', currentMode: 'stock_out' }));
@@ -1082,7 +1083,7 @@ describe('ScanQueuePage', () => {
             scanEntry({ id: 'stock-out-2', barcode: '444', direction: 'stock_out' }),
           ]));
         }
-        if (url.includes('status=flagged')) return Promise.resolve(jsonResponse([]));
+        if (url.includes('status=flagged') || url.includes('status=qr')) return Promise.resolve(jsonResponse([]));
         if (url === '/api/inventory' || url === '/api/products') return Promise.resolve(jsonResponse([]));
         if (url.endsWith('/api/scanner/config')) {
         return Promise.resolve(jsonResponse({ stockInBarcode: 'STOCK_IN', stockOutBarcode: 'STOCK_OUT', currentMode: 'stock_out' }));
@@ -1139,7 +1140,7 @@ describe('ScanQueuePage', () => {
             scanEntry({ id: 'stock-out-1', barcode: '222', direction: 'stock_out' }),
           ]));
         }
-        if (url.includes('status=flagged')) return Promise.resolve(jsonResponse([]));
+        if (url.includes('status=flagged') || url.includes('status=qr')) return Promise.resolve(jsonResponse([]));
         if (url === '/api/inventory' || url === '/api/products') return Promise.resolve(jsonResponse([]));
         if (url.endsWith('/api/scanner/config')) {
         return Promise.resolve(jsonResponse({ stockInBarcode: 'STOCK_IN', stockOutBarcode: 'STOCK_OUT', currentMode: 'stock_out' }));
@@ -1201,7 +1202,7 @@ describe('ScanQueuePage', () => {
             scanEntry({ id: 'stock-out-2', barcode: '444', direction: 'stock_out' }),
           ]));
         }
-        if (url.includes('status=flagged')) return Promise.resolve(jsonResponse([]));
+        if (url.includes('status=flagged') || url.includes('status=qr')) return Promise.resolve(jsonResponse([]));
         if (url === '/api/inventory' || url === '/api/products') return Promise.resolve(jsonResponse([]));
         if (url.endsWith('/api/scanner/config')) {
         return Promise.resolve(jsonResponse({ stockInBarcode: 'STOCK_IN', stockOutBarcode: 'STOCK_OUT', currentMode: 'stock_out' }));
@@ -1257,6 +1258,7 @@ describe('ScanQueuePage', () => {
             scanEntry({ id: 'flagged-1', barcode: '111', status: 'flagged', direction: null }),
           ]));
         }
+        if (url.includes('status=qr')) return Promise.resolve(jsonResponse([]));
         if (url.includes('status=flagged')) {
           return Promise.resolve(jsonResponse([
             scanEntry({ id: 'flagged-2', barcode: '222', status: 'flagged', direction: null }),
@@ -1285,7 +1287,7 @@ describe('ScanQueuePage', () => {
             scanEntry({ id: 'pending-1', barcode: '111', status: 'pending', direction: null }),
           ]));
         }
-        if (url.includes('status=flagged')) return Promise.resolve(jsonResponse([]));
+        if (url.includes('status=flagged') || url.includes('status=qr')) return Promise.resolve(jsonResponse([]));
         if (url === '/api/inventory' || url === '/api/products') return Promise.resolve(jsonResponse([]));
         if (url.endsWith('/api/scanner/config')) {
         return Promise.resolve(jsonResponse({ stockInBarcode: 'STOCK_IN', stockOutBarcode: 'STOCK_OUT', currentMode: 'stock_out' }));
@@ -1309,7 +1311,7 @@ describe('ScanQueuePage', () => {
             scanEntry({ id: 'stock-out-2', barcode: '222', direction: 'stock_out' }),
           ]));
         }
-        if (url.includes('status=flagged')) return Promise.resolve(jsonResponse([]));
+        if (url.includes('status=flagged') || url.includes('status=qr')) return Promise.resolve(jsonResponse([]));
         if (url === '/api/inventory' || url === '/api/products') return Promise.resolve(jsonResponse([]));
         if (url.endsWith('/api/scanner/config')) {
         return Promise.resolve(jsonResponse({ stockInBarcode: 'STOCK_IN', stockOutBarcode: 'STOCK_OUT', currentMode: 'stock_out' }));
@@ -1349,7 +1351,7 @@ describe('ScanQueuePage', () => {
             scanEntry({ id: 'ineligible-1', barcode: '333', status: 'pending', direction: null }),
           ]));
         }
-        if (url.includes('status=flagged')) return Promise.resolve(jsonResponse([]));
+        if (url.includes('status=flagged') || url.includes('status=qr')) return Promise.resolve(jsonResponse([]));
         if (url === '/api/inventory' || url === '/api/products') return Promise.resolve(jsonResponse([]));
         if (url.endsWith('/api/scanner/config')) {
         return Promise.resolve(jsonResponse({ stockInBarcode: 'STOCK_IN', stockOutBarcode: 'STOCK_OUT', currentMode: 'stock_out' }));
@@ -1386,7 +1388,7 @@ describe('ScanQueuePage', () => {
             scanEntry({ id: 'stock-out-2', barcode: '333', direction: 'stock_out' }),
           ]));
         }
-        if (url.includes('status=flagged')) return Promise.resolve(jsonResponse([]));
+        if (url.includes('status=flagged') || url.includes('status=qr')) return Promise.resolve(jsonResponse([]));
         if (url === '/api/inventory' || url === '/api/products') return Promise.resolve(jsonResponse([]));
         if (url.endsWith('/api/scanner/config')) {
         return Promise.resolve(jsonResponse({ stockInBarcode: 'STOCK_IN', stockOutBarcode: 'STOCK_OUT', currentMode: 'stock_out' }));
@@ -1440,7 +1442,7 @@ describe('ScanQueuePage', () => {
             scanEntry({ id: 'ineligible-2', barcode: '333', status: 'pending', direction: null }),
           ]));
         }
-        if (url.includes('status=flagged')) return Promise.resolve(jsonResponse([]));
+        if (url.includes('status=flagged') || url.includes('status=qr')) return Promise.resolve(jsonResponse([]));
         if (url === '/api/inventory' || url === '/api/products') return Promise.resolve(jsonResponse([]));
         if (url.endsWith('/api/scanner/config')) {
         return Promise.resolve(jsonResponse({ stockInBarcode: 'STOCK_IN', stockOutBarcode: 'STOCK_OUT', currentMode: 'stock_out' }));
@@ -1486,7 +1488,7 @@ describe('ScanQueuePage', () => {
             scanEntry({ id: 'eligible-2', barcode: '222', direction: 'stock_out' }),
           ]));
         }
-        if (url.includes('status=flagged')) return Promise.resolve(jsonResponse([]));
+        if (url.includes('status=flagged') || url.includes('status=qr')) return Promise.resolve(jsonResponse([]));
         if (url === '/api/inventory' || url === '/api/products') return Promise.resolve(jsonResponse([]));
         if (url.endsWith('/api/scanner/config')) {
         return Promise.resolve(jsonResponse({ stockInBarcode: 'STOCK_IN', stockOutBarcode: 'STOCK_OUT', currentMode: 'stock_out' }));
@@ -1525,7 +1527,7 @@ describe('ScanQueuePage', () => {
             scanEntry({ id: 'undirected', barcode: '333', status: 'pending', direction: null }),
           ]));
         }
-        if (url.includes('status=flagged')) return Promise.resolve(jsonResponse([]));
+        if (url.includes('status=flagged') || url.includes('status=qr')) return Promise.resolve(jsonResponse([]));
         if (url === '/api/inventory' || url === '/api/products') return Promise.resolve(jsonResponse([]));
         if (url.endsWith('/api/scanner/config')) {
         return Promise.resolve(jsonResponse({ stockInBarcode: 'STOCK_IN', stockOutBarcode: 'STOCK_OUT', currentMode: 'stock_out' }));
@@ -1612,7 +1614,7 @@ describe('ScanQueuePage', () => {
       vi.fn((input: RequestInfo | URL) => {
         const url = String(input);
         if (url.includes('status=pending')) return Promise.resolve(jsonResponse(entries));
-        if (url.includes('status=flagged')) return Promise.resolve(jsonResponse([]));
+        if (url.includes('status=flagged') || url.includes('status=qr')) return Promise.resolve(jsonResponse([]));
         if (url === '/api/inventory' || url === '/api/products') return Promise.resolve(jsonResponse([]));
         if (url.endsWith('/api/scanner/config')) {
           return Promise.resolve(jsonResponse({ stockInBarcode: 'STOCK_IN', stockOutBarcode: 'STOCK_OUT', currentMode: 'stock_out' }));
@@ -1753,6 +1755,7 @@ describe('ScanQueuePage', () => {
             }),
           ]));
         }
+        if (url.includes('status=qr')) return Promise.resolve(jsonResponse([]));
         if (url.includes('status=flagged')) {
           return Promise.resolve(jsonResponse([
             scanEntry({
@@ -1856,7 +1859,7 @@ describe('ScanQueuePage', () => {
             }),
           ]));
         }
-        if (url.includes('status=flagged')) return Promise.resolve(jsonResponse([]));
+        if (url.includes('status=flagged') || url.includes('status=qr')) return Promise.resolve(jsonResponse([]));
         if (url === '/api/inventory' || url === '/api/products') return Promise.resolve(jsonResponse([]));
         if (url.endsWith('/api/scanner/config')) {
           return Promise.resolve(jsonResponse({ stockInBarcode: 'STOCK_IN', stockOutBarcode: 'STOCK_OUT', currentMode: 'stock_in' }));
@@ -1948,7 +1951,7 @@ describe('ScanQueuePage', () => {
           return Promise.resolve(jsonResponse(entry));
         }
         if (url.includes('status=pending')) return Promise.resolve(jsonResponse(created));
-        if (url.includes('status=flagged')) return Promise.resolve(jsonResponse([]));
+        if (url.includes('status=flagged') || url.includes('status=qr')) return Promise.resolve(jsonResponse([]));
         if (url === '/api/inventory' || url === '/api/products') return Promise.resolve(jsonResponse([]));
         throw new Error(`Unexpected request: ${url}`);
       });
@@ -2136,7 +2139,7 @@ describe('ScanQueuePage', () => {
             currentMode: 'stock_in',
           }));
         }
-        if (url.includes('status=pending') || url.includes('status=flagged')) {
+        if (url.includes('status=pending') || url.includes('status=flagged') || url.includes('status=qr')) {
           return Promise.resolve(jsonResponse([]));
         }
         if (url === '/api/inventory' || url === '/api/products') return Promise.resolve(jsonResponse([]));
@@ -2179,7 +2182,7 @@ describe('ScanQueuePage', () => {
       vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL) => {
         const url = String(input);
         if (url.includes('status=pending')) return pending;
-        if (url.includes('status=flagged')) return Promise.resolve(jsonResponse([]));
+        if (url.includes('status=flagged') || url.includes('status=qr')) return Promise.resolve(jsonResponse([]));
         if (url === '/api/inventory' || url === '/api/products') return Promise.resolve(jsonResponse([]));
         if (url.endsWith('/api/scanner/config')) {
           return Promise.resolve(jsonResponse({ stockInBarcode: 'STOCK_IN', stockOutBarcode: 'STOCK_OUT', currentMode: 'stock_in' }));
@@ -2216,7 +2219,7 @@ describe('ScanQueuePage', () => {
           if (pendingLoads === 1) return Promise.resolve(jsonResponse([entry]));
           return refresh;
         }
-        if (url.includes('status=flagged')) return Promise.resolve(jsonResponse([]));
+        if (url.includes('status=flagged') || url.includes('status=qr')) return Promise.resolve(jsonResponse([]));
         if (url === '/api/inventory' || url === '/api/products') return Promise.resolve(jsonResponse([]));
         if (url.endsWith('/api/scanner/config')) {
           return Promise.resolve(jsonResponse({ stockInBarcode: 'STOCK_IN', stockOutBarcode: 'STOCK_OUT', currentMode: mode }));
@@ -2275,5 +2278,69 @@ describe('ScanQueuePage', () => {
       expect(screen.queryByLabelText('Loading scan queue')).not.toBeInTheDocument();
       expect(within(card).getByLabelText('Unit count')).toHaveValue('2');
     });
+  });
+});
+
+describe('QR misread', () => {
+  beforeEach(() => {
+    FakeEventSource.instances = [];
+    vi.stubGlobal('EventSource', FakeEventSource);
+  });
+
+  it('shows the QR sentence, the domain, and rescan or dismiss', async () => {
+    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.includes('status=qr')) {
+        return Promise.resolve(jsonResponse([
+          scanEntry({
+            id: 'qr-1',
+            barcode: 'https://example.com/groceries/milk',
+            status: 'qr',
+            direction: 'stock_in',
+            productId: null,
+            product: null,
+          }),
+        ]));
+      }
+      if (url.includes('status=pending') || url.includes('status=flagged')) {
+        return Promise.resolve(jsonResponse([]));
+      }
+      if (url === `/api/scans/qr-1` && init?.method === 'PATCH') {
+        expect(JSON.parse(String(init.body))).toEqual({ status: 'cancelled' });
+        return Promise.resolve(jsonResponse(scanEntry({
+          id: 'qr-1',
+          barcode: 'https://example.com/groceries/milk',
+          status: 'cancelled',
+          direction: 'stock_in',
+        })));
+      }
+      if (url === '/api/inventory' || url === '/api/products') return Promise.resolve(jsonResponse([]));
+      if (url.endsWith('/api/scanner/config')) {
+        return Promise.resolve(jsonResponse({
+          stockInBarcode: 'STOCK_IN',
+          stockOutBarcode: 'STOCK_OUT',
+          currentMode: 'stock_in',
+        }));
+      }
+      throw new Error(`Unexpected request: ${url}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<MantineProvider><ScanQueuePage /></MantineProvider>);
+
+    const card = await screen.findByRole('article', { name: /This was a QR code, not the barcode/ });
+    expect(within(card).getByText('This was a QR code, not the barcode')).toBeInTheDocument();
+    expect(within(card).getByText('example.com')).toBeInTheDocument();
+    expect(within(card).queryByRole('checkbox')).not.toBeInTheDocument();
+    expect(screen.queryByRole('checkbox', { name: 'Select all eligible scans for batch approval' })).not.toBeInTheDocument();
+
+    fireEvent.click(within(card).getByRole('button', { name: 'Rescan the barcode' }));
+    expect(screen.getByRole('textbox', { name: 'Barcode scanner input' })).toHaveFocus();
+
+    fireEvent.click(within(card).getByRole('button', { name: 'Dismiss' }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith(
+      '/api/scans/qr-1',
+      expect.objectContaining({ method: 'PATCH' }),
+    ));
   });
 });

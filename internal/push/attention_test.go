@@ -186,6 +186,47 @@ func TestAttentionBatchCarriesProductNames(t *testing.T) {
 	}
 }
 
+func TestAttentionQRNotifiesImmediately(t *testing.T) {
+	alerts, clock, notices := harness()
+	alerts.noteScan(pending("milk", "036000291452", scan.StockIn))
+	clock.advance(4 * time.Minute)
+	alerts.noteScan(scan.ScanEntry{
+		ID:        "qr-1",
+		Barcode:   "https://example.com/product/3017620422003",
+		Status:    scan.QR,
+		Direction: dirPtr(scan.StockIn),
+	})
+	if len(*notices) != 1 {
+		t.Fatalf("qr waited for the batch: %#v", *notices)
+	}
+	got := (*notices)[0]
+	if got.Title != "This was a QR code, not the barcode" {
+		t.Fatalf("title = %q", got.Title)
+	}
+	if got.Body != "example.com. Rescan the barcode." {
+		t.Fatalf("body = %q", got.Body)
+	}
+	if got.URL != "/?scanAlert=stock_in" || got.Tag != "pantry-scan-qr-qr-1" {
+		t.Fatalf("notice = %#v", got)
+	}
+	alerts.noteScan(scan.ScanEntry{
+		ID: "qr-1", Barcode: "https://example.com/again", Status: scan.QR, Direction: dirPtr(scan.StockIn),
+	})
+	if len(*notices) != 1 {
+		t.Fatalf("repeated qr notified again: %#v", *notices)
+	}
+	clock.advance(time.Minute)
+	if len(*notices) != 2 {
+		t.Fatalf("notices = %#v", *notices)
+	}
+	if (*notices)[1].Title != "Stock in batch is ready" {
+		t.Fatalf("batch = %#v", (*notices)[1])
+	}
+	if (*notices)[1].Body != "1 scan is waiting. Open the scan queue to confirm it." {
+		t.Fatalf("batch body = %q", (*notices)[1].Body)
+	}
+}
+
 func TestAttentionStopsOnDispose(t *testing.T) {
 	alerts, clock, notices := harness()
 	alerts.noteScan(pending("milk", "111", scan.StockIn))

@@ -30,6 +30,8 @@ const (
 	Flagged   ScanStatus = "flagged"
 	Committed ScanStatus = "committed"
 	Cancelled ScanStatus = "cancelled"
+	// QR is a scanned QR payload rather than a product barcode. It is not looked up.
+	QR ScanStatus = "qr"
 )
 
 // ScanEntry represents a single item in the scan queue.

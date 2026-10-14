@@ -24,7 +24,7 @@ func (h *ScanListHandler) Handle(req Request[struct{}, struct{}]) ([]scan.ScanEn
 	}
 
 	status := scan.ScanStatus(statusParam)
-	if statusParam != "" && status != scan.Pending && status != scan.Flagged && status != scan.Committed && status != scan.Cancelled {
+	if statusParam != "" && status != scan.Pending && status != scan.Flagged && status != scan.Committed && status != scan.Cancelled && status != scan.QR {
 		return nil, BadRequest("invalid status value")
 	}
 

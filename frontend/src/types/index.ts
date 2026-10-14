@@ -76,7 +76,7 @@ export interface ProductWriteInput {
 
 export type ScanDirection = 'stock_in' | 'stock_out';
 
-export type ScanStatus = 'pending' | 'flagged' | 'committed' | 'cancelled';
+export type ScanStatus = 'pending' | 'flagged' | 'committed' | 'cancelled' | 'qr';
 
 // Reserved control-barcode strings the backend classifies against, exposed via
 // GET /api/scanner/config so the browser recognizes the exact same values.

@@ -1,0 +1,122 @@
+/* A QR misread sits apart from a product row. The rail is a barcode that
+   stops short: the mark the scanner was supposed to read. */
+
+.qr-scan {
+  --qr-ink: var(--mantine-color-text);
+  --qr-quiet: var(--mantine-color-dimmed);
+  --qr-rail: var(--mantine-color-indigo-filled);
+  --qr-paper: var(--mantine-color-body);
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 28rem;
+  display: grid;
+  grid-template-columns: 1.15rem minmax(0, 1fr);
+  column-gap: 0.8rem;
+  row-gap: 0.7rem;
+  margin: 0;
+  padding: 0.8rem 0.9rem 0.85rem 0.75rem;
+  border: 1px solid var(--mantine-color-default-border);
+  border-radius: var(--mantine-radius-sm);
+  background: var(--qr-paper);
+  color: var(--qr-ink);
+}
+
+.qr-scan-rail {
+  grid-row: 1 / span 2;
+  align-self: center;
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  height: 4.5rem;
+}
+
+.qr-scan-rail span {
+  display: block;
+  width: 2px;
+  border-radius: 1px;
+  background: var(--qr-rail);
+}
+
+.qr-scan-rail span:nth-child(1),
+.qr-scan-rail span:nth-child(2),
+.qr-scan-rail span:nth-child(6) {
+  height: 4.5rem;
+}
+
+.qr-scan-rail span:nth-child(2) {
+  width: 1px;
+}
+
+.qr-scan-rail span:nth-child(3) {
+  height: 3.2rem;
+}
+
+.qr-scan-rail span:nth-child(4) {
+  height: 1.7rem;
+}
+
+.qr-scan-rail span:nth-child(5) {
+  width: 3px;
+  height: 4rem;
+}
+
+.qr-scan-rail span:nth-child(7) {
+  height: 2.9rem;
+}
+
+.qr-scan-copy,
+.qr-scan-actions {
+  grid-column: 2;
+  min-width: 0;
+}
+
+.qr-scan-title {
+  margin: 0;
+  max-width: 34rem;
+  font-size: 0.98rem;
+  font-weight: 600;
+  line-height: 1.35;
+  text-wrap: balance;
+}
+
+.qr-scan-payload {
+  margin: 0.28rem 0 0;
+  max-width: 34rem;
+  color: var(--qr-quiet);
+  font-size: 0.84rem;
+  line-height: 1.45;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  user-select: text;
+}
+
+.qr-scan-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.45rem 0.6rem;
+}
+
+.qr-scan-actions .mantine-Button-root {
+  min-height: 2.25rem;
+}
+
+.qr-scan-error {
+  flex-basis: 100%;
+  margin: 0.15rem 0 0;
+  color: var(--mantine-color-red-filled);
+  font-size: 0.82rem;
+  line-height: 1.4;
+}
+
+.qr-scan--just-captured {
+  outline: 3px solid #12b886;
+  outline-offset: 1px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .qr-scan--just-captured {
+    outline-width: 2px;
+  }
+}

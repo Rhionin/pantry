@@ -1,6 +1,6 @@
 import type { ItemInstanceWithStatus, ProcessingNotice, ScanDirection, ScanEntry, ScanStatus } from '../../types';
 
-const DISPLAYABLE_SCAN_STATUSES: ScanStatus[] = ['pending', 'flagged'];
+const DISPLAYABLE_SCAN_STATUSES: ScanStatus[] = ['pending', 'flagged', 'qr'];
 
 export const sortScansNewestFirst = (entries: ScanEntry[]): ScanEntry[] =>
   [...entries].sort(
@@ -164,8 +164,8 @@ export const settleProcessingNotice = (
 export const formatReviewCount = (count: number): string => (count > 99 ? '99+' : String(count));
 
 // Applies one incoming Scan_Event to the currently displayed list: upserts it
-// if its status is still displayable (pending/flagged), or removes any entry
-// with the same id if it isn't (committed/cancelled). Requirements 4.2, 4.3.
+// if its status is still displayable (pending, flagged, or a QR misread), or
+// removes any entry with the same id if it isn't (committed/cancelled).
 export const mergeScanEvent = (entries: ScanEntry[], event: ScanEntry): ScanEntry[] => {
   if (!DISPLAYABLE_SCAN_STATUSES.includes(event.status)) {
     return entries.filter((entry) => entry.id !== event.id);

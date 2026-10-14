@@ -705,3 +705,40 @@ func TestHandleLine_ControlBarcodeDoesNotAnnounceProcessing(t *testing.T) {
 		t.Fatalf("control barcode created %d entries", len(listener.Queue.(*fakeQueue).entries))
 	}
 }
+
+type countingLookup struct {
+	calls int
+}
+
+func (l *countingLookup) Lookup(ctx context.Context, barcode, userID string) (product.LookupResult, error) {
+	l.calls++
+	return product.LookupResult{}, nil
+}
+
+func TestCreateEntry_SkipsLookupForQRPayload(t *testing.T) {
+	lookup := &countingLookup{}
+	listener := New()
+	listener.Source = SourceStdin
+	listener.Queue = &fakeQueue{}
+	listener.LookupService = lookup
+	listener.Stdin = strings.NewReader("https://example.com/milk\n036000291452\n")
+
+	listener.Run(context.Background())
+
+	entries := listener.Queue.(*fakeQueue).entries
+	if len(entries) != 2 {
+		t.Fatalf("entries = %d, want 2", len(entries))
+	}
+	if entries[0].Status != scan.QR || entries[0].ProductID != nil {
+		t.Fatalf("qr entry = %+v", entries[0])
+	}
+	if entries[0].Barcode != "https://example.com/milk" {
+		t.Fatalf("barcode = %q", entries[0].Barcode)
+	}
+	if entries[1].Status != scan.Flagged {
+		t.Fatalf("upc status = %s, want flagged", entries[1].Status)
+	}
+	if lookup.calls != 1 {
+		t.Fatalf("lookup calls = %d, want 1", lookup.calls)
+	}
+}

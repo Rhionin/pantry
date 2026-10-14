@@ -68,6 +68,16 @@ func (h *ScanCreateHandler) Handle(req Request[createScanRequest, struct{}]) (Cr
 	log.Printf("scan received: barcode=%q direction=%s user=%s", req.Body.Barcode, directionLabel(req.Body.Direction), req.Body.UserID)
 
 	scannedAt := time.Now()
+	if scan.IsQRPayload(req.Body.Barcode) {
+		entry := scan.NewQREntry(req.Body.UserID, req.Body.Barcode, req.Body.Direction, scannedAt)
+		created, err := h.Queue.CreateScanEntry(req.Context, entry)
+		if err != nil {
+			return Created{}, InternalError(err)
+		}
+		log.Printf("scan queued: id=%s barcode=%q direction=%s status=%s unitCount=%d", created.ID, created.Barcode, directionLabel(created.Direction), created.Status, created.UnitCount)
+		return Created{Value: created}, nil
+	}
+
 	notice := scan.AnnounceProcessing(h.Events, req.Body.UserID, req.Body.Barcode, req.Body.Direction, scannedAt)
 
 	lookupResult, err := h.LookupService.Lookup(req.Context, req.Body.Barcode, req.Body.UserID)

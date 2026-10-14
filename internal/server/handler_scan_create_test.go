@@ -221,3 +221,123 @@ func TestScanCreateHandler_MergeBehavior(t *testing.T) {
 
 	runHandlerTests(t, tests)
 }
+
+func TestScanCreateHandler_QRPayloadSkipsLookup(t *testing.T) {
+	const pageURL = "https://example.com/groceries/milk"
+	tests := []handlerTestCase{
+		{
+			name:  "a URL that matches a stored barcode is still a QR row",
+			setup: setupProductWithBarcode("prod-qr-url", "Should Not Match", "Test", pageURL),
+			httpExchange: httpExchange{
+				method:         "POST",
+				path:           "/api/scans",
+				body:           `{"barcode":"https://example.com/groceries/milk","userId":"user-qr-url","direction":"stock_in"}`,
+				expectedStatus: http.StatusCreated,
+				assertions: []assertion{
+					{path: "$.status", value: "qr"},
+					{path: "$.productId", value: nil},
+					{path: "$.barcode", value: pageURL},
+					{path: "$.direction", value: "stock_in"},
+				},
+			},
+			afterRequest: exchanges(
+				httpExchange{
+					method:         "GET",
+					path:           "/api/scans",
+					query:          map[string]string{"userId": "user-qr-url", "status": "qr"},
+					expectedStatus: http.StatusOK,
+					assertions: []assertion{
+						{path: "$[0].status", value: "qr"},
+						{path: "$[0].barcode", value: pageURL},
+						{path: "$[0].productId", value: nil},
+					},
+				},
+				httpExchange{
+					method:         "GET",
+					path:           "/api/scans",
+					query:          map[string]string{"userId": "user-qr-url", "status": "pending"},
+					expectedStatus: http.StatusOK,
+					bodyExcludes:   []string{pageURL, `"status":"qr"`},
+				},
+			),
+		},
+		{
+			name: "short text is a QR row",
+			httpExchange: httpExchange{
+				method:         "POST",
+				path:           "/api/scans",
+				body:           `{"barcode":"hello","userId":"user-qr-text","direction":"stock_out"}`,
+				expectedStatus: http.StatusCreated,
+				assertions: []assertion{
+					{path: "$.status", value: "qr"},
+					{path: "$.productId", value: nil},
+				},
+			},
+		},
+		{
+			name: "a digit string longer than a GTIN is a QR row",
+			httpExchange: httpExchange{
+				method:         "POST",
+				path:           "/api/scans",
+				body:           `{"barcode":"123456789012345","userId":"user-qr-long","direction":"stock_in"}`,
+				expectedStatus: http.StatusCreated,
+				assertions: []assertion{
+					{path: "$.status", value: "qr"},
+				},
+			},
+		},
+		{
+			name: "an unknown EAN-13 is still looked up and flagged",
+			httpExchange: httpExchange{
+				method:         "POST",
+				path:           "/api/scans",
+				body:           `{"barcode":"4006381333931","userId":"user-ean-13","direction":"stock_in"}`,
+				expectedStatus: http.StatusCreated,
+				assertions: []assertion{
+					{path: "$.status", value: "flagged"},
+					{path: "$.productId", value: nil},
+				},
+			},
+		},
+		{
+			name: "an unknown ITF-14 is still looked up and flagged",
+			httpExchange: httpExchange{
+				method:         "POST",
+				path:           "/api/scans",
+				body:           `{"barcode":"10012345678902","userId":"user-itf-14","direction":"stock_in"}`,
+				expectedStatus: http.StatusCreated,
+				assertions: []assertion{
+					{path: "$.status", value: "flagged"},
+				},
+			},
+		},
+		{
+			name:  "a known UPC-A is still a pending product scan",
+			setup: setupProductWithBarcode("prod-upc-a", "Cola", "Drinks", "036000291452"),
+			httpExchange: httpExchange{
+				method:         "POST",
+				path:           "/api/scans",
+				body:           `{"barcode":"036000291452","userId":"user-upc-a","direction":"stock_in"}`,
+				expectedStatus: http.StatusCreated,
+				assertions: []assertion{
+					{path: "$.status", value: "pending"},
+					{path: "$.productId", value: "prod-upc-a"},
+				},
+			},
+		},
+		{
+			name: "an unknown EAN-8 is still looked up and flagged",
+			httpExchange: httpExchange{
+				method:         "POST",
+				path:           "/api/scans",
+				body:           `{"barcode":"96385074","userId":"user-ean-8","direction":"stock_in"}`,
+				expectedStatus: http.StatusCreated,
+				assertions: []assertion{
+					{path: "$.status", value: "flagged"},
+				},
+			},
+		},
+	}
+
+	runHandlerTests(t, tests)
+}
