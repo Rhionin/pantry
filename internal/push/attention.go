@@ -1,12 +1,22 @@
 package push
 
 import (
+	"context"
 	"encoding/json"
+	"log"
+	"sync"
 	"time"
 
 	"github.com/Rhionin/pantry/internal/events"
 	"github.com/Rhionin/pantry/internal/scan"
 )
+
+// scanReader is the queue a settled batch reads to see which scans are still
+// waiting. *scan.Queue satisfies it. A nil reader trusts the events already
+// seen, which is only for tests that do not stand up a queue.
+type scanReader interface {
+	GetScanEntry(ctx context.Context, id string) (*scan.ScanEntry, error)
+}
 
 // announcedCap bounds ids remembered for the life of the process. Clearing
 // the set can repeat an alert; holding every scan id cannot.
@@ -40,14 +50,16 @@ func newBatch() *openBatch {
 // attention turns scan events into at most one notice per failure, one per
 // unrecognized product, and one per in or out session after it goes quiet.
 type attention struct {
+	mu        sync.Mutex
 	emit      func(Notice)
 	clock     clock
 	settle    time.Duration
+	scans     scanReader
 	announced map[string]struct{}
 	batches   map[scan.ScanDirection]*openBatch
 }
 
-func newAttention(emit func(Notice), settle time.Duration, clk clock) *attention {
+func newAttention(emit func(Notice), settle time.Duration, clk clock, scans scanReader) *attention {
 	if clk == nil {
 		clk = realClock{}
 	}
@@ -58,6 +70,7 @@ func newAttention(emit func(Notice), settle time.Duration, clk clock) *attention
 		emit:      emit,
 		clock:     clk,
 		settle:    settle,
+		scans:     scans,
 		announced: map[string]struct{}{},
 		batches: map[scan.ScanDirection]*openBatch{
 			scan.StockIn:  newBatch(),
@@ -84,6 +97,8 @@ func (a *attention) handle(msg events.Message) {
 }
 
 func (a *attention) noteFailure(failure scan.ProcessingFailure) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
 	key := "failure:" + failure.ID
 	if failure.ID == "" {
 		key = "failure:" + failure.Barcode + ":" + failure.Message
@@ -95,6 +110,8 @@ func (a *attention) noteFailure(failure scan.ProcessingFailure) {
 }
 
 func (a *attention) noteScan(entry scan.ScanEntry) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
 	if entry.ID == "" {
 		return
 	}
@@ -126,6 +143,8 @@ func (a *attention) noteScan(entry scan.ScanEntry) {
 }
 
 func (a *attention) stop() {
+	a.mu.Lock()
+	defer a.mu.Unlock()
 	a.disarm(scan.StockIn)
 	a.disarm(scan.StockOut)
 }
@@ -208,31 +227,79 @@ func (b *openBatch) remove(id string) {
 	b.order = kept
 }
 
-// take reports the scans still waiting and the product names in scan order,
-// then forgets them so a later session starts empty.
-func (b *openBatch) take() (int, []string) {
-	count := len(b.ids)
-	var names []string
-	if len(b.names) > 0 {
-		names = make([]string, 0, len(b.order))
-		for _, id := range b.order {
-			if name := b.names[id]; name != "" {
-				names = append(names, name)
-			}
-		}
-	}
+// take reports the scans still in this batch, in scan order, then forgets
+// them so a later session starts empty.
+func (b *openBatch) take() (ids []string, names map[string]string) {
+	ids = append([]string(nil), b.order...)
+	names = b.names
 	b.ids = map[string]struct{}{}
 	b.names = map[string]string{}
 	b.order = nil
+	return ids, names
+}
+
+// stillPending keeps the scans from this batch that the queue still has
+// waiting. Approved and rejected rows are gone, and so is a row the queue
+// no longer has. A nil queue trusts the events already applied to the batch.
+func (a *attention) stillPending(direction scan.ScanDirection, ids []string, remembered map[string]string) (int, []string) {
+	if a.scans == nil {
+		return len(ids), namesInOrder(ids, remembered)
+	}
+	var names []string
+	count := 0
+	for _, id := range ids {
+		entry, err := a.scans.GetScanEntry(context.Background(), id)
+		if err != nil {
+			log.Printf("scan alerts: could not check whether a scan is still waiting: %v", err)
+			count++
+			appendName(&names, remembered[id])
+			continue
+		}
+		if entry == nil || !waitingInBatch(*entry, direction) {
+			continue
+		}
+		count++
+		name := productName(*entry)
+		if name == "" {
+			name = remembered[id]
+		}
+		appendName(&names, name)
+	}
 	return count, names
+}
+
+func waitingInBatch(entry scan.ScanEntry, direction scan.ScanDirection) bool {
+	got, ok := batchDirection(entry)
+	return ok && got == direction
+}
+
+func namesInOrder(ids []string, remembered map[string]string) []string {
+	if len(remembered) == 0 {
+		return nil
+	}
+	names := make([]string, 0, len(ids))
+	for _, id := range ids {
+		appendName(&names, remembered[id])
+	}
+	return names
+}
+
+func appendName(names *[]string, name string) {
+	if name == "" {
+		return
+	}
+	*names = append(*names, name)
 }
 
 func (a *attention) arm(direction scan.ScanDirection) {
 	batch := a.batches[direction]
 	a.disarm(direction)
 	batch.cancel = a.clock.After(a.settle, func() {
+		a.mu.Lock()
 		batch.cancel = nil
-		count, names := batch.take()
+		ids, remembered := batch.take()
+		a.mu.Unlock()
+		count, names := a.stillPending(direction, ids, remembered)
 		if count > 0 {
 			a.emit(batchNotice(direction, count, names))
 		}

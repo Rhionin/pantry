@@ -574,7 +574,7 @@ func newAPIMux(
 	apiMux.HandleFunc("DELETE /api/push/subscriptions", HandleJSON(pushHandler.Delete))
 	// The listener uses the broadcaster this mux already publishes scans on,
 	// including scans from the headless reader when it shares that broadcaster.
-	push.Listen(broadcaster, push.NewSender(pushSubscriptions, pushCfg))
+	push.Listen(broadcaster, push.NewSender(pushSubscriptions, pushCfg), scanQueue)
 
 	// Unknown resolution handler
 	unknownResolutionHandler := &UnknownResolutionHandler{
