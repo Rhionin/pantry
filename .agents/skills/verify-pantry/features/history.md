@@ -25,8 +25,9 @@ pace follow the correction.
   and one line for used below it, for the last 7, 30, or 90 days. Overlapping
   amounts add. The opening stock-in is the start of the chart when it falls
   inside the range, so later moves set the scale. The chart shows unit ticks,
-  date ticks, and the range totals. A tap or hover reads that day's stocked-in
-  and used counts. It uses the same filters and search.
+  date ticks, and the range totals.   A tap or hover reads that day's stocked-in
+  and used counts, and can mark that day in the list. The page does not scroll
+  or zoom. It uses the same filters and search.
 
 ## How to get to it (user POV)
 
@@ -68,7 +69,8 @@ Preconditions:
   together. Unit ticks, date ticks, and the range totals sit with the chart.
   When the opening stock-in is inside the range, the chart starts there and
   says so. `7 days` and `90 days` change the window. A tap or hover shows that
-  day's date, stocked-in count, and used count, and marks the day in the list.
+  day's date, stocked-in count, and used count, and marks the day in the list
+  without scrolling or zooming the page.
   The chart follows the direction filter and the search.
 
 ## Gotchas

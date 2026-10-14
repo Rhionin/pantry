@@ -23,6 +23,7 @@ const { browser, page } = await openBrowser({
   viewport: phone,
   deviceScaleFactor: 2,
   timezoneId: 'America/Chicago',
+  hasTouch: true,
 });
 let failed = false;
 
@@ -105,12 +106,24 @@ try {
   const hit = page.locator('.pulse-hit');
   const box = await hit.boundingBox();
   assert(box !== null, 'the chart can be inspected');
-  await page.evaluate(({ x, y }) => {
-    const target = document.querySelector('.pulse-hit');
-    const init = { bubbles: true, clientX: x, clientY: y, pointerType: 'touch', pointerId: 1, isPrimary: true };
-    target.dispatchEvent(new PointerEvent('pointerdown', init));
-    target.dispatchEvent(new PointerEvent('pointerup', init));
-  }, { x: box.x + box.width - 12, y: box.y + box.height / 2 });
+  const before = await page.evaluate(() => ({
+    top: document.querySelector('.mantine-AppShell-main')?.scrollTop ?? 0,
+    scale: window.visualViewport?.scale ?? 1,
+  }));
+  // The left edge is an early day, below the fold. A scroll-into-view would jump there.
+  await page.touchscreen.tap(box.x + 12, box.y + box.height / 2);
+  await page.touchscreen.tap(box.x + 12, box.y + box.height / 2);
+  const afterEarly = await page.evaluate(() => ({
+    top: document.querySelector('.mantine-AppShell-main')?.scrollTop ?? 0,
+    scale: window.visualViewport?.scale ?? 1,
+    focused: document.activeElement?.classList.contains('pulse-hit') === true,
+    touchAction: getComputedStyle(document.querySelector('.pulse-hit')).touchAction,
+  }));
+  assert(afterEarly.top === before.top, `a tap leaves the page where it was (scroll ${afterEarly.top}, was ${before.top})`);
+  assert(afterEarly.scale === 1, `a double tap does not zoom (scale ${afterEarly.scale})`);
+  assert(afterEarly.focused === false, 'a tap does not focus the chart');
+  assert(afterEarly.touchAction === 'pan-y', `the chart touch action is pan-y (${afterEarly.touchAction})`);
+  await page.touchscreen.tap(box.x + box.width - 12, box.y + box.height / 2);
   const tip = page.getByRole('tooltip');
   await tip.waitFor({ state: 'visible' });
   await tip.getByText('2 stocked in').waitFor();
