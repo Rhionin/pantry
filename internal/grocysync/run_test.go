@@ -160,6 +160,19 @@ func TestRunIdlesWhenDisabled(t *testing.T) {
 	}
 }
 
+func TestWatchIgnoresStreamComments(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(": ping\n\ndata: {\"ok\":true}\n\n: ping\n\n"))
+	}))
+	defer srv.Close()
+	client := NewPantryClient(srv.URL, "tok")
+	n := 0
+	err := client.Watch(context.Background(), func() { n++ })
+	if n != 1 || err == nil {
+		t.Fatalf("n=%d err=%v", n, err)
+	}
+}
+
 func TestWatchNotifiesThenEnds(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get("Authorization") != "Bearer tok" {
