@@ -7,9 +7,8 @@ import (
 	"unicode/utf8"
 )
 
-// maxPushPlaintext is the largest JSON document Notify sends. The encrypted
-// record is padded to pushRecordSize, and this cap leaves room for the
-// content-coding header, delimiter, and tag inside that record.
+// maxPushPlaintext is the largest JSON document Notify sends. With the
+// record overhead the encrypted body stays under maxPushBody.
 const maxPushPlaintext = 2500
 
 // wireNotice is what the service worker shows. Names from the batch are

@@ -16,14 +16,25 @@ import (
 // is asleep. A scan the household already confirmed can still be opened.
 const pushTTL = 24 * 60 * 60
 
-// pushRecordSize is the aes128gcm record webpush-go pads every alert to.
-// An unset RecordSize uses MaxRecordSize (4096), and Mozilla autopush then
-// answers 413. In v1.4.0 the HTTP body is exactly RecordSize: 16-byte salt,
-// 4-byte record size, 1-byte key id length, 65-byte sender key, the
-// plaintext, a 1-byte delimiter, zero padding, and a 16-byte tag. 3070 holds
-// the 2500-byte plaintext cap (2500+103) and stays on the constrained-device
-// limit autopush documents as 3070 bytes.
-const pushRecordSize uint32 = 3070
+// Firefox for Android receives Web Push through Mozilla's FCM bridge.
+// autopush base64url-encodes the encrypted body and puts it, together with
+// the channel id, content coding, and reliability id, into an FCM data map
+// whose JSON must not exceed 4096 bytes. A 3070-byte body is already 4094
+// bytes once encoded, so the map goes over and autopush answers 413.
+//
+// webpush-go v1.4.0 pads every request body to exactly RecordSize, so the
+// record is sized to the payload: 86-byte header (16 salt, 4 record size,
+// 1 key id length, 65 sender key), the plaintext, 1 delimiter byte, and a
+// 16-byte tag. No padding is added.
+const pushRecordOverhead = 86 + 1 + 16
+
+// maxPushBody keeps the base64url body plus the bridge's other fields well
+// under the FCM 4096-byte data limit.
+const maxPushBody = 2800
+
+func pushRecordSize(payload []byte) uint32 {
+	return uint32(len(payload) + pushRecordOverhead)
+}
 
 var pushClient = &http.Client{Timeout: 15 * time.Second}
 
@@ -116,7 +127,7 @@ func deliverWebPush(client webpush.HTTPClient, cfg Config, sub Subscription, pay
 		VAPIDPrivateKey: cfg.PrivateKey,
 		TTL:             pushTTL,
 		Urgency:         webpush.UrgencyHigh,
-		RecordSize:      pushRecordSize,
+		RecordSize:      pushRecordSize(payload),
 	})
 	if resp != nil {
 		defer resp.Body.Close()
