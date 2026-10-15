@@ -24,6 +24,7 @@ const announcedCap = 4096
 
 type clock interface {
 	After(delay time.Duration, fn func()) (cancel func())
+	Now() time.Time
 }
 
 type realClock struct{}
@@ -33,10 +34,14 @@ func (realClock) After(delay time.Duration, fn func()) func() {
 	return func() { timer.Stop() }
 }
 
+func (realClock) Now() time.Time { return time.Now() }
+
 type openBatch struct {
 	ids    map[string]struct{}
 	order  []string
 	names  map[string]string
+	due    time.Time
+	gen    int
 	cancel func()
 }
 
@@ -55,6 +60,7 @@ type attention struct {
 	clock     clock
 	settle    time.Duration
 	scans     scanReader
+	schedules scheduleStore
 	announced map[string]struct{}
 	batches   map[scan.ScanDirection]*openBatch
 }
@@ -187,6 +193,7 @@ func (a *attention) place(id, name string, direction scan.ScanDirection) {
 		if len(a.batches[other].ids) == 0 {
 			a.disarm(other)
 		}
+		a.writeSchedule(other)
 	}
 	a.batches[direction].put(id, name)
 	a.arm(direction)
@@ -202,6 +209,7 @@ func (a *attention) drop(id string) {
 		if len(batch.ids) == 0 {
 			a.disarm(direction)
 		}
+		a.writeSchedule(direction)
 	}
 }
 
@@ -292,11 +300,33 @@ func appendName(names *[]string, name string) {
 }
 
 func (a *attention) arm(direction scan.ScanDirection) {
+	a.armAfter(direction, a.settle, true)
+}
+
+// armAfter starts the quiet-period timer. persist records due as now+delay
+// so a restart can wait out the same moment. A re-armed timer passes
+// persist false and keeps the due time already stored.
+func (a *attention) armAfter(direction scan.ScanDirection, delay time.Duration, persist bool) {
 	batch := a.batches[direction]
 	a.disarm(direction)
-	batch.cancel = a.clock.After(a.settle, func() {
+	if persist {
+		batch.due = a.clock.Now().Add(delay)
+		a.writeSchedule(direction)
+	}
+	gen := batch.gen
+	batch.cancel = a.clock.After(delay, func() {
 		a.mu.Lock()
+		if batch.gen != gen {
+			a.mu.Unlock()
+			return
+		}
 		batch.cancel = nil
+		// Claim the row before sending. A crash after the send but before
+		// the delete would notify again on the next start.
+		if !a.claim(direction) {
+			a.mu.Unlock()
+			return
+		}
 		ids, remembered := batch.take()
 		a.mu.Unlock()
 		count, names := a.stillPending(direction, ids, remembered)
@@ -306,8 +336,77 @@ func (a *attention) arm(direction scan.ScanDirection) {
 	})
 }
 
+// rearm waits out batch alerts that were already scheduled when this process
+// started. A due time that has passed fires on the next tick. Claiming the
+// row when the timer fires keeps a second start from sending it again.
+func (a *attention) rearm(ctx context.Context) {
+	if a.schedules == nil {
+		return
+	}
+	rows, err := a.schedules.ListBatchAlerts(ctx)
+	if err != nil {
+		log.Printf("scan alerts: could not read pending batch alerts: %v", err)
+		return
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	for _, row := range rows {
+		batch := a.batches[row.Direction]
+		if batch == nil || len(row.ScanIDs) == 0 {
+			continue
+		}
+		for _, id := range row.ScanIDs {
+			batch.put(id, "")
+		}
+		batch.due = row.DueAt
+		delay := row.DueAt.Sub(a.clock.Now())
+		if delay < 0 {
+			delay = 0
+		}
+		a.armAfter(row.Direction, delay, false)
+	}
+}
+
+func (a *attention) writeSchedule(direction scan.ScanDirection) {
+	if a.schedules == nil {
+		return
+	}
+	batch := a.batches[direction]
+	if len(batch.ids) == 0 {
+		if err := a.schedules.DeleteBatchAlert(context.Background(), direction); err != nil {
+			log.Printf("scan alerts: could not clear a batch alert: %v", err)
+		}
+		return
+	}
+	if batch.due.IsZero() {
+		return
+	}
+	err := a.schedules.SaveBatchAlert(context.Background(), scheduledBatch{
+		Direction: direction,
+		DueAt:     batch.due,
+		ScanIDs:   append([]string(nil), batch.order...),
+	})
+	if err != nil {
+		log.Printf("scan alerts: could not save a batch alert: %v", err)
+	}
+}
+
+// claim removes the stored alert. False means the row is still there, so
+// this process must not send; the next start will.
+func (a *attention) claim(direction scan.ScanDirection) bool {
+	if a.schedules == nil {
+		return true
+	}
+	if err := a.schedules.DeleteBatchAlert(context.Background(), direction); err != nil {
+		log.Printf("scan alerts: could not settle a batch alert: %v", err)
+		return false
+	}
+	return true
+}
+
 func (a *attention) disarm(direction scan.ScanDirection) {
 	batch := a.batches[direction]
+	batch.gen++
 	if batch.cancel == nil {
 		return
 	}
