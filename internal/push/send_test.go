@@ -5,8 +5,10 @@ import (
 	"crypto/ecdh"
 	"crypto/rand"
 	"encoding/base64"
+	"encoding/json"
 	"io"
 	"net/http"
+	"strings"
 	"testing"
 
 	webpush "github.com/SherClockHolmes/webpush-go"
@@ -59,11 +61,23 @@ func TestEncryptedPushBodyStaysUnderAutopushLimit(t *testing.T) {
 		t.Fatalf("content-encoding = %q", client.header.Get("Content-Encoding"))
 	}
 	t.Logf("encrypted body = %d bytes for a %d-byte payload", len(client.body), len(payload))
-	// webpush-go pads the request body out to RecordSize. 4096 is the
-	// library default and is what autopush rejects; 3070 is the
-	// constrained-device ceiling.
-	if len(client.body) <= maxPushPlaintext || len(client.body) > 3070 || len(client.body) >= 4096 {
+	if len(client.body) != len(payload)+pushRecordOverhead {
+		t.Fatalf("encrypted body = %d bytes, want no padding", len(client.body))
+	}
+	if len(client.body) > maxPushBody || len(client.body) > 4096 {
 		t.Fatalf("encrypted body = %d bytes", len(client.body))
+	}
+	// What Mozilla's FCM bridge checks for Firefox on Android: the JSON of
+	// the data map, with the body base64url-encoded, must fit in 4096 bytes.
+	data, _ := json.Marshal(map[string]string{
+		"chid": "00000000-0000-0000-0000-000000000000",
+		"body": base64.RawURLEncoding.EncodeToString(client.body),
+		"con":  "aes128gcm",
+		"rid":  strings.Repeat("r", 128),
+	})
+	t.Logf("FCM bridge data = %d bytes", len(data))
+	if len(data) > 4096 {
+		t.Fatalf("FCM bridge data = %d bytes, over 4096", len(data))
 	}
 }
 
