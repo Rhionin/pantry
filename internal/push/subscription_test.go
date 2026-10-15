@@ -1,9 +1,13 @@
 package push
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
+	"log"
 	"net/http"
+	"os"
+	"strings"
 	"testing"
 
 	"github.com/Rhionin/pantry/internal/app"
@@ -141,5 +145,49 @@ func TestSenderKeepsASubscriptionWhenThePushServiceFails(t *testing.T) {
 	}
 	if len(left) != 1 {
 		t.Fatalf("a 500 removed the browser: %#v", left)
+	}
+}
+
+func TestNotifyLogsHostAndStatus(t *testing.T) {
+	subs := newTestSubscriptions(t)
+	ctx := context.Background()
+	ok := sampleSub("https://updates.push.services.mozilla.com/wpush/v2/DO-NOT-LOG-TOKEN")
+	ok.P256dh = "p256dh-DO-NOT-LOG"
+	ok.Auth = "auth-DO-NOT-LOG"
+	gone := sampleSub("https://fcm.googleapis.com/fcm/send/DO-NOT-LOG-TOKEN")
+	gone.P256dh = "p256dh-DO-NOT-LOG"
+	gone.Auth = "auth-DO-NOT-LOG"
+	for _, sub := range []Subscription{ok, gone} {
+		if err := subs.Save(ctx, sub); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var buf bytes.Buffer
+	log.SetOutput(&buf)
+	t.Cleanup(func() { log.SetOutput(os.Stderr) })
+
+	sender := NewSender(subs, Config{
+		Post: func(_ context.Context, sub Subscription, _ []byte) (int, error) {
+			if sub.Endpoint == gone.Endpoint {
+				return http.StatusGone, nil
+			}
+			return http.StatusCreated, nil
+		},
+	})
+	sender.Notify(ctx, Notice{Title: "Scan failed", Body: "Try again.", URL: "/"})
+
+	logged := buf.String()
+	for _, want := range []string{
+		"scan alerts: push to updates.push.services.mozilla.com returned 201",
+		"scan alerts: push to fcm.googleapis.com returned 410",
+	} {
+		if !strings.Contains(logged, want) {
+			t.Errorf("log missing %q\n%s", want, logged)
+		}
+	}
+	for _, secret := range []string{"DO-NOT-LOG-TOKEN", "p256dh-DO-NOT-LOG", "auth-DO-NOT-LOG", "https://"} {
+		if strings.Contains(logged, secret) {
+			t.Errorf("log included %q\n%s", secret, logged)
+		}
 	}
 }

@@ -31,6 +31,10 @@ func (c *fakeClock) After(delay time.Duration, fn func()) func() {
 	return func() { delete(c.timers, id) }
 }
 
+func (c *fakeClock) Now() time.Time {
+	return time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC).Add(c.now)
+}
+
 func (c *fakeClock) advance(d time.Duration) {
 	c.now += d
 	for {
