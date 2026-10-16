@@ -93,7 +93,7 @@ describe('scan alert status', () => {
       'The browser could not register the service worker. Alerts arrive only while this tab is open.',
     );
     expect(scanAlertStatus('granted', true, 'idle', 'empty-vapid').text).toBe(
-      'This pantry has no push key. Alerts arrive only while this tab is open.',
+      'This Stockbot has no push key. Alerts arrive only while this tab is open.',
     );
     expect(scanAlertStatus('granted', true, 'idle', 'subscribe-rejected').text).toBe(
       'The browser refused the push subscription. Alerts arrive only while this tab is open.',
@@ -152,7 +152,12 @@ describe('Scan alerts on Settings', () => {
       'On: alerts arrive even when Stockbot is closed',
     );
     await waitFor(() => expect(posted).toEqual([
-      { endpoint: 'https://push.example/device', keys: { p256dh: 'p256', auth: 'auth' } },
+      {
+        endpoint: 'https://push.example/device',
+        keys: { p256dh: 'p256', auth: 'auth' },
+        userId: 'user-1',
+        deviceId: localStorage.getItem('pantry-push-device'),
+      },
     ]));
     expect(toggle).toBeChecked();
 
@@ -229,11 +234,11 @@ describe('Scan alerts on Settings', () => {
 
     const status = await screen.findByRole('status');
     expect(status).toHaveTextContent(
-      'This pantry has no push key. Alerts arrive only while this tab is open.',
+      'This Stockbot has no push key. Alerts arrive only while this tab is open.',
     );
     const retry = screen.getByRole('button', { name: 'Retry' });
     expect(retry).toHaveAccessibleDescription(
-      'This pantry has no push key. Alerts arrive only while this tab is open.',
+      'This Stockbot has no push key. Alerts arrive only while this tab is open.',
     );
     fireEvent.click(retry);
     await waitFor(() => expect(warn).toHaveBeenCalledTimes(2));
@@ -249,7 +254,7 @@ describe('Scan alerts on Settings', () => {
 
     renderSettings();
     expect(await screen.findByRole('status')).toHaveTextContent(
-      'This pantry has no push key. Alerts arrive only while this tab is open.',
+      'This Stockbot has no push key. Alerts arrive only while this tab is open.',
     );
     expect(screen.getByRole('switch', { name: 'Scan alerts on this device' })).toBeChecked();
     expect(screen.getByRole('button', { name: 'Retry' })).toBeInTheDocument();

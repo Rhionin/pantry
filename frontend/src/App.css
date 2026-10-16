@@ -200,7 +200,7 @@ a.group-row {
 }
 
 .app-nav-link:focus-visible {
-  outline: 2px solid var(--mantine-color-blue-6);
+  outline: 2px solid var(--stock-full);
   outline-offset: 2px;
 }
 

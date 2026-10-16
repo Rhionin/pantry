@@ -87,7 +87,7 @@ func TestPublicProxyIsOptIn(t *testing.T) {
 	if !strings.Contains(pantry.Environment["PANTRY_SESSION_SECRET"], "PANTRY_SESSION_SECRET") {
 		t.Fatalf("pantry must receive PANTRY_SESSION_SECRET from .env, got %q", pantry.Environment["PANTRY_SESSION_SECRET"])
 	}
-	for _, key := range []string{"VAPID_PUBLIC_KEY", "VAPID_PRIVATE_KEY", "VAPID_SUBJECT"} {
+	for _, key := range []string{"VAPID_PUBLIC_KEY", "VAPID_PRIVATE_KEY", "VAPID_SUBJECT", "PUBLIC_HOST", "LEGACY_PUBLIC_HOST"} {
 		if !strings.Contains(pantry.Environment[key], key) {
 			t.Fatalf("pantry must receive %s from .env, got %q", key, pantry.Environment[key])
 		}
@@ -106,6 +106,7 @@ func TestPublicProxyIsOptIn(t *testing.T) {
 	text := string(caddyfile)
 	for _, want := range []string{
 		"{$PUBLIC_HOST}",
+		"import Caddyfile.legacy",
 		"{$ACME_EMAIL}",
 		"X-Pantry-Entry public",
 		"X-Pantry-Client-IP {client_ip}",
@@ -176,6 +177,9 @@ func TestPublicProxyIsOptIn(t *testing.T) {
 	envText := string(envExample)
 	if !strings.Contains(envText, "\nPUBLIC_HOST=\n") || !strings.Contains(envText, "\nACME_EMAIL=\n") {
 		t.Fatal(".env.example must leave PUBLIC_HOST and ACME_EMAIL empty so install stays LAN-only")
+	}
+	if !strings.Contains(envText, "\nLEGACY_PUBLIC_HOST=\n") {
+		t.Fatal(".env.example must leave LEGACY_PUBLIC_HOST empty so a new install does not redirect")
 	}
 	if !strings.Contains(envText, "\nBASIC_AUTH_USER=pantry\n") || !strings.Contains(envText, "\nBASIC_AUTH_PASSWORD=\n") {
 		t.Fatal(".env.example must set the public username and leave the shared password empty")
@@ -304,6 +308,7 @@ func TestPublicProxyIsOptIn(t *testing.T) {
 	}
 	for _, want := range []string{
 		"http://{$PUBLIC_HOST}",
+		"import Caddyfile.legacy",
 		"admin off",
 		"trusted_proxies static 10.77.77.2/32",
 		"client_ip_headers Cf-Connecting-Ip",
@@ -420,6 +425,12 @@ func TestPublicProxyIsOptIn(t *testing.T) {
 	if !strings.Contains(tunnelYAML, "http://caddy:80") {
 		t.Fatal("tunnel compose must document the public-hostname service URL")
 	}
+	if !strings.Contains(tunnelYAML, "./Caddyfile.tunnel.legacy:/etc/caddy/Caddyfile.legacy:ro") {
+		t.Fatal("tunnel compose must mount the legacy-host redirect")
+	}
+	if !hasExactPort(caddy.Volumes, "./Caddyfile.legacy:/etc/caddy/Caddyfile.legacy:ro") {
+		t.Fatalf("caddy volumes = %v, want the legacy-host snippet", caddy.Volumes)
+	}
 	if _, ok := tunnelCompose.Services["caddy"]; ok {
 		t.Fatal("tunnel compose must not redefine the certificate caddy service")
 	}
@@ -431,6 +442,9 @@ func TestPublicProxyIsOptIn(t *testing.T) {
 		"http://caddy:80",
 		"publish_mode_from_env",
 		"drop_stale_cloudflared",
+		"LEGACY_PUBLIC_HOST",
+		"Caddyfile.legacy",
+		"write_legacy_public_host",
 	} {
 		if !strings.Contains(setupText, want) {
 			t.Fatalf("setup.sh missing %q", want)
@@ -459,6 +473,9 @@ func TestPublicProxyIsOptIn(t *testing.T) {
 		"Dynu",
 		"pantry-pi",
 		"9e158cce-4d31-4881-82f3-d905af6164e7",
+		"stockbot.rhionin.com",
+		"pantry.rhionin.com",
+		"LEGACY_PUBLIC_HOST",
 	} {
 		if !strings.Contains(readmeText, want) {
 			t.Fatalf("deploy README missing %q", want)

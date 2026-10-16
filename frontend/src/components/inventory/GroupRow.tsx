@@ -7,6 +7,7 @@ import { memberLine } from '../groups/copy';
 import { ItemInstanceList } from './ItemInstanceList';
 import { ProductPhoto } from './ProductPhoto';
 import type { ShelfGroupRow, ShelfMember } from './shelf';
+import { groupStock } from '../../stockState';
 
 export interface GroupRowProps {
   row: ShelfGroupRow;
@@ -48,6 +49,8 @@ export function GroupRow({ row, expanded, onToggle, onMove, onChanged, onHandCha
   const [error, setError] = useState('');
   const panelId = `shelf-group-${row.id}`;
   const fill = row.meter.max > 0 ? Math.min(100, (row.meter.now / row.meter.max) * 100) : 0;
+  const onHand = row.members.reduce((sum, member) => sum + member.onHand, 0);
+  const stock = groupStock(onHand, row.group.runningLow, row.members.length);
 
   const restock = async (member: ShelfMember, noRestock: boolean) => {
     setError('');
@@ -70,7 +73,7 @@ export function GroupRow({ row, expanded, onToggle, onMove, onChanged, onHandCha
   };
 
   return (
-    <article className="shelf-row">
+    <article className="shelf-row" data-stock={stock}>
       <div className="shelf-head">
         <ProductPhoto src={row.photoSrc} name={row.photoName} stacked />
         <div className="shelf-copy">

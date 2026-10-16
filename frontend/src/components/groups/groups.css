@@ -6,11 +6,11 @@
   --bin-pill: var(--mantine-color-dark-9);
   --bin-pill-ink: var(--mantine-color-white);
   --bin-fill-ink: var(--mantine-color-dark-9);
-  --bin-focus: var(--mantine-color-blue-8);
-  --bin-link: var(--mantine-color-blue-8);
+  --bin-focus: var(--mantine-color-teal-8);
+  --bin-link: var(--mantine-color-teal-8);
   --bin-row-hover: var(--mantine-color-gray-1);
   --bin-row-active: var(--mantine-color-gray-2);
-  --suggestion-primary-bg: var(--mantine-color-blue-9);
+  --suggestion-primary-bg: var(--mantine-color-teal-8);
   --suggestion-primary-ink: var(--mantine-color-white);
   --suggestion-danger: var(--mantine-color-red-9);
   color: var(--bin-ink);
@@ -28,11 +28,11 @@
   --bin-pill: var(--mantine-color-gray-1);
   --bin-pill-ink: var(--mantine-color-dark-9);
   --bin-fill-ink: var(--mantine-color-dark-9);
-  --bin-focus: var(--mantine-color-blue-4);
-  --bin-link: var(--mantine-color-blue-4);
+  --bin-focus: var(--mantine-color-teal-4);
+  --bin-link: var(--mantine-color-teal-4);
   --bin-row-hover: var(--mantine-color-dark-5);
   --bin-row-active: var(--mantine-color-dark-4);
-  --suggestion-primary-bg: var(--mantine-color-blue-8);
+  --suggestion-primary-bg: var(--mantine-color-teal-7);
   --suggestion-primary-ink: var(--mantine-color-white);
   --suggestion-danger: var(--mantine-color-red-4);
 }
@@ -104,6 +104,18 @@
   overflow: hidden;
   border: 2px solid var(--bin-line);
   background: var(--bin-well);
+}
+
+.bin-well[data-stock='full'] {
+  border-color: var(--stock-full);
+}
+
+.bin-well[data-stock='low'] {
+  border-color: var(--stock-low);
+}
+
+.bin-well[data-stock='out'] {
+  border-color: var(--stock-out);
 }
 
 .bin-hero .bin-well {

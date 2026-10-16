@@ -55,6 +55,11 @@ services:
       VAPID_PUBLIC_KEY: ${VAPID_PUBLIC_KEY:-}
       VAPID_PRIVATE_KEY: ${VAPID_PRIVATE_KEY:-}
       VAPID_SUBJECT: ${VAPID_SUBJECT:-}
+      # Alerts go to browsers registered on PUBLIC_HOST. A subscription from
+      # LEGACY_PUBLIC_HOST is dropped. Empty PUBLIC_HOST keeps every other
+      # subscription, including rows stored before origins existed.
+      PUBLIC_HOST: ${PUBLIC_HOST:-}
+      LEGACY_PUBLIC_HOST: ${LEGACY_PUBLIC_HOST:-}
     volumes:
       - pantry-data:/data
       # The process writes one file here. A host path unit starts the update.
@@ -99,6 +104,7 @@ services:
       - no-new-privileges:true
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./Caddyfile.legacy:/etc/caddy/Caddyfile.legacy:ro
       - caddy-data:/data
       - caddy-config:/config
 

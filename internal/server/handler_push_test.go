@@ -108,6 +108,115 @@ func TestPushSubscriptionAPI(t *testing.T) {
 	})
 }
 
+func TestPushSubscriptionFollowsThePublicHost(t *testing.T) {
+	cfg := testPushConfig(t, nil)
+	cfg.PublicHost = "stockbot.rhionin.com"
+	cfg.LegacyHost = "pantry.rhionin.com"
+	runHandlerTests(t, []handlerTestCase{
+		{
+			name:    "a subscription from the previous host is rejected and removed",
+			options: []Option{WithPush(cfg)},
+			setup: func(env testEnv) {
+				_, err := env.DB.Exec(`
+					INSERT INTO push_subscriptions (endpoint, p256dh, auth, origin)
+					VALUES ('https://push.example/old', 'p256dh-key', 'auth-key', 'pantry.rhionin.com')`)
+				if err != nil {
+					env.T.Fatal(err)
+				}
+			},
+			httpExchange: httpExchange{
+				method:         "POST",
+				path:           "/api/push/subscriptions",
+				headers:        map[string]string{"Origin": "https://pantry.rhionin.com"},
+				body:           `{"endpoint":"https://push.example/old","keys":{"p256dh":"p256dh-key","auth":"auth-key"},"userId":"user-1","deviceId":"phone-a"}`,
+				expectedStatus: http.StatusBadRequest,
+				assertions:     []assertion{{path: "$.error", value: "This address no longer sends scan alerts. Open the current site and allow notifications again."}},
+			},
+			afterRequest: func(env testEnv) {
+				assertSubscriptionEndpoints(env, nil)
+			},
+		},
+		{
+			name:    "re-subscribe stores the current host and replaces that device",
+			options: []Option{WithPush(cfg)},
+			setup: func(env testEnv) {
+				_, err := env.DB.Exec(`
+					INSERT INTO push_subscriptions (endpoint, p256dh, auth, origin, user_id, device_id)
+					VALUES ('https://push.example/old', 'p256dh-key', 'auth-key', 'stockbot.rhionin.com', 'user-1', 'phone-a')`)
+				if err != nil {
+					env.T.Fatal(err)
+				}
+			},
+			httpExchange: httpExchange{
+				method:         "POST",
+				path:           "/api/push/subscriptions",
+				headers:        map[string]string{"Origin": "https://stockbot.rhionin.com"},
+				body:           `{"endpoint":"https://push.example/new","keys":{"p256dh":"p256dh-key","auth":"auth-key"},"userId":"user-1","deviceId":"phone-a"}`,
+				expectedStatus: http.StatusOK,
+				assertions:     []assertion{{path: "$.endpoint", value: "https://push.example/new"}},
+			},
+			afterRequest: func(env testEnv) {
+				assertSubscriptionEndpoints(env, map[string]string{
+					"https://push.example/new": "stockbot.rhionin.com",
+				})
+			},
+		},
+		{
+			name:    "a subscription stored before origins existed stays",
+			options: []Option{WithPush(cfg)},
+			setup: func(env testEnv) {
+				_, err := env.DB.Exec(`
+					INSERT INTO push_subscriptions (endpoint, p256dh, auth)
+					VALUES ('https://push.example/live', 'p256dh-key', 'auth-key')`)
+				if err != nil {
+					env.T.Fatal(err)
+				}
+			},
+			httpExchange: httpExchange{
+				method:         "POST",
+				path:           "/api/push/subscriptions",
+				headers:        map[string]string{"Origin": "https://stockbot.rhionin.com"},
+				body:           `{"endpoint":"https://push.example/new","keys":{"p256dh":"p256dh-key","auth":"auth-key"},"userId":"user-1","deviceId":"phone-a"}`,
+				expectedStatus: http.StatusOK,
+			},
+			afterRequest: func(env testEnv) {
+				assertSubscriptionEndpoints(env, map[string]string{
+					"https://push.example/live": "",
+					"https://push.example/new":  "stockbot.rhionin.com",
+				})
+			},
+		},
+	})
+}
+
+func assertSubscriptionEndpoints(env testEnv, want map[string]string) {
+	env.T.Helper()
+	rows, err := env.DB.Query(`SELECT endpoint, origin FROM push_subscriptions`)
+	if err != nil {
+		env.T.Fatal(err)
+	}
+	defer rows.Close()
+	got := map[string]string{}
+	for rows.Next() {
+		var endpoint, origin string
+		if err := rows.Scan(&endpoint, &origin); err != nil {
+			env.T.Fatal(err)
+		}
+		got[endpoint] = origin
+	}
+	if err := rows.Err(); err != nil {
+		env.T.Fatal(err)
+	}
+	if len(got) != len(want) {
+		env.T.Fatalf("subscriptions = %#v, want %#v", got, want)
+	}
+	for endpoint, origin := range want {
+		if got[endpoint] != origin {
+			env.T.Fatalf("subscriptions = %#v, want %#v", got, want)
+		}
+	}
+}
+
 func TestPushUnrecognizedScan(t *testing.T) {
 	var mu sync.Mutex
 	var got []map[string]string

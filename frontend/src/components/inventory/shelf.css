@@ -28,12 +28,32 @@
 }
 
 .shelf-row {
+  position: relative;
   display: flex;
   flex-direction: column;
   gap: var(--mantine-spacing-xs);
-  padding: var(--mantine-spacing-sm) 0;
+  padding: var(--mantine-spacing-sm) 0 var(--mantine-spacing-sm) 0.7rem;
   border-bottom: 1px solid var(--bin-line);
   min-width: 0;
+}
+
+.shelf-row[data-stock]::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0.7rem;
+  bottom: 0.7rem;
+  width: 3px;
+  border-radius: 999px;
+  background: var(--stock-full);
+}
+
+.shelf-row[data-stock='low']::before {
+  background: var(--stock-low);
+}
+
+.shelf-row[data-stock='out']::before {
+  background: var(--stock-out);
 }
 
 .shelf-head {
@@ -123,7 +143,15 @@
 .shelf-meter-fill {
   display: block;
   height: 100%;
-  background: var(--bin-ink);
+  background: var(--stock-full);
+}
+
+.shelf-row[data-stock='low'] .shelf-meter-fill {
+  background: var(--stock-low);
+}
+
+.shelf-row[data-stock='out'] .shelf-meter-fill {
+  background: var(--stock-out);
 }
 
 .shelf-pin {
