@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Rhionin/pantry/internal/telemetry"
+	"github.com/Rhionin/stockbot/internal/telemetry"
 )
 
 // Telemetry lives on the handler that served the request. exchanges() builds

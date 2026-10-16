@@ -3,12 +3,13 @@ package server
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"net/http"
 	"testing"
 	"time"
 
-	"github.com/Rhionin/pantry/internal/product"
-	"github.com/Rhionin/pantry/internal/scan"
+	"github.com/Rhionin/stockbot/internal/product"
+	"github.com/Rhionin/stockbot/internal/scan"
 )
 
 func TestScanCommitStockIn(t *testing.T) {
@@ -443,7 +444,7 @@ func TestScanCommitStockInErrors(t *testing.T) {
 
 	tests := []handlerTestCase{
 		{
-			name: "error when direction is not stock-in",
+			name: "stock-out with no item is a client error",
 			setup: func(env testEnv) {
 				if err := env.ProductStore.CreateProduct(context.Background(), product.Product{
 					ID: "prod-wrong-dir", Name: "Test Product", Category: "Test", UnitOfMeasure: "unit",
@@ -465,7 +466,11 @@ func TestScanCommitStockInErrors(t *testing.T) {
 			httpExchange: httpExchange{
 				method:         "POST",
 				path:           "/api/scans/scan-wrong-dir/commit",
-				expectedStatus: http.StatusInternalServerError,
+				expectedStatus: http.StatusConflict,
+				assertions: []assertion{
+					{path: "$.code", value: "no_item"},
+					{path: "$.error", value: "Not in your pantry"},
+				},
 			},
 		},
 		{
@@ -527,7 +532,13 @@ func TestScanCommitStockOutErrors(t *testing.T) {
 			httpExchange: httpExchange{
 				method:         "POST",
 				path:           "/api/scans/scan-no-item/commit",
-				expectedStatus: http.StatusInternalServerError,
+				expectedStatus: http.StatusConflict,
+				assertions: []assertion{
+					{path: "$.code", value: "no_item"},
+					{path: "$.error", value: "Not in your pantry"},
+					{path: "$.suggestions", absent: true},
+				},
+				bodyExcludes: []string{`no item found for user`},
 			},
 		},
 		{
@@ -765,6 +776,197 @@ func TestScanResolveFlaggedEntry(t *testing.T) {
 				path:           "/api/scans/scan-resolve-bad-prod",
 				body:           `{"productId":"prod-does-not-exist","status":"pending"}`,
 				expectedStatus: http.StatusInternalServerError,
+			},
+		},
+	}
+
+	runHandlerTests(t, tests)
+}
+
+func TestScanCommitStockOutNoItemLink(t *testing.T) {
+	now := time.Now()
+	seed := func(env testEnv) {
+		products := []product.Product{
+			{ID: "prod-off", Name: "Lite Pear Slices In Pear Juice", Category: "Fruit", UnitOfMeasure: "can"},
+			{ID: "prod-pears", Name: "Sliced Pears", Category: "Fruit", UnitOfMeasure: "can"},
+			{ID: "prod-crackers", Name: "Unrelated Crackers", Category: "Snacks", UnitOfMeasure: "box"},
+			{ID: "prod-slices", Name: "Pear Slices", Category: "Fruit", UnitOfMeasure: "can"},
+			{ID: "prod-tuna", Name: "Canned Tuna", Category: "Canned", UnitOfMeasure: "can"},
+			{ID: "prod-beans", Name: "Black Beans", Category: "Canned", UnitOfMeasure: "can"},
+		}
+		for _, item := range products {
+			if err := env.ProductStore.CreateProduct(context.Background(), item); err != nil {
+				env.T.Fatalf("CreateProduct %s: %v", item.ID, err)
+			}
+		}
+		barcodes := []struct{ code, productID, source, userID string }{
+			{"011110828385", "prod-off", "global", ""},
+			{"828385", "prod-pears", "user_override", "user-1"},
+			{"8385", "prod-crackers", "global", ""},
+			{"999000111222", "prod-slices", "global", ""},
+			{"491", "prod-tuna", "user_override", "user-1"},
+			{"1552", "prod-beans", "global", ""},
+		}
+		for _, barcode := range barcodes {
+			if _, err := env.DB.ExecContext(context.Background(),
+				`INSERT INTO barcodes (barcode, product_id, source, user_id) VALUES (?, ?, ?, ?)`,
+				barcode.code, barcode.productID, barcode.source, barcode.userID); err != nil {
+				env.T.Fatalf("barcode %s: %v", barcode.code, err)
+			}
+		}
+		items := []struct {
+			id, productID string
+			count         int
+		}{
+			{"item-pears", "prod-pears", 3},
+			{"item-crackers", "prod-crackers", 4},
+			{"item-slices", "prod-slices", 2},
+			{"item-tuna", "prod-tuna", 1},
+			{"item-beans", "prod-beans", 2},
+		}
+		for _, item := range items {
+			if _, err := env.DB.ExecContext(context.Background(),
+				`INSERT INTO items (id, user_id, product_id) VALUES (?, 'user-1', ?)`,
+				item.id, item.productID); err != nil {
+				env.T.Fatalf("item %s: %v", item.id, err)
+			}
+			for n := 0; n < item.count; n++ {
+				exp := sql.NullTime{}
+				if item.id == "item-pears" && n == 0 {
+					exp = sql.NullTime{Time: now.Add(3 * 24 * time.Hour), Valid: true}
+				}
+				if item.id == "item-pears" && n == 1 {
+					exp = sql.NullTime{Time: now.Add(10 * 24 * time.Hour), Valid: true}
+				}
+				if _, err := env.DB.ExecContext(context.Background(),
+					`INSERT INTO item_instances (id, item_id, stock_in_at, expires_at) VALUES (?, ?, ?, ?)`,
+					fmt.Sprintf("%s-%d", item.id, n), item.id, now.Add(-24*time.Hour), exp); err != nil {
+					env.T.Fatalf("instance %s-%d: %v", item.id, n, err)
+				}
+			}
+		}
+		scanRepo := scan.NewQueue(env.DB)
+		productID := "prod-off"
+		direction := scan.StockOut
+		entry := scan.ScanEntry{
+			ID: "scan-pears", UserID: "user-1", Barcode: "011110828385",
+			ScannedAt: now, Direction: &direction, UnitCount: 1,
+			ProductID: &productID, Status: scan.Pending,
+		}
+		if _, err := scanRepo.CreateScanEntry(context.Background(), entry); err != nil {
+			env.T.Fatalf("CreateScanEntry: %v", err)
+		}
+	}
+
+	tests := []handlerTestCase{
+		{
+			name:  "stock-out with no item returns suggestions ranked by suffix",
+			setup: seed,
+			httpExchange: httpExchange{
+				method:         "POST",
+				path:           "/api/scans/scan-pears/commit",
+				expectedStatus: http.StatusConflict,
+				assertions: []assertion{
+					{path: "$.code", value: "no_item"},
+					{path: "$.error", value: "Not in your pantry"},
+					{path: "$.suggestions[0].name", value: "Sliced Pears"},
+					{path: "$.suggestions[0].productId", value: "prod-pears"},
+					{path: "$.suggestions[0].itemId", value: "item-pears"},
+					{path: "$.suggestions[0].onHand", value: float64(3)},
+					{path: "$.suggestions[1].name", value: "Unrelated Crackers"},
+					{path: "$.suggestions[2].name", value: "Pear Slices"},
+					{path: "$.suggestions[3]", absent: true},
+				},
+				bodyExcludes: []string{"Canned Tuna", "Black Beans", "no item found"},
+			},
+			afterRequest: exchanges(
+				httpExchange{
+					method:         "GET",
+					path:           "/api/scans",
+					query:          map[string]string{"userId": "user-1", "status": "pending"},
+					expectedStatus: http.StatusOK,
+					assertions: []assertion{
+						{path: "$[0].id", value: "scan-pears"},
+						{path: "$[0].status", value: "pending"},
+						{path: "$[0].productId", value: "prod-off"},
+					},
+				},
+				httpExchange{
+					method:         "GET",
+					path:           "/api/products/prod-pears",
+					expectedStatus: http.StatusOK,
+					assertions: []assertion{
+						{path: "$.barcodes[0]", value: "828385"},
+						{path: "$.barcodes[1]", absent: true},
+					},
+				},
+			),
+		},
+		{
+			name:  "linking a suggestion decrements that item and keeps both barcodes",
+			setup: seed,
+			httpExchange: httpExchange{
+				method:         "POST",
+				path:           "/api/scans/scan-pears/commit",
+				body:           `{"linkProductId":"prod-pears"}`,
+				expectedStatus: http.StatusOK,
+				assertions: []assertion{
+					{path: "$.status", value: "committed"},
+					{path: "$.productId", value: "prod-pears"},
+					{path: "$.barcode", value: "011110828385"},
+				},
+			},
+			afterRequest: exchanges(
+				httpExchange{
+					method:         "GET",
+					path:           "/api/inventory/item-pears/instances",
+					expectedStatus: http.StatusOK,
+					assertions: []assertion{
+						{path: "$[0].id", value: "item-pears-1"},
+						{path: "$[1].id", value: "item-pears-2"},
+						{path: "$[2]", absent: true},
+					},
+				},
+				httpExchange{
+					method:         "GET",
+					path:           "/api/products/prod-pears",
+					expectedStatus: http.StatusOK,
+					assertions: []assertion{
+						{path: "$.barcodes[0]", value: "011110828385"},
+						{path: "$.barcodes[1]", value: "828385"},
+					},
+				},
+				httpExchange{
+					method:         "GET",
+					path:           "/api/products/prod-off",
+					expectedStatus: http.StatusOK,
+					assertions: []assertion{
+						{path: "$.barcodes[0]", value: "011110828385"},
+						{path: "$.barcodes[1]", absent: true},
+					},
+				},
+				httpExchange{
+					method:         "GET",
+					path:           "/api/inventory/item-slices/instances",
+					expectedStatus: http.StatusOK,
+					bodyContains:   []string{"item-slices-0", "item-slices-1"},
+					assertions: []assertion{
+						{path: "$[2]", absent: true},
+					},
+				},
+			),
+		},
+		{
+			name:  "linking a product the household does not stock stays a 4xx",
+			setup: seed,
+			httpExchange: httpExchange{
+				method:         "POST",
+				path:           "/api/scans/scan-pears/commit",
+				body:           `{"linkProductId":"prod-off"}`,
+				expectedStatus: http.StatusBadRequest,
+				assertions: []assertion{
+					{path: "$.error", value: "That product is not in your pantry"},
+				},
 			},
 		},
 	}

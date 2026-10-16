@@ -9,9 +9,9 @@ export const scanAlertScopeCopy = 'This browser only. Another browser, or anothe
 const failureCopy: Record<PushSubscribeFailure, string> = {
   'no-push': 'This browser has no push service. Alerts arrive only while this tab is open.',
   'register-failed': 'The browser could not register the service worker. Alerts arrive only while this tab is open.',
-  'empty-vapid': 'This pantry has no push key. Alerts arrive only while this tab is open.',
+  'empty-vapid': 'This Stockbot has no push key. Alerts arrive only while this tab is open.',
   'subscribe-rejected': 'The browser refused the push subscription. Alerts arrive only while this tab is open.',
-  'save-failed': 'Pantry could not save this device. Alerts arrive only while this tab is open.',
+  'save-failed': 'Stockbot could not save this device. Alerts arrive only while this tab is open.',
 };
 
 export function scanAlertStatus(
@@ -38,7 +38,7 @@ export function scanAlertStatus(
   if (!preference) {
     if (failure === 'save-failed') {
       return {
-        text: 'Pantry could not remove this device. It may still send alerts.',
+        text: 'Stockbot could not remove this device. It may still send alerts.',
         tone: 'problem',
         retry: true,
       };
@@ -48,5 +48,5 @@ export function scanAlertStatus(
   if (failure !== null) {
     return { text: failureCopy[failure], tone: 'problem', retry: true };
   }
-  return { text: 'On: alerts arrive even when Pantry is closed', tone: 'on', retry: false };
+  return { text: 'On: alerts arrive even when Stockbot is closed', tone: 'on', retry: false };
 }

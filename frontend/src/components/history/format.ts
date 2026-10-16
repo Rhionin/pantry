@@ -51,6 +51,69 @@ export function formatMoveWhen(at: Date, now: Date, source: string): string {
   return `${date}, ${time}, ${how}`;
 }
 
+export function formatMoveClock(at: Date, source: string): string {
+  const time = new Intl.DateTimeFormat(undefined, { hour: 'numeric', minute: '2-digit' }).format(at);
+  return `${time}, ${sourceLabel(source)}`;
+}
+
+export function dayHeading(at: Date, now: Date): string {
+  if (sameDay(at, now)) return 'Today';
+  const yesterday = new Date(now);
+  yesterday.setDate(now.getDate() - 1);
+  if (sameDay(at, yesterday)) return 'Yesterday';
+  const options: Intl.DateTimeFormatOptions = {
+    weekday: 'long',
+    month: 'long',
+    day: 'numeric',
+  };
+  if (at.getFullYear() !== now.getFullYear()) options.year = 'numeric';
+  return new Intl.DateTimeFormat(undefined, options).format(at);
+}
+
+export interface DayGroup<T> {
+  key: string;
+  heading: string;
+  moves: T[];
+}
+
+// ledgerDayKey matches a chart day to its section in the list.
+export function ledgerDayKey(at: Date): string {
+  return `${at.getFullYear()}-${at.getMonth()}-${at.getDate()}`;
+}
+
+// groupMovesByDay keeps the incoming order, which is newest first, and
+// starts a new day only when the calendar day changes.
+export function groupMovesByDay<T extends { at: string }>(moves: T[], now: Date): DayGroup<T>[] {
+  const groups: DayGroup<T>[] = [];
+  for (const move of moves) {
+    const at = new Date(move.at);
+    const key = ledgerDayKey(at);
+    const last = groups[groups.length - 1];
+    if (last && last.key === key) {
+      last.moves.push(move);
+    } else {
+      groups.push({ key, heading: dayHeading(at, now), moves: [move] });
+    }
+  }
+  return groups;
+}
+
+export function directionWord(direction: string): string {
+  return direction === 'in' ? 'Stocked in' : 'Used';
+}
+
+export function ledgerEmptyCopy(direction: 'all' | 'in' | 'out', query: string): string {
+  const searching = query.trim() !== '';
+  if (!searching && direction === 'all') {
+    return 'No stock moves yet. Stock something in or use something, and it shows up here.';
+  }
+  if (searching && direction === 'all') return 'No moves match that search.';
+  if (searching && direction === 'in') return 'No stocked-in moves match that search.';
+  if (searching && direction === 'out') return 'No uses match that search.';
+  if (direction === 'in') return 'No stocked-in moves in this list.';
+  return 'No uses in this list.';
+}
+
 export function deltaText(direction: string, quantity: number): string {
   return direction === 'in' ? `+${quantity}` : `−${quantity}`;
 }

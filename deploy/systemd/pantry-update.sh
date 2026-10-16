@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Pull and recreate the Pantry stack.
+# Pull and recreate the Stockbot stack.
 #
 # When PUBLIC_HOST is set and auth.caddy exists, the public HTTPS proxy
 # (compose profile "public") is part of the same update. A plain

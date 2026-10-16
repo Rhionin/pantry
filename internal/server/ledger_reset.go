@@ -5,7 +5,7 @@ import (
 	"database/sql"
 	"time"
 
-	"github.com/Rhionin/pantry/internal/cart"
+	"github.com/Rhionin/stockbot/internal/cart"
 )
 
 // providerLedgerReset clears every registered provider's ledger row for one

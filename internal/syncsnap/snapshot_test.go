@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Rhionin/pantry/internal/app"
+	"github.com/Rhionin/stockbot/internal/app"
 	_ "modernc.org/sqlite"
 )
 

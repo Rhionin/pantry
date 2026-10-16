@@ -8,9 +8,9 @@ import (
 	"log"
 	"net/url"
 
-	"github.com/Rhionin/pantry/internal/cart"
-	"github.com/Rhionin/pantry/internal/cart/appcred"
-	"github.com/Rhionin/pantry/internal/cart/connection"
+	"github.com/Rhionin/stockbot/internal/cart"
+	"github.com/Rhionin/stockbot/internal/cart/appcred"
+	"github.com/Rhionin/stockbot/internal/cart/connection"
 )
 
 // ProvidersHandler handles provider-related operations.

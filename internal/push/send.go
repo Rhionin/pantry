@@ -8,13 +8,33 @@ import (
 	"net/url"
 	"time"
 
-	"github.com/Rhionin/pantry/internal/events"
+	"github.com/Rhionin/stockbot/internal/events"
 	webpush "github.com/SherClockHolmes/webpush-go"
 )
 
 // pushTTL is how long a push service should keep an alert for a phone that
 // is asleep. A scan the household already confirmed can still be opened.
 const pushTTL = 24 * 60 * 60
+
+// Firefox for Android receives Web Push through Mozilla's FCM bridge.
+// autopush base64url-encodes the encrypted body and puts it, together with
+// the channel id, content coding, and reliability id, into an FCM data map
+// whose JSON must not exceed 4096 bytes. A 3070-byte body is already 4094
+// bytes once encoded, so the map goes over and autopush answers 413.
+//
+// webpush-go v1.4.0 pads every request body to exactly RecordSize, so the
+// record is sized to the payload: 86-byte header (16 salt, 4 record size,
+// 1 key id length, 65 sender key), the plaintext, 1 delimiter byte, and a
+// 16-byte tag. No padding is added.
+const pushRecordOverhead = 86 + 1 + 16
+
+// maxPushBody keeps the base64url body plus the bridge's other fields well
+// under the FCM 4096-byte data limit.
+const maxPushBody = 2800
+
+func pushRecordSize(payload []byte) uint32 {
+	return uint32(len(payload) + pushRecordOverhead)
+}
 
 var pushClient = &http.Client{Timeout: 15 * time.Second}
 
@@ -31,8 +51,11 @@ func NewSender(subs *Subscriptions, cfg Config) *Sender {
 }
 
 // Listen follows the same broadcaster the scan queue uses, so a push goes
-// out when no browser tab is open to see the event stream.
-func Listen(b *events.Broadcaster, sender *Sender) {
+// out when no browser tab is open to see the event stream. scans is read
+// when a batch settles, so a scan already confirmed is not announced again.
+// A batch that was still waiting out its quiet period is armed again from
+// the due time stored for it, so a restart does not drop that alert.
+func Listen(b *events.Broadcaster, sender *Sender, scans scanReader) {
 	if b == nil || sender == nil || !sender.cfg.CanSend() {
 		return
 	}
@@ -41,7 +64,11 @@ func Listen(b *events.Broadcaster, sender *Sender) {
 		defer unsub()
 		alerts := newAttention(func(notice Notice) {
 			go sender.Notify(context.Background(), notice)
-		}, sender.cfg.settle(), realClock{})
+		}, sender.cfg.settle(), realClock{}, scans)
+		if sender.subs != nil {
+			alerts.schedules = sender.subs
+		}
+		alerts.rearm(context.Background())
 		defer alerts.stop()
 		for msg := range msgs {
 			alerts.handle(msg)
@@ -68,15 +95,14 @@ func (s *Sender) Notify(ctx context.Context, notice Notice) {
 		return
 	}
 	for _, sub := range subs {
-		status, deliverErr := s.deliver(ctx, sub, payload)
+		status, _ := s.deliver(ctx, sub, payload)
+		// Host only. The path is a capability and the keys are secrets.
+		log.Printf("scan alerts: push to %s returned %d", endpointHost(sub.Endpoint), status)
 		if status == http.StatusNotFound || status == http.StatusGone {
 			if err := s.subs.Delete(ctx, sub.Endpoint); err != nil {
 				log.Printf("scan alerts: could not remove an expired push subscription: %v", err)
 			}
 			continue
-		}
-		if deliverErr != nil || status >= 400 {
-			log.Printf("scan alerts: push to %s did not go through (%s)", endpointHost(sub.Endpoint), deliveryProblem(status, deliverErr))
 		}
 	}
 }
@@ -89,6 +115,10 @@ func (s *Sender) deliver(ctx context.Context, sub Subscription, payload []byte) 
 }
 
 func postWebPush(cfg Config, sub Subscription, payload []byte) (int, error) {
+	return deliverWebPush(pushClient, cfg, sub, payload)
+}
+
+func deliverWebPush(client webpush.HTTPClient, cfg Config, sub Subscription, payload []byte) (int, error) {
 	resp, err := webpush.SendNotification(payload, &webpush.Subscription{
 		Endpoint: sub.Endpoint,
 		Keys: webpush.Keys{
@@ -96,12 +126,13 @@ func postWebPush(cfg Config, sub Subscription, payload []byte) (int, error) {
 			Auth:   sub.Auth,
 		},
 	}, &webpush.Options{
-		HTTPClient:      pushClient,
+		HTTPClient:      client,
 		Subscriber:      cfg.subject(),
 		VAPIDPublicKey:  cfg.PublicKey,
 		VAPIDPrivateKey: cfg.PrivateKey,
 		TTL:             pushTTL,
 		Urgency:         webpush.UrgencyHigh,
+		RecordSize:      pushRecordSize(payload),
 	})
 	if resp != nil {
 		defer resp.Body.Close()
@@ -123,14 +154,4 @@ func endpointHost(raw string) string {
 		return "a browser"
 	}
 	return parsed.Host
-}
-
-func deliveryProblem(status int, err error) string {
-	if err != nil {
-		return "the push service did not accept it"
-	}
-	if status == 0 {
-		return "no response"
-	}
-	return http.StatusText(status)
 }

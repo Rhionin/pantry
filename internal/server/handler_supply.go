@@ -5,8 +5,8 @@ import (
 	"errors"
 	"time"
 
-	"github.com/Rhionin/pantry/internal/group"
-	"github.com/Rhionin/pantry/internal/supply"
+	"github.com/Rhionin/stockbot/internal/group"
+	"github.com/Rhionin/stockbot/internal/supply"
 )
 
 type supplySettingsResponse struct {

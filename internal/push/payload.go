@@ -7,10 +7,8 @@ import (
 	"unicode/utf8"
 )
 
-// maxPushPlaintext is the largest JSON document Notify sends.
-// Mozilla autopush rejects an encrypted message once it passes 4096 bytes.
-// The encryption header and tag take the rest, so the plaintext stays near
-// 2500 bytes and a stock-out batch still reaches Firefox.
+// maxPushPlaintext is the largest JSON document Notify sends. With the
+// record overhead the encrypted body stays under maxPushBody.
 const maxPushPlaintext = 2500
 
 // wireNotice is what the service worker shows. Names from the batch are
@@ -59,13 +57,13 @@ func pushPayload(notice Notice) ([]byte, error) {
 	if len(payload) <= maxPushPlaintext {
 		return payload, nil
 	}
-	return json.Marshal(wireNotice{Title: "Pantry", URL: "/"})
+	return json.Marshal(wireNotice{Title: "Stockbot", URL: "/"})
 }
 
 func compactTitle(title string) string {
 	title = strings.TrimSpace(title)
 	if title == "" {
-		return "Pantry"
+		return "Stockbot"
 	}
 	const maxTitleBytes = 120
 	if len(title) <= maxTitleBytes {

@@ -1,6 +1,6 @@
 package server
 
-import "github.com/Rhionin/pantry/internal/buildinfo"
+import "github.com/Rhionin/stockbot/internal/buildinfo"
 
 // buildInfoResponse is the body of GET /api/build. Commit is the full git SHA
 // when the binary was stamped at link time, and "unknown" otherwise. Version

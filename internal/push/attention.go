@@ -1,12 +1,22 @@
 package push
 
 import (
+	"context"
 	"encoding/json"
+	"log"
+	"sync"
 	"time"
 
-	"github.com/Rhionin/pantry/internal/events"
-	"github.com/Rhionin/pantry/internal/scan"
+	"github.com/Rhionin/stockbot/internal/events"
+	"github.com/Rhionin/stockbot/internal/scan"
 )
+
+// scanReader is the queue a settled batch reads to see which scans are still
+// waiting. *scan.Queue satisfies it. A nil reader trusts the events already
+// seen, which is only for tests that do not stand up a queue.
+type scanReader interface {
+	GetScanEntry(ctx context.Context, id string) (*scan.ScanEntry, error)
+}
 
 // announcedCap bounds ids remembered for the life of the process. Clearing
 // the set can repeat an alert; holding every scan id cannot.
@@ -14,6 +24,7 @@ const announcedCap = 4096
 
 type clock interface {
 	After(delay time.Duration, fn func()) (cancel func())
+	Now() time.Time
 }
 
 type realClock struct{}
@@ -23,10 +34,14 @@ func (realClock) After(delay time.Duration, fn func()) func() {
 	return func() { timer.Stop() }
 }
 
+func (realClock) Now() time.Time { return time.Now() }
+
 type openBatch struct {
 	ids    map[string]struct{}
 	order  []string
 	names  map[string]string
+	due    time.Time
+	gen    int
 	cancel func()
 }
 
@@ -40,14 +55,17 @@ func newBatch() *openBatch {
 // attention turns scan events into at most one notice per failure, one per
 // unrecognized product, and one per in or out session after it goes quiet.
 type attention struct {
+	mu        sync.Mutex
 	emit      func(Notice)
 	clock     clock
 	settle    time.Duration
+	scans     scanReader
+	schedules scheduleStore
 	announced map[string]struct{}
 	batches   map[scan.ScanDirection]*openBatch
 }
 
-func newAttention(emit func(Notice), settle time.Duration, clk clock) *attention {
+func newAttention(emit func(Notice), settle time.Duration, clk clock, scans scanReader) *attention {
 	if clk == nil {
 		clk = realClock{}
 	}
@@ -58,6 +76,7 @@ func newAttention(emit func(Notice), settle time.Duration, clk clock) *attention
 		emit:      emit,
 		clock:     clk,
 		settle:    settle,
+		scans:     scans,
 		announced: map[string]struct{}{},
 		batches: map[scan.ScanDirection]*openBatch{
 			scan.StockIn:  newBatch(),
@@ -84,6 +103,8 @@ func (a *attention) handle(msg events.Message) {
 }
 
 func (a *attention) noteFailure(failure scan.ProcessingFailure) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
 	key := "failure:" + failure.ID
 	if failure.ID == "" {
 		key = "failure:" + failure.Barcode + ":" + failure.Message
@@ -95,6 +116,8 @@ func (a *attention) noteFailure(failure scan.ProcessingFailure) {
 }
 
 func (a *attention) noteScan(entry scan.ScanEntry) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
 	if entry.ID == "" {
 		return
 	}
@@ -126,6 +149,8 @@ func (a *attention) noteScan(entry scan.ScanEntry) {
 }
 
 func (a *attention) stop() {
+	a.mu.Lock()
+	defer a.mu.Unlock()
 	a.disarm(scan.StockIn)
 	a.disarm(scan.StockOut)
 }
@@ -168,6 +193,7 @@ func (a *attention) place(id, name string, direction scan.ScanDirection) {
 		if len(a.batches[other].ids) == 0 {
 			a.disarm(other)
 		}
+		a.writeSchedule(other)
 	}
 	a.batches[direction].put(id, name)
 	a.arm(direction)
@@ -183,6 +209,7 @@ func (a *attention) drop(id string) {
 		if len(batch.ids) == 0 {
 			a.disarm(direction)
 		}
+		a.writeSchedule(direction)
 	}
 }
 
@@ -208,39 +235,178 @@ func (b *openBatch) remove(id string) {
 	b.order = kept
 }
 
-// take reports the scans still waiting and the product names in scan order,
-// then forgets them so a later session starts empty.
-func (b *openBatch) take() (int, []string) {
-	count := len(b.ids)
-	var names []string
-	if len(b.names) > 0 {
-		names = make([]string, 0, len(b.order))
-		for _, id := range b.order {
-			if name := b.names[id]; name != "" {
-				names = append(names, name)
-			}
-		}
-	}
+// take reports the scans still in this batch, in scan order, then forgets
+// them so a later session starts empty.
+func (b *openBatch) take() (ids []string, names map[string]string) {
+	ids = append([]string(nil), b.order...)
+	names = b.names
 	b.ids = map[string]struct{}{}
 	b.names = map[string]string{}
 	b.order = nil
+	return ids, names
+}
+
+// stillPending keeps the scans from this batch that the queue still has
+// waiting. Approved and rejected rows are gone, and so is a row the queue
+// no longer has. A nil queue trusts the events already applied to the batch.
+func (a *attention) stillPending(direction scan.ScanDirection, ids []string, remembered map[string]string) (int, []string) {
+	if a.scans == nil {
+		return len(ids), namesInOrder(ids, remembered)
+	}
+	var names []string
+	count := 0
+	for _, id := range ids {
+		entry, err := a.scans.GetScanEntry(context.Background(), id)
+		if err != nil {
+			log.Printf("scan alerts: could not check whether a scan is still waiting: %v", err)
+			count++
+			appendName(&names, remembered[id])
+			continue
+		}
+		if entry == nil || !waitingInBatch(*entry, direction) {
+			continue
+		}
+		count++
+		name := productName(*entry)
+		if name == "" {
+			name = remembered[id]
+		}
+		appendName(&names, name)
+	}
 	return count, names
 }
 
+func waitingInBatch(entry scan.ScanEntry, direction scan.ScanDirection) bool {
+	got, ok := batchDirection(entry)
+	return ok && got == direction
+}
+
+func namesInOrder(ids []string, remembered map[string]string) []string {
+	if len(remembered) == 0 {
+		return nil
+	}
+	names := make([]string, 0, len(ids))
+	for _, id := range ids {
+		appendName(&names, remembered[id])
+	}
+	return names
+}
+
+func appendName(names *[]string, name string) {
+	if name == "" {
+		return
+	}
+	*names = append(*names, name)
+}
+
 func (a *attention) arm(direction scan.ScanDirection) {
+	a.armAfter(direction, a.settle, true)
+}
+
+// armAfter starts the quiet-period timer. persist records due as now+delay
+// so a restart can wait out the same moment. A re-armed timer passes
+// persist false and keeps the due time already stored.
+func (a *attention) armAfter(direction scan.ScanDirection, delay time.Duration, persist bool) {
 	batch := a.batches[direction]
 	a.disarm(direction)
-	batch.cancel = a.clock.After(a.settle, func() {
+	if persist {
+		batch.due = a.clock.Now().Add(delay)
+		a.writeSchedule(direction)
+	}
+	gen := batch.gen
+	batch.cancel = a.clock.After(delay, func() {
+		a.mu.Lock()
+		if batch.gen != gen {
+			a.mu.Unlock()
+			return
+		}
 		batch.cancel = nil
-		count, names := batch.take()
+		// Claim the row before sending. A crash after the send but before
+		// the delete would notify again on the next start.
+		if !a.claim(direction) {
+			a.mu.Unlock()
+			return
+		}
+		ids, remembered := batch.take()
+		a.mu.Unlock()
+		count, names := a.stillPending(direction, ids, remembered)
 		if count > 0 {
 			a.emit(batchNotice(direction, count, names))
 		}
 	})
 }
 
+// rearm waits out batch alerts that were already scheduled when this process
+// started. A due time that has passed fires on the next tick. Claiming the
+// row when the timer fires keeps a second start from sending it again.
+func (a *attention) rearm(ctx context.Context) {
+	if a.schedules == nil {
+		return
+	}
+	rows, err := a.schedules.ListBatchAlerts(ctx)
+	if err != nil {
+		log.Printf("scan alerts: could not read pending batch alerts: %v", err)
+		return
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	for _, row := range rows {
+		batch := a.batches[row.Direction]
+		if batch == nil || len(row.ScanIDs) == 0 {
+			continue
+		}
+		for _, id := range row.ScanIDs {
+			batch.put(id, "")
+		}
+		batch.due = row.DueAt
+		delay := row.DueAt.Sub(a.clock.Now())
+		if delay < 0 {
+			delay = 0
+		}
+		a.armAfter(row.Direction, delay, false)
+	}
+}
+
+func (a *attention) writeSchedule(direction scan.ScanDirection) {
+	if a.schedules == nil {
+		return
+	}
+	batch := a.batches[direction]
+	if len(batch.ids) == 0 {
+		if err := a.schedules.DeleteBatchAlert(context.Background(), direction); err != nil {
+			log.Printf("scan alerts: could not clear a batch alert: %v", err)
+		}
+		return
+	}
+	if batch.due.IsZero() {
+		return
+	}
+	err := a.schedules.SaveBatchAlert(context.Background(), scheduledBatch{
+		Direction: direction,
+		DueAt:     batch.due,
+		ScanIDs:   append([]string(nil), batch.order...),
+	})
+	if err != nil {
+		log.Printf("scan alerts: could not save a batch alert: %v", err)
+	}
+}
+
+// claim removes the stored alert. False means the row is still there, so
+// this process must not send; the next start will.
+func (a *attention) claim(direction scan.ScanDirection) bool {
+	if a.schedules == nil {
+		return true
+	}
+	if err := a.schedules.DeleteBatchAlert(context.Background(), direction); err != nil {
+		log.Printf("scan alerts: could not settle a batch alert: %v", err)
+		return false
+	}
+	return true
+}
+
 func (a *attention) disarm(direction scan.ScanDirection) {
 	batch := a.batches[direction]
+	batch.gen++
 	if batch.cancel == nil {
 		return
 	}

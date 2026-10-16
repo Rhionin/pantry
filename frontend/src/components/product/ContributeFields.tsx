@@ -83,7 +83,7 @@ export const ContributeFields = ({ onChange, allowProductOptIn = true }: Contrib
           <Text size="xs" c="dimmed">
             {configured
               ? 'A product is sent only when you check Contribute on that product.'
-              : 'This Pantry is not signed in to the open databases. A product you choose to contribute is saved here and is not sent.'}
+              : 'This Stockbot is not signed in to the open databases. A product you choose to contribute is saved here and is not sent.'}
           </Text>
           <Checkbox
             label="Contribute this product"

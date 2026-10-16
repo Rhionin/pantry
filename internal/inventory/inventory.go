@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/Rhionin/pantry/internal/product"
+	"github.com/Rhionin/stockbot/internal/product"
 	"github.com/google/uuid"
 )
 

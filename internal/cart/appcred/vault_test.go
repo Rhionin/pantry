@@ -5,7 +5,7 @@ import (
 	"database/sql"
 	"testing"
 
-	"github.com/Rhionin/pantry/internal/app"
+	"github.com/Rhionin/stockbot/internal/app"
 	_ "modernc.org/sqlite"
 )
 

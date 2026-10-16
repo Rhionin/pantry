@@ -4,9 +4,9 @@ import (
 	"context"
 	"time"
 
-	"github.com/Rhionin/pantry/internal/inventory"
-	"github.com/Rhionin/pantry/internal/shopping"
-	"github.com/Rhionin/pantry/internal/supply"
+	"github.com/Rhionin/stockbot/internal/inventory"
+	"github.com/Rhionin/stockbot/internal/shopping"
+	"github.com/Rhionin/stockbot/internal/supply"
 )
 
 // shoppingProvision is the list after the supply snapshot has been written.

@@ -1,6 +1,6 @@
 {
-  "name": "Pantry",
-  "short_name": "Pantry",
+  "name": "Stockbot",
+  "short_name": "Stockbot",
   "icons": [
     {
       "src": "/favicon.svg",
@@ -21,8 +21,8 @@
       "purpose": "any"
     }
   ],
-  "theme_color": "#1C7C4E",
-  "background_color": "#F6F1E6",
+  "theme_color": "#0D9488",
+  "background_color": "#F4F7F6",
   "display": "standalone",
   "start_url": "/"
 }

@@ -1,6 +1,6 @@
 # Test Coverage Scripts
 
-This directory contains scripts for managing test coverage in the Pantry project.
+This directory contains scripts for managing test coverage in the Stockbot project.
 
 ## Scripts
 

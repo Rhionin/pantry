@@ -12,7 +12,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Rhionin/pantry/internal/cart"
+	"github.com/Rhionin/stockbot/internal/cart"
 )
 
 const (

@@ -2,16 +2,33 @@ package server
 
 import (
 	"fmt"
+	"io"
 	"net/http"
 	"time"
 
-	"github.com/Rhionin/pantry/internal/events"
-	"github.com/Rhionin/pantry/internal/telemetry"
+	"github.com/Rhionin/stockbot/internal/events"
+	"github.com/Rhionin/stockbot/internal/telemetry"
 )
+
+// eventKeepalive is how often an open /api/events stream writes an SSE
+// comment. The proxy in front of the Pi closes an idle HTTP response after
+// about 100 seconds, and a half-open stream looks alive to the browser until
+// the next write. A comment is not an event, so the page and the Grocy
+// watcher ignore it.
+const eventKeepalive = 25 * time.Second
 
 type EventsHandler struct {
 	Broadcaster *events.Broadcaster
 	Telemetry   *telemetry.Registry
+	// Keepalive is how often to write an SSE comment. Zero uses eventKeepalive.
+	Keepalive time.Duration
+}
+
+func (h *EventsHandler) keepaliveEvery() time.Duration {
+	if h.Keepalive > 0 {
+		return h.Keepalive
+	}
+	return eventKeepalive
 }
 
 // Handle implements GET /api/events (Requirement 1.1). It blocks for the
@@ -40,8 +57,16 @@ func (h *EventsHandler) Handle(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 	flusher.Flush()
 
+	keepalive := time.NewTicker(h.keepaliveEvery())
+	defer keepalive.Stop()
+
 	for {
 		select {
+		case <-keepalive.C:
+			if _, err := io.WriteString(w, ": ping\n\n"); err != nil {
+				return
+			}
+			flusher.Flush()
 		case msg, ok := <-messages:
 			if !ok {
 				return // buffer overflow: Broadcaster already dropped us

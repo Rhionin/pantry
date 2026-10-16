@@ -1,4 +1,4 @@
-// Typed fetch wrappers for the Pantry Management backend API.
+// Typed fetch wrappers for the Stockbot Management backend API.
 // Endpoint list and request/response shapes verified against
 // internal/server/server.go and the individual handler files.
 import { reportApiResult } from '../telemetry/client';
@@ -28,6 +28,8 @@ import type {
   GroupTarget,
   GroupPreview,
   HistoryView,
+  HistoryLedger,
+  PantryLinkSuggestion,
   TargetConflictMember,
 } from '../types';
 
@@ -46,13 +48,21 @@ export class ApiError extends Error {
   readonly status: number;
   readonly code: string;
   readonly members: TargetConflictMember[];
+  readonly suggestions: PantryLinkSuggestion[];
 
-  constructor(status: number, message: string, code = '', members: TargetConflictMember[] = []) {
+  constructor(
+    status: number,
+    message: string,
+    code = '',
+    members: TargetConflictMember[] = [],
+    suggestions: PantryLinkSuggestion[] = [],
+  ) {
     super(message);
     this.name = 'ApiError';
     this.status = status;
     this.code = code;
     this.members = members;
+    this.suggestions = suggestions;
   }
 }
 
@@ -78,12 +88,17 @@ async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
     }
     let message = res.statusText;
     try {
-      const body = (await res.json()) as { error?: string; code?: string; members?: TargetConflictMember[] };
+      const body = (await res.json()) as {
+        error?: string;
+        code?: string;
+        members?: TargetConflictMember[];
+        suggestions?: PantryLinkSuggestion[];
+      };
       if (body.error) {
         message = body.error;
       }
       reportApiResult(route, res.status, performance.now() - started, started);
-      throw new ApiError(res.status, message, body.code ?? '', body.members ?? []);
+      throw new ApiError(res.status, message, body.code ?? '', body.members ?? [], body.suggestions ?? []);
     } catch (err) {
       if (err instanceof ApiError) throw err;
       // Response body was not JSON; fall back to statusText.
@@ -191,10 +206,13 @@ export function updateScanEntry(id: string, input: UpdateScanEntryInput): Promis
   return apiFetch(`/api/scans/${id}`, { method: 'PATCH', body: JSON.stringify(input) });
 }
 
-export function commitScanEntry(id: string, instanceId?: string): Promise<ScanEntry> {
+export function commitScanEntry(id: string, instanceId?: string, linkProductId?: string): Promise<ScanEntry> {
+  const body: { instanceId?: string; linkProductId?: string } = {};
+  if (instanceId) body.instanceId = instanceId;
+  if (linkProductId) body.linkProductId = linkProductId;
   return apiFetch(`/api/scans/${id}/commit`, {
     method: 'POST',
-    body: JSON.stringify(instanceId ? { instanceId } : {}),
+    body: JSON.stringify(body),
   });
 }
 
@@ -260,6 +278,13 @@ export function getItemHistory(itemId: string): Promise<HistoryView> {
 
 export function getGroupHistory(groupId: string): Promise<HistoryView> {
   return apiFetch(`/api/groups/${groupId}/history`);
+}
+
+export function getHouseholdHistory(filter?: { direction?: string; q?: string }): Promise<HistoryLedger> {
+  return apiFetch(`/api/history${toQueryString({
+    direction: filter?.direction,
+    q: filter?.q,
+  })}`);
 }
 
 export function setMoveQuantity(id: string, quantity: number): Promise<HistoryView> {

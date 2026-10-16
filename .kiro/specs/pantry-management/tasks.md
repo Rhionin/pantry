@@ -10,7 +10,7 @@ Implement the Pantry Management app as a Go REST API backend with a React + Type
 
 - [x] 1. Project scaffolding and database schema
   - [x] 1.1 Initialize Go module, directory layout, and SQLite migration runner
-    - Create `go.mod` (`module github.com/Rhionin/pantry`), `cmd/server/main.go`, and `internal/` subdirectories (`db`, `routes`, `service`, `model`)
+    - Create `go.mod` (`module github.com/Rhionin/stockbot`), `cmd/server/main.go`, and `internal/` subdirectories (`db`, `routes`, `service`, `model`)
     - Add dependencies: `modernc.org/sqlite` (pure-Go SQLite driver), `pgregory.net/rapid` (property tests); use Go 1.22+ standard library `net/http` `ServeMux` for routing (no third-party router needed — `ServeMux` supports method+path patterns like `GET /api/scans/{id}`)
     - Implement a simple migration runner that applies numbered `.sql` files from `internal/db/migrations/` in order
     - _Requirements: all_

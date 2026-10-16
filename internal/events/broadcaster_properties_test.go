@@ -8,8 +8,8 @@ import (
 
 	"pgregory.net/rapid"
 
-	"github.com/Rhionin/pantry/internal/events"
-	"github.com/Rhionin/pantry/internal/scan"
+	"github.com/Rhionin/stockbot/internal/events"
+	"github.com/Rhionin/stockbot/internal/scan"
 )
 
 // recvMessageRT waits up to recvTimeout for a message on ch and fails the

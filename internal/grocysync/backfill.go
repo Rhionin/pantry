@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Rhionin/pantry/internal/syncsnap"
+	"github.com/Rhionin/stockbot/internal/syncsnap"
 )
 
 // ErrNotConfirmed is returned when backfill is invoked without --confirm.

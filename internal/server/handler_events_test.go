@@ -11,7 +11,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Rhionin/pantry/internal/product"
+	"github.com/Rhionin/stockbot/internal/events"
+	"github.com/Rhionin/stockbot/internal/product"
+	"github.com/Rhionin/stockbot/internal/scan"
 )
 
 // sseFrame is one decoded "event: <type>\ndata: <json>\n\n" server-sent
@@ -148,6 +150,92 @@ func TestEventsStream_ScanEventOnCreate(t *testing.T) {
 	}
 	if payload.ID != created.ID {
 		t.Fatalf("SSE event id: want %q, got %q", created.ID, payload.ID)
+	}
+}
+
+// An idle stream writes an SSE comment so the proxy in front of the Pi does
+// not drop it. The comment is not an event, and a real event published
+// afterward still arrives intact.
+func TestEventsStream_KeepaliveCommentThenRealEvent(t *testing.T) {
+	broadcaster := events.NewBroadcaster()
+	handler := &EventsHandler{Broadcaster: broadcaster, Keepalive: 15 * time.Millisecond}
+	testServer := httptest.NewServer(http.HandlerFunc(handler.Handle))
+	t.Cleanup(testServer.Close)
+
+	streamCtx, cancelStream := context.WithCancel(context.Background())
+	req, err := http.NewRequestWithContext(streamCtx, http.MethodGet, testServer.URL, nil)
+	if err != nil {
+		t.Fatalf("build request: %v", err)
+	}
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("GET stream: %v", err)
+	}
+	if res.StatusCode != http.StatusOK {
+		res.Body.Close()
+		t.Fatalf("status: want %d, got %d", http.StatusOK, res.StatusCode)
+	}
+	if got := res.Header.Get("Content-Type"); got != "text/event-stream" {
+		t.Fatalf("content type: want text/event-stream, got %q", got)
+	}
+
+	lines := make(chan string, 32)
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		scanner := bufio.NewScanner(res.Body)
+		for scanner.Scan() {
+			lines <- scanner.Text()
+		}
+	}()
+	t.Cleanup(func() {
+		cancelStream()
+		res.Body.Close()
+		select {
+		case <-done:
+		case <-time.After(5 * time.Second):
+			t.Error("stream reader did not exit")
+		}
+	})
+
+	sawComment := false
+	deadline := time.After(2 * time.Second)
+	for !sawComment {
+		select {
+		case line := <-lines:
+			if strings.HasPrefix(line, "event:") || strings.HasPrefix(line, "data:") {
+				t.Fatalf("keepalive looked like an event: %q", line)
+			}
+			sawComment = line == ": ping"
+		case <-deadline:
+			t.Fatal("timed out waiting for a keepalive comment")
+		}
+	}
+
+	broadcaster.PublishScannerModeEvent(scan.StockIn)
+	var eventLine, dataLine string
+	deadline = time.After(2 * time.Second)
+	for eventLine == "" || dataLine == "" {
+		select {
+		case line := <-lines:
+			switch {
+			case line == ": ping" || line == "" || strings.HasPrefix(line, "id:"):
+			case strings.HasPrefix(line, "event: "):
+				eventLine = line
+			case strings.HasPrefix(line, "data: "):
+				dataLine = line
+			default:
+				t.Fatalf("unexpected stream line %q", line)
+			}
+		case <-deadline:
+			t.Fatalf("timed out waiting for the event (event %q data %q)", eventLine, dataLine)
+		}
+	}
+	if eventLine != "event: scanner_mode" {
+		t.Fatalf("event line: got %q", eventLine)
+	}
+	if dataLine != `data: "stock_in"` {
+		t.Fatalf("data line: got %q", dataLine)
 	}
 }
 

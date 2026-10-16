@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Rhionin/pantry/internal/cart"
+	"github.com/Rhionin/stockbot/internal/cart"
 )
 
 type fakeRoundTripper struct {

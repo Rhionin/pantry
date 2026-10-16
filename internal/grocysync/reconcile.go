@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Rhionin/pantry/internal/syncsnap"
+	"github.com/Rhionin/stockbot/internal/syncsnap"
 )
 
 // PantrySource is the read API the sidecar is allowed to call.

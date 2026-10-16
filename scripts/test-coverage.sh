@@ -18,7 +18,7 @@ echo "Coverage threshold: ${COVERAGE_THRESHOLD}%"
 echo ""
 
 # Third-party Go under frontend/node_modules (flatted ships a Go port) is not
-# pantry code. Leaving it in ./... drops the baseline whenever node_modules exists.
+# stockbot code. Leaving it in ./... drops the baseline whenever node_modules exists.
 mapfile -t PKGS < <(go list ./... | grep -v '/node_modules/')
 COVERPKG=$(IFS=,; echo "${PKGS[*]}")
 go test -cover -coverpkg="${COVERPKG}" -coverprofile=coverage.out "${PKGS[@]}"

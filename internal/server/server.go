@@ -8,24 +8,24 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/Rhionin/pantry/internal/brand"
-	"github.com/Rhionin/pantry/internal/cart"
-	"github.com/Rhionin/pantry/internal/cart/appcred"
-	"github.com/Rhionin/pantry/internal/cart/connection"
-	"github.com/Rhionin/pantry/internal/deployhook"
-	"github.com/Rhionin/pantry/internal/events"
-	"github.com/Rhionin/pantry/internal/group"
-	"github.com/Rhionin/pantry/internal/history"
-	"github.com/Rhionin/pantry/internal/inventory"
-	"github.com/Rhionin/pantry/internal/product"
-	"github.com/Rhionin/pantry/internal/push"
-	"github.com/Rhionin/pantry/internal/scan"
-	"github.com/Rhionin/pantry/internal/scanlistener"
-	"github.com/Rhionin/pantry/internal/shopping"
-	"github.com/Rhionin/pantry/internal/suggestion"
-	"github.com/Rhionin/pantry/internal/supply"
-	"github.com/Rhionin/pantry/internal/telemetry"
-	"github.com/Rhionin/pantry/internal/webui"
+	"github.com/Rhionin/stockbot/internal/brand"
+	"github.com/Rhionin/stockbot/internal/cart"
+	"github.com/Rhionin/stockbot/internal/cart/appcred"
+	"github.com/Rhionin/stockbot/internal/cart/connection"
+	"github.com/Rhionin/stockbot/internal/deployhook"
+	"github.com/Rhionin/stockbot/internal/events"
+	"github.com/Rhionin/stockbot/internal/group"
+	"github.com/Rhionin/stockbot/internal/history"
+	"github.com/Rhionin/stockbot/internal/inventory"
+	"github.com/Rhionin/stockbot/internal/product"
+	"github.com/Rhionin/stockbot/internal/push"
+	"github.com/Rhionin/stockbot/internal/scan"
+	"github.com/Rhionin/stockbot/internal/scanlistener"
+	"github.com/Rhionin/stockbot/internal/shopping"
+	"github.com/Rhionin/stockbot/internal/suggestion"
+	"github.com/Rhionin/stockbot/internal/supply"
+	"github.com/Rhionin/stockbot/internal/telemetry"
+	"github.com/Rhionin/stockbot/internal/webui"
 )
 
 // defaultStockInBarcode and defaultStockOutBarcode mirror the headless
@@ -414,6 +414,7 @@ func newAPIMux(
 	apiMux.HandleFunc("GET /api/sync/snapshot", (&syncSnapshotHandler{DB: db, Token: syncToken}).ServeHTTP)
 
 	historyHandler := &HistoryHandler{Journal: history.NewJournal(db), Pantry: pantry, Events: broadcaster}
+	apiMux.HandleFunc("GET /api/history", HandleJSON(historyHandler.Household))
 	apiMux.HandleFunc("GET /api/items/{itemId}/history", HandleJSON(historyHandler.Product))
 	apiMux.HandleFunc("GET /api/groups/{groupId}/history", HandleJSON(historyHandler.Group))
 	apiMux.HandleFunc("PATCH /api/moves/{id}", HandleJSON(historyHandler.SetQuantity))
@@ -574,7 +575,7 @@ func newAPIMux(
 	apiMux.HandleFunc("DELETE /api/push/subscriptions", HandleJSON(pushHandler.Delete))
 	// The listener uses the broadcaster this mux already publishes scans on,
 	// including scans from the headless reader when it shares that broadcaster.
-	push.Listen(broadcaster, push.NewSender(pushSubscriptions, pushCfg))
+	push.Listen(broadcaster, push.NewSender(pushSubscriptions, pushCfg), scanQueue)
 
 	// Unknown resolution handler
 	unknownResolutionHandler := &UnknownResolutionHandler{

@@ -4,8 +4,8 @@ import (
 	"context"
 	"strings"
 
-	"github.com/Rhionin/pantry/internal/inventory"
-	"github.com/Rhionin/pantry/internal/shopping"
+	"github.com/Rhionin/stockbot/internal/inventory"
+	"github.com/Rhionin/stockbot/internal/shopping"
 )
 
 type shoppingDealRequest struct {

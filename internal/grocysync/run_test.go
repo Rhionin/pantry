@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Rhionin/pantry/internal/syncsnap"
+	"github.com/Rhionin/stockbot/internal/syncsnap"
 )
 
 func TestPantrySnapshotReadsJSON(t *testing.T) {
@@ -157,6 +157,19 @@ func TestRunIdlesWhenDisabled(t *testing.T) {
 	cancel()
 	if err := Run(ctx, Config{}); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestWatchIgnoresStreamComments(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(": ping\n\ndata: {\"ok\":true}\n\n: ping\n\n"))
+	}))
+	defer srv.Close()
+	client := NewPantryClient(srv.URL, "tok")
+	n := 0
+	err := client.Watch(context.Background(), func() { n++ })
+	if n != 1 || err == nil {
+		t.Fatalf("n=%d err=%v", n, err)
 	}
 }
 

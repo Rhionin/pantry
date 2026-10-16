@@ -1,5 +1,5 @@
 {
-  "name": "Pantry",
+  "name": "Stockbot",
   "build": {
     "dockerfile": "Dockerfile"
   },

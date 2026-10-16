@@ -1,4 +1,4 @@
-# Pantry Server
+# Stockbot Server
 
 A barcode inventory management server for home pantries, using Open Food Facts
 as the product database.
@@ -102,7 +102,7 @@ has no barcodes, product names, or user ids, so an agent can read it without
 the household password:
 
 ```bash
-curl -s https://pantry.rhionin.com/api/telemetry
+curl -s https://stockbot.rhionin.com/api/telemetry
 ```
 
 `POST /api/telemetry/client` is public on that hostname as well, so the page
@@ -131,7 +131,7 @@ flags returns `commit` `unknown` and `version` `dev`.
 | `subject` | Commit subject. Omitted when unset |
 
 ```bash
-curl -s https://pantry.rhionin.com/api/build
+curl -s https://stockbot.rhionin.com/api/build
 ```
 
 The response is that identity only. It has no environment values, hostnames,

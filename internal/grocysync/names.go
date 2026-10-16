@@ -4,7 +4,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/Rhionin/pantry/internal/syncsnap"
+	"github.com/Rhionin/stockbot/internal/syncsnap"
 )
 
 // assignGrocyNames gives every parent and product a case-insensitive unique

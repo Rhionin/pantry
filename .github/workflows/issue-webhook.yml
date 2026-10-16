@@ -15,7 +15,7 @@ concurrency:
 
 jobs:
   notify:
-    name: Notify Pantry bot
+    name: Notify Stockbot bot
     runs-on: ubuntu-latest
     timeout-minutes: 2
     steps:

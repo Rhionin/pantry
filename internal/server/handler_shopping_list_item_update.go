@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 
-	"github.com/Rhionin/pantry/internal/shopping"
+	"github.com/Rhionin/stockbot/internal/shopping"
 )
 
 // ShoppingListItemUpdateHandler handles PATCH /api/shopping-list/items/{id}.

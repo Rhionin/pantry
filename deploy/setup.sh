@@ -2,9 +2,9 @@
 
 set -euo pipefail
 
-# Pantry Deployment Setup Script
+# Stockbot Deployment Setup Script
 # 
-# This script configures a Raspberry Pi to run Pantry in a Docker container
+# This script configures a Raspberry Pi to run Stockbot in a Docker container
 # with hot-pluggable barcode scanner support. It is designed for iteration:
 # run it multiple times as you make changes, and it will converge to the
 # desired state without losing configuration.
@@ -155,7 +155,7 @@ copy_deploy_files() {
   log_info "Copying deployment files to ${PANTRY_DIR}..."
   mkdir -p "${PANTRY_DIR}"
   local item src dest
-  for item in docker-compose.yml docker-compose.tunnel.yml docker-compose.grocy.yml .env.example Caddyfile Caddyfile.tunnel publish-mode.sh auth-migrate.sh vapid-env.sh udev systemd firewall mdns dns; do
+  for item in docker-compose.yml docker-compose.tunnel.yml docker-compose.grocy.yml .env.example Caddyfile Caddyfile.tunnel Caddyfile.legacy Caddyfile.tunnel.legacy publish-mode.sh auth-migrate.sh vapid-env.sh udev systemd firewall mdns dns; do
     src="$SCRIPT_DIR/$item"
     dest="${PANTRY_DIR}/$item"
     if [[ ! -e "$src" ]]; then
@@ -230,6 +230,54 @@ write_auth_from_env() {
   return 0
 }
 
+# valid_hostname is 0 when $1 is a DNS name with no scheme, port, or path.
+valid_hostname() {
+  local host="$1"
+  [[ "$host" =~ ^[A-Za-z0-9.-]+$ && "$host" == *.* && "$host" != .* && "$host" != *. ]]
+}
+
+# write_legacy_snippet DEST SITE writes one Caddy site that redirects to
+# PUBLIC_HOST, or a comment when SITE is empty. SITE is a site address
+# (a hostname, or http://hostname in tunnel mode) and is already validated.
+write_legacy_snippet() {
+  local dest="$1" site="$2" tmp
+  tmp=$(mktemp "${dest}.XXXXXX")
+  if [[ -n "$site" ]]; then
+    # {$PUBLIC_HOST} is expanded by Caddy when the proxy starts.
+    # shellcheck disable=SC2016
+    printf '%s {\n\tredir https://{$PUBLIC_HOST}{uri} 308\n}\n' "$site" > "$tmp"
+  else
+    printf '%s\n' '# No LEGACY_PUBLIC_HOST. Caddy serves PUBLIC_HOST only.' > "$tmp"
+  fi
+  mv "$tmp" "$dest"
+}
+
+# write_legacy_public_host refreshes the redirect snippets from .env.
+# An empty LEGACY_PUBLIC_HOST serves PUBLIC_HOST only. The same value as
+# PUBLIC_HOST is ignored so Caddy does not get two blocks for one name.
+write_legacy_public_host() {
+  local legacy public site=""
+  legacy=$(env_value LEGACY_PUBLIC_HOST)
+  public=$(env_value PUBLIC_HOST)
+  if [[ -n "$legacy" ]]; then
+    if ! valid_hostname "$legacy"; then
+      log_warn "LEGACY_PUBLIC_HOST must be a hostname such as pantry.rhionin.com, without a scheme or path (got: $legacy). The previous name will not redirect."
+    elif [[ -z "$public" || "$legacy" == "$public" ]]; then
+      log_warn "LEGACY_PUBLIC_HOST ($legacy) is not a different hostname from PUBLIC_HOST. The previous name will not redirect."
+    else
+      site="$legacy"
+      log_info "https://${legacy} redirects to https://${public}"
+    fi
+  fi
+  if [[ -n "$site" ]]; then
+    write_legacy_snippet "${PANTRY_DIR}/Caddyfile.legacy" "$site"
+    write_legacy_snippet "${PANTRY_DIR}/Caddyfile.tunnel.legacy" "http://${site}"
+  else
+    write_legacy_snippet "${PANTRY_DIR}/Caddyfile.legacy" ""
+    write_legacy_snippet "${PANTRY_DIR}/Caddyfile.tunnel.legacy" ""
+  fi
+}
+
 # prepare_public_profile is 0 when compose should include the public profile.
 # An existing auth.caddy is never rewritten and the operator is never prompted,
 # so a re-run cannot wipe BASIC_AUTH_PASSWORD or force it to be typed again.
@@ -239,12 +287,12 @@ prepare_public_profile() {
   public_host=$(env_value PUBLIC_HOST)
   if [[ -z "$public_host" ]]; then
     if [[ "${publish_mode:-}" == tunnel ]]; then
-      log_warn "CLOUDFLARE_TUNNEL_TOKEN is set but PUBLIC_HOST is empty. The tunnel was not started. Set PUBLIC_HOST=pantry.rhionin.com in ${PANTRY_DIR}/.env."
+      log_warn "CLOUDFLARE_TUNNEL_TOKEN is set but PUBLIC_HOST is empty. The tunnel was not started. Set PUBLIC_HOST=stockbot.rhionin.com in ${PANTRY_DIR}/.env."
     fi
     return 1
   fi
-  if [[ ! "$public_host" =~ ^[A-Za-z0-9.-]+$ ]] || [[ "$public_host" != *.* ]] || [[ "$public_host" == .* ]] || [[ "$public_host" == *. ]]; then
-    log_warn "PUBLIC_HOST must be a hostname such as pantry.rhionin.com, without a scheme or path (got: $public_host). The public proxy was left unchanged."
+  if ! valid_hostname "$public_host"; then
+    log_warn "PUBLIC_HOST must be a hostname such as stockbot.rhionin.com, without a scheme or path (got: $public_host). The public proxy was left unchanged."
     return 1
   fi
   if [[ -d "$PANTRY_DIR/Caddyfile" ]]; then
@@ -296,7 +344,7 @@ remove_lan_firewall() {
   fi
 }
 
-# apply_lan_firewall drops non-LAN clients on the published Pantry port.
+# apply_lan_firewall drops non-LAN clients on the published Stockbot port.
 # The safe default is on: compose publishes that port, and the public proxy
 # does not close it. PANTRY_LAN_FIREWALL=off removes the rule instead.
 # Sets firewall_applied=true when the rule is installed.
@@ -318,7 +366,7 @@ apply_lan_firewall() {
     published=true
   fi
   if [[ "$use_public" != true && "$published" != true ]]; then
-    log_info "Compose does not publish the Pantry port and the public proxy is off; skipping the LAN firewall"
+    log_info "Compose does not publish the Stockbot port and the public proxy is off; skipping the LAN firewall"
     firewall_applied=false
     return 0
   fi
@@ -339,7 +387,7 @@ apply_lan_firewall() {
     "$PANTRY_DIR/firewall/pantry-lan-only.sh"
   fi
   firewall_applied=true
-  log_success "Published Pantry port accepts LAN, loopback, and Tailscale sources"
+  log_success "Published Stockbot port accepts LAN, loopback, and Tailscale sources"
   log_info "Ports 80 and 443 are unchanged. Opt out with PANTRY_LAN_FIREWALL=off in $PANTRY_DIR/.env, then re-run sudo ./setup.sh"
   return 0
 }
@@ -415,7 +463,7 @@ publish_lan_name() {
 <?xml version="1.0" standalone='no'?>
 <!DOCTYPE service-group SYSTEM "avahi-service.dtd">
 <service-group>
-  <name replace-wildcards="yes">Pantry</name>
+  <name replace-wildcards="yes">Stockbot</name>
   <service>
     <type>_http._tcp</type>
     <port>${host_port}</port>
@@ -487,7 +535,7 @@ refresh_update_unit() {
   log_success "Refreshed pantry-update units so automatic updates keep the public proxy and the deploy hook"
 }
 
-# verify_public_sign_in asks Pantry on the LAN port, with the public-entry
+# verify_public_sign_in asks Stockbot on the LAN port, with the public-entry
 # header Caddy would add. A password file the container cannot read makes
 # GET /api/session return 503. A visitor who simply has not signed in gets 401.
 verify_public_sign_in() {
@@ -589,7 +637,7 @@ cmd_apply() {
     shift
   done
 
-  log_info "Applying Pantry setup..."
+  log_info "Applying Stockbot setup..."
 
   if ! command_exists docker; then
     log_warn "Docker not found, installing..."
@@ -634,6 +682,7 @@ cmd_apply() {
   if [[ -f "$PANTRY_DIR/.env" ]]; then
     chmod 600 "$PANTRY_DIR/.env"
   fi
+  write_legacy_public_host
   prepare_deploy_trigger_dir
 
   if [[ ! -d /dev/input ]]; then
@@ -641,7 +690,7 @@ cmd_apply() {
     if ! mkdir -p /dev/input; then
       # The scanner is optional. A failed mkdir must not block copying files
       # or starting the containers.
-      log_warn "Could not create /dev/input. Pantry will still start; scanner nodes appear after that directory exists."
+      log_warn "Could not create /dev/input. Stockbot will still start; scanner nodes appear after that directory exists."
     else
       log_success "Created /dev/input"
     fi
@@ -659,7 +708,7 @@ cmd_apply() {
   if [[ "$mode_rc" -eq 2 ]]; then
     fatal "Tunnel mode needs CLOUDFLARE_TUNNEL_TOKEN in ${PANTRY_DIR}/.env. Open the existing tunnel pantry-pi in Cloudflare Zero Trust, paste its token with no quotes, and re-run: sudo ./setup.sh publish --tunnel"
   elif [[ "$mode_rc" -ne 0 ]]; then
-    fatal "Could not decide how to publish Pantry"
+    fatal "Could not decide how to publish Stockbot"
   fi
 
   local use_public=false
@@ -687,12 +736,12 @@ cmd_apply() {
   if [[ "$use_public" == true && "$publish_mode" == tunnel ]]; then
     proxy_service=caddy-tunnel
     compose+=(-f "$PANTRY_DIR/docker-compose.tunnel.yml" --profile tunnel)
-    log_info "Starting Pantry and Cloudflare Tunnel for https://$(env_value PUBLIC_HOST)"
+    log_info "Starting Stockbot and Cloudflare Tunnel for https://$(env_value PUBLIC_HOST)"
   elif [[ "$use_public" == true ]]; then
     compose+=(--profile public)
-    log_info "Starting Pantry and the public HTTPS proxy for https://$(env_value PUBLIC_HOST)"
+    log_info "Starting Stockbot and the public HTTPS proxy for https://$(env_value PUBLIC_HOST)"
   else
-    log_info "Starting Pantry on the LAN"
+    log_info "Starting Stockbot on the LAN"
   fi
   while IFS= read -r arg; do
     [[ -n "$arg" ]] && compose+=("$arg")
@@ -709,13 +758,13 @@ cmd_apply() {
   # starts when Caddy stops showing its own prompt. A failed pull leaves
   # the running containers alone.
   if [[ "$use_public" == true ]]; then
-    log_info "Pulling the Pantry image before reloading the public site"
+    log_info "Pulling the Stockbot image before reloading the public site"
     if ! "${compose[@]}" pull pantry; then
-      fatal "Could not pull the Pantry image. The running site was left unchanged."
+      fatal "Could not pull the Stockbot image. The running site was left unchanged."
     fi
   fi
   if ! "${compose[@]}" up -d; then
-    fatal "Failed to start Pantry"
+    fatal "Failed to start Stockbot"
   fi
 
   if [[ "$use_public" == true ]]; then
@@ -763,7 +812,7 @@ cmd_apply() {
   # public profile without enabling the timer on a LAN-only box.
   refresh_update_unit
 
-  log_info "Waiting for Pantry to become healthy..."
+  log_info "Waiting for Stockbot to become healthy..."
   local deadline=$((SECONDS + 60))
   local host_port
   host_port=$(env_value HOST_PORT)
@@ -777,12 +826,12 @@ cmd_apply() {
     sleep 2
   done
   if [[ "$healthy" != true ]]; then
-    log_error "Pantry failed to become healthy within 60 seconds"
+    log_error "Stockbot failed to become healthy within 60 seconds"
     log_error "Recent logs:"
     docker compose -f "$PANTRY_DIR/docker-compose.yml" logs --tail=50 pantry || true
     fatal "Health check timeout"
   fi
-  log_success "Pantry is healthy"
+  log_success "Stockbot is healthy"
 
   if [[ "$use_public" == true ]]; then
     verify_public_sign_in "$host_port"
@@ -830,7 +879,7 @@ cmd_apply() {
     apply_split_dns
   fi
 
-  log_success "Pantry setup complete"
+  log_success "Stockbot setup complete"
   report_lan_access "$host_port"
   if [[ "$use_public" == true && "$publish_mode" == tunnel ]]; then
     log_info "Public: https://$(env_value PUBLIC_HOST) through Cloudflare Tunnel (shared password; the LAN address does not ask for it). Nothing on this Pi is listening on ports 80 or 443."
@@ -976,13 +1025,13 @@ cmd_rule() {
     vid_lc=$(printf '%s' "$scanner_vid" | tr '[:upper:]' '[:lower:]')
     pid_lc=$(printf '%s' "$scanner_pid" | tr '[:upper:]' '[:lower:]')
     log_info "Matching on vendor=$vid_lc product=$pid_lc"
-    rule_content="# Pantry Scanner udev rule - auto-generated for \"$scanner_name\"
+    rule_content="# Stockbot Scanner udev rule - auto-generated for \"$scanner_name\"
 SUBSYSTEM==\"input\", KERNEL==\"event*\", ATTRS{id/vendor}==\"$vid_lc\", ATTRS{id/product}==\"$pid_lc\", \\
   SYMLINK+=\"input/pantry-scanner\", GROUP=\"65532\", MODE=\"0640\"
 "
   else
     log_info "No vendor/product IDs found; matching on device name"
-    rule_content="# Pantry Scanner udev rule - auto-generated
+    rule_content="# Stockbot Scanner udev rule - auto-generated
 SUBSYSTEM==\"input\", KERNEL==\"event*\", ATTRS{name}==\"$scanner_name\", \\
   SYMLINK+=\"input/pantry-scanner\", GROUP=\"65532\", MODE=\"0640\"
 "
@@ -1019,7 +1068,7 @@ SUBSYSTEM==\"input\", KERNEL==\"event*\", ATTRS{name}==\"$scanner_name\", \\
 # ============================================================================
 cmd_status() {
   require_root
-  log_info "Diagnosing Pantry deployment chain..."
+  log_info "Diagnosing Stockbot deployment chain..."
   echo ""
 
   local failed=0
@@ -1101,9 +1150,9 @@ cmd_status() {
 
   # 6. Container running
   if docker compose -f "${PANTRY_DIR}/docker-compose.yml" ps 2>/dev/null | grep -q "pantry.*Up"; then
-    log_success "Pantry container is running"
+    log_success "Stockbot container is running"
   else
-    log_error "Pantry container is not running"
+    log_error "Stockbot container is not running"
     failed=$((failed + 1))
   fi
 
@@ -1173,7 +1222,7 @@ cmd_unpublish() {
   if [[ ! -f ${PANTRY_DIR}/docker-compose.yml ]]; then
     fatal "Nothing installed at ${PANTRY_DIR}. Run 'sudo ./setup.sh' first"
   fi
-  log_info "Stopping the public HTTPS proxy and Cloudflare Tunnel. Pantry keeps running on the LAN."
+  log_info "Stopping the public HTTPS proxy and Cloudflare Tunnel. Stockbot keeps running on the LAN."
   docker compose --project-directory "${PANTRY_DIR}" -f "${PANTRY_DIR}/docker-compose.yml" --profile public stop caddy || true
   docker compose --project-directory "${PANTRY_DIR}" -f "${PANTRY_DIR}/docker-compose.yml" --profile public rm -f caddy || true
   if [[ -f "${PANTRY_DIR}/docker-compose.tunnel.yml" ]]; then
@@ -1197,7 +1246,7 @@ cmd_firewall_off() {
 # ============================================================================
 cmd_logs() {
   require_root
-  log_info "Following Pantry container logs (Ctrl+C to stop)..."
+  log_info "Following Stockbot container logs (Ctrl+C to stop)..."
   docker compose -f "${PANTRY_DIR}/docker-compose.yml" logs --tail=100 -f pantry || true
 }
 
@@ -1292,7 +1341,7 @@ cmd_deploy_secret() {
 # ============================================================================
 cmd_help() {
   cat << 'EOF'
-Pantry Deployment Setup Script
+Stockbot Deployment Setup Script
 
 USAGE:
   sudo ./setup.sh [COMMAND] [OPTIONS]
@@ -1304,7 +1353,7 @@ After git pull, from deploy/:
 That syncs this folder to /opt/pantry, starts the containers (including the
 public HTTPS proxy when PUBLIC_HOST is set and auth.caddy already exists),
 restarts Caddy so the current Caddyfile is loaded, and applies the LAN
-firewall on the published Pantry port. It is safe to re-run. When
+firewall on the published Stockbot port. It is safe to re-run. When
 CLOUDFLARE_TUNNEL_TOKEN is set, the same command publishes through
 Cloudflare Tunnel instead of ports 80 and 443.
 
@@ -1320,7 +1369,7 @@ COMMANDS:
                    Pass --tunnel to publish through Cloudflare Tunnel. A token
                    already in .env selects tunnel without the flag.
   firewall         Alias of apply. The LAN port rule is part of apply.
-  unpublish        Stop the HTTPS proxy. Pantry keeps running on the LAN.
+  unpublish        Stop the HTTPS proxy. Stockbot keeps running on the LAN.
   firewall-off     Remove the LAN port rule until the next setup. To leave it
                    off, set PANTRY_LAN_FIREWALL=off in /opt/pantry/.env.
   rule             Regenerate and install udev rule for current scanner
@@ -1342,7 +1391,7 @@ EXAMPLES:
   sudo rm /opt/pantry/auth.caddy
   sudo ./setup.sh
 
-  # Publish https://pantry.rhionin.com through Cloudflare Tunnel.
+  # Publish https://stockbot.rhionin.com through Cloudflare Tunnel.
   # Put CLOUDFLARE_TUNNEL_TOKEN in /opt/pantry/.env first. The service URL
   # saved on the tunnel hostname is http://caddy:80
   sudo ./setup.sh publish --tunnel

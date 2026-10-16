@@ -10,10 +10,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Rhionin/pantry/internal/buildinfo"
-	"github.com/Rhionin/pantry/internal/cart"
-	"github.com/Rhionin/pantry/internal/product"
-	"github.com/Rhionin/pantry/internal/supply"
+	"github.com/Rhionin/stockbot/internal/buildinfo"
+	"github.com/Rhionin/stockbot/internal/cart"
+	"github.com/Rhionin/stockbot/internal/product"
+	"github.com/Rhionin/stockbot/internal/supply"
 	"github.com/go-json-experiment/json"
 	"pgregory.net/rapid"
 )
@@ -109,7 +109,8 @@ func isRegisteredGetPath(path string) bool {
 		// POST-only. GET is 405 from the method pattern, not an unmatched path.
 		"/api/deploy-hook",
 		"/api/contributions", "/api/settings/contribution", "/api/settings/supply",
-		"/api/groups", "/api/group-suggestions", "/api/settings/group-rule":
+		"/api/groups", "/api/group-suggestions", "/api/settings/group-rule",
+		"/api/history":
 		return true
 	}
 	// Wildcard GET routes: /api/inventory/{itemId}/instances, /api/products/{id},
@@ -264,6 +265,9 @@ func generateRegisteredRequest(t *rapid.T) registeredRequest {
 		},
 		func(t *rapid.T) registeredRequest {
 			return registeredRequest{http.MethodGet, "/api/inventory", ""}
+		},
+		func(t *rapid.T) registeredRequest {
+			return registeredRequest{http.MethodGet, "/api/history", ""}
 		},
 		func(t *rapid.T) registeredRequest {
 			return registeredRequest{http.MethodGet, "/api/shopping-list", ""}

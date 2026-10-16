@@ -4,8 +4,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Rhionin/pantry/internal/scan"
-	"github.com/Rhionin/pantry/internal/scanlistener"
+	"github.com/Rhionin/stockbot/internal/scan"
+	"github.com/Rhionin/stockbot/internal/scanlistener"
 )
 
 // scannerIdleTimeout is how long scan-in stays selected with no product-scan

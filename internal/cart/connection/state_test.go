@@ -5,7 +5,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/Rhionin/pantry/internal/cart/connection"
+	"github.com/Rhionin/stockbot/internal/cart/connection"
 )
 
 func TestGenerateRandomStateYieldsAtLeast32Chars(t *testing.T) {

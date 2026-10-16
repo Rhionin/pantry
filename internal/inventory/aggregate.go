@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Rhionin/pantry/internal/product"
+	"github.com/Rhionin/stockbot/internal/product"
 )
 
 // InventoryItem represents an aggregated inventory item with instance counts

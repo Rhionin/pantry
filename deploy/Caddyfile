@@ -6,7 +6,7 @@
 # Home Wi-Fi clients that look up PUBLIC_HOST get the router's WAN address.
 # If that router does not NAT-hairpin, the connection hangs and never
 # reaches this process. Do not publish port 8080 to paper over that: the
-# Pantry listener has no password. Those clients use http://<lan-ip>:8080
+# Stockbot listener has no password. Those clients use http://<lan-ip>:8080
 # or http://pantry.local:8080. See deploy/README.md.
 # Caddyfile.tunnel is the no-forward path. setup selects it when
 # CLOUDFLARE_TUNNEL_TOKEN is set. This file stays the certificate path.
@@ -27,6 +27,10 @@
 		-Server
 	}
 }
+
+# Previous public name. setup.sh rewrites Caddyfile.legacy when
+# LEGACY_PUBLIC_HOST is set. A comment-only file serves PUBLIC_HOST only.
+import Caddyfile.legacy
 
 {$PUBLIC_HOST} {
 	# handle is first-match. This matcher is exact: /api/telemetry and
@@ -86,7 +90,7 @@
 	}
 
 	# Everything else is the household site. Caddy does not show a password
-	# prompt. Pantry asks for the same username and password when it sees
+	# prompt. Stockbot asks for the same username and password when it sees
 	# X-Pantry-Entry, and the handles above stay open. header_up replaces a
 	# value supplied by the client, so the LAN port cannot be made to look
 	# like the public site by omitting the header on the way through Caddy.
@@ -110,7 +114,7 @@
 			# root, so the file has to be this exact path. Leave it
 			# uncompressed: Android Firefox has failed to install a gzipped
 			# worker. Do not set Cache-Control or Service-Worker-Allowed
-			# here. Pantry already sends each of those once, and a second
+			# here. Stockbot already sends each of those once, and a second
 			# copy is joined into a value the browser rejects. Subscribe and
 			# unsubscribe stay on /api and use the household session cookie,
 			# the same way the rest of the app does.

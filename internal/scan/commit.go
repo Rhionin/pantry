@@ -7,8 +7,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/Rhionin/pantry/internal/history"
-	"github.com/Rhionin/pantry/internal/inventory"
+	"github.com/Rhionin/stockbot/internal/history"
+	"github.com/Rhionin/stockbot/internal/inventory"
 	"github.com/google/uuid"
 )
 
@@ -17,6 +17,8 @@ var (
 	ErrItemNotFound = errors.New("item not found")
 	// ErrNoneOnHand means a stock-out found no unit on the shelf.
 	ErrNoneOnHand = errors.New("nothing on hand")
+	// ErrLinkNotStocked means the chosen product has no household item to scan out.
+	ErrLinkNotStocked = errors.New("that product is not in your pantry")
 )
 
 // CommitStockIn commits a stock-in scan entry by creating one item instance
@@ -427,15 +429,26 @@ func (r *Queue) findOrCreateItem(ctx context.Context, tx *sql.Tx, userID, produc
 // (ORDER BY expires_at ASC NULLS LAST) to remove. If instanceID is provided,
 // that specific instance is removed.
 //
-// This function handles the complete stock-out flow:
-// 1. Ensures an item exists for the user+product combination
-// 2. Selects the instance to remove (specific or use-oldest-first)
-// 3. Marks the instance as removed with removal_reason 'consumed'
-// 4. Records one consumption row once opening is finished
-// 5. Marks the scan entry as committed
+// A missing household item returns *NoItemError and changes nothing.
+// CommitStockOutLink is the explicit choice that adds the scanned barcode
+// and decrements that product. Nothing is linked on its own.
 //
 // All operations are performed within a transaction to ensure atomicity.
 func (r *Queue) CommitStockOut(ctx context.Context, scanEntry *ScanEntry, instanceID *string) error {
+	return r.commitStockOut(ctx, scanEntry, instanceID, "")
+}
+
+// CommitStockOutLink adds the scanned barcode to linkProductID, keeps that
+// product's existing barcodes, and commits the stock-out against the household
+// item for linkProductID.
+func (r *Queue) CommitStockOutLink(ctx context.Context, scanEntry *ScanEntry, instanceID *string, linkProductID string) error {
+	if linkProductID == "" {
+		return fmt.Errorf("link product id is required")
+	}
+	return r.commitStockOut(ctx, scanEntry, instanceID, linkProductID)
+}
+
+func (r *Queue) commitStockOut(ctx context.Context, scanEntry *ScanEntry, instanceID *string, linkProductID string) error {
 	if scanEntry.Direction == nil || *scanEntry.Direction != StockOut {
 		return fmt.Errorf("scan entry direction must be stock_out, got %v", scanEntry.Direction)
 	}
@@ -450,18 +463,45 @@ func (r *Queue) CommitStockOut(ctx context.Context, scanEntry *ScanEntry, instan
 	}
 	defer tx.Rollback()
 
+	targetProductID := *scanEntry.ProductID
+	if linkProductID != "" {
+		targetProductID = linkProductID
+	}
+
 	var itemID string
 	err = tx.QueryRowContext(ctx, `
 		SELECT id FROM items 
 		WHERE user_id = ? AND product_id = ?`,
-		scanEntry.UserID, *scanEntry.ProductID,
+		scanEntry.UserID, targetProductID,
 	).Scan(&itemID)
 
 	if err == sql.ErrNoRows {
-		return fmt.Errorf("no item found for user %q and product %q", scanEntry.UserID, *scanEntry.ProductID)
+		if linkProductID != "" {
+			return ErrLinkNotStocked
+		}
+		// Same connection as the open transaction. A second query on r.db
+		// would deadlock the single-connection test database, or read an
+		// empty :memory: database from the pool.
+		suggestions, sugErr := r.suggestLinks(ctx, tx, scanEntry)
+		if sugErr != nil {
+			return sugErr
+		}
+		return &NoItemError{Suggestions: suggestions}
 	}
 	if err != nil {
 		return fmt.Errorf("find item: %w", err)
+	}
+
+	if linkProductID != "" {
+		_, err = tx.ExecContext(ctx, `
+			INSERT INTO barcodes (barcode, product_id, source, user_id)
+			VALUES (?, ?, 'user_override', ?)
+			ON CONFLICT(barcode, source, user_id) DO UPDATE SET product_id = excluded.product_id`,
+			scanEntry.Barcode, linkProductID, scanEntry.UserID,
+		)
+		if err != nil {
+			return fmt.Errorf("link barcode: %w", err)
+		}
 	}
 
 	scanID := scanEntry.ID
@@ -479,13 +519,21 @@ func (r *Queue) CommitStockOut(ctx context.Context, scanEntry *ScanEntry, instan
 		return err
 	}
 
-	_, err = tx.ExecContext(ctx, `
-		UPDATE scan_entries 
-		SET status = ?, committed_at = CURRENT_TIMESTAMP 
-		WHERE id = ?`,
-		string(Committed),
-		scanEntry.ID,
-	)
+	if linkProductID != "" {
+		_, err = tx.ExecContext(ctx, `
+			UPDATE scan_entries
+			SET product_id = ?, status = ?, committed_at = CURRENT_TIMESTAMP
+			WHERE id = ?`,
+			linkProductID, string(Committed), scanEntry.ID,
+		)
+	} else {
+		_, err = tx.ExecContext(ctx, `
+			UPDATE scan_entries
+			SET status = ?, committed_at = CURRENT_TIMESTAMP
+			WHERE id = ?`,
+			string(Committed), scanEntry.ID,
+		)
+	}
 	if err != nil {
 		return fmt.Errorf("update scan entry: %w", err)
 	}

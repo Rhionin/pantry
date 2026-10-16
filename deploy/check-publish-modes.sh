@@ -129,7 +129,7 @@ if command -v caddy >/dev/null 2>&1; then
     local cfg="$1" dir="$2"
     (
       cd "$dir"
-      PUBLIC_HOST=pantry.rhionin.com ACME_EMAIL=cj@example.com \
+      PUBLIC_HOST=stockbot.rhionin.com ACME_EMAIL=cj@example.com \
         caddy adapt --config "$cfg" --pretty
     )
   }
@@ -137,7 +137,7 @@ elif command -v docker >/dev/null 2>&1; then
   caddy_adapt() {
     local cfg="$1" dir="$2"
     docker run --rm \
-      -e PUBLIC_HOST=pantry.rhionin.com \
+      -e PUBLIC_HOST=stockbot.rhionin.com \
       -e ACME_EMAIL=cj@example.com \
       -v "$dir:/etc/caddy:ro" \
       "$cert_caddy" \
@@ -186,7 +186,9 @@ have "$tunnel_cfg" 'ipv4_address: 10.77.77.3' "caddy has a fixed address"
 have "$tunnel_cfg" 'ip_range: 10.77.77.4/30' "dynamic addresses cannot take .2 or .3"
 have "$tunnel_cfg" 'gateway: 10.77.77.1' "cf-tunnel gateway stays .1"
 assert_only_cloudflared_on_trusted_ip "$tunnel_cfg"
+have "$public_cfg" 'Caddyfile.legacy' "certificate mode mounts the legacy snippet"
 have "$tunnel_cfg" 'Caddyfile.tunnel' "tunnel mode mounts Caddyfile.tunnel"
+have "$tunnel_cfg" 'Caddyfile.tunnel.legacy' "tunnel mode mounts the legacy snippet"
 have "$tunnel_cfg" 'target: /etc/caddy/Caddyfile' "tunnel Caddyfile is what Caddy loads"
 have "$tunnel_cfg" 'container_name: pantry-cloudflared' "cloudflared container name"
 lack "$tunnel_cfg" 'CLOUDFLARE_TUNNEL_TOKEN: null' "token env must be the empty string when unset, not null"
@@ -194,23 +196,23 @@ lack "$tunnel_cfg" 'CLOUDFLARE_TUNNEL_TOKEN: null' "token env must be the empty 
 have "$tunnel_cfg" $'- tunnel\n      - run' "cloudflared runs tunnel run"
 
 adapt_dir=$(mktemp -d)
-cp deploy/Caddyfile deploy/Caddyfile.tunnel "$adapt_dir/"
+cp deploy/Caddyfile deploy/Caddyfile.tunnel deploy/Caddyfile.legacy "$adapt_dir/"
 # shellcheck disable=SC2016 # bcrypt hashes start with $2
 printf '%s\n' 'basic_auth bcrypt Pantry {' '	pantry $2a$14$abcdefghijklmnopqrstuuabcdefghijklmnopqrstuvwxyz012' '}' > "$adapt_dir/auth.caddy"
 
 acme_json=$(caddy_adapt "$adapt_dir/Caddyfile" "$adapt_dir")
 tunnel_json=$(caddy_adapt "$adapt_dir/Caddyfile.tunnel" "$adapt_dir")
-rm -rf "$adapt_dir"
 
-have "$acme_json" 'pantry.rhionin.com' "certificate adapt expands PUBLIC_HOST"
+have "$acme_json" 'stockbot.rhionin.com' "certificate adapt expands PUBLIC_HOST"
 have "$acme_json" '/api/telemetry' "certificate adapt keeps telemetry public"
 have "$acme_json" '/api/build' "certificate adapt keeps the build identity public"
 have "$acme_json" '/api/deploy-hook' "certificate adapt keeps the deploy hook public"
 have "$acme_json" '/brand/logo.png' "certificate adapt keeps the brand mark public"
 have "$acme_json" 'cj@example.com' "certificate adapt keeps the ACME email"
 lack "$acme_json" '10.77.77.2' "certificate adapt must not trust the tunnel address"
+lack "$acme_json" 'pantry.rhionin.com' "certificate adapt does not claim the previous name by default"
 
-have "$tunnel_json" 'pantry.rhionin.com' "tunnel adapt expands PUBLIC_HOST"
+have "$tunnel_json" 'stockbot.rhionin.com' "tunnel adapt expands PUBLIC_HOST"
 have "$tunnel_json" '/api/telemetry' "tunnel adapt keeps telemetry public"
 have "$tunnel_json" '/api/build' "tunnel adapt keeps the build identity public"
 have "$tunnel_json" '/api/deploy-hook' "tunnel adapt keeps the deploy hook public"
@@ -219,6 +221,7 @@ have "$tunnel_json" '/brand/logo.png' "tunnel adapt keeps the brand mark public"
 have "$tunnel_json" '/terms' "tunnel adapt keeps terms public"
 have "$tunnel_json" '/privacy' "tunnel adapt keeps privacy public"
 have "$tunnel_json" '/api/events' "tunnel adapt keeps the event stream unbuffered"
+lack "$tunnel_json" 'pantry.rhionin.com' "tunnel adapt does not claim the previous name by default"
 have "$tunnel_json" '10.77.77.2/32' "tunnel adapt trusts only cloudflared"
 have "$tunnel_json" 'Cf-Connecting-Ip' "tunnel adapt reads the visitor address"
 lack "$tunnel_json" 'cj@example.com' "tunnel adapt must not configure an ACME account"
@@ -230,10 +233,28 @@ have "$tunnel_json" "X-Pantry-Entry" "tunnel adapt marks the public site for the
 # Caddy's adapt output canonicalizes the header to Client-Ip.
 have "$acme_json" "X-Pantry-Client-Ip" "certificate adapt passes the visitor address"
 have "$tunnel_json" "X-Pantry-Client-Ip" "tunnel adapt passes the visitor address"
-# Pantry sends these on /sw.js. A second copy is joined with the app's header.
+# Stockbot sends these on /sw.js. A second copy is joined with the app's header.
 lack "$acme_json" "Service-Worker-Allowed" "certificate adapt must not set Service-Worker-Allowed"
 lack "$tunnel_json" "Service-Worker-Allowed" "tunnel adapt must not set Service-Worker-Allowed"
 lack "$acme_json" "no-cache, no-transform" "certificate adapt must not set the worker Cache-Control"
 lack "$tunnel_json" "no-cache, no-transform" "tunnel adapt must not set the worker Cache-Control"
+
+# The previous name is a separate site that redirects. It is not in the
+# committed snippet; setup.sh writes it from LEGACY_PUBLIC_HOST.
+# shellcheck disable=SC2016 # Caddy expands {$PUBLIC_HOST}; the snippet keeps the placeholder.
+printf '%s {\n\tredir https://{$PUBLIC_HOST}{uri} 308\n}\n' 'pantry.rhionin.com' > "$adapt_dir/Caddyfile.legacy"
+acme_legacy=$(caddy_adapt "$adapt_dir/Caddyfile" "$adapt_dir")
+have "$acme_legacy" 'pantry.rhionin.com' "certificate adapt redirects the previous name"
+have "$acme_legacy" '308' "certificate adapt uses a permanent redirect"
+have "$acme_legacy" 'stockbot.rhionin.com' "certificate redirect target is PUBLIC_HOST"
+
+# shellcheck disable=SC2016 # Caddy expands {$PUBLIC_HOST}; the snippet keeps the placeholder.
+printf '%s {\n\tredir https://{$PUBLIC_HOST}{uri} 308\n}\n' 'http://pantry.rhionin.com' > "$adapt_dir/Caddyfile.legacy"
+tunnel_legacy=$(caddy_adapt "$adapt_dir/Caddyfile.tunnel" "$adapt_dir")
+have "$tunnel_legacy" 'pantry.rhionin.com' "tunnel adapt redirects the previous name"
+have "$tunnel_legacy" '308' "tunnel adapt uses a permanent redirect"
+lack "$tunnel_legacy" '"module": "acme"' "tunnel redirect must not request a certificate"
+
+rm -rf "$adapt_dir"
 
 echo "check-publish-modes ok"

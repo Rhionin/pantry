@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Point the public Pantry hostname at this Pi for DNS clients on the LAN.
+# Point the public Stockbot hostname at this Pi for DNS clients on the LAN.
 #
 # Off unless PANTRY_SPLIT_DNS=on. Public DNS is not modified, and Caddy's
 # certificate and shared password stay in front of anyone who still reaches
@@ -69,7 +69,7 @@ esac
 
 host=$(env_value PUBLIC_HOST)
 if [[ ! "$host" =~ ^[A-Za-z0-9.-]+$ ]] || [[ "$host" != *.* ]] || [[ "$host" == .* ]] || [[ "$host" == *. ]]; then
-  echo "split-horizon: PUBLIC_HOST must be a hostname such as pantry.rhionin.com before DNS can answer it" >&2
+  echo "split-horizon: PUBLIC_HOST must be a hostname such as stockbot.rhionin.com before DNS can answer it" >&2
   exit 1
 fi
 

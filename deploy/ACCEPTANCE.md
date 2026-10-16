@@ -1,4 +1,4 @@
-# Pantry Scanner Hot-Plug Resilience — Hardware Acceptance Runbook
+# Stockbot Scanner Hot-Plug Resilience — Hardware Acceptance Runbook
 
 **The one question this runbook exists to answer:** Does the Pi boot with no scanner attached and serve a usable web UI, and does it start reading the scanner whenever the scanner appears?
 

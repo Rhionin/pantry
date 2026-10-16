@@ -5,10 +5,10 @@ import (
 	"errors"
 	"time"
 
-	"github.com/Rhionin/pantry/internal/group"
-	"github.com/Rhionin/pantry/internal/product"
-	"github.com/Rhionin/pantry/internal/shopping"
-	"github.com/Rhionin/pantry/internal/supply"
+	"github.com/Rhionin/stockbot/internal/group"
+	"github.com/Rhionin/stockbot/internal/product"
+	"github.com/Rhionin/stockbot/internal/shopping"
+	"github.com/Rhionin/stockbot/internal/supply"
 )
 
 // GroupHandler serves product groups, suggestions, and the account rule.

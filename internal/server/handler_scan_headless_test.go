@@ -6,7 +6,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/Rhionin/pantry/internal/scanlistener"
+	"github.com/Rhionin/stockbot/internal/scanlistener"
 )
 
 // TestHealthWithScannerStatus verifies that GET /health includes scanner

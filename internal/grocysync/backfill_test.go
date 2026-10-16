@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Rhionin/pantry/internal/syncsnap"
+	"github.com/Rhionin/stockbot/internal/syncsnap"
 )
 
 func TestApplyHistoryWritesRealDatesAndIsIdempotent(t *testing.T) {

@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Rhionin/pantry/internal/cart/connection"
+	"github.com/Rhionin/stockbot/internal/cart/connection"
 )
 
 func TestAccessTokenReturnsPersistedTokenWhenFresh(t *testing.T) {

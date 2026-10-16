@@ -14,8 +14,8 @@ import (
 
 	_ "modernc.org/sqlite"
 
-	"github.com/Rhionin/pantry/internal/app"
-	"github.com/Rhionin/pantry/internal/product"
+	"github.com/Rhionin/stockbot/internal/app"
+	"github.com/Rhionin/stockbot/internal/product"
 )
 
 // TestMigrationApplies verifies that RunMigrations applies the initial schema
@@ -77,6 +77,7 @@ func TestMigrationApplies(t *testing.T) {
 		"provider_app_credentials",
 		"provider_connections",
 		"push_subscriptions",
+		"scan_alert_schedule",
 		"scan_entries",
 		"shopping_list_entry_adjustments",
 		"shopping_list_items",
@@ -115,13 +116,13 @@ func TestMigrationIsIdempotent(t *testing.T) {
 
 	// One schema_migrations row per applied .sql file; the second RunMigrations
 	// must not re-apply any file, so the count equals the number of migration
-	// files (001 through 005, both 006 files, both 007 files, 008 through 016).
+	// files (001 through 005, both 006 files, both 007 files, 008 through 017).
 	var count int
 	if err := conn.QueryRow(`SELECT COUNT(*) FROM schema_migrations`).Scan(&count); err != nil {
 		t.Fatalf("count schema_migrations: %v", err)
 	}
-	if count != 18 {
-		t.Errorf("schema_migrations should have 18 rows after two runs, got %d", count)
+	if count != 19 {
+		t.Errorf("schema_migrations should have 19 rows after two runs, got %d", count)
 	}
 }
 

@@ -19,7 +19,7 @@ import (
 
 	_ "time/tzdata"
 
-	"github.com/Rhionin/pantry/internal/syncsnap"
+	"github.com/Rhionin/stockbot/internal/syncsnap"
 )
 
 // TestGrocyIntegration talks to a real Grocy. It does not run in CI.

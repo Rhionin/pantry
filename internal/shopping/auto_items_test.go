@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/Rhionin/pantry/internal/shopping"
+	"github.com/Rhionin/stockbot/internal/shopping"
 )
 
 func TestSavePlannedLinesKeepsTouchedLinesAndSkipsRemoved(t *testing.T) {

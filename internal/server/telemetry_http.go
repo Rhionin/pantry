@@ -5,7 +5,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Rhionin/pantry/internal/telemetry"
+	"github.com/Rhionin/stockbot/internal/telemetry"
 )
 
 // publishObserver adapts the broadcaster's callbacks onto the telemetry registry.

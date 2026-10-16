@@ -210,6 +210,24 @@ export interface HistoryView {
   moves: HistoryMove[];
 }
 
+export interface LedgerMove {
+  id: string;
+  direction: 'in' | 'out';
+  quantity: number;
+  at: string;
+  source: 'scan' | 'manual';
+  productId: string;
+  productName: string;
+  imageUrl?: string;
+  groupId?: string;
+  groupName?: string;
+}
+
+export interface HistoryLedger {
+  moves: LedgerMove[];
+  setupAt?: string;
+}
+
 export interface GroupPreview {
   productId: string;
   because: string;
@@ -411,6 +429,13 @@ export interface GroupTarget {
   quantity?: number;
   dimension?: NetDimension;
   clear?: boolean;
+}
+
+export interface PantryLinkSuggestion {
+  itemId: string;
+  productId: string;
+  name: string;
+  onHand: number;
 }
 
 export interface TargetConflictMember {

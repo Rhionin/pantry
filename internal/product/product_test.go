@@ -9,8 +9,8 @@ import (
 	_ "modernc.org/sqlite"
 	"pgregory.net/rapid"
 
-	"github.com/Rhionin/pantry/internal/app"
-	"github.com/Rhionin/pantry/internal/product"
+	"github.com/Rhionin/stockbot/internal/app"
+	"github.com/Rhionin/stockbot/internal/product"
 )
 
 // newTestCatalog opens an in-memory SQLite database, applies all migrations, and returns a product Catalog.

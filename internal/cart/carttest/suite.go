@@ -4,8 +4,8 @@ import (
 	"database/sql"
 	"testing"
 
-	"github.com/Rhionin/pantry/internal/app"
-	"github.com/Rhionin/pantry/internal/cart"
+	"github.com/Rhionin/stockbot/internal/app"
+	"github.com/Rhionin/stockbot/internal/cart"
 )
 
 // RunContractSuite verifies one adapter against every behavior its declared
@@ -18,19 +18,19 @@ func RunContractSuite(t *testing.T, p cart.Provider) {
 	// coverage maps each capability value to the case that exercises it.
 	// A declared value with no entry fails the suite naming the provider and the value.
 	coverage := map[string]func(*testing.T, cart.Provider){
-		"auth=none": caseNoAuth,
+		"auth=none":                      caseNoAuth,
 		"auth=oauth2_authorization_code": caseOAuth2,
-		"auth=api_key": caseAPIKey,
-		"delivery=server_push": caseServerPush,
-		"delivery=client_handoff": caseClientHandoff,
-		"confirmation=per_line": casePerLine,
-		"confirmation=per_request": casePerRequest,
-		"confirmation=none": caseNone,
-		"mutation=add_only": caseAddOnly,
-		"mutation=add_and_update": caseAddAndUpdate,
-		"mutation=full": caseFull,
-		"identity=derived": caseDerivedIdentity,
-		"identity=looked_up": caseLookedUpIdentity,
+		"auth=api_key":                   caseAPIKey,
+		"delivery=server_push":           caseServerPush,
+		"delivery=client_handoff":        caseClientHandoff,
+		"confirmation=per_line":          casePerLine,
+		"confirmation=per_request":       casePerRequest,
+		"confirmation=none":              caseNone,
+		"mutation=add_only":              caseAddOnly,
+		"mutation=add_and_update":        caseAddAndUpdate,
+		"mutation=full":                  caseFull,
+		"identity=derived":               caseDerivedIdentity,
+		"identity=looked_up":             caseLookedUpIdentity,
 	}
 
 	// Check each capability value has a case

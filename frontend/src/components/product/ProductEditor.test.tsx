@@ -53,7 +53,7 @@ describe('ProductEditor', () => {
           createdAt: '2026-03-20T10:00:00Z',
           contribution: {
             status: 'not_configured',
-            detail: 'Saved in your pantry. Nothing was sent because this Pantry is not signed in to the open databases.',
+            detail: 'Saved in your pantry. Nothing was sent because this Stockbot is not signed in to the open databases.',
           },
         }));
       }

@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 
-	"github.com/Rhionin/pantry/internal/inventory"
+	"github.com/Rhionin/stockbot/internal/inventory"
 )
 
 // SetTargetQuantityHandler handles POST /api/items/{itemId}/target-quantity.

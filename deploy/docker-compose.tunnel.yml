@@ -6,7 +6,10 @@
 # Remotely managed tunnel pantry-pi
 # (9e158cce-4d31-4881-82f3-d905af6164e7). Ingress is set in Cloudflare,
 # not in a file here. Public hostname in Zero Trust → Networks → Tunnels:
-#   pantry.rhionin.com  →  http://caddy:80
+#   stockbot.rhionin.com  →  http://caddy:80
+#   pantry.rhionin.com    →  http://caddy:80
+# The second name is optional. Caddy redirects it to PUBLIC_HOST when
+# LEGACY_PUBLIC_HOST is set. Nothing on the Pi stores the ingress.
 # `caddy` is an alias on cf-tunnel. cloudflared is pinned to 10.77.77.2,
 # the only address Caddyfile.tunnel trusts for X-Forwarded-Proto and
 # CF-Connecting-IP. Caddy is pinned to 10.77.77.3. It starts first
@@ -35,6 +38,7 @@ services:
         ipv4_address: 10.77.77.3
     volumes:
       - ./Caddyfile.tunnel:/etc/caddy/Caddyfile:ro
+      - ./Caddyfile.tunnel.legacy:/etc/caddy/Caddyfile.legacy:ro
       - caddy-data:/data
       - caddy-config:/config
 

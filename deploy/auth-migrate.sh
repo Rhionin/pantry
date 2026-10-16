@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Copy the existing Caddy bcrypt hash into the file Pantry reads, and keep
+# Copy the existing Caddy bcrypt hash into the file Stockbot reads, and keep
 # one session secret. Sourced by setup.sh and pantry-update.sh.
 # auth.caddy is never rewritten. A secret that is already set is never rotated,
 # so a redeploy does not sign phones out or require a new password.

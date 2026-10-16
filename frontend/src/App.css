@@ -200,7 +200,7 @@ a.group-row {
 }
 
 .app-nav-link:focus-visible {
-  outline: 2px solid var(--mantine-color-blue-6);
+  outline: 2px solid var(--stock-full);
   outline-offset: 2px;
 }
 
@@ -233,21 +233,39 @@ a.group-row {
 
 @media (max-width: 47.99em) {
   .app-header {
-    gap: 8px;
-    padding-inline: 8px;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+      "brand menu"
+      "nav nav";
+    align-items: center;
+    align-content: center;
+    column-gap: 8px;
+    row-gap: 4px;
+    height: 100%;
+    padding: 6px 8px;
   }
 
   .app-header-brand {
-    gap: 6px;
+    grid-area: brand;
+    gap: 8px;
   }
 
-  .app-header-mark {
-    width: 22px;
-    height: 22px;
+  .app-header-menu {
+    grid-area: menu;
   }
 
   .app-nav {
-    flex: 1 1 auto;
+    grid-area: nav;
+    width: 100%;
+    min-width: 0;
+    flex: none;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .app-nav::-webkit-scrollbar {
+    display: none;
   }
 
   .app-nav-link,
@@ -256,10 +274,10 @@ a.group-row {
   .app-nav-link:hover,
   .app-nav-link:active,
   .app-nav-link:focus {
-    flex: 1 1 0;
-    min-width: 0;
-    font-size: 0.72rem;
-    padding: 8px 2px;
+    flex: 1 1 auto;
+    min-width: max-content;
+    font-size: 0.75rem;
+    padding: 8px 4px;
   }
 }
 

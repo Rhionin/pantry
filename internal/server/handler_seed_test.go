@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Rhionin/pantry/internal/group"
+	"github.com/Rhionin/stockbot/internal/group"
 )
 
 func TestSeededSuggestionsLeaveShoppingCombined(t *testing.T) {

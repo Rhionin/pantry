@@ -16,7 +16,7 @@ describe('LoginPage', () => {
 
   it('asks for the household username and password', () => {
     renderLogin();
-    expect(screen.getByRole('heading', { name: 'Pantry' })).toBeVisible();
+    expect(screen.getByRole('heading', { name: 'Stockbot' })).toBeVisible();
     expect(screen.getByRole('form', { name: 'Sign in' })).toBeVisible();
     expect(screen.getByLabelText(/Username/)).toBeVisible();
     expect(screen.getByLabelText(/Password/)).toBeVisible();

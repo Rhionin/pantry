@@ -5,8 +5,8 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/Rhionin/pantry/internal/cart"
-	"github.com/Rhionin/pantry/internal/cart/carttest"
+	"github.com/Rhionin/stockbot/internal/cart"
+	"github.com/Rhionin/stockbot/internal/cart/carttest"
 	_ "modernc.org/sqlite"
 )
 

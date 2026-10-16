@@ -1,11 +1,12 @@
 package push
 
 import (
+	"context"
 	"testing"
 	"time"
 
-	"github.com/Rhionin/pantry/internal/product"
-	"github.com/Rhionin/pantry/internal/scan"
+	"github.com/Rhionin/stockbot/internal/product"
+	"github.com/Rhionin/stockbot/internal/scan"
 )
 
 type fakeClock struct {
@@ -28,6 +29,10 @@ func (c *fakeClock) After(delay time.Duration, fn func()) func() {
 	id := c.next
 	c.timers[id] = &fakeTimer{at: c.now + delay, fn: fn}
 	return func() { delete(c.timers, id) }
+}
+
+func (c *fakeClock) Now() time.Time {
+	return time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC).Add(c.now)
 }
 
 func (c *fakeClock) advance(d time.Duration) {
@@ -66,13 +71,32 @@ func pending(id, barcode string, direction scan.ScanDirection) scan.ScanEntry {
 	}
 }
 
-func harness() (*attention, *fakeClock, *[]Notice) {
+// scriptedScans is the queue a settled batch reads. A missing id is a scan
+// the household already removed.
+type scriptedScans struct {
+	byID map[string]scan.ScanEntry
+}
+
+func (s scriptedScans) GetScanEntry(_ context.Context, id string) (*scan.ScanEntry, error) {
+	entry, ok := s.byID[id]
+	if !ok {
+		return nil, nil
+	}
+	copy := entry
+	return &copy, nil
+}
+
+func harnessWith(scans scanReader) (*attention, *fakeClock, *[]Notice) {
 	notices := []Notice{}
 	clock := newFakeClock()
 	alerts := newAttention(func(notice Notice) {
 		notices = append(notices, notice)
-	}, BatchSettle, clock)
+	}, BatchSettle, clock, scans)
 	return alerts, clock, &notices
+}
+
+func harness() (*attention, *fakeClock, *[]Notice) {
+	return harnessWith(nil)
 }
 
 func TestAttentionFailureAndUnrecognized(t *testing.T) {
@@ -224,6 +248,67 @@ func TestAttentionQRNotifiesImmediately(t *testing.T) {
 	}
 	if (*notices)[1].Body != "1 scan is waiting. Open the scan queue to confirm it." {
 		t.Fatalf("batch body = %q", (*notices)[1].Body)
+	}
+}
+
+func TestAttentionBatchSkipsWhenTheQueueIsClear(t *testing.T) {
+	milk := pending("milk", "111", scan.StockIn)
+	oats := pending("oats", "222", scan.StockIn)
+	committed := milk
+	committed.Status = scan.Committed
+	cancelled := oats
+	cancelled.Status = scan.Cancelled
+	cleared := scriptedScans{byID: map[string]scan.ScanEntry{
+		"milk": committed,
+		"oats": cancelled,
+	}}
+	alerts, clock, notices := harnessWith(cleared)
+	alerts.noteScan(milk)
+	alerts.noteScan(oats)
+	alerts.noteScan(scan.ScanEntry{
+		ID:        "qr-1",
+		Barcode:   "https://example.com/product/3017620422003",
+		Status:    scan.QR,
+		Direction: dirPtr(scan.StockIn),
+	})
+	if len(*notices) != 1 || (*notices)[0].Title != "This was a QR code, not the barcode" {
+		t.Fatalf("qr notice = %#v", *notices)
+	}
+	clock.advance(BatchSettle)
+	if len(*notices) != 1 {
+		t.Fatalf("cleared batch notified: %#v", *notices)
+	}
+}
+
+func TestAttentionBatchCountsOnlyScansStillPending(t *testing.T) {
+	milk := pending("milk", "111", scan.StockOut)
+	milk.Product = &product.ProductSummary{Name: "Whole Milk"}
+	oats := pending("oats", "222", scan.StockOut)
+	oats.Product = &product.ProductSummary{Name: "Rolled Oats"}
+	bread := pending("bread", "333", scan.StockOut)
+	bread.Product = &product.ProductSummary{Name: "Rye Bread"}
+	confirmed := oats
+	confirmed.Status = scan.Committed
+	alerts, clock, notices := harnessWith(scriptedScans{byID: map[string]scan.ScanEntry{
+		"milk": milk,
+		"oats": confirmed,
+	}})
+	alerts.noteScan(milk)
+	alerts.noteScan(oats)
+	alerts.noteScan(bread)
+	clock.advance(BatchSettle)
+	if len(*notices) != 1 {
+		t.Fatalf("notices = %#v", *notices)
+	}
+	got := (*notices)[0]
+	if got.Count != 1 || len(got.Names) != 1 || got.Names[0] != "Whole Milk" {
+		t.Fatalf("names = %#v count %d", got.Names, got.Count)
+	}
+	if got.Body != "1 scan is waiting. Open the scan queue to confirm it." {
+		t.Fatalf("body = %q", got.Body)
+	}
+	if got.Title != "Stock out batch is ready" || got.URL != "/?scanAlert=stock_out" {
+		t.Fatalf("notice = %#v", got)
 	}
 }
 
