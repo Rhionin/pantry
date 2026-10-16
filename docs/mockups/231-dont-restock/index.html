@@ -1,0 +1,581 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Stockbot don’t-restock mockups</title>
+  <link rel="stylesheet" href="mockups.css">
+</head>
+<body>
+  <svg xmlns="http://www.w3.org/2000/svg" style="position:absolute;width:0;height:0" aria-hidden="true">
+    <symbol id="mark" viewBox="0 0 128 128">
+      <g fill="none" stroke="#0D9488" stroke-width="5.5" stroke-linecap="butt">
+        <path d="M22 44V20H40"/><path d="M88 20H106V44"/><path d="M22 84V108H40"/><path d="M88 108H106V84"/>
+      </g>
+      <ellipse cx="64" cy="91.2" rx="24" ry="5.6" fill="#A8B0B8"/>
+      <ellipse cx="64" cy="89.2" rx="24" ry="4.8" fill="#E6EAEE"/>
+      <rect x="42" y="39.2" width="44" height="52" fill="#0D9488"/>
+      <ellipse cx="64" cy="39.2" rx="24" ry="7.2" fill="#B5BDC6"/>
+      <ellipse cx="64" cy="37.4" rx="24" ry="6.2" fill="#F4F6F8"/>
+    </symbol>
+    <symbol id="milk" viewBox="0 0 32 32">
+      <path d="M12 7h6l2 4v14H10V11zM10 13h12" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/>
+    </symbol>
+    <symbol id="bananas" viewBox="0 0 32 32">
+      <path d="M7 21c5 6 13 5 17-3M10 18c4 5 10 4 14-3" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+    </symbol>
+    <symbol id="lemons" viewBox="0 0 32 32">
+      <ellipse cx="16" cy="18" rx="7" ry="5.5" fill="none" stroke="currentColor" stroke-width="1.6"/>
+      <path d="M16 12.5V10" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+    </symbol>
+    <symbol id="bread" viewBox="0 0 32 32">
+      <path d="M7 19c0-5 4.2-8 9-8s9 3 9 8v6H7z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/>
+    </symbol>
+    <symbol id="beans" viewBox="0 0 32 32">
+      <rect x="11" y="11" width="10" height="12" fill="none" stroke="currentColor" stroke-width="1.6"/>
+      <ellipse cx="16" cy="11" rx="5" ry="2.2" fill="none" stroke="currentColor" stroke-width="1.6"/>
+    </symbol>
+    <symbol id="leaf" viewBox="0 0 32 32">
+      <path d="M16 26c0-7 5-12 10-14-4 6-6 8-10 8 0-6-2-11-8-13 2 6 4 10 8 12" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/>
+    </symbol>
+    <symbol id="candles" viewBox="0 0 32 32">
+      <path d="M12 15v9M20 13v11M10 24h12M12 14c.8-1.6 0-1.6 0-2.6M20 12c.8-1.6 0-1.6 0-2.6" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+    </symbol>
+    <symbol id="menu" viewBox="0 0 24 24">
+      <path d="M4 7h16M4 12h16M4 17h16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+    </symbol>
+  </svg>
+
+  <!-- Direction A. The flag, the undo, and the review stay on the surface you already have. -->
+
+  <div class="screen" data-s="a-item" data-title="Bananas — Stockbot">
+    <header class="app-header">
+      <div class="brand"><svg viewBox="0 0 128 128" aria-hidden="true"><use href="#mark"/></svg>Stockbot</div>
+      <button class="icon-btn" type="button" aria-label="Menu"><svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><use href="#menu"/></svg></button>
+      <nav class="app-nav" aria-label="Sections">
+        <a href="#scan">Scan Queue</a>
+        <a href="#inventory" aria-current="page">Inventory</a>
+        <a href="#history">History</a>
+        <a href="#shopping">Shopping List</a>
+      </nav>
+    </header>
+    <main class="page page-narrow">
+      <h1>Inventory</h1>
+      <div class="filters" role="tablist" aria-label="Shelf filters">
+        <button class="filter" type="button" aria-current="true">All</button>
+        <button class="filter" type="button">Groups</button>
+        <button class="filter" type="button">Running low</button>
+        <button class="filter" type="button">Not restocked</button>
+      </div>
+      <ul class="shelf">
+        <li>
+          <article class="shelf-row" data-stock="full">
+            <div class="thumb"><svg viewBox="0 0 32 32" aria-hidden="true"><use href="#milk"/></svg></div>
+            <div>
+              <h2 class="name">Whole milk</h2>
+              <p class="cat">Dairy</p>
+              <p class="onhand is-full">2 cartons</p>
+            </div>
+          </article>
+        </li>
+        <li>
+          <article class="shelf-row" data-stock="out">
+            <div class="thumb"><svg viewBox="0 0 32 32" aria-hidden="true"><use href="#bananas"/></svg></div>
+            <div>
+              <h2 class="name">Bananas</h2>
+              <p class="cat">Fresh fruits, Produce</p>
+              <p class="onhand is-out">0 bunches</p>
+              <div class="detail">
+                <p class="sentence">Off the shopping list. Still on the shelf.</p>
+                <p class="hint">Produce is left off for the household, so bananas would stay off either way. You can still add a bunch by hand.</p>
+                <button class="text-btn" type="button">Keep in rotation</button>
+              </div>
+            </div>
+          </article>
+        </li>
+        <li>
+          <article class="shelf-row" data-stock="full">
+            <div class="thumb"><svg viewBox="0 0 32 32" aria-hidden="true"><use href="#lemons"/></svg></div>
+            <div>
+              <h2 class="name">Lemons</h2>
+              <p class="cat">Fresh fruits, Produce</p>
+              <p class="onhand is-full">3</p>
+              <div class="detail">
+                <p class="sentence">Still bought. Produce is left off, and lemons are the exception.</p>
+                <button class="text-btn" type="button">Don't restock</button>
+              </div>
+            </div>
+          </article>
+        </li>
+      </ul>
+    </main>
+  </div>
+
+  <div class="screen" data-s="a-shop" data-title="Shopping plan — Stockbot">
+    <header class="app-header">
+      <div class="brand"><svg viewBox="0 0 128 128" aria-hidden="true"><use href="#mark"/></svg>Stockbot</div>
+      <button class="icon-btn" type="button" aria-label="Menu"><svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><use href="#menu"/></svg></button>
+      <nav class="app-nav" aria-label="Sections">
+        <a href="#scan">Scan Queue</a>
+        <a href="#inventory">Inventory</a>
+        <a href="#history">History</a>
+        <a href="#shopping" aria-current="page">Shopping List</a>
+      </nav>
+    </header>
+    <main class="page page-shop">
+      <div class="toolbar">
+        <h1>Shopping plan</h1>
+        <button class="fill-btn" type="button">Build the list</button>
+      </div>
+      <table class="lines">
+        <thead>
+          <tr>
+            <th>Item</th>
+            <th>Quantity</th>
+            <th>Source</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="item">
+              <p class="name">Whole milk</p>
+              <p class="onhand is-full">2 on hand</p>
+              <p class="mobile-meta">Buy 1 gallon. Derived.</p>
+            </td>
+            <td class="qty">1 gallon</td>
+            <td class="src">Derived</td>
+            <td class="act"><button class="text-btn" type="button">Don't restock</button></td>
+          </tr>
+          <tr class="fresh">
+            <td class="item" colspan="4">
+              <p class="name">Bananas</p>
+              <p class="onhand is-out">0 bunches on hand</p>
+              <p class="sentence">Off the list. Still on the shelf.</p>
+              <div class="fresh-actions">
+                <button class="text-btn" type="button">Undo</button>
+                <button class="text-btn" type="button">Don't restock Produce</button>
+              </div>
+            </td>
+          </tr>
+          <tr>
+            <td class="item">
+              <p class="name">Cut green beans</p>
+              <p class="meta">Great Value cut green beans</p>
+              <p class="pill">Same product</p>
+              <p class="mobile-meta">Buy 2 cans. Derived.</p>
+            </td>
+            <td class="qty">2 cans</td>
+            <td class="src">Derived</td>
+            <td class="act"><button class="text-btn" type="button">Don't restock</button></td>
+          </tr>
+          <tr>
+            <td class="item">
+              <p class="name">Sourdough</p>
+              <p class="onhand is-low">1 loaf on hand</p>
+              <p class="mobile-meta">Buy 1 loaf. Added by you.</p>
+            </td>
+            <td class="qty">1 loaf</td>
+            <td class="src">Manual</td>
+            <td class="act"><p class="meta">Added by you. Stays on the list.</p></td>
+          </tr>
+        </tbody>
+      </table>
+    </main>
+  </div>
+
+  <div class="screen" data-s="a-rules" data-title="Settings — Stockbot">
+    <header class="app-header">
+      <div class="brand"><svg viewBox="0 0 128 128" aria-hidden="true"><use href="#mark"/></svg>Stockbot</div>
+      <button class="icon-btn" type="button" aria-label="Menu"><svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><use href="#menu"/></svg></button>
+      <nav class="app-nav" aria-label="Sections">
+        <a href="#scan">Scan Queue</a>
+        <a href="#inventory">Inventory</a>
+        <a href="#history">History</a>
+        <a href="#shopping">Shopping List</a>
+      </nav>
+    </header>
+    <main class="page page-narrow">
+      <h1>Settings</h1>
+      <div class="field">
+        <label for="a-months">Months of supply</label>
+        <input id="a-months" type="number" value="3" min="1" max="12">
+        <p>How far ahead the shopping list looks once a steady rate exists.</p>
+      </div>
+      <div class="field">
+        <label for="a-rule">Default group rule</label>
+        <select id="a-rule">
+          <option>Same product</option>
+          <option>Favorite</option>
+          <option>Best deal</option>
+          <option>Favor variety</option>
+        </select>
+      </div>
+      <section class="section" aria-labelledby="a-leave">
+        <h2 class="section-title" id="a-leave">Leave these off the list</h2>
+        <p class="section-copy">The words come from the products already on the shelf. One product can still be bought.</p>
+        <div class="rule">
+          <p class="name">Produce</p>
+          <label class="switch">
+            <input type="checkbox" checked aria-label="Leave Produce off the list">
+            <span class="track" aria-hidden="true"><i></i></span>
+            <span class="is-left">Left off</span>
+          </label>
+          <p class="hint">Bananas, spinach, cilantro, and lemons. Lemons is still bought.</p>
+        </div>
+        <div class="rule">
+          <p class="name">Dairy</p>
+          <label class="switch">
+            <input type="checkbox" aria-label="Leave Dairy off the list">
+            <span class="track" aria-hidden="true"><i></i></span>
+            <span class="is-full">Still bought</span>
+          </label>
+          <p class="hint">Whole milk and butter.</p>
+        </div>
+        <form class="add">
+          <input type="text" aria-label="Category" placeholder="Another category">
+          <button class="fill-btn" type="button">Leave off</button>
+        </form>
+      </section>
+    </main>
+  </div>
+
+  <div class="screen" data-s="a-review" data-title="Not restocked — Stockbot">
+    <header class="app-header">
+      <div class="brand"><svg viewBox="0 0 128 128" aria-hidden="true"><use href="#mark"/></svg>Stockbot</div>
+      <button class="icon-btn" type="button" aria-label="Menu"><svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><use href="#menu"/></svg></button>
+      <nav class="app-nav" aria-label="Sections">
+        <a href="#scan">Scan Queue</a>
+        <a href="#inventory" aria-current="page">Inventory</a>
+        <a href="#history">History</a>
+        <a href="#shopping">Shopping List</a>
+      </nav>
+    </header>
+    <main class="page page-narrow">
+      <h1>Inventory</h1>
+      <div class="filters" aria-label="Shelf filters">
+        <button class="filter" type="button">All</button>
+        <button class="filter" type="button">Groups</button>
+        <button class="filter" type="button">Running low</button>
+        <button class="filter" type="button" aria-current="true">Not restocked</button>
+      </div>
+      <p class="review-note">These stay on the shelf. They stay off the derived list. Produce is left off, and lemons is the exception.</p>
+      <ul class="shelf">
+        <li>
+          <article class="shelf-row" data-stock="out">
+            <div class="thumb"><svg viewBox="0 0 32 32" aria-hidden="true"><use href="#bananas"/></svg></div>
+            <div>
+              <h2 class="name">Bananas</h2>
+              <p class="cat">Fresh fruits, Produce</p>
+              <p class="onhand is-left">Left off by you</p>
+              <div class="row-actions"><button class="text-btn" type="button">Keep in rotation</button></div>
+            </div>
+          </article>
+        </li>
+        <li>
+          <article class="shelf-row" data-stock="out">
+            <div class="thumb"><svg viewBox="0 0 32 32" aria-hidden="true"><use href="#leaf"/></svg></div>
+            <div>
+              <h2 class="name">Spinach</h2>
+              <p class="cat">Fresh vegetables, Produce</p>
+              <p class="onhand is-left">Left off with Produce</p>
+              <div class="row-actions"><button class="text-btn" type="button">Buy this one</button></div>
+            </div>
+          </article>
+        </li>
+        <li>
+          <article class="shelf-row" data-stock="full">
+            <div class="thumb"><svg viewBox="0 0 32 32" aria-hidden="true"><use href="#candles"/></svg></div>
+            <div>
+              <h2 class="name">Birthday candles</h2>
+              <p class="cat">One-off</p>
+              <p class="onhand is-full">4 on hand</p>
+              <p class="onhand is-left">Left off by you</p>
+              <div class="row-actions"><button class="text-btn" type="button">Keep in rotation</button></div>
+            </div>
+          </article>
+        </li>
+        <li>
+          <article class="shelf-row" data-stock="full">
+            <div class="thumb"><svg viewBox="0 0 32 32" aria-hidden="true"><use href="#beans"/></svg></div>
+            <div>
+              <h2 class="name">Fancy cut green beans</h2>
+              <p class="cat">In Cut green beans</p>
+              <p class="onhand is-left">Left off with the group</p>
+              <div class="row-actions"><button class="text-btn" type="button">Keep in rotation</button></div>
+            </div>
+          </article>
+        </li>
+      </ul>
+    </main>
+  </div>
+
+  <!-- Direction B. One tally, the slip, holds the undo, the category, and the review. -->
+
+  <div class="screen" data-s="b-item" data-title="Bananas — Stockbot">
+    <header class="app-header">
+      <div class="brand"><svg viewBox="0 0 128 128" aria-hidden="true"><use href="#mark"/></svg>Stockbot</div>
+      <button class="icon-btn" type="button" aria-label="Menu"><svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><use href="#menu"/></svg></button>
+      <nav class="app-nav" aria-label="Sections">
+        <a href="#scan">Scan Queue</a>
+        <a href="#inventory" aria-current="page">Inventory</a>
+        <a href="#history">History</a>
+        <a href="#shopping">Shopping List</a>
+      </nav>
+    </header>
+    <main class="page">
+      <div class="pair pair-desk">
+        <div>
+          <h1>Bananas</h1>
+          <p class="lede">Fresh fruits, Produce. 0 bunches on hand.</p>
+          <ul class="shelf">
+            <li>
+              <article class="shelf-row" data-stock="out">
+                <div class="thumb"><svg viewBox="0 0 32 32" aria-hidden="true"><use href="#bananas"/></svg></div>
+                <div>
+                  <p class="sentence">Off the shopping list. Still on the shelf.</p>
+                  <p class="hint">A manual add still puts a bunch on the list.</p>
+                  <div class="row-actions"><button class="text-btn" type="button">Keep in rotation</button></div>
+                </div>
+              </article>
+            </li>
+            <li>
+              <article class="shelf-row" data-stock="full">
+                <div class="thumb"><svg viewBox="0 0 32 32" aria-hidden="true"><use href="#lemons"/></svg></div>
+                <div>
+                  <h2 class="name">Lemons</h2>
+                  <p class="sentence">Still bought. This is the Produce exception.</p>
+                  <div class="row-actions"><button class="text-btn" type="button">Don't restock</button></div>
+                </div>
+              </article>
+            </li>
+          </ul>
+        </div>
+        <aside class="slip" aria-label="Left off">
+          <div class="slip-head"><h2>Left off</h2></div>
+          <div class="slip-row is-current">
+            <p class="name">Bananas</p>
+            <p class="meta">This item</p>
+            <p class="why hint">Also covered by Produce.</p>
+          </div>
+          <div class="slip-row">
+            <p class="name">Produce</p>
+            <p class="meta">Household</p>
+            <p class="why hint">Four products. Lemons is still bought.</p>
+          </div>
+          <div class="slip-row">
+            <p class="name">Birthday candles</p>
+            <p class="meta">This item</p>
+          </div>
+          <div class="slip-row">
+            <p class="name">Fancy cut green beans</p>
+            <p class="meta">The group</p>
+          </div>
+        </aside>
+      </div>
+    </main>
+  </div>
+
+  <div class="screen" data-s="b-shop" data-title="Shopping plan — Stockbot">
+    <header class="app-header">
+      <div class="brand"><svg viewBox="0 0 128 128" aria-hidden="true"><use href="#mark"/></svg>Stockbot</div>
+      <button class="icon-btn" type="button" aria-label="Menu"><svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><use href="#menu"/></svg></button>
+      <nav class="app-nav" aria-label="Sections">
+        <a href="#scan">Scan Queue</a>
+        <a href="#inventory">Inventory</a>
+        <a href="#history">History</a>
+        <a href="#shopping" aria-current="page">Shopping List</a>
+      </nav>
+    </header>
+    <main class="page">
+      <div class="pair pair-desk wide pair-shop">
+        <div>
+          <div class="toolbar">
+            <h1>Shopping plan</h1>
+            <button class="fill-btn" type="button">Build the list</button>
+          </div>
+          <table class="lines">
+            <thead>
+              <tr>
+                <th>Item</th>
+                <th>Quantity</th>
+                <th>Source</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td class="item">
+                  <p class="name">Whole milk</p>
+                  <p class="onhand is-full">2 on hand</p>
+                  <p class="mobile-meta">Buy 1 gallon. Derived.</p>
+                </td>
+                <td class="qty">1 gallon</td>
+                <td class="src">Derived</td>
+                <td class="act"><button class="text-btn" type="button">Don't restock</button></td>
+              </tr>
+              <tr>
+                <td class="item">
+                  <p class="name">Bananas</p>
+                  <p class="onhand is-out">0 bunches on hand</p>
+                  <p class="mobile-meta">Off the list. Still on the shelf.</p>
+                </td>
+                <td class="qty"></td>
+                <td class="src"><span class="is-left">Left off</span></td>
+                <td class="act"><p class="is-left">Off the list</p></td>
+              </tr>
+              <tr>
+                <td class="item">
+                  <p class="name">Cut green beans</p>
+                  <p class="meta">Great Value cut green beans</p>
+                  <p class="pill">Same product</p>
+                  <p class="mobile-meta">Buy 2 cans. Derived.</p>
+                </td>
+                <td class="qty">2 cans</td>
+                <td class="src">Derived</td>
+                <td class="act"><button class="text-btn" type="button">Don't restock</button></td>
+              </tr>
+              <tr>
+                <td class="item">
+                  <p class="name">Sourdough</p>
+                  <p class="mobile-meta">Buy 1 loaf. Added by you.</p>
+                </td>
+                <td class="qty">1 loaf</td>
+                <td class="src">Manual</td>
+                <td class="act"><p class="meta">Added by you. Stays on the list.</p></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <aside class="slip shop-slip" aria-label="Left off">
+          <div class="slip-head"><h2>Left off</h2></div>
+          <div class="slip-row is-fresh">
+            <p class="name">Bananas</p>
+            <button class="text-btn" type="button">Undo</button>
+            <p class="why hint">Off the list. Still on the shelf.</p>
+          </div>
+          <div class="slip-row">
+            <p class="name">Produce</p>
+            <button class="text-btn" type="button">Don't restock Produce</button>
+            <p class="why hint">Bananas, lemons, spinach, cilantro.</p>
+          </div>
+        </aside>
+      </div>
+    </main>
+  </div>
+
+  <div class="screen" data-s="b-rules" data-title="Settings — Stockbot">
+    <header class="app-header">
+      <div class="brand"><svg viewBox="0 0 128 128" aria-hidden="true"><use href="#mark"/></svg>Stockbot</div>
+      <button class="icon-btn" type="button" aria-label="Menu"><svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><use href="#menu"/></svg></button>
+      <nav class="app-nav" aria-label="Sections">
+        <a href="#scan">Scan Queue</a>
+        <a href="#inventory">Inventory</a>
+        <a href="#history">History</a>
+        <a href="#shopping">Shopping List</a>
+      </nav>
+    </header>
+    <main class="page">
+      <div class="pair pair-desk">
+        <div>
+          <h1>Settings</h1>
+          <div class="field">
+            <label for="b-months">Months of supply</label>
+            <input id="b-months" type="number" value="3" min="1" max="12">
+            <p>How far ahead the shopping list looks once a steady rate exists.</p>
+          </div>
+          <div class="field">
+            <label for="b-rule">Default group rule</label>
+            <select id="b-rule">
+              <option>Same product</option>
+              <option>Favorite</option>
+              <option>Best deal</option>
+              <option>Favor variety</option>
+            </select>
+            <p>A new group starts here. Leaving a category off is separate, and lives in Left off.</p>
+          </div>
+        </div>
+        <aside class="slip" aria-label="Left off">
+          <div class="slip-head"><h2>Left off</h2></div>
+          <div class="slip-row">
+            <p class="name">Produce</p>
+            <p class="is-left">Left off</p>
+            <p class="why hint">Matches bananas, spinach, cilantro, and lemons. Lemons is still bought.</p>
+            <p class="why"><button class="text-btn" type="button">Keep Produce on the list</button></p>
+          </div>
+          <div class="slip-row">
+            <p class="name">Dairy</p>
+            <p class="is-full">Still bought</p>
+            <p class="why hint">Whole milk and butter.</p>
+            <p class="why"><button class="text-btn" type="button">Don't restock Dairy</button></p>
+          </div>
+          <form class="add">
+            <input type="text" aria-label="Category" placeholder="Another category">
+            <button class="fill-btn" type="button">Leave off</button>
+          </form>
+        </aside>
+      </div>
+    </main>
+  </div>
+
+  <div class="screen" data-s="b-review" data-title="Left off — Stockbot">
+    <header class="app-header">
+      <div class="brand"><svg viewBox="0 0 128 128" aria-hidden="true"><use href="#mark"/></svg>Stockbot</div>
+      <button class="icon-btn" type="button" aria-label="Menu"><svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><use href="#menu"/></svg></button>
+      <nav class="app-nav" aria-label="Sections">
+        <a href="#scan">Scan Queue</a>
+        <a href="#inventory" aria-current="page">Inventory</a>
+        <a href="#history">History</a>
+        <a href="#shopping">Shopping List</a>
+      </nav>
+    </header>
+    <main class="page page-narrow">
+      <h1>Inventory</h1>
+      <div class="filters" aria-label="Shelf filters">
+        <button class="filter" type="button">All</button>
+        <button class="filter" type="button">Groups</button>
+        <button class="filter" type="button">Running low</button>
+        <button class="filter" type="button" aria-current="true">Not restocked</button>
+      </div>
+      <aside class="slip" aria-label="Left off" style="margin-top:18px">
+        <div class="slip-head"><h2>Left off</h2></div>
+        <div class="slip-row">
+          <p class="name">Produce</p>
+          <button class="text-btn" type="button">Keep on the list</button>
+          <p class="why hint">Household rule. Four products. Lemons is still bought.</p>
+        </div>
+        <div class="slip-row">
+          <p class="name">Bananas</p>
+          <button class="text-btn" type="button">Keep in rotation</button>
+          <p class="why hint">You left this off. Produce would leave it off too. 0 bunches on hand.</p>
+        </div>
+        <div class="slip-row">
+          <p class="name">Spinach</p>
+          <button class="text-btn" type="button">Buy this one</button>
+          <p class="why hint">Left off with Produce. 0 on hand.</p>
+        </div>
+        <div class="slip-row">
+          <p class="name">Birthday candles</p>
+          <button class="text-btn" type="button">Keep in rotation</button>
+          <p class="why hint">You left this off. 4 on hand, and the shelf is full.</p>
+        </div>
+        <div class="slip-row">
+          <p class="name">Fancy cut green beans</p>
+          <button class="text-btn" type="button">Keep in rotation</button>
+          <p class="why hint">Left off with the Cut green beans group.</p>
+        </div>
+      </aside>
+    </main>
+  </div>
+
+  <script>
+    const name = new URLSearchParams(location.search).get("s") || "a-item";
+    const screen = document.querySelector(`[data-s="${name}"]`);
+    if (screen) {
+      screen.classList.add("is-on");
+      document.title = screen.dataset.title || document.title;
+    }
+    document.documentElement.dataset.ready = "1";
+  </script>
+</body>
+</html>
