@@ -3,26 +3,26 @@
   <desc>Stockbot mark: a light food can and scan sights on a teal tile.</desc>
   <rect width="128" height="128" rx="28" fill="#0D9488"/>
   <g fill="none" stroke="#F4FFFC" stroke-width="8" stroke-linecap="butt" stroke-linejoin="miter">
-    <path d="M16 40V10H34"/>
-    <path d="M94 10H112V40"/>
-    <path d="M16 88V118H34"/>
-    <path d="M94 118H112V88"/>
+    <path d="M20 46V18H38"/>
+    <path d="M90 18H108V46"/>
+    <path d="M20 82V110H38"/>
+    <path d="M90 110H108V82"/>
   </g>
-  <ellipse cx="64" cy="106" rx="20" ry="5.4" fill="#8FADA8"/>
-  <ellipse cx="64" cy="103.8" rx="20" ry="4.6" fill="#F3F7F6"/>
-  <rect x="46" y="22" width="36" height="82" fill="url(#tile-body)"/>
-  <ellipse cx="64" cy="22" rx="20" ry="6.2" fill="#C5D8D4"/>
-  <ellipse cx="64" cy="20.4" rx="20" ry="5.3" fill="url(#tile-lid)"/>
-  <ellipse cx="64" cy="19.8" rx="12.6" ry="3.1" fill="#D7E6E2"/>
-  <ellipse cx="64" cy="19.5" rx="11.6" ry="2.5" fill="#FFFFFF"/>
+  <ellipse cx="64" cy="91.2" rx="24" ry="5.6" fill="#8FADA8"/>
+  <ellipse cx="64" cy="89.2" rx="24" ry="4.8" fill="#F3F7F6"/>
+  <rect x="42" y="39.2" width="44" height="52" fill="url(#tile-body)"/>
+  <ellipse cx="64" cy="39.2" rx="24" ry="7.2" fill="#C5D8D4"/>
+  <ellipse cx="64" cy="37.4" rx="24" ry="6.2" fill="url(#tile-lid)"/>
+  <ellipse cx="64" cy="36.8" rx="15.4" ry="3.6" fill="#D7E6E2"/>
+  <ellipse cx="64" cy="36.4" rx="14.2" ry="2.9" fill="#FFFFFF"/>
   <defs>
-    <linearGradient id="tile-body" x1="46" y1="0" x2="82" y2="0" gradientUnits="userSpaceOnUse">
+    <linearGradient id="tile-body" x1="42" y1="0" x2="86" y2="0" gradientUnits="userSpaceOnUse">
       <stop offset="0" stop-color="#D5E6E2"/>
       <stop offset="0.22" stop-color="#FFFFFF"/>
       <stop offset="0.66" stop-color="#F7FBFA"/>
       <stop offset="1" stop-color="#C9DAD6"/>
     </linearGradient>
-    <linearGradient id="tile-lid" x1="64" y1="15" x2="64" y2="26" gradientUnits="userSpaceOnUse">
+    <linearGradient id="tile-lid" x1="64" y1="30" x2="64" y2="45" gradientUnits="userSpaceOnUse">
       <stop offset="0" stop-color="#FFFFFF"/>
       <stop offset="1" stop-color="#E3EEEB"/>
     </linearGradient>
