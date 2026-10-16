@@ -17,6 +17,7 @@ import { RulePicker } from './RulePicker';
 import { restockNote } from './restock';
 import { Seesaw } from './Seesaw';
 import { seesawView, stockMeter, type SeesawDraft } from './seesaw';
+import { groupStock } from '../../stockState';
 import '../history/history.css';
 
 const closeButton = { 'aria-label': 'Close' };
@@ -232,6 +233,8 @@ export const GroupDetailPage = () => {
   const rotating = members.filter((member) => !member.noRestock);
   const aside = members.filter((member) => member.noRestock);
   const meter = shown ? stockMeter(shown, onHandOunces(members, shown.dimension)) : null;
+  const unitsOnHand = members.reduce((sum, member) => sum + member.onHand, 0);
+  const stock = group ? groupStock(unitsOnHand, group.runningLow, members.length) : undefined;
 
   return (
     <Stack gap="lg" className="bin-page">
@@ -252,6 +255,7 @@ export const GroupDetailPage = () => {
               name={group.name}
               caption={shown.caption}
               meter={meter ?? undefined}
+              stock={stock}
               onRename={() => {
                 setName(group.name);
                 setError('');

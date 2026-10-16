@@ -9,8 +9,8 @@
     20px
     max(24px, env(safe-area-inset-bottom));
   background:
-    radial-gradient(900px 420px at 50% -80px, #f4ecdc 0%, transparent 60%),
-    #f6f4ef;
+    radial-gradient(900px 420px at 50% -80px, #e5f3f1 0%, transparent 60%),
+    #f4f7f6;
   color-scheme: light;
 }
 
@@ -18,7 +18,7 @@
   width: min(100%, 420px);
   box-sizing: border-box;
   background: #fff;
-  border: 1px solid #e4dfd4;
+  border: 1px solid #d7e4e1;
   border-radius: 22px;
   padding: 36px 28px 28px;
   box-shadow: 0 24px 60px rgba(62, 48, 22, 0.08);

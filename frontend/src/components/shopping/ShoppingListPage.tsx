@@ -28,6 +28,7 @@ import {
 import type { InventoryItem, ProviderInfo, ShoppingListEntry } from '../../types';
 import { ruleLabel } from '../groups/copy';
 import { useCredentialsRevision } from '../../credentialsRefresh';
+import { stockState } from '../../stockState';
 import { ProviderPanel } from './ProviderPanel';
 import { ProvisionButton } from './ProvisionButton';
 
@@ -355,7 +356,10 @@ export const ShoppingListPage = () => {
                           />
                         )}
                         {entry.basis && (
-                          <Text size="xs" c="dimmed">
+                          <Text
+                            size="xs"
+                            className={`stock-note stock-note--${stockState(entry.basis.instanceCount, entry.basis.instanceCount > 0)}`}
+                          >
                             {`${entry.basis.instanceCount} on hand`}
                           </Text>
                         )}
