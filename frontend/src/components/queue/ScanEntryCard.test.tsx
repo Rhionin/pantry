@@ -1491,3 +1491,87 @@ describe('ScanEntryCard group hint', () => {
     expect(await screen.findByLabelText('Search products')).toBeInTheDocument();
   });
 });
+
+const noItemBody = {
+  error: 'Not in your pantry',
+  code: 'no_item',
+  suggestions: [
+    { itemId: 'item-pears', productId: 'prod-pears', name: 'Sliced Pears', onHand: 3 },
+    { itemId: 'item-slices', productId: 'prod-slices', name: 'Pear Slices', onHand: 1 },
+  ],
+};
+
+const errorResponse = (body: unknown, status: number) =>
+  new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
+
+describe('ScanEntryCard unmatched stock-out', () => {
+  const renderStockOut = (onChanged = vi.fn()) => {
+    render(
+      <MantineProvider>
+        <ScanEntryCard
+          entry={{ ...entry, product: { id: 'product-1', name: 'Lite Pear Slices In Pear Juice', category: 'Fruit', unitOfMeasure: 'can' } }}
+          selected={false}
+          onSelectedChange={vi.fn()}
+          onChanged={onChanged}
+        />
+      </MantineProvider>,
+    );
+  };
+
+  it('shows pantry suggestions in rank order and does not commit until one is picked', async () => {
+    const fetchMock = vi.fn((input: RequestInfo | URL, request?: RequestInit) => {
+      const url = String(input);
+      if (url === '/api/scans/scan-1/commit' && request?.method === 'POST') {
+        const body = JSON.parse(String(request.body)) as { linkProductId?: string };
+        if (body.linkProductId === 'prod-pears') {
+          return Promise.resolve(jsonResponse({ ...entry, status: 'committed', productId: 'prod-pears' }));
+        }
+        return Promise.resolve(errorResponse(noItemBody, 409));
+      }
+      throw new Error(`Unexpected ${request?.method ?? 'GET'} request: ${url}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const onChanged = vi.fn();
+    renderStockOut(onChanged);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm' }));
+
+    const offer = await screen.findByRole('region', { name: 'Not in your pantry' });
+    expect(offer).toHaveTextContent('Link the barcode to an item you stock. That scan out uses the item you pick.');
+    const rows = within(offer).getAllByRole('listitem');
+    expect(rows.map((row) => row.textContent)).toEqual([
+      'Sliced Pears3 in stockLink',
+      'Pear Slices1 in stockLink',
+    ]);
+    expect(within(rows[0]).getByText('3 in stock')).toHaveClass('stock-note--full');
+    expect(onChanged).not.toHaveBeenCalled();
+
+    fireEvent.click(within(offer).getByRole('button', { name: 'Link Sliced Pears and scan it out' }));
+    await waitFor(() => expect(onChanged).toHaveBeenCalled());
+    const linkCall = fetchMock.mock.calls.find(([, request]) => {
+      const body = request?.body ? JSON.parse(String(request.body)) as { linkProductId?: string } : {};
+      return body.linkProductId === 'prod-pears';
+    });
+    expect(linkCall).toBeDefined();
+  });
+
+  it('dismisses the suggestions without linking', async () => {
+    const fetchMock = vi.fn((input: RequestInfo | URL, request?: RequestInit) => {
+      const url = String(input);
+      if (url === '/api/scans/scan-1/commit') return Promise.resolve(errorResponse(noItemBody, 409));
+      throw new Error(`Unexpected ${request?.method ?? 'GET'} request: ${url}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const onChanged = vi.fn();
+    renderStockOut(onChanged);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm' }));
+    const offer = await screen.findByRole('region', { name: 'Not in your pantry' });
+    fireEvent.click(within(offer).getByRole('button', { name: 'Dismiss' }));
+
+    await waitFor(() => expect(screen.queryByRole('region', { name: 'Not in your pantry' })).not.toBeInTheDocument());
+    expect(onChanged).not.toHaveBeenCalled();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole('article', { name: 'Scan 123' })).toBeInTheDocument();
+  });
+});

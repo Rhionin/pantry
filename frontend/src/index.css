@@ -60,6 +60,10 @@
   --stock-out-ink: #fca5a5;
 }
 
+[data-mantine-color-scheme='dark'] .scan-link-offer {
+  background: rgba(239, 68, 68, 0.16);
+}
+
 .stock-note--full {
   color: var(--stock-full-ink);
 }
@@ -855,6 +859,56 @@ code {
 
 .scan-entry-extra {
   margin-top: 6px;
+}
+
+.scan-link-offer {
+  margin-top: 8px;
+  padding: 8px 10px;
+  border-left: 3px solid var(--stock-out);
+  background: rgba(239, 68, 68, 0.08);
+}
+
+.scan-link-offer-title {
+  margin: 0;
+  color: var(--stock-out-ink);
+  font-size: 0.92rem;
+  font-weight: 650;
+  line-height: 1.3;
+}
+
+.scan-link-offer-copy {
+  margin: 2px 0 8px;
+  max-width: 62ch;
+  color: var(--mantine-color-dimmed);
+  font-size: var(--mantine-font-size-xs);
+  line-height: 1.4;
+}
+
+.scan-link-offer-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.scan-link-offer-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+}
+
+.scan-link-offer-name {
+  flex: 1 1 8rem;
+  min-width: 0;
+  font-size: 0.92rem;
+  line-height: 1.3;
+}
+
+.scan-link-offer-actions {
+  margin-top: 8px;
 }
 
 .processing-scan-card .mantine-Title-root {

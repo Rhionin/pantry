@@ -431,6 +431,13 @@ export interface GroupTarget {
   clear?: boolean;
 }
 
+export interface PantryLinkSuggestion {
+  itemId: string;
+  productId: string;
+  name: string;
+  onHand: number;
+}
+
 export interface TargetConflictMember {
   productId: string;
   name: string;
