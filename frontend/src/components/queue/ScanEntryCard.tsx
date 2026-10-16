@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { Alert, Avatar, Badge, Button, Card, Checkbox, Drawer, Group, NumberInput, Stack, Text, TextInput, Title } from '@mantine/core';
-import { addGroupMembers, commitScanEntry, noteGroupFromScan, updateProduct, updateScanEntry } from '../../api/client';
-import type { ScanEntry } from '../../types';
+import { addGroupMembers, ApiError, commitScanEntry, noteGroupFromScan, updateProduct, updateScanEntry } from '../../api/client';
+import type { PantryLinkSuggestion, ScanEntry } from '../../types';
+import { stockState } from '../../stockState';
 import { FlaggedEntryResolver } from './FlaggedEntryResolver';
 import { StockOutInstanceSelector } from './StockOutInstanceSelector';
 import { ProvenanceBadge } from '../product/ProvenanceBadge';
@@ -39,6 +40,7 @@ export const ScanEntryCard = ({
   const [instanceId, setInstanceId] = useState('');
   const [approveError, setApproveError] = useState('');
   const [approving, setApproving] = useState(false);
+  const [linkOffer, setLinkOffer] = useState<PantryLinkSuggestion[] | null>(null);
   const [removeError, setRemoveError] = useState('');
   const [removing, setRemoving] = useState(false);
   const [unitCountDraft, setUnitCountDraft] = useState(entry.unitCount);
@@ -137,6 +139,25 @@ export const ScanEntryCard = ({
     setApproveError('');
     try {
       await commitScanEntry(entry.id, instanceId === '' ? undefined : instanceId);
+      setLinkOffer(null);
+      onChanged();
+    } catch (requestError) {
+      if (requestError instanceof ApiError && requestError.code === 'no_item') {
+        setLinkOffer(requestError.suggestions);
+        return;
+      }
+      setApproveError(requestError instanceof Error ? requestError.message : 'Unable to confirm scan.');
+    } finally {
+      setApproving(false);
+    }
+  };
+
+  const linkSuggestion = async (productId: string) => {
+    setApproving(true);
+    setApproveError('');
+    try {
+      await commitScanEntry(entry.id, instanceId === '' ? undefined : instanceId, productId);
+      setLinkOffer(null);
       onChanged();
     } catch (requestError) {
       setApproveError(requestError instanceof Error ? requestError.message : 'Unable to confirm scan.');
@@ -562,6 +583,42 @@ export const ScanEntryCard = ({
           />
         )}
       </Drawer>
+
+      {linkOffer !== null && (
+        <div className="scan-link-offer" role="region" aria-labelledby={`link-offer-${entry.id}`}>
+          <p id={`link-offer-${entry.id}`} className="scan-link-offer-title">Not in your pantry</p>
+          <p className="scan-link-offer-copy">
+            {linkOffer.length === 0
+              ? 'No stocked item matches this barcode.'
+              : 'Link the barcode to an item you stock. That scan out uses the item you pick.'}
+          </p>
+          {linkOffer.length > 0 && (
+            <ul className="scan-link-offer-list">
+              {linkOffer.map((suggestion) => (
+                <li key={suggestion.itemId} className="scan-link-offer-row">
+                  <span className="scan-link-offer-name">{suggestion.name}</span>
+                  <span className={`stock-note stock-note--${stockState(suggestion.onHand)}`}>
+                    {suggestion.onHand} in stock
+                  </span>
+                  <Button
+                    size="compact-xs"
+                    loading={approving}
+                    aria-label={`Link ${suggestion.name} and scan it out`}
+                    onClick={() => void linkSuggestion(suggestion.productId)}
+                  >
+                    Link
+                  </Button>
+                </li>
+              ))}
+            </ul>
+          )}
+          <div className="scan-link-offer-actions">
+            <Button size="compact-xs" variant="default" onClick={() => setLinkOffer(null)}>
+              Dismiss
+            </Button>
+          </div>
+        </div>
+      )}
 
       {approveError !== '' && <Alert color="red" py={4} mt={4}>{approveError}</Alert>}
       {removeError !== '' && <Alert color="red" py={4} mt={4}>{removeError}</Alert>}

@@ -69,7 +69,7 @@ esac
 
 host=$(env_value PUBLIC_HOST)
 if [[ ! "$host" =~ ^[A-Za-z0-9.-]+$ ]] || [[ "$host" != *.* ]] || [[ "$host" == .* ]] || [[ "$host" == *. ]]; then
-  echo "split-horizon: PUBLIC_HOST must be a hostname such as pantry.rhionin.com before DNS can answer it" >&2
+  echo "split-horizon: PUBLIC_HOST must be a hostname such as stockbot.rhionin.com before DNS can answer it" >&2
   exit 1
 fi
 
