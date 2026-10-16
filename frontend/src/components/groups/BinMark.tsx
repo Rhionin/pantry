@@ -1,6 +1,7 @@
 import { useLayoutEffect, useRef, useState, type CSSProperties } from 'react';
 import { ActionIcon, Title, Tooltip } from '@mantine/core';
 import { binColor, type BinView } from './copy';
+import type { StockState } from '../../stockState';
 import { placeOnHandLabel, type LabelPlacement } from './placeLabel';
 import './groups.css';
 
@@ -109,6 +110,7 @@ export function BinMark({
   onRename,
   caption,
   meter,
+  stock,
 }: {
   view: BinView;
   members: { productId: string }[];
@@ -117,6 +119,7 @@ export function BinMark({
   onRename?: () => void;
   caption?: string;
   meter?: { now: number; max: number; text: string };
+  stock?: StockState;
 }) {
   const percent = view.segments.reduce((sum, segment) => sum + segment.fraction, 0) * 100;
   const across = size === 'hero';
@@ -144,7 +147,7 @@ export function BinMark({
   if (size === 'mark') {
     return (
       <div className="bin bin-mark" aria-hidden="true">
-        <div className="bin-well">{fill}</div>
+        <div className="bin-well" data-stock={stock}>{fill}</div>
       </div>
     );
   }
@@ -173,6 +176,7 @@ export function BinMark({
       </div>
       <div
         className="bin-well"
+        data-stock={stock}
         role="meter"
         aria-label="Stock on hand"
         aria-valuemin={0}

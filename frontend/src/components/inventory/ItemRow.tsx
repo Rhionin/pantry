@@ -4,6 +4,7 @@ import type { GroupSuggestion, InventoryItem } from '../../types';
 import { ProvenanceBadge } from '../product/ProvenanceBadge';
 import { visibleCategory } from './inventoryUtils';
 import { ProductPhoto } from './ProductPhoto';
+import { stockState } from '../../stockState';
 
 export interface ItemRowProps {
   inventoryItem: InventoryItem;
@@ -52,6 +53,7 @@ export const ItemRow = memo(({
 }: ItemRowProps) => {
   const { item, nearExpiryCount, expiredCount } = inventoryItem;
   const category = visibleCategory(item.product.category);
+  const stock = stockState(inventoryItem.instanceCount);
   const hold = useRef<number | null>(null);
 
   const startHold = () => {
@@ -68,6 +70,7 @@ export const ItemRow = memo(({
   return (
     <article
       className="shelf-row"
+      data-stock={stock}
       onPointerDown={startHold}
       onPointerUp={clearHold}
       onPointerLeave={clearHold}
