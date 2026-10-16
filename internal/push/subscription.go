@@ -9,10 +9,16 @@ import (
 )
 
 // Subscription is one browser registered for scan alerts.
+// Origin is the site hostname that registered it. Empty means the row was
+// stored before origins existed. UserID and DeviceID name the household
+// member and browser so a later subscribe can replace older endpoints.
 type Subscription struct {
 	Endpoint string
 	P256dh   string
 	Auth     string
+	Origin   string
+	UserID   string
+	DeviceID string
 }
 
 // Problem is a sentence for the person who sent the subscription, or empty
@@ -26,6 +32,9 @@ func (s Subscription) Problem() string {
 	if len(endpoint) > 2000 || !pushKey(s.P256dh, 200) || !pushKey(s.Auth, 100) {
 		return "Enter a push subscription from this browser."
 	}
+	if !optionalToken(s.UserID, 100) || !optionalToken(s.DeviceID, 100) {
+		return "Enter a push subscription from this browser."
+	}
 	return ""
 }
 
@@ -35,6 +44,13 @@ func pushKey(value string, max int) bool {
 		return false
 	}
 	return true
+}
+
+func optionalToken(value string, max int) bool {
+	if value == "" {
+		return true
+	}
+	return pushKey(value, max)
 }
 
 // Subscriptions stores the browsers that asked for scan alerts.
@@ -48,21 +64,47 @@ func NewSubscriptions(db *sql.DB) *Subscriptions {
 }
 
 // Save inserts or replaces the keys for an endpoint. A browser refreshes
-// those keys without changing the endpoint.
+// those keys without changing the endpoint. A non-empty origin, user, or
+// device replaces a blank one already stored. When both the user and the
+// device are set, older endpoints for that pair are removed.
 func (s *Subscriptions) Save(ctx context.Context, sub Subscription) error {
 	sub.Endpoint = strings.TrimSpace(sub.Endpoint)
 	sub.P256dh = strings.TrimSpace(sub.P256dh)
 	sub.Auth = strings.TrimSpace(sub.Auth)
-	_, err := s.db.ExecContext(ctx, `
-		INSERT INTO push_subscriptions (endpoint, p256dh, auth)
-		VALUES (?, ?, ?)
+	sub.Origin = canonicalHost(sub.Origin)
+	sub.UserID = strings.TrimSpace(sub.UserID)
+	sub.DeviceID = strings.TrimSpace(sub.DeviceID)
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("save push subscription: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	_, err = tx.ExecContext(ctx, `
+		INSERT INTO push_subscriptions (endpoint, p256dh, auth, origin, user_id, device_id)
+		VALUES (?, ?, ?, ?, ?, ?)
 		ON CONFLICT(endpoint) DO UPDATE SET
 			p256dh = excluded.p256dh,
 			auth = excluded.auth,
+			origin = CASE WHEN excluded.origin != '' THEN excluded.origin ELSE push_subscriptions.origin END,
+			user_id = CASE WHEN excluded.user_id != '' THEN excluded.user_id ELSE push_subscriptions.user_id END,
+			device_id = CASE WHEN excluded.device_id != '' THEN excluded.device_id ELSE push_subscriptions.device_id END,
 			updated_at = CURRENT_TIMESTAMP`,
-		sub.Endpoint, sub.P256dh, sub.Auth,
+		sub.Endpoint, sub.P256dh, sub.Auth, sub.Origin, sub.UserID, sub.DeviceID,
 	)
 	if err != nil {
+		return fmt.Errorf("save push subscription: %w", err)
+	}
+	if sub.UserID != "" && sub.DeviceID != "" {
+		_, err = tx.ExecContext(ctx, `
+			DELETE FROM push_subscriptions
+			WHERE endpoint != ? AND user_id = ? AND device_id = ?`,
+			sub.Endpoint, sub.UserID, sub.DeviceID,
+		)
+		if err != nil {
+			return fmt.Errorf("save push subscription: %w", err)
+		}
+	}
+	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("save push subscription: %w", err)
 	}
 	return nil
@@ -77,10 +119,28 @@ func (s *Subscriptions) Delete(ctx context.Context, endpoint string) error {
 	return nil
 }
 
+// DeleteHost removes every subscription registered at host. Zero rows is
+// not an error. An empty host removes nothing, so a blank origin is kept.
+func (s *Subscriptions) DeleteHost(ctx context.Context, host string) (int, error) {
+	host = canonicalHost(host)
+	if host == "" {
+		return 0, nil
+	}
+	res, err := s.db.ExecContext(ctx, `DELETE FROM push_subscriptions WHERE origin = ?`, host)
+	if err != nil {
+		return 0, fmt.Errorf("delete push subscriptions: %w", err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return 0, fmt.Errorf("delete push subscriptions: %w", err)
+	}
+	return int(n), nil
+}
+
 // List returns every stored browser, oldest first.
 func (s *Subscriptions) List(ctx context.Context) ([]Subscription, error) {
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT endpoint, p256dh, auth
+		SELECT endpoint, p256dh, auth, origin, user_id, device_id
 		FROM push_subscriptions
 		ORDER BY created_at, endpoint`)
 	if err != nil {
@@ -90,7 +150,7 @@ func (s *Subscriptions) List(ctx context.Context) ([]Subscription, error) {
 	var out []Subscription
 	for rows.Next() {
 		var sub Subscription
-		if err := rows.Scan(&sub.Endpoint, &sub.P256dh, &sub.Auth); err != nil {
+		if err := rows.Scan(&sub.Endpoint, &sub.P256dh, &sub.Auth, &sub.Origin, &sub.UserID, &sub.DeviceID); err != nil {
 			return nil, fmt.Errorf("list push subscriptions: %w", err)
 		}
 		out = append(out, sub)

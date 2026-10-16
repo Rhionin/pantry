@@ -620,6 +620,8 @@ export async function logout(): Promise<void> {
 export interface PushSubscriptionInput {
   endpoint: string;
   keys: { p256dh: string; auth: string };
+  userId?: string;
+  deviceId?: string;
 }
 
 export function getVapidPublicKey(): Promise<{ publicKey: string }> {

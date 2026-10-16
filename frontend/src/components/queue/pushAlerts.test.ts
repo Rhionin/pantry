@@ -198,11 +198,43 @@ describe('ensurePushSubscription', () => {
     await expect(ensurePushSubscription()).resolves.toEqual({ ok: true });
     expect(backgroundAlertsEnabled()).toBe(true);
     expect(posted).toEqual([
-      { endpoint: 'https://push.example/device', keys: { p256dh: 'p256', auth: 'auth' } },
+      {
+        endpoint: 'https://push.example/device',
+        keys: { p256dh: 'p256', auth: 'auth' },
+        userId: 'user-1',
+        deviceId: localStorage.getItem('pantry-push-device'),
+      },
     ]);
+    expect(localStorage.getItem('pantry-push-device')).toBeTruthy();
     expect(warn).not.toHaveBeenCalled();
     expect(report).not.toHaveBeenCalled();
     warn.mockRestore();
+  });
+
+  it('sends the same device id when this browser subscribes again', async () => {
+    FakeNotification.permission = 'granted';
+    vi.stubGlobal('Notification', FakeNotification);
+    writeScanAlertPreference(true);
+    const posted: Array<{ deviceId?: string; userId?: string }> = [];
+    installPush();
+    vi.stubGlobal('fetch', (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith('/api/push/vapid-public-key')) {
+        return Promise.resolve(jsonResponse({ publicKey: 'BElk' }));
+      }
+      if (url.endsWith('/api/push/subscriptions') && init?.method === 'POST') {
+        posted.push(JSON.parse(String(init.body)));
+        return Promise.resolve(jsonResponse({ endpoint: 'https://push.example/device' }));
+      }
+      throw new Error(`Unexpected request: ${url}`);
+    });
+
+    await ensurePushSubscription();
+    await ensurePushSubscription();
+    expect(posted).toHaveLength(2);
+    expect(posted[0].userId).toBe('user-1');
+    expect(posted[0].deviceId).toBeTruthy();
+    expect(posted[1].deviceId).toBe(posted[0].deviceId);
   });
 
   it('does not subscribe or warn when this device is off', async () => {

@@ -6,6 +6,7 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"strings"
 	"time"
 
 	"github.com/Rhionin/stockbot/internal/events"
@@ -76,17 +77,39 @@ func Listen(b *events.Broadcaster, sender *Sender, scans scanReader) {
 	}()
 }
 
-// Notify pushes one notice. Subscriptions that answer 404 or 410 are removed.
+// Notify pushes one notice to subscriptions for the current public host.
+// A row with no origin was stored before origins existed and is included, so
+// a live browser is not dropped on upgrade. The previous public host is
+// removed. Each endpoint is contacted once. A 404 or 410 removes that row.
 func (s *Sender) Notify(ctx context.Context, notice Notice) {
 	if s == nil || s.subs == nil || !s.cfg.CanSend() {
 		return
+	}
+	if legacy := s.cfg.legacyHost(); legacy != "" {
+		n, err := s.subs.DeleteHost(ctx, legacy)
+		if err != nil {
+			log.Printf("scan alerts: could not remove a subscription from the previous address: %v", err)
+		} else if n > 0 {
+			log.Printf("scan alerts: removed subscriptions for %s", legacy)
+		}
 	}
 	subs, err := s.subs.List(ctx)
 	if err != nil {
 		log.Printf("scan alerts: could not read push subscriptions: %v", err)
 		return
 	}
-	if len(subs) == 0 {
+	s.deliverAll(ctx, notice, subs)
+}
+
+// deliverAll sends notice to the subscriptions selectForSend keeps.
+func (s *Sender) deliverAll(ctx context.Context, notice Notice, subs []Subscription) {
+	send, drop := selectForSend(subs, s.cfg)
+	for _, sub := range drop {
+		if err := s.subs.Delete(ctx, sub.Endpoint); err != nil {
+			log.Printf("scan alerts: could not remove a subscription from the previous address: %v", err)
+		}
+	}
+	if len(send) == 0 {
 		return
 	}
 	payload, err := pushPayload(notice)
@@ -94,7 +117,7 @@ func (s *Sender) Notify(ctx context.Context, notice Notice) {
 		log.Printf("scan alerts: could not encode a notification")
 		return
 	}
-	for _, sub := range subs {
+	for _, sub := range send {
 		status, _ := s.deliver(ctx, sub, payload)
 		// Host only. The path is a capability and the keys are secrets.
 		log.Printf("scan alerts: push to %s returned %d", endpointHost(sub.Endpoint), status)
@@ -102,9 +125,39 @@ func (s *Sender) Notify(ctx context.Context, notice Notice) {
 			if err := s.subs.Delete(ctx, sub.Endpoint); err != nil {
 				log.Printf("scan alerts: could not remove an expired push subscription: %v", err)
 			}
-			continue
 		}
 	}
+}
+
+// selectForSend keeps one subscription per endpoint. The later row wins so a
+// refreshed key is what gets sent. The previous public host is returned in
+// drop. A blank origin stays: it predates the origin column.
+func selectForSend(subs []Subscription, cfg Config) (send, drop []Subscription) {
+	chosen := make([]Subscription, 0, len(subs))
+	index := make(map[string]int, len(subs))
+	for _, sub := range subs {
+		endpoint := strings.TrimSpace(sub.Endpoint)
+		if endpoint == "" {
+			continue
+		}
+		sub.Endpoint = endpoint
+		if at, ok := index[endpoint]; ok {
+			chosen[at] = sub
+			continue
+		}
+		index[endpoint] = len(chosen)
+		chosen = append(chosen, sub)
+	}
+	for _, sub := range chosen {
+		if cfg.RejectsOrigin(sub.Origin) {
+			drop = append(drop, sub)
+			continue
+		}
+		if cfg.DeliversTo(sub.Origin) {
+			send = append(send, sub)
+		}
+	}
+	return send, drop
 }
 
 func (s *Sender) deliver(ctx context.Context, sub Subscription, payload []byte) (int, error) {

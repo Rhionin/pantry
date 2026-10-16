@@ -251,6 +251,34 @@ func TestAttentionQRNotifiesImmediately(t *testing.T) {
 	}
 }
 
+func TestBatchPushOnlyForStillPendingItems(t *testing.T) {
+	milk := pending("milk", "111", scan.StockIn)
+	oats := pending("oats", "222", scan.StockIn)
+	done := oats
+	done.Status = scan.Committed
+	alerts, clock, notices := harnessWith(scriptedScans{byID: map[string]scan.ScanEntry{
+		"milk": milk,
+		"oats": done,
+	}})
+	alerts.noteScan(milk)
+	alerts.noteScan(oats)
+	clock.advance(BatchSettle)
+	if len(*notices) != 1 || (*notices)[0].Count != 1 || (*notices)[0].Title != "Stock in batch is ready" {
+		t.Fatalf("batch push = %#v", *notices)
+	}
+
+	confirmed := milk
+	confirmed.Status = scan.Committed
+	alerts, clock, notices = harnessWith(scriptedScans{byID: map[string]scan.ScanEntry{
+		"milk": confirmed,
+	}})
+	alerts.noteScan(milk)
+	clock.advance(BatchSettle)
+	if len(*notices) != 0 {
+		t.Fatalf("confirmed scan was pushed: %#v", *notices)
+	}
+}
+
 func TestAttentionBatchSkipsWhenTheQueueIsClear(t *testing.T) {
 	milk := pending("milk", "111", scan.StockIn)
 	oats := pending("oats", "222", scan.StockIn)
