@@ -162,7 +162,7 @@ jobs:
     # tell the two runs apart. The reusable run passes publish_image skip
     # and skips this job. The push-triggered run is the only one that tags
     # :latest and :master, and the only one that calls the deploy hook below.
-    if: inputs.publish_image != 'skip' && (github.event_name == 'push' || (github.event_name == 'pull_request' && github.repository == 'Rhionin/pantry'))
+    if: inputs.publish_image != 'skip' && (github.event_name == 'push' || (github.event_name == 'pull_request' && github.repository == 'Rhionin/stockbot'))
     steps:
       - name: Checkout code
         uses: actions/checkout@v7
