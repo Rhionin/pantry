@@ -5,9 +5,9 @@ import (
 	"database/sql"
 	"testing"
 
-	"github.com/Rhionin/pantry/internal/app"
-	"github.com/Rhionin/pantry/internal/cart/appcred"
-	"github.com/Rhionin/pantry/internal/cart/kroger"
+	"github.com/Rhionin/stockbot/internal/app"
+	"github.com/Rhionin/stockbot/internal/cart/appcred"
+	"github.com/Rhionin/stockbot/internal/cart/kroger"
 	_ "modernc.org/sqlite"
 )
 

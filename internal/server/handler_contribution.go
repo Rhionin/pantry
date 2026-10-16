@@ -3,7 +3,7 @@ package server
 import (
 	"context"
 
-	"github.com/Rhionin/pantry/internal/product"
+	"github.com/Rhionin/stockbot/internal/product"
 )
 
 func contributionSettings(ctx context.Context, catalog *product.Catalog, contributor product.UpstreamContributor) (ContributionSettingsResponse, error) {

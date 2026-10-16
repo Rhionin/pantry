@@ -5,8 +5,8 @@
 // the user switches the scanner to stock-out mode (by scanning the STOCK_OUT
 // control barcode), scans the product, and approves without choosing a specific
 // instance; the earliest-expiring instance is consumed first, leaving the
-// later-expiring one in inventory. Run through scripts/pantry-verify.sh:
-//   scripts/pantry-verify.sh drive scripts/drive-stock-out.mjs stock-out
+// later-expiring one in inventory. Run through scripts/stockbot-verify.sh:
+//   scripts/stockbot-verify.sh drive scripts/drive-stock-out.mjs stock-out
 import {
   openBrowser, createKnownProduct, scanBarcode, setScanExpiration, setScannerMode, captureProof, readInventory, assert,
 } from './harness.mjs';

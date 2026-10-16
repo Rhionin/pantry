@@ -57,13 +57,13 @@ func pushPayload(notice Notice) ([]byte, error) {
 	if len(payload) <= maxPushPlaintext {
 		return payload, nil
 	}
-	return json.Marshal(wireNotice{Title: "Pantry", URL: "/"})
+	return json.Marshal(wireNotice{Title: "Stockbot", URL: "/"})
 }
 
 func compactTitle(title string) string {
 	title = strings.TrimSpace(title)
 	if title == "" {
-		return "Pantry"
+		return "Stockbot"
 	}
 	const maxTitleBytes = 120
 	if len(title) <= maxTitleBytes {

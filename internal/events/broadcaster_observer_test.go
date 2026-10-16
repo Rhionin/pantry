@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Rhionin/pantry/internal/events"
-	"github.com/Rhionin/pantry/internal/scan"
+	"github.com/Rhionin/stockbot/internal/events"
+	"github.com/Rhionin/stockbot/internal/scan"
 )
 
 type recordingObserver struct {

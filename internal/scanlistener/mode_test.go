@@ -3,7 +3,7 @@ package scanlistener
 import (
 	"testing"
 
-	"github.com/Rhionin/pantry/internal/scan"
+	"github.com/Rhionin/stockbot/internal/scan"
 )
 
 func TestModeState(t *testing.T) {

@@ -5,7 +5,7 @@
 // A kebab on a move changes its quantity or undoes it, and the shelf and the
 // pace follow. A group history lists every member's moves.
 //
-// Run: scripts/pantry-verify.sh drive scripts/drive-history.mjs history
+// Run: scripts/stockbot-verify.sh drive scripts/drive-history.mjs history
 import { copyFile, mkdir } from 'node:fs/promises';
 import { execFileSync } from 'node:child_process';
 import { join } from 'node:path';

@@ -5,8 +5,8 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/Rhionin/pantry/internal/cart"
-	"github.com/Rhionin/pantry/internal/cart/appcred"
+	"github.com/Rhionin/stockbot/internal/cart"
+	"github.com/Rhionin/stockbot/internal/cart/appcred"
 )
 
 type providerCredentialParams struct {

@@ -230,7 +230,7 @@ have "$tunnel_json" "X-Pantry-Entry" "tunnel adapt marks the public site for the
 # Caddy's adapt output canonicalizes the header to Client-Ip.
 have "$acme_json" "X-Pantry-Client-Ip" "certificate adapt passes the visitor address"
 have "$tunnel_json" "X-Pantry-Client-Ip" "tunnel adapt passes the visitor address"
-# Pantry sends these on /sw.js. A second copy is joined with the app's header.
+# Stockbot sends these on /sw.js. A second copy is joined with the app's header.
 lack "$acme_json" "Service-Worker-Allowed" "certificate adapt must not set Service-Worker-Allowed"
 lack "$tunnel_json" "Service-Worker-Allowed" "tunnel adapt must not set Service-Worker-Allowed"
 lack "$acme_json" "no-cache, no-transform" "certificate adapt must not set the worker Cache-Control"

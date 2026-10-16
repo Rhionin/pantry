@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Rhionin/pantry/internal/grocysync"
-	"github.com/Rhionin/pantry/internal/syncsnap"
+	"github.com/Rhionin/stockbot/internal/grocysync"
+	"github.com/Rhionin/stockbot/internal/syncsnap"
 )
 
 func TestRunBackfillWritesOnce(t *testing.T) {

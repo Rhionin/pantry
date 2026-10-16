@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strconv"
 
-	"github.com/Rhionin/pantry/internal/syncsnap"
+	"github.com/Rhionin/stockbot/internal/syncsnap"
 )
 
 func (r *Reconciler) syncStock(ctx context.Context, snap syncsnap.Snapshot, products map[string]int) error {

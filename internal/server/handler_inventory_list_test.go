@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Rhionin/pantry/internal/product"
+	"github.com/Rhionin/stockbot/internal/product"
 )
 
 func TestInventoryListHandler(t *testing.T) {

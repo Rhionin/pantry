@@ -7,8 +7,8 @@
 // flag clears, the card shows the product name and a batch-approval checkbox,
 // and — because it was scanned in stock_in mode it carries a direction — the
 // resolved scan is approvable and lands one unit in inventory. Run through
-// scripts/pantry-verify.sh:
-//   scripts/pantry-verify.sh drive scripts/drive-flagged-resolution.mjs flagged-resolution
+// scripts/stockbot-verify.sh:
+//   scripts/stockbot-verify.sh drive scripts/drive-flagged-resolution.mjs flagged-resolution
 import {
   openBrowser, scanBarcode, captureProof, readInventory, assert,
 } from './harness.mjs';

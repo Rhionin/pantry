@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Rhionin/pantry/internal/syncsnap"
+	"github.com/Rhionin/stockbot/internal/syncsnap"
 )
 
 const (

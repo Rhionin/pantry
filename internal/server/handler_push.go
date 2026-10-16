@@ -4,7 +4,7 @@ import (
 	"errors"
 	"strings"
 
-	"github.com/Rhionin/pantry/internal/push"
+	"github.com/Rhionin/stockbot/internal/push"
 )
 
 // errPushUnavailable is the log detail when these routes have no database.

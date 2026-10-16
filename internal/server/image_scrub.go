@@ -4,7 +4,7 @@ import (
 	"reflect"
 	"strings"
 
-	"github.com/Rhionin/pantry/internal/product"
+	"github.com/Rhionin/stockbot/internal/product"
 )
 
 // scrubImageURLs clears imageUrl fields a browser should not load. It walks

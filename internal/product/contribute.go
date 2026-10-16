@@ -274,7 +274,7 @@ func RecordShare(ctx context.Context, catalog *Catalog, contributor UpstreamCont
 		Status:   ShareNotConfigured,
 		Database: req.Database,
 		Barcode:  req.Barcode,
-		Detail:   "Saved in your pantry. Nothing was sent because this Pantry is not signed in to the open databases.",
+		Detail:   "Saved in your pantry. Nothing was sent because this Stockbot is not signed in to the open databases.",
 	}
 	if contributor.Configured() {
 		err := contributor.Contribute(ctx, Contribution{
@@ -306,7 +306,7 @@ func RecordShare(ctx context.Context, catalog *Catalog, contributor UpstreamCont
 	return outcome, nil
 }
 
-const productOpenerUserAgent = "Pantry (https://github.com/Rhionin/pantry)"
+const productOpenerUserAgent = "Stockbot (https://github.com/Rhionin/stockbot)"
 
 // productOpenerWriteOrigins are the Product Opener site roots that accept
 // POST /cgi/product_jqm2.pl. They are separate hosts from the read API, and
@@ -380,7 +380,7 @@ func (c *ProductOpenerContributor) Contribute(ctx context.Context, contribution 
 	form.Set("code", contribution.Barcode)
 	form.Set("product_name", contribution.Name)
 	form.Set("lc", "en")
-	form.Set("comment", "Added with explicit opt-in from Pantry (https://github.com/Rhionin/pantry)")
+	form.Set("comment", "Added with explicit opt-in from Stockbot (https://github.com/Rhionin/stockbot)")
 	if contribution.Category != "" {
 		form.Set("categories", contribution.Category)
 	}

@@ -2,8 +2,8 @@
 //
 // User story: a known product's barcode is scanned while the queue is in
 // stock-in mode; it appears as a pending card; the user approves it; the unit
-// lands in inventory. Run through scripts/pantry-verify.sh:
-//   scripts/pantry-verify.sh drive scripts/drive-stock-in.mjs stock-in
+// lands in inventory. Run through scripts/stockbot-verify.sh:
+//   scripts/stockbot-verify.sh drive scripts/drive-stock-in.mjs stock-in
 import {
   openBrowser, createKnownProduct, scanBarcode, captureProof, readInventory, assert,
 } from './harness.mjs';

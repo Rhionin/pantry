@@ -7,8 +7,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Rhionin/pantry/internal/events"
-	"github.com/Rhionin/pantry/internal/scan"
+	"github.com/Rhionin/stockbot/internal/events"
+	"github.com/Rhionin/stockbot/internal/scan"
 )
 
 // scanReader is the queue a settled batch reads to see which scans are still

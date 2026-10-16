@@ -4,7 +4,7 @@
 // Clearing the saved row returns Kroger to unconfigured. Add to Kroger cart
 // stays disabled until the store is connected.
 //
-//   scripts/pantry-verify.sh drive scripts/drive-cart-credentials.mjs cart-credentials
+//   scripts/stockbot-verify.sh drive scripts/drive-cart-credentials.mjs cart-credentials
 import { openBrowser, captureProof, assert, API_URL } from './harness.mjs';
 
 const SECRET = 'ui-secret-not-in-get';

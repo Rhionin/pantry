@@ -136,7 +136,7 @@ describe('notification click client selection', () => {
     expect(worker.api.absoluteAlertURL(null, origin)).toBe(`${origin}/`);
   });
 
-  it('prefers the Pantry window already on the review, otherwise the first Pantry window', () => {
+  it('prefers the Stockbot window already on the review, otherwise the first Stockbot window', () => {
     const worker = loadWorker([]);
     const wikipedia = { url: 'https://en.wikipedia.org/wiki/Pantry' };
     const inventory = { url: `${origin}/inventory` };
@@ -185,7 +185,7 @@ describe('notification click client selection', () => {
     expect(trace.some((call) => call.client === inventory.url)).toBe(false);
   });
 
-  it('navigates the only Pantry window to the review, then focuses that window', async () => {
+  it('navigates the only Stockbot window to the review, then focuses that window', async () => {
     const trace: TraceCall[] = [];
     const wikipedia = fakeClient('https://en.wikipedia.org/wiki/Pantry', trace);
     const inventory = fakeClient(`${origin}/inventory`, trace);
@@ -202,7 +202,7 @@ describe('notification click client selection', () => {
     expect(trace.some((call) => call.client === wikipedia.url)).toBe(false);
   });
 
-  it('opens the review when no Pantry window is open and does not focus another site', async () => {
+  it('opens the review when no Stockbot window is open and does not focus another site', async () => {
     const trace: TraceCall[] = [];
     const wikipedia = fakeClient('https://en.wikipedia.org/wiki/Pantry', trace);
     const worker = loadWorker([wikipedia], trace);
@@ -216,7 +216,7 @@ describe('notification click client selection', () => {
     expect(trace.some((call) => call.client === wikipedia.url)).toBe(false);
   });
 
-  it('opens Pantry itself when the payload url is on another origin', async () => {
+  it('opens Stockbot itself when the payload url is on another origin', async () => {
     const trace: TraceCall[] = [];
     const wikipedia = fakeClient('https://en.wikipedia.org/wiki/Pantry', trace);
     const worker = loadWorker([wikipedia], trace);
@@ -229,7 +229,7 @@ describe('notification click client selection', () => {
     expect(trace.some((call) => call.op === 'focus')).toBe(false);
   });
 
-  it('focuses the Pantry window when navigate() is missing or returns another origin', async () => {
+  it('focuses the Stockbot window when navigate() is missing or returns another origin', async () => {
     const trace: TraceCall[] = [];
     const inventory = fakeClient(`${origin}/inventory`, trace, async () => {
       trace.push({ op: 'navigate', client: inventory.url, url: reviewURL });

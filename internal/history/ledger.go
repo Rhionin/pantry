@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Rhionin/pantry/internal/product"
+	"github.com/Rhionin/stockbot/internal/product"
 )
 
 // Ledger is every stock move the household can see, newest first.

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# VAPID keys for scan alerts that arrive while Pantry is closed.
+# VAPID keys for scan alerts that arrive while Stockbot is closed.
 # Sourced by setup.sh and pantry-update.sh. PANTRY_DIR must already be set.
 # A pair that is already in .env is kept. Generating a new pair signs out
 # browsers that subscribed with the old public key, so this does not rotate.

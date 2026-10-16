@@ -4,9 +4,9 @@ import (
 	"context"
 	"time"
 
-	"github.com/Rhionin/pantry/internal/cart"
-	"github.com/Rhionin/pantry/internal/shopping"
-	"github.com/Rhionin/pantry/internal/supply"
+	"github.com/Rhionin/stockbot/internal/cart"
+	"github.com/Rhionin/stockbot/internal/shopping"
+	"github.com/Rhionin/stockbot/internal/supply"
 )
 
 // ShoppingListFillHandler handles POST /api/shopping-list/fill.

@@ -1,4 +1,4 @@
-// Typed fetch wrappers for the Pantry Management backend API.
+// Typed fetch wrappers for the Stockbot Management backend API.
 // Endpoint list and request/response shapes verified against
 // internal/server/server.go and the individual handler files.
 import { reportApiResult } from '../telemetry/client';

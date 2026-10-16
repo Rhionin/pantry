@@ -1,4 +1,4 @@
-# Pantry Server
+# Stockbot Server
 
 A barcode inventory management server for home pantries, using Open Food Facts
 as the product database.

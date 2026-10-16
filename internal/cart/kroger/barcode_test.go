@@ -3,7 +3,7 @@ package kroger
 import (
 	"testing"
 
-	"github.com/Rhionin/pantry/internal/cart"
+	"github.com/Rhionin/stockbot/internal/cart"
 )
 
 func TestNormalize(t *testing.T) {

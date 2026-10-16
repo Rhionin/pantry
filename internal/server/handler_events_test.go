@@ -11,9 +11,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Rhionin/pantry/internal/events"
-	"github.com/Rhionin/pantry/internal/product"
-	"github.com/Rhionin/pantry/internal/scan"
+	"github.com/Rhionin/stockbot/internal/events"
+	"github.com/Rhionin/stockbot/internal/product"
+	"github.com/Rhionin/stockbot/internal/scan"
 )
 
 // sseFrame is one decoded "event: <type>\ndata: <json>\n\n" server-sent

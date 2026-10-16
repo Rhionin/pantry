@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Rhionin/pantry/internal/product"
-	"github.com/Rhionin/pantry/internal/scan"
+	"github.com/Rhionin/stockbot/internal/product"
+	"github.com/Rhionin/stockbot/internal/scan"
 )
 
 func TestScanCommitStockIn(t *testing.T) {

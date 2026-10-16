@@ -7,7 +7,7 @@ import (
 	"sort"
 	"time"
 
-	"github.com/Rhionin/pantry/internal/shopping"
+	"github.com/Rhionin/stockbot/internal/shopping"
 )
 
 // Months is a supply window. A month is 30 days. Zero is invalid.

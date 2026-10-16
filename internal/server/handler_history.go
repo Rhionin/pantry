@@ -5,9 +5,9 @@ import (
 	"errors"
 	"time"
 
-	"github.com/Rhionin/pantry/internal/events"
-	"github.com/Rhionin/pantry/internal/history"
-	"github.com/Rhionin/pantry/internal/inventory"
+	"github.com/Rhionin/stockbot/internal/events"
+	"github.com/Rhionin/stockbot/internal/history"
+	"github.com/Rhionin/stockbot/internal/inventory"
 )
 
 // HistoryHandler serves pace and the recent trail, and the corrections on a move.

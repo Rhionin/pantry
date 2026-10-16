@@ -8,7 +8,7 @@ import (
 
 	_ "modernc.org/sqlite"
 
-	"github.com/Rhionin/pantry/internal/app"
+	"github.com/Rhionin/stockbot/internal/app"
 )
 
 // newTestQueueInternal mirrors the newTestQueue helper in scan_test.go

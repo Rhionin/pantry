@@ -4,7 +4,7 @@
 # Phones on home Wi-Fi look up a public hostname in ordinary DNS and then
 # try the router's WAN address. When the router does not NAT-hairpin, that
 # connection hangs and never reaches Caddy. mDNS stays on the LAN, so
-# http://pantry.local:<port> reaches the passwordless Pantry port directly.
+# http://pantry.local:<port> reaches the passwordless Stockbot port directly.
 
 set -euo pipefail
 

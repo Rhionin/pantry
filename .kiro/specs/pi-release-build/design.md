@@ -161,16 +161,16 @@ COPY . .
 COPY --from=frontend /src/frontend/dist/ ./internal/webui/assets/
 RUN mkdir -p /data
 RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} \
-    go build -trimpath -ldflags="-s -w" -o /out/pantry-server ./cmd/server
+    go build -trimpath -ldflags="-s -w" -o /out/stockbot-server ./cmd/server
 
 FROM gcr.io/distroless/static-debian12:nonroot
-COPY --from=build /out/pantry-server /usr/local/bin/pantry-server
+COPY --from=build /out/stockbot-server /usr/local/bin/stockbot-server
 COPY --from=build --chown=nonroot:nonroot /data /data
 ENV ADDR=":8080" DB_PATH="/data/pantry.db"
 EXPOSE 8080
 VOLUME ["/data"]
 USER nonroot:nonroot
-ENTRYPOINT ["/usr/local/bin/pantry-server"]
+ENTRYPOINT ["/usr/local/bin/stockbot-server"]
 ```
 
 Decisions:

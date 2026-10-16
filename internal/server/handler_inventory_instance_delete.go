@@ -5,7 +5,7 @@ import (
 	"errors"
 	"time"
 
-	"github.com/Rhionin/pantry/internal/inventory"
+	"github.com/Rhionin/stockbot/internal/inventory"
 )
 
 type InventoryInstanceDeleteHandler struct {

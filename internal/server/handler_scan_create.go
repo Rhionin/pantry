@@ -5,8 +5,8 @@ import (
 	"log"
 	"time"
 
-	"github.com/Rhionin/pantry/internal/product"
-	"github.com/Rhionin/pantry/internal/scan"
+	"github.com/Rhionin/stockbot/internal/product"
+	"github.com/Rhionin/stockbot/internal/scan"
 )
 
 // directionLabel renders a scan direction for logs, showing "unset" for a nil

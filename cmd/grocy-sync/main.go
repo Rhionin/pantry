@@ -12,7 +12,7 @@ import (
 	// match the Grocy container or a late-evening stock-in lands on the wrong day.
 	_ "time/tzdata"
 
-	"github.com/Rhionin/pantry/internal/grocysync"
+	"github.com/Rhionin/stockbot/internal/grocysync"
 )
 
 func main() {

@@ -2,7 +2,7 @@
 // web UI. External lookup is disabled and no Product Opener account is
 // configured, so the product must stay local.
 //
-//   scripts/pantry-verify.sh drive scripts/drive-contribute-product.mjs contribute-product
+//   scripts/stockbot-verify.sh drive scripts/drive-contribute-product.mjs contribute-product
 import {
   openBrowser, scanBarcode, captureProof, readInventory, assert, API_URL,
 } from './harness.mjs';

@@ -9,8 +9,8 @@ import (
 	"os"
 	"time"
 
-	"github.com/Rhionin/pantry/internal/product"
-	"github.com/Rhionin/pantry/internal/scan"
+	"github.com/Rhionin/stockbot/internal/product"
+	"github.com/Rhionin/stockbot/internal/scan"
 )
 
 // defaultHeadlessUserID matches the single-user default hardcoded across

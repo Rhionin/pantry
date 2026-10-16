@@ -7,7 +7,7 @@ import (
 	"log"
 	"time"
 
-	"github.com/Rhionin/pantry/internal/scan"
+	"github.com/Rhionin/stockbot/internal/scan"
 )
 
 // scheduledBatch is one stock-in or stock-out alert waiting out its quiet

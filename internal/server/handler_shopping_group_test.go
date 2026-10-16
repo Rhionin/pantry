@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Rhionin/pantry/internal/group"
-	"github.com/Rhionin/pantry/internal/product"
+	"github.com/Rhionin/stockbot/internal/group"
+	"github.com/Rhionin/stockbot/internal/product"
 )
 
 func TestShoppingListUsesGroups(t *testing.T) {

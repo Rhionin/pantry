@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Rhionin/pantry/internal/server"
+	"github.com/Rhionin/stockbot/internal/server"
 )
 
 func TestPublicEntryFailsClosedWithoutHouseholdLogin(t *testing.T) {

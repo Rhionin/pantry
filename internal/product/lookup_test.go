@@ -10,7 +10,7 @@ import (
 
 	_ "modernc.org/sqlite"
 
-	"github.com/Rhionin/pantry/internal/app"
+	"github.com/Rhionin/stockbot/internal/app"
 )
 
 // setupTestDB opens an in-memory SQLite database, applies all migrations, and returns the connection.

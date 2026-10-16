@@ -297,7 +297,7 @@ first property-test task promotes it to the direct block via `go mod tidy`.
       inherits ownership from the image path, which is how uid 65532 can write the
       database with no operator action
     - `ENV ADDR=":8080" DB_PATH="/data/pantry.db"`, `EXPOSE 8080`, `VOLUME ["/data"]`,
-      `USER nonroot:nonroot`, `ENTRYPOINT ["/usr/local/bin/pantry-server"]`
+      `USER nonroot:nonroot`, `ENTRYPOINT ["/usr/local/bin/stockbot-server"]`
     - No `HEALTHCHECK`: distroless ships no shell, `curl`, or `wget`, so it cannot be
       expressed. `/health` verification lives in the deployment guide instead
     - Add `# syntax=docker/dockerfile:1` as the first line

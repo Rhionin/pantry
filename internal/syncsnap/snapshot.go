@@ -8,7 +8,7 @@ import (
 	"sort"
 	"time"
 
-	"github.com/Rhionin/pantry/internal/group"
+	"github.com/Rhionin/stockbot/internal/group"
 )
 
 const householdUser = "user-1"

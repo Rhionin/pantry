@@ -191,7 +191,7 @@ describe('FlaggedEntryResolver', () => {
           ...created,
           contribution: {
             status: 'not_configured',
-            detail: 'Saved in your pantry. Nothing was sent because this Pantry is not signed in to the open databases.',
+            detail: 'Saved in your pantry. Nothing was sent because this Stockbot is not signed in to the open databases.',
           },
         }, 201));
       }

@@ -1,16 +1,16 @@
 ---
-name: verify-pantry
+name: verify-stockbot
 description: >-
-  Drive the real Pantry app (Go barcode-inventory server + React/Vite web UI)
+  Drive the real Stockbot app (Go barcode-inventory server + React/Vite web UI)
   the way a user does and prove a change works: scan barcodes, approve scans,
   check inventory, manage the shopping list, and capture evidence. Reach for
-  this when verifying or demonstrating any user-facing Pantry behavior, before
+  this when verifying or demonstrating any user-facing Stockbot behavior, before
   claiming a fix or feature is done.
 ---
 
-# Verify Pantry
+# Verify Stockbot
 
-Pantry is a home barcode-inventory manager. A Go server (`cmd/server`) serves an
+Stockbot is a home barcode-inventory manager. A Go server (`cmd/server`) serves an
 HTTP API and, in production, the embedded React build. A user's real surface is
 the **web UI** (React + Vite + Mantine, React Router), which talks to the Go API
 under `/api`. Products normally come from Open Food Facts; verification disables
@@ -34,7 +34,7 @@ In this sandbox, **background processes and `/tmp` do not survive between separa
 shell calls.** Only the repo and `$HOME` (Go build cache, `frontend/node_modules`)
 persist. So you cannot "start the server in one command and drive it in the next."
 Every verification run must **launch, drive, and tear down inside a single shell
-invocation.** `scripts/pantry-verify.sh` does exactly that. If your harness ever
+invocation.** `scripts/stockbot-verify.sh` does exactly that. If your harness ever
 runs on a machine where processes persist, the same script still works; it just
 does more than it strictly needs to.
 
@@ -51,16 +51,16 @@ does more than it strictly needs to.
 
 There is no long-lived server to keep alive here. "Launch" means: build the Go
 binary once, then start the API and Vite dev server, drive, and stop them, all in
-one `pantry-verify.sh` call.
+one `stockbot-verify.sh` call.
 
 ```bash
 # From the repo root. Runs one Playwright driver against a freshly launched app.
-bash .agents/skills/verify-pantry/scripts/pantry-verify.sh \
-  drive .agents/skills/verify-pantry/scripts/drive-stock-in.mjs stock-in
+bash .agents/skills/verify-stockbot/scripts/stockbot-verify.sh \
+  drive .agents/skills/verify-stockbot/scripts/drive-stock-in.mjs stock-in
 ```
 
 The script:
-- builds `cmd/server` to `.agents/skills/verify-pantry/.bin/pantry-server`,
+- builds `cmd/server` to `.agents/skills/verify-stockbot/.bin/stockbot-server`,
 - starts the Go server on `127.0.0.1:18080` with a fresh SQLite DB and
   `DISABLE_EXTERNAL_PRODUCT_LOOKUP=true` (no Open Food Facts calls),
 - starts Vite on `127.0.0.1:5173` proxying `/api` to the Go server,
@@ -81,7 +81,7 @@ versions, builds and boots the Go server, and checks `/health` and
 `evidence/doctor/` and mutates no real state.
 
 ```bash
-bash .agents/skills/verify-pantry/scripts/pantry-verify.sh doctor
+bash .agents/skills/verify-stockbot/scripts/stockbot-verify.sh doctor
 ```
 
 A healthy run ends with `PASS: pantry is worth driving` and shows
@@ -111,7 +111,7 @@ convenient one.
 
 ## Evidence
 
-Proof goes to `.agents/skills/verify-pantry/evidence/<feature>/` and survives
+Proof goes to `.agents/skills/verify-stockbot/evidence/<feature>/` and survives
 cleanup. `captureProof(page, name, sideEffect)` writes three artifacts:
 
 - `<name>.aria.txt` — an ARIA snapshot of the page, showing the app identity and
@@ -120,7 +120,7 @@ cleanup. `captureProof(page, name, sideEffect)` writes three artifacts:
 - `<name>.sideeffect.json` — the structured side effect you verified (e.g. the
   inventory instance count read back from the API).
 
-Proof standards for Pantry:
+Proof standards for Stockbot:
 - Drive the **real user path** (scan + approve), not internal setters or the
   test-only direct API. Seeding a product and reading inventory back are allowed
   as precondition and second-view confirmation, not as the action under test.
@@ -135,7 +135,7 @@ Proof standards for Pantry:
 
 ## Cleanup
 
-`pantry-verify.sh` tears down on exit via a trap: it kills only the API and Vite
+`stockbot-verify.sh` tears down on exit via a trap: it kills only the API and Vite
 PIDs it started (and Vite's children), never by process name, so it will not
 disturb an unrelated server. The fresh per-run SQLite DB lives under the evidence
 dir and is discarded next run. **Cleanup never removes the evidence** —
@@ -144,13 +144,13 @@ run. `.bin/` (built binary) and `evidence/` are git-ignored (see `.gitignore`);
 the committed skill is `SKILL.md`, `features/`, and `scripts/`.
 
 If a driver leaves a stray listener (e.g. it was killed mid-run), re-run any
-`pantry-verify.sh` command: it starts on the same fixed ports with `--strictPort`,
+`stockbot-verify.sh` command: it starts on the same fixed ports with `--strictPort`,
 so a leftover process surfaces immediately as a bind failure rather than a silent
 double-drive.
 
 ## Helpers
 
-- `scripts/pantry-verify.sh` — launch/doctor/drive/cleanup wrapper. Invocations
+- `scripts/stockbot-verify.sh` — launch/doctor/drive/cleanup wrapper. Invocations
   shown above.
 - `scripts/harness.mjs` — Playwright driving helpers (`openBrowser`,
   `createKnownProduct`, `scanBarcode`, `captureProof`, `readInventory`, `assert`).

@@ -8,7 +8,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/Rhionin/pantry/internal/shopping"
+	"github.com/Rhionin/stockbot/internal/shopping"
 )
 
 const (

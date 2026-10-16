@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Drop packets to Pantry's published port when the source is not loopback,
+# Drop packets to Stockbot's published port when the source is not loopback,
 # a private LAN, or Tailscale's CGNAT range.
 #
 # Docker publishes that port with a userland proxy. A packet can be accepted
@@ -7,7 +7,7 @@
 # cover the forwarded path, and a DOCKER-USER rule does not cover the proxy.
 # This installs both. It does not touch ports 80 or 443.
 #
-# Applied by `sudo ./setup.sh` when compose publishes the Pantry port or the
+# Applied by `sudo ./setup.sh` when compose publishes the Stockbot port or the
 # public proxy is on. LAN clients in the ranges below keep working.
 # Opt out by setting PANTRY_LAN_FIREWALL=off in /opt/pantry/.env and re-running
 # setup. Remove until the next setup with:
@@ -68,7 +68,7 @@ if [[ "$remove" == true ]]; then
     ip6tables -F PANTRY-LAN
     ip6tables -X PANTRY-LAN
   fi
-  echo "Removed Pantry LAN-only rules for tcp/$HOST_PORT"
+  echo "Removed Stockbot LAN-only rules for tcp/$HOST_PORT"
   exit 0
 fi
 
@@ -114,4 +114,4 @@ if command -v ip6tables >/dev/null 2>&1; then
   ensure_jump ip6tables DOCKER-USER "$CONTAINER_PORT"
 fi
 
-echo "Pantry tcp/$HOST_PORT accepts loopback, private LAN, and Tailscale sources only"
+echo "Stockbot tcp/$HOST_PORT accepts loopback, private LAN, and Tailscale sources only"

@@ -7,7 +7,7 @@
 // seeded in the server's SQLite database after credentials are saved through
 // the API. The page then loads that state itself.
 //
-//   scripts/pantry-verify.sh drive scripts/drive-shopping-connected.mjs shopping-connected
+//   scripts/stockbot-verify.sh drive scripts/drive-shopping-connected.mjs shopping-connected
 import { execFileSync } from 'node:child_process';
 import { mkdirSync } from 'node:fs';
 import {
@@ -36,8 +36,8 @@ let failed = false;
 try {
   const saved = await page.request.put(`${API_URL}/api/providers/kroger/credentials`, {
     data: {
-      clientId: 'pantry-verify-client',
-      clientSecret: 'pantry-verify-secret',
+      clientId: 'stockbot-verify-client',
+      clientSecret: 'stockbot-verify-secret',
       redirectUri: 'https://pantry.example/api/providers/kroger/callback',
       modality: 'PICKUP',
     },
@@ -95,7 +95,7 @@ try {
   assert(await connectionDialog.getByRole('button', { name: 'Disconnect Kroger' }).isVisible(), 'Disconnect is missing while connected');
   const clientId = page.getByLabel('Client ID');
   await clientId.waitFor({ state: 'visible' });
-  assert((await clientId.inputValue()) === 'pantry-verify-client', 'saved client id was not shown');
+  assert((await clientId.inputValue()) === 'stockbot-verify-client', 'saved client id was not shown');
   assert(await page.getByLabel('Client secret').isVisible(), 'Client secret is missing from setup');
   assert(await page.getByLabel('Redirect URI').isVisible(), 'Redirect URI is missing from setup');
   assert(await page.getByLabel('Modality').isVisible(), 'Modality is missing from setup');

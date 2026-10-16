@@ -4,8 +4,8 @@
 // User story: the first scans are a snapshot. After the user marks that scan
 // complete, using a unit puts a Derived row on the shopping list that replaces
 // what was used. Marking it purchased dismisses the row and leaves on-hand
-// inventory unchanged. Run through scripts/pantry-verify.sh:
-//   scripts/pantry-verify.sh drive scripts/drive-shopping-list.mjs shopping-list
+// inventory unchanged. Run through scripts/stockbot-verify.sh:
+//   scripts/stockbot-verify.sh drive scripts/drive-shopping-list.mjs shopping-list
 import {
   openBrowser, createKnownProduct, scanBarcode, setScanExpiration, setScannerMode, captureProof, readInventory, assert,
 } from './harness.mjs';

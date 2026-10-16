@@ -6,7 +6,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/Rhionin/pantry/internal/telemetry"
+	"github.com/Rhionin/stockbot/internal/telemetry"
 	"github.com/go-json-experiment/json"
 )
 

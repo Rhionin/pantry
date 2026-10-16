@@ -1,13 +1,13 @@
-# Pantry verification map
+# Stockbot verification map
 
-This directory is the maintained source for verifying Pantry's user-facing
+This directory is the maintained source for verifying Stockbot's user-facing
 behavior. Read this index before driving the app, then use the matching feature
 file as the recipe. The parent [SKILL.md](../SKILL.md) covers launch, doctor,
 evidence, and cleanup mechanics.
 
 ## Baseline preconditions
 
-- Launch through `scripts/pantry-verify.sh drive <driver> <evidence-subdir>`
+- Launch through `scripts/stockbot-verify.sh drive <driver> <evidence-subdir>`
   from the repo root. It starts the Go API on `http://127.0.0.1:18080` and the
   Vite web UI on `http://127.0.0.1:5173`, each with a fresh SQLite DB, then tears
   them down on exit. Background processes do not persist across shell calls in
@@ -16,7 +16,7 @@ evidence, and cleanup mechanics.
   (`DISABLE_EXTERNAL_PRODUCT_LOOKUP=true`). Seed products through the API with
   `createKnownProduct` before scanning a known barcode; an unseeded barcode is
   treated as unknown and flags.
-- Run `scripts/pantry-verify.sh doctor` first when anything looks off. Require
+- Run `scripts/stockbot-verify.sh doctor` first when anything looks off. Require
   `health: {"status":"ok"}` and the expected scanner config before driving.
 - Never drive an instance this run did not start. Fixed ports with
   `--strictPort` make a leftover process fail fast instead of double-driving.
@@ -55,7 +55,7 @@ evidence, and cleanup mechanics.
   visible UI text.
 - `captureProof(page, name, sideEffect)` writes `<name>.aria.txt`, `<name>.png`,
   and `<name>.sideeffect.json` under `evidence/<subdir>/`. Every artifact should
-  identify Pantry and the feature under test.
+  identify Stockbot and the feature under test.
 - Report an unreachable path with the attempted action and the unmet
   precondition. Do not report a feature verified through the API when its user
   entry point is the UI.

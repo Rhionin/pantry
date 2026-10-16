@@ -8,15 +8,15 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Rhionin/pantry/internal/cart"
+	"github.com/Rhionin/stockbot/internal/cart"
 )
 
 // Script queues per-request dispositions, per-line results for per_line,
 // identity lookups, and token-exchange outcomes, all in memory.
 type Script struct {
-	mu             sync.Mutex
-	dispositions   []cart.ResultDisposition
-	lineResults    map[cart.ProductIdentity]bool
+	mu              sync.Mutex
+	dispositions    []cart.ResultDisposition
+	lineResults     map[cart.ProductIdentity]bool
 	identityLookups map[string]cart.ProductIdentity
 	tokenExchanges  []TokenExchangeResult
 }
@@ -89,9 +89,9 @@ type fakeCore struct {
 	calls   []string
 }
 
-func (f *fakeCore) ID() cart.ProviderID              { return f.id }
-func (f *fakeCore) DisplayName() string              { return f.displayName }
-func (f *fakeCore) Capabilities() cart.Capabilities  { return f.caps }
+func (f *fakeCore) ID() cart.ProviderID             { return f.id }
+func (f *fakeCore) DisplayName() string             { return f.displayName }
+func (f *fakeCore) Capabilities() cart.Capabilities { return f.caps }
 
 func (f *fakeCore) recordCall(name string) {
 	f.callsMu.Lock()

@@ -3,7 +3,7 @@ package server
 import (
 	"time"
 
-	"github.com/Rhionin/pantry/internal/shopping"
+	"github.com/Rhionin/stockbot/internal/shopping"
 )
 
 // ShoppingListGroupMemberResponse is one product the shopper can buy for a group line.

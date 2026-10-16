@@ -44,7 +44,7 @@ Preconditions:
   `getByRole('switch', { name: 'Scan alerts on this device' })` is off. Its
   description says this browser only. The status line reads `Off`.
 - **Allow alerts.** `context.grantPermissions(['notifications'])`, then turn
-  the switch on. The status line reads `On: alerts arrive even when Pantry is
+  the switch on. The status line reads `On: alerts arrive even when Stockbot is
   closed` when this browser stored a push subscription. Otherwise it names why
   push failed and still says alerts arrive while this tab is open, with a
   `Retry` button.
@@ -56,12 +56,12 @@ Preconditions:
 `scripts/drive-scan-alerts.mjs` is this recipe. `scripts/drive-scan-push.mjs`
 repeats the permission step with VAPID keys in the environment and a normal
 Chrome profile. An incognito window cannot subscribe. When the subscription
-is stored, the status says alerts arrive even when Pantry is closed.
+is stored, the status says alerts arrive even when Stockbot is closed.
 
 ## Gotchas
 
 - A browser that stores a push subscription gets the same three alerts from
-  the server, including while Pantry is closed. The page notification is the
+  the server, including while Stockbot is closed. The page notification is the
   fallback when that subscription is not available, and it still needs the tab.
 - A browser with no Notification API shows "This browser cannot show
   notifications." on Settings and the switch stays off.
