@@ -1,6 +1,6 @@
 {
-  "name": "Pantry",
-  "short_name": "Pantry",
+  "name": "Stockbot",
+  "short_name": "Stockbot",
   "icons": [
     {
       "src": "/favicon.svg",
