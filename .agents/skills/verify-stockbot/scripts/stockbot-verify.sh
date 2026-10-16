@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# pantry-verify.sh — the one command that launches Pantry, runs a Playwright
+# stockbot-verify.sh — the one command that launches Stockbot, runs a Playwright
 # driver against the real web UI, and tears everything down, all inside a single
 # shell invocation.
 #
@@ -7,20 +7,20 @@
 # processes and /tmp do NOT survive between separate shell calls. Only the
 # workspace (the repo) and $HOME (Go build cache, node_modules) persist. So a
 # "launch, then drive in a later call" model does not work here. Every drive
-# starts its own isolated Pantry, drives it, and tears it down before the shell
+# starts its own isolated Stockbot, drives it, and tears it down before the shell
 # exits. Evidence is written under the repo so it survives.
 #
 # Usage:
-#   pantry-verify.sh doctor
+#   stockbot-verify.sh doctor
 #       Read-only preflight: prints tool versions, confirms the Go server and
 #       Vite dev server can start and answer, then tears them down. Proves the
 #       checkout is worth driving. Writes nothing outside the evidence dir.
 #
-#   pantry-verify.sh drive <driver.mjs> [evidence-subdir]
-#       Starts Pantry, runs the Playwright driver script, tears down. The driver
+#   stockbot-verify.sh drive <driver.mjs> [evidence-subdir]
+#       Starts Stockbot, runs the Playwright driver script, tears down. The driver
 #       receives PANTRY_WEB_URL, PANTRY_API_URL, and PANTRY_EVIDENCE_DIR in its
 #       environment. Evidence goes to
-#       .agents/skills/verify-pantry/evidence/<evidence-subdir> (default: last).
+#       .agents/skills/verify-stockbot/evidence/<evidence-subdir> (default: last).
 #
 # Env overrides (rarely needed; defaults are isolated):
 #   API_PORT   default 18080     Go server port (loopback only)
@@ -29,7 +29,7 @@
 set -uo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../../.." && pwd)"
-SKILL_DIR="$REPO_ROOT/.agents/skills/verify-pantry"
+SKILL_DIR="$REPO_ROOT/.agents/skills/verify-stockbot"
 FRONTEND_DIR="$REPO_ROOT/frontend"
 
 API_PORT="${API_PORT:-18080}"
@@ -37,9 +37,9 @@ WEB_PORT="${WEB_PORT:-5173}"
 API_URL="http://127.0.0.1:${API_PORT}"
 WEB_URL="http://127.0.0.1:${WEB_PORT}"
 
-SERVER_BIN="$REPO_ROOT/.agents/skills/verify-pantry/.bin/pantry-server"
+SERVER_BIN="$REPO_ROOT/.agents/skills/verify-stockbot/.bin/stockbot-server"
 
-log() { printf '[pantry-verify] %s\n' "$*" >&2; }
+log() { printf '[stockbot-verify] %s\n' "$*" >&2; }
 
 # --- Process tracking. Cleanup kills only PIDs we started, never by name. ---
 API_PID=""
@@ -163,7 +163,7 @@ main() {
     doctor) cmd_doctor ;;
     drive)  shift; cmd_drive "$@" ;;
     *)
-      echo "usage: pantry-verify.sh doctor | drive <driver.mjs> [evidence-subdir]" >&2
+      echo "usage: stockbot-verify.sh doctor | drive <driver.mjs> [evidence-subdir]" >&2
       return 2
       ;;
   esac

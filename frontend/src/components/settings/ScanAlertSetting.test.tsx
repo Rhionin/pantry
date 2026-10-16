@@ -83,7 +83,7 @@ describe('scan alert status', () => {
     expect(scanAlertStatus('granted', false, 'idle', null)).toEqual({ text: 'Off', tone: 'off', retry: false });
     expect(scanAlertStatus('denied', false, 'idle', null).text).toBe('Blocked in browser settings');
     expect(scanAlertStatus('granted', true, 'idle', null).text).toBe(
-      'On: alerts arrive even when Pantry is closed',
+      'On: alerts arrive even when Stockbot is closed',
     );
     expect(scanAlertStatus('granted', true, 'idle', 'no-push')).toMatchObject({
       text: 'This browser has no push service. Alerts arrive only while this tab is open.',
@@ -99,7 +99,7 @@ describe('scan alert status', () => {
       'The browser refused the push subscription. Alerts arrive only while this tab is open.',
     );
     expect(scanAlertStatus('granted', true, 'idle', 'save-failed').text).toBe(
-      'Pantry could not save this device. Alerts arrive only while this tab is open.',
+      'Stockbot could not save this device. Alerts arrive only while this tab is open.',
     );
   });
 });
@@ -149,7 +149,7 @@ describe('Scan alerts on Settings', () => {
     fireEvent.click(toggle);
 
     expect(await screen.findByRole('status')).toHaveTextContent(
-      'On: alerts arrive even when Pantry is closed',
+      'On: alerts arrive even when Stockbot is closed',
     );
     await waitFor(() => expect(posted).toEqual([
       { endpoint: 'https://push.example/device', keys: { p256dh: 'p256', auth: 'auth' } },
@@ -175,7 +175,7 @@ describe('Scan alerts on Settings', () => {
     const first = renderSettings();
     fireEvent.click(await screen.findByRole('switch', { name: 'Scan alerts on this device' }));
     expect(await screen.findByRole('status')).toHaveTextContent(
-      'On: alerts arrive even when Pantry is closed',
+      'On: alerts arrive even when Stockbot is closed',
     );
     expect(localStorage.getItem('pantry-scan-alerts')).toBe('on');
     first.unmount();
@@ -184,7 +184,7 @@ describe('Scan alerts on Settings', () => {
     const toggle = await screen.findByRole('switch', { name: 'Scan alerts on this device' });
     expect(toggle).toBeChecked();
     expect(await screen.findByRole('status')).toHaveTextContent(
-      'On: alerts arrive even when Pantry is closed',
+      'On: alerts arrive even when Stockbot is closed',
     );
   });
 

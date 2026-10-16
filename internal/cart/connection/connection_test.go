@@ -8,8 +8,8 @@ import (
 
 	_ "modernc.org/sqlite"
 
-	"github.com/Rhionin/pantry/internal/app"
-	"github.com/Rhionin/pantry/internal/cart/connection"
+	"github.com/Rhionin/stockbot/internal/app"
+	"github.com/Rhionin/stockbot/internal/cart/connection"
 )
 
 func newTestDirectory(t *testing.T) (*connection.Directory, *sql.DB) {

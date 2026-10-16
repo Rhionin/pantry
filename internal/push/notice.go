@@ -4,7 +4,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/Rhionin/pantry/internal/scan"
+	"github.com/Rhionin/stockbot/internal/scan"
 )
 
 // Notice is one alert. Title, Body, Tag, and URL are the words the service

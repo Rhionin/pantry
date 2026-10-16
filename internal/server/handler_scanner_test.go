@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Rhionin/pantry/internal/scanlistener"
+	"github.com/Rhionin/stockbot/internal/scanlistener"
 )
 
 // TestScannerMode_InAppSwitchAndPhysicalControlBarcodeShareState verifies the

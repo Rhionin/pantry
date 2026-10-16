@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Rhionin/pantry/internal/syncsnap"
+	"github.com/Rhionin/stockbot/internal/syncsnap"
 )
 
 // PantryClient reads the snapshot and the event stream.

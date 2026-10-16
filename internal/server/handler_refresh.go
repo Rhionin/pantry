@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 
-	"github.com/Rhionin/pantry/internal/product"
+	"github.com/Rhionin/stockbot/internal/product"
 )
 
 // RefreshHandler handles POST /api/products/{id}/refresh. It revalidates a

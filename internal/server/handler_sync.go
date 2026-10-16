@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/Rhionin/pantry/internal/syncsnap"
+	"github.com/Rhionin/stockbot/internal/syncsnap"
 )
 
 // syncSnapshotHandler serves GET /api/sync/snapshot.

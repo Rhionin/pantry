@@ -4,7 +4,7 @@ import (
 	"context"
 	"sync"
 
-	"github.com/Rhionin/pantry/internal/product"
+	"github.com/Rhionin/stockbot/internal/product"
 )
 
 // fakeProductOpener implements the barcode lookup interface for testing.

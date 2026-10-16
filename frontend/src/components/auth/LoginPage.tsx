@@ -32,7 +32,7 @@ export const LoginPage = ({ onSignedIn, initialError = '' }: LoginPageProps) => 
     <main className="login-screen">
       <section className="login-card" aria-labelledby="login-title">
         <img className="login-logo" src="/brand/logo.png" alt="" />
-        <Title id="login-title" className="login-brand" order={1} size="h2">Pantry</Title>
+        <Title id="login-title" className="login-brand" order={1} size="h2">Stockbot</Title>
         <Text className="login-lede">Sign in with the household username and password.</Text>
         <form className="login-form" aria-label="Sign in" onSubmit={(event) => { void submit(event); }}>
           <Stack gap="sm">

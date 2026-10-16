@@ -23,7 +23,7 @@ export const HouseholdGate = ({ children }: { children: ReactNode }) => {
     }).catch(() => {
       if (cancelled) return;
       setRequired(true);
-      setError('Pantry could not be reached.');
+      setError('Stockbot could not be reached.');
       setPhase('login');
     });
     return () => {
@@ -47,7 +47,7 @@ export const HouseholdGate = ({ children }: { children: ReactNode }) => {
   if (phase === 'checking') {
     return (
       <main className="login-screen" aria-busy="true">
-        <p className="login-brand">Pantry</p>
+        <p className="login-brand">Stockbot</p>
       </main>
     );
   }

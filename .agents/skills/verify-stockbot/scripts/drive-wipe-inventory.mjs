@@ -2,8 +2,8 @@
 //
 // User story: a stocked product is wiped from inventory only after the user
 // types WIPE INVENTORY. The barcode still resolves afterward.
-// Run through scripts/pantry-verify.sh:
-//   scripts/pantry-verify.sh drive scripts/drive-wipe-inventory.mjs wipe-inventory
+// Run through scripts/stockbot-verify.sh:
+//   scripts/stockbot-verify.sh drive scripts/drive-wipe-inventory.mjs wipe-inventory
 import {
   openBrowser, createKnownProduct, scanBarcode, captureProof, readInventory, assert,
   API_URL,
@@ -16,7 +16,7 @@ const { browser, page } = await openBrowser();
 let failed = false;
 try {
   await createKnownProduct(page, {
-    barcode: BARCODE, name: PRODUCT, category: 'Pantry', unitOfMeasure: 'can',
+    barcode: BARCODE, name: PRODUCT, category: 'Stockbot', unitOfMeasure: 'can',
   });
 
   await page.goto('/');

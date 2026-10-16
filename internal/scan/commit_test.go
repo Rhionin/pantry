@@ -8,9 +8,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Rhionin/pantry/internal/inventory"
-	"github.com/Rhionin/pantry/internal/product"
-	"github.com/Rhionin/pantry/internal/scan"
+	"github.com/Rhionin/stockbot/internal/inventory"
+	"github.com/Rhionin/stockbot/internal/product"
+	"github.com/Rhionin/stockbot/internal/scan"
 	"github.com/google/uuid"
 )
 

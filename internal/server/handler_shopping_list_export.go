@@ -4,8 +4,8 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/Rhionin/pantry/internal/cart"
-	"github.com/Rhionin/pantry/internal/cart/connection"
+	"github.com/Rhionin/stockbot/internal/cart"
+	"github.com/Rhionin/stockbot/internal/cart/connection"
 )
 
 // ShoppingListExportHandler handles POST /api/shopping-list/export.

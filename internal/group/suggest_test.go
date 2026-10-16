@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/Rhionin/pantry/internal/product"
+	"github.com/Rhionin/stockbot/internal/product"
 )
 
 func TestRefreshSuggestionsClustersLookAlikesOnce(t *testing.T) {

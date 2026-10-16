@@ -6,8 +6,8 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/Rhionin/pantry/internal/events"
-	"github.com/Rhionin/pantry/internal/telemetry"
+	"github.com/Rhionin/stockbot/internal/events"
+	"github.com/Rhionin/stockbot/internal/telemetry"
 )
 
 // eventKeepalive is how often an open /api/events stream writes an SSE

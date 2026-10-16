@@ -4,8 +4,8 @@
 // opens the camera at a phone size, arms an injected detector when the preview
 // is up, and checks that the queue stays on screen with a capture cue and a
 // barcode outline. If the camera cannot start, it types the barcode instead.
-// Run through scripts/pantry-verify.sh:
-//   scripts/pantry-verify.sh drive scripts/drive-camera-scan.mjs camera-scan
+// Run through scripts/stockbot-verify.sh:
+//   scripts/stockbot-verify.sh drive scripts/drive-camera-scan.mjs camera-scan
 import {
   openBrowser, createKnownProduct, scanBarcode, captureProof, readInventory, assert, EVIDENCE_DIR,
 } from './harness.mjs';

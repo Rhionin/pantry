@@ -4,8 +4,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Rhionin/pantry/internal/product"
-	"github.com/Rhionin/pantry/internal/shopping"
+	"github.com/Rhionin/stockbot/internal/product"
+	"github.com/Rhionin/stockbot/internal/shopping"
 )
 
 func TestPickSameAsRanOut(t *testing.T) {

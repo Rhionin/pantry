@@ -8,10 +8,10 @@ import (
 
 	_ "modernc.org/sqlite"
 
-	"github.com/Rhionin/pantry/internal/app"
-	"github.com/Rhionin/pantry/internal/inventory"
-	"github.com/Rhionin/pantry/internal/product"
-	"github.com/Rhionin/pantry/internal/suggestion"
+	"github.com/Rhionin/stockbot/internal/app"
+	"github.com/Rhionin/stockbot/internal/inventory"
+	"github.com/Rhionin/stockbot/internal/product"
+	"github.com/Rhionin/stockbot/internal/suggestion"
 )
 
 // newTestConsumptionLog opens an in-memory SQLite database, applies all migrations,

@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Rhionin/pantry/internal/push"
+	"github.com/Rhionin/stockbot/internal/push"
 	webpush "github.com/SherClockHolmes/webpush-go"
 )
 

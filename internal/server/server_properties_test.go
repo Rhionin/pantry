@@ -10,10 +10,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Rhionin/pantry/internal/buildinfo"
-	"github.com/Rhionin/pantry/internal/cart"
-	"github.com/Rhionin/pantry/internal/product"
-	"github.com/Rhionin/pantry/internal/supply"
+	"github.com/Rhionin/stockbot/internal/buildinfo"
+	"github.com/Rhionin/stockbot/internal/cart"
+	"github.com/Rhionin/stockbot/internal/product"
+	"github.com/Rhionin/stockbot/internal/supply"
 	"github.com/go-json-experiment/json"
 	"pgregory.net/rapid"
 )

@@ -3,8 +3,8 @@ package server
 import (
 	"context"
 
-	"github.com/Rhionin/pantry/internal/inventory"
-	"github.com/Rhionin/pantry/internal/shopping"
+	"github.com/Rhionin/stockbot/internal/inventory"
+	"github.com/Rhionin/stockbot/internal/shopping"
 )
 
 // ShoppingListItemCreateHandler handles POST /api/shopping-list/items.

@@ -1,11 +1,11 @@
-// Scan alerts while Pantry is closed. The page registers this file at the
+// Scan alerts while Stockbot is closed. The page registers this file at the
 // site root so a click can open the scan queue. The server sends a compact
 // JSON payload: a short title, a body naming the count and the first item
 // names, and a url on this origin. A path that is not on this origin is ignored.
 
 self.addEventListener('push', (event) => {
   const payload = readPayload(event);
-  const title = payload.title !== '' ? payload.title : 'Pantry';
+  const title = payload.title !== '' ? payload.title : 'Stockbot';
   const options = {
     body: payload.body,
     lang: 'en',
@@ -51,7 +51,7 @@ function alertPath(value) {
 // The phone opens this address from the notification. A root-relative review
 // path such as /?scanAlert=stock_in becomes an absolute URL on this origin.
 // Anything on another origin is dropped, so a tampered payload cannot
-// navigate the browser away from Pantry.
+// navigate the browser away from Stockbot.
 function absoluteAlertURL(value, origin) {
   const fallback = new URL('/', origin).href;
   if (typeof value !== 'string' || value === '') return fallback;
@@ -75,7 +75,7 @@ function clientURL(client) {
   }
 }
 
-// Prefer a window already showing the review. Otherwise any Pantry window.
+// Prefer a window already showing the review. Otherwise any Stockbot window.
 // Clients from other sites are ignored so focus() cannot raise them.
 function chooseNotificationClient(clients, target, origin) {
   let fallback = null;
@@ -116,7 +116,7 @@ async function openQueue(url) {
     }
   }
   // Navigate before focus. On Firefox for Android, focus() raises the last
-  // open tab unless the Pantry window has already been moved to the review.
+  // open tab unless the Stockbot window has already been moved to the review.
   // A client from another origin is never focused.
   const destinationURL = clientURL(destination);
   if (!destinationURL || destinationURL.origin !== self.location.origin) {

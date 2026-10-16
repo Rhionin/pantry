@@ -92,7 +92,7 @@ export const setScannerMode = async (
 
 /**
  * Confirm a single pending scan through its per-card Confirm button, the real
- * current flow (see .agents/skills/verify-pantry/scripts/drive-stock-in.mjs).
+ * current flow (see .agents/skills/verify-stockbot/scripts/drive-stock-in.mjs).
  * Direction is not set here: it is stamped from the scanner mode at scan time,
  * so the caller scans in the correct mode (use setScannerMode for stock_out).
  *

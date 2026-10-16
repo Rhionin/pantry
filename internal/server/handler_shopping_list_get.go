@@ -4,9 +4,9 @@ import (
 	"context"
 	"sort"
 
-	"github.com/Rhionin/pantry/internal/cart"
-	"github.com/Rhionin/pantry/internal/inventory"
-	"github.com/Rhionin/pantry/internal/shopping"
+	"github.com/Rhionin/stockbot/internal/cart"
+	"github.com/Rhionin/stockbot/internal/inventory"
+	"github.com/Rhionin/stockbot/internal/shopping"
 )
 
 // ShoppingListGetHandler handles GET /api/shopping-list.

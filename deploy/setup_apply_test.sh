@@ -248,7 +248,7 @@ have "$LAST_CHOWN" "65532:65532 $lan/auth" "LAN setup still gives the auth direc
 grep -q '^PANTRY_SESSION_SECRET=$' "$lan/.env" || fail "LAN setup filled a session secret"
 lack "$LAST_DOCKER" "restart pantry-caddy" "LAN must not restart Caddy"
 have "$LAST_IPTABLES" "--dport 9090" "firewall uses HOST_PORT"
-have "$LAST_OUT" "Pantry setup complete" "LAN success"
+have "$LAST_OUT" "Stockbot setup complete" "LAN success"
 have "$LAST_OUT" "Non-LAN clients are blocked on port 9090" "LAN firewall summary"
 have "$LAST_OUT" "LAN: http://" "LAN URL is printed"
 lack "$LAST_OUT" "Home Wi-Fi cannot open" "LAN-only must not warn about hairpin"
@@ -382,7 +382,7 @@ for args in "" "apply" "install" "publish" "firewall"; do
   # shellcheck disable=SC2086
   run_setup "$lan" $args
   [[ "$LAST_RC" -eq 0 ]] || fail "command [$args] exited $LAST_RC: $LAST_OUT"
-  have "$LAST_OUT" "Pantry setup complete" "command [$args]"
+  have "$LAST_OUT" "Stockbot setup complete" "command [$args]"
 done
 
 if [[ -e /opt/pantry ]]; then
@@ -757,7 +757,7 @@ N: Name="Netum Barcode Scanner"
 EOF
 # The broken rule a previous setup.sh would have installed.
 cat > "$bt_rule" << 'EOF'
-# Pantry Scanner udev rule - auto-generated for "Netum Barcode Scanner"
+# Stockbot Scanner udev rule - auto-generated for "Netum Barcode Scanner"
 SUBSYSTEM=="input", KERNEL=="event*", ENV{ID_VENDOR_ID}=="04e8", ENV{ID_MODEL_ID}=="7021", \
   SYMLINK+="input/pantry-scanner", GROUP="65532", MODE="0640"
 EOF
@@ -769,7 +769,7 @@ PANTRY_INPUT_DEVICES="$bt_devices" PANTRY_UDEV_RULE_FILE="$bt_rule" \
   run_setup "$rule_fix"
 [[ "$LAST_RC" -eq 0 ]] || fail "setup with bluetooth scanner exited $LAST_RC: $LAST_OUT"
 have "$LAST_OUT" "Matching on vendor=04e8 product=7021" "setup logs the scanner ids"
-bt_want='# Pantry Scanner udev rule - auto-generated for "Netum Barcode Scanner"
+bt_want='# Stockbot Scanner udev rule - auto-generated for "Netum Barcode Scanner"
 SUBSYSTEM=="input", KERNEL=="event*", ATTRS{id/vendor}=="04e8", ATTRS{id/product}=="7021", \
   SYMLINK+="input/pantry-scanner", GROUP="65532", MODE="0640"
 '
@@ -788,7 +788,7 @@ EOF
 PANTRY_INPUT_DEVICES="$usb_devices" PANTRY_UDEV_RULE_FILE="$usb_rule" \
   run_setup "$usb_dir" rule
 [[ "$LAST_RC" -eq 0 ]] || fail "usb rule exited $LAST_RC: $LAST_OUT"
-usb_want='# Pantry Scanner udev rule - auto-generated for "Symbol Bar Code Scanner"
+usb_want='# Stockbot Scanner udev rule - auto-generated for "Symbol Bar Code Scanner"
 SUBSYSTEM=="input", KERNEL=="event*", ATTRS{id/vendor}=="05e0", ATTRS{id/product}=="1200", \
   SYMLINK+="input/pantry-scanner", GROUP="65532", MODE="0640"
 '
@@ -810,7 +810,7 @@ EOF
 PANTRY_INPUT_DEVICES="$name_devices" PANTRY_UDEV_RULE_FILE="$name_rule" \
   run_setup "$name_dir" rule
 [[ "$LAST_RC" -eq 0 ]] || fail "name fallback exited $LAST_RC: $LAST_OUT"
-name_want='# Pantry Scanner udev rule - auto-generated
+name_want='# Stockbot Scanner udev rule - auto-generated
 SUBSYSTEM=="input", KERNEL=="event*", ATTRS{name}=="Handheld Scanner", \
   SYMLINK+="input/pantry-scanner", GROUP="65532", MODE="0640"
 '

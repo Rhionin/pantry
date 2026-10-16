@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Rhionin/pantry/internal/buildinfo"
+	"github.com/Rhionin/stockbot/internal/buildinfo"
 	"github.com/go-json-experiment/json"
 )
 

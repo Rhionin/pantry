@@ -8,7 +8,7 @@ import (
 	"net/url"
 	"time"
 
-	"github.com/Rhionin/pantry/internal/events"
+	"github.com/Rhionin/stockbot/internal/events"
 	webpush "github.com/SherClockHolmes/webpush-go"
 )
 

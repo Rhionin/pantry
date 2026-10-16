@@ -39,18 +39,18 @@ RUN case "${COMMIT_HASH}" in *COMMIT_HASH*) echo "COMMIT_HASH was not substitute
     case "${VERSION}" in *VERSION*) echo "VERSION was not substituted" >&2; exit 1 ;; esac; \
     CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} \
     go build -trimpath \
-    -ldflags="-s -w -X github.com/Rhionin/pantry/internal/buildinfo.Commit=${COMMIT_HASH} -X github.com/Rhionin/pantry/internal/buildinfo.CommittedAt=${COMMIT_TIME} -X github.com/Rhionin/pantry/internal/buildinfo.BuiltAt=${BUILD_TIME} -X github.com/Rhionin/pantry/internal/buildinfo.Version=${VERSION} -X github.com/Rhionin/pantry/internal/buildinfo.subjectStamp=${COMMIT_SUBJECT_B64}" \
-    -o /out/pantry-server ./cmd/server
+    -ldflags="-s -w -X github.com/Rhionin/stockbot/internal/buildinfo.Commit=${COMMIT_HASH} -X github.com/Rhionin/stockbot/internal/buildinfo.CommittedAt=${COMMIT_TIME} -X github.com/Rhionin/stockbot/internal/buildinfo.BuiltAt=${BUILD_TIME} -X github.com/Rhionin/stockbot/internal/buildinfo.Version=${VERSION} -X github.com/Rhionin/stockbot/internal/buildinfo.subjectStamp=${COMMIT_SUBJECT_B64}" \
+    -o /out/stockbot-server ./cmd/server
 
 # Runtime stage
 FROM gcr.io/distroless/static-debian12:nonroot
 ARG COMMIT_HASH
 LABEL org.opencontainers.image.revision="${COMMIT_HASH}"
-LABEL com.rhionin.pantry.commit="${COMMIT_HASH}"
-COPY --from=build /out/pantry-server /usr/local/bin/pantry-server
+LABEL com.rhionin.stockbot.commit="${COMMIT_HASH}"
+COPY --from=build /out/stockbot-server /usr/local/bin/stockbot-server
 COPY --from=build --chown=nonroot:nonroot /data /data
 ENV ADDR=":8080" DB_PATH="/data/pantry.db"
 EXPOSE 8080
 VOLUME ["/data"]
 USER nonroot:nonroot
-ENTRYPOINT ["/usr/local/bin/pantry-server"]
+ENTRYPOINT ["/usr/local/bin/stockbot-server"]

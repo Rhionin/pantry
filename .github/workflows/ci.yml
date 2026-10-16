@@ -70,7 +70,7 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y shellcheck
       
       - name: Lint deploy shell scripts
-        run: shellcheck deploy/setup.sh deploy/systemd/pantry-update.sh deploy/firewall/pantry-lan-only.sh deploy/setup_apply_test.sh deploy/mdns/pantry-mdns.sh deploy/dns/pantry-split-dns.sh deploy/mdns/lan-ipv4.sh deploy/publish-mode.sh deploy/check-publish-modes.sh deploy/check-deploy-hook.sh deploy/auth-migrate.sh
+        run: shellcheck deploy/setup.sh deploy/systemd/pantry-update.sh deploy/firewall/pantry-lan-only.sh deploy/setup_apply_test.sh deploy/mdns/pantry-mdns.sh deploy/dns/pantry-split-dns.sh deploy/mdns/lan-ipv4.sh deploy/publish-mode.sh deploy/check-publish-modes.sh deploy/check-deploy-hook.sh deploy/auth-migrate.sh scripts/check-stockbot-names.sh
 
       - name: Setup script syntax and behavior
         run: bash -n deploy/setup.sh deploy/firewall/pantry-lan-only.sh deploy/systemd/pantry-update.sh deploy/mdns/pantry-mdns.sh deploy/mdns/lan-ipv4.sh deploy/dns/pantry-split-dns.sh deploy/publish-mode.sh deploy/check-publish-modes.sh deploy/check-deploy-hook.sh deploy/auth-migrate.sh && bash deploy/setup_apply_test.sh
@@ -80,6 +80,9 @@ jobs:
 
       - name: Deploy hook contract
         run: bash deploy/check-deploy-hook.sh
+
+      - name: Module path and names that stay pantry
+        run: bash scripts/check-stockbot-names.sh
 
   frontend:
     name: Frontend tests and linting
@@ -140,7 +143,7 @@ jobs:
         run: npx playwright install --with-deps chromium
       
       - name: Build server binary
-        run: go build -o ../bin/pantry-server ../cmd/server
+        run: go build -o ../bin/stockbot-server ../cmd/server
       
       - name: Run Playwright e2e tests
         run: npx playwright test
@@ -252,7 +255,7 @@ jobs:
       # The image is already in the registry. This asks the Pi to pull it now.
       # The step is a no-op until DEPLOY_HOOK_SECRET exists, so a repo without
       # that secret still publishes the image and the Pi timer still deploys.
-      - name: Ask the Pantry host to deploy
+      - name: Ask the Stockbot host to deploy
         if: github.event_name == 'push' && github.ref == 'refs/heads/master'
         env:
           DEPLOY_HOOK_SECRET: ${{ secrets.DEPLOY_HOOK_SECRET }}

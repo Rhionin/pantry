@@ -3,7 +3,7 @@ package server
 import (
 	"context"
 
-	"github.com/Rhionin/pantry/internal/inventory"
+	"github.com/Rhionin/stockbot/internal/inventory"
 )
 
 // SetReplenishmentModePathParams holds path parameters for the replenishment mode endpoint.

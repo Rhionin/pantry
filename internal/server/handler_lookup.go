@@ -3,8 +3,8 @@ package server
 import (
 	"context"
 
-	"github.com/Rhionin/pantry/internal/group"
-	"github.com/Rhionin/pantry/internal/product"
+	"github.com/Rhionin/stockbot/internal/group"
+	"github.com/Rhionin/stockbot/internal/product"
 )
 
 type LookupHandler struct {

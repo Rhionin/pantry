@@ -8,9 +8,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Rhionin/pantry/internal/cart"
-	"github.com/Rhionin/pantry/internal/cart/connection"
-	"github.com/Rhionin/pantry/internal/cart/kroger"
+	"github.com/Rhionin/stockbot/internal/cart"
+	"github.com/Rhionin/stockbot/internal/cart/connection"
+	"github.com/Rhionin/stockbot/internal/cart/kroger"
 )
 
 func TestLoggedInKrogerCallbackStillSucceeds(t *testing.T) {

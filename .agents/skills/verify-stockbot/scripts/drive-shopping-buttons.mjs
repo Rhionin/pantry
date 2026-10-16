@@ -3,7 +3,7 @@
 // Desktop: the two buttons share a width and sit on the title's center line.
 // Phone: the same pair is equal width, and Send stays disabled until the list is built.
 //
-//   scripts/pantry-verify.sh drive scripts/drive-shopping-buttons.mjs shopping-buttons
+//   scripts/stockbot-verify.sh drive scripts/drive-shopping-buttons.mjs shopping-buttons
 import { mkdirSync } from 'node:fs';
 import {
   openBrowser, createKnownProduct, scanBarcode, setScanExpiration, setScannerMode, captureProof, assert,

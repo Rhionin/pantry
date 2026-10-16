@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Point the public Pantry hostname at this Pi for DNS clients on the LAN.
+# Point the public Stockbot hostname at this Pi for DNS clients on the LAN.
 #
 # Off unless PANTRY_SPLIT_DNS=on. Public DNS is not modified, and Caddy's
 # certificate and shared password stay in front of anyone who still reaches

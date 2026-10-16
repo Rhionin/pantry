@@ -1,5 +1,5 @@
 // drive-scan-push.mjs — proves the settings switch stores a push subscription
-// when this pantry has VAPID keys. Run through scripts/pantry-verify.sh with
+// when this pantry has VAPID keys. Run through scripts/stockbot-verify.sh with
 // VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY, and VAPID_SUBJECT set.
 import { mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -46,7 +46,7 @@ try {
     };
   });
   assert(
-    statusText === 'On: alerts arrive even when Pantry is closed'
+    statusText === 'On: alerts arrive even when Stockbot is closed'
       || statusText.includes('this tab is open'),
     `scan alert status is missing (got ${statusText})`,
   );

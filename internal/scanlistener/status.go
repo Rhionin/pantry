@@ -4,14 +4,14 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Rhionin/pantry/internal/scan"
+	"github.com/Rhionin/stockbot/internal/scan"
 )
 
 // Status is the externally observable state of the capture path, surfaced
 // through GET /health because an appliance with no monitor has no other way
 // to distinguish a dead scanner from an idle one.
 type Status struct {
-	Source       Source     `json:"source"`       // "device" or "stdin"
+	Source       Source     `json:"source"` // "device" or "stdin"
 	DevicePath   string     `json:"devicePath,omitempty"`
 	Connected    bool       `json:"connected"`
 	Grabbed      bool       `json:"grabbed"`

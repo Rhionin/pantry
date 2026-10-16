@@ -1,7 +1,7 @@
 // drive-diagnostics.mjs — opens Diagnostics and checks the page-load snapshot.
 //
-// Run through scripts/pantry-verify.sh:
-//   scripts/pantry-verify.sh drive scripts/drive-diagnostics.mjs diagnostics
+// Run through scripts/stockbot-verify.sh:
+//   scripts/stockbot-verify.sh drive scripts/drive-diagnostics.mjs diagnostics
 import { openBrowser, captureProof, assert, API_URL } from './harness.mjs';
 
 const { browser, page } = await openBrowser();

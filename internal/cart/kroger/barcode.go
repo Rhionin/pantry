@@ -4,7 +4,7 @@ package kroger
 import (
 	"fmt"
 
-	"github.com/Rhionin/pantry/internal/cart"
+	"github.com/Rhionin/stockbot/internal/cart"
 )
 
 // Normalize returns the 13-character Normalized_Barcode for a pantry barcode, or

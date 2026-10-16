@@ -2,8 +2,8 @@
 //
 // User story: after stocking products in and using one, History lists every
 // move newest first, grouped by day, charts them as pulses, and the same row
-// menu can correct or undo a move. Run through scripts/pantry-verify.sh:
-//   scripts/pantry-verify.sh drive scripts/drive-stock-ledger.mjs stock-ledger
+// menu can correct or undo a move. Run through scripts/stockbot-verify.sh:
+//   scripts/stockbot-verify.sh drive scripts/drive-stock-ledger.mjs stock-ledger
 import { copyFile, mkdir } from 'node:fs/promises';
 import { execFileSync } from 'node:child_process';
 import { join } from 'node:path';

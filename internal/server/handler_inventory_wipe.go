@@ -1,7 +1,7 @@
 package server
 
 import (
-	"github.com/Rhionin/pantry/internal/supply"
+	"github.com/Rhionin/stockbot/internal/supply"
 )
 
 type InventoryWipeHandler struct {

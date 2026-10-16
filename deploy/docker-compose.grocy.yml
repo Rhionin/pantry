@@ -1,4 +1,4 @@
-# Optional one-way sync from Pantry into a Grocy container that is not
+# Optional one-way sync from Stockbot into a Grocy container that is not
 # part of this file. A normal `docker compose up` does not start it and
 # does not need the tunnel network.
 #

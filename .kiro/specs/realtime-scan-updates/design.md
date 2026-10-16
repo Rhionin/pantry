@@ -62,8 +62,8 @@ package events
 import (
 	"sync"
 
-	"github.com/Rhionin/pantry/internal/inventory"
-	"github.com/Rhionin/pantry/internal/scan"
+	"github.com/Rhionin/stockbot/internal/inventory"
+	"github.com/Rhionin/stockbot/internal/scan"
 )
 
 // subscriberBuffer bounds how many unread messages a single connection may
@@ -160,7 +160,7 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/Rhionin/pantry/internal/events"
+	"github.com/Rhionin/stockbot/internal/events"
 )
 
 type EventsHandler struct {

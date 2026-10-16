@@ -1,10 +1,10 @@
-# Pantry Frontend Development Guide
+# Stockbot Frontend Development Guide
 
-This directory contains the React frontend for Pantry, built with TypeScript and Vite.
+This directory contains the React frontend for Stockbot, built with TypeScript and Vite.
 
 ## Local Development Workflow
 
-Pantry runs as two separate processes during development:
+Stockbot runs as two separate processes during development:
 
 1. **Vite dev server** - serves the React frontend with hot module replacement
 2. **Go API server** - serves the `/api` routes and embedded assets

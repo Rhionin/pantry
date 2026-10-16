@@ -5,7 +5,7 @@
 // available the whole time. Saving "always this brand" keeps that brand on the
 // line and drops the sale offer.
 //
-//   scripts/pantry-verify.sh drive scripts/drive-brand-deals.mjs brand-deals
+//   scripts/stockbot-verify.sh drive scripts/drive-brand-deals.mjs brand-deals
 import {
   openBrowser, createKnownProduct, scanBarcode, setScanExpiration, captureProof, assert, API_URL,
 } from './harness.mjs';

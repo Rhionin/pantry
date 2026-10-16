@@ -14,8 +14,8 @@ import (
 
 	_ "modernc.org/sqlite"
 
-	"github.com/Rhionin/pantry/internal/app"
-	"github.com/Rhionin/pantry/internal/product"
+	"github.com/Rhionin/stockbot/internal/app"
+	"github.com/Rhionin/stockbot/internal/product"
 )
 
 // TestMigrationApplies verifies that RunMigrations applies the initial schema

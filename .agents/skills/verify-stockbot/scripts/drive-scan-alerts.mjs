@@ -2,7 +2,7 @@
 //
 // The permission control is visible before any prompt. An unrecognized barcode
 // notifies immediately. A recognized stock-in scan notifies once the page clock
-// has moved 5 quiet minutes. Run through scripts/pantry-verify.sh.
+// has moved 5 quiet minutes. Run through scripts/stockbot-verify.sh.
 import {
   openBrowser, createKnownProduct, scanBarcode, captureProof, assert, WEB_URL,
 } from './harness.mjs';
@@ -83,7 +83,7 @@ try {
   );
   const statusText = await status.innerText();
   assert(
-    statusText === 'On: alerts arrive even when Pantry is closed'
+    statusText === 'On: alerts arrive even when Stockbot is closed'
       || statusText.includes('this tab is open'),
     `scan alert status is missing (got ${statusText})`,
   );

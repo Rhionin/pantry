@@ -10,7 +10,7 @@ Product Opener account, the product is saved here and nothing is sent.
 - `share-off` the switch `Let me contribute products I type in` is unchecked,
   and `Contribute this product` is not shown.
 - `share-on-still-local` turning the switch on reveals an unchecked
-  `Contribute this product` checkbox and says this Pantry is not signed in.
+  `Contribute this product` checkbox and says this Stockbot is not signed in.
 - `share-one-product` checking the box and creating the product records a local
   contribution and still resolves the flagged scan.
 
@@ -37,7 +37,7 @@ Preconditions:
   `includeHidden: true`. `Contribute this product` is absent from the DOM.
 - **Turn the household switch on.** Click the visible text `Let me contribute
   products I type in`. `Contribute this product` appears unchecked, with text
-  that this Pantry is not signed in.
+  that this Stockbot is not signed in.
 - **Opt in for this product.** Click the visible text `Contribute this
   product`, choose `Open Products Facts` in `Open database`, fill the product
   fields, and click `Create and use product`.

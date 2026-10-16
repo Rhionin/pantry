@@ -1,14 +1,29 @@
-# Pantry Deployment Guide
+# Stockbot Deployment Guide
 
-This guide covers deploying Pantry on a Raspberry Pi using Docker Compose.
+This guide covers deploying Stockbot on a Raspberry Pi using Docker Compose.
+
+## Names that stay pantry
+
+The Go module is `github.com/Rhionin/stockbot`. The Pi keeps the names from the first install. Changing them would point at a different directory, image, volume, or Grocy record.
+
+- Public hostname `pantry.rhionin.com`, LAN name `pantry.local`, and Avahi file `pantry-http.service`. The on-screen mDNS label is Stockbot.
+- Directory `/opt/pantry`. That directory name is the Compose project. Grocy on this Pi is `/home/pantrybot/grocy`.
+- Images `ghcr.io/rhionin/pantry` and `ghcr.io/rhionin/pantry-grocy-sync`. Containers `pantry`, `pantry-caddy`, `pantry-cloudflared`, and `pantry-grocy-sync`. Volume `pantry-data`. Database `/data/pantry.db`.
+- Compose service `pantry`. The sidecar calls it at `http://pantry:8080`. Docker network `pantry_cf-tunnel`.
+- Scanner node `/dev/input/pantry-scanner`, udev rule `99-pantry-scanner.rules`, and units `pantry-update.service`, `pantry-update.path`, `pantry-update.timer`, `pantry-lan-only.service`, and `pantry-mdns.service`.
+- Headers `X-Pantry-Deploy-Timestamp`, `X-Pantry-Deploy-Signature`, `X-Pantry-Entry`, and `X-Pantry-Client-IP`. The Caddy basic-auth realm stays `Pantry`. The shared login username stays `pantry`.
+- Environment variables and Actions secrets that start with `PANTRY_`.
+- Browser keys `pantry-scan-alerts`, `pantry-scan-alert-open`, and `pantry-scan-alert-direction`, and notification tags that start with `pantry-scan-`.
+- Grocy location and shopping list named `Pantry`, the location description `Synced from Pantry`, and userfields `pantry_id`, `pantry_name`, `pantry_size`, and `pantry_rule`.
+- Inventory type `Pantry` (`NewPantry`).
 
 ## Quick Start
 
-New to this? Follow these steps in order on your Raspberry Pi and you'll have Pantry running. The setup script does the heavy lifting; each step says what it does. For options, backups, and troubleshooting, use the reference sections further down.
+New to this? Follow these steps in order on your Raspberry Pi and you'll have Stockbot running. The setup script does the heavy lifting; each step says what it does. For options, backups, and troubleshooting, use the reference sections further down.
 
 1. **What you need.** A Raspberry Pi running 64-bit Raspberry Pi OS, and the ability to open a terminal. (See [Supported Platform](#supported-platform) below for exact hardware and OS details.)
 
-2. **Get the Pantry files onto the Pi.** The deployment files live in this repository's `deploy/` folder: `docker-compose.yml`, `Caddyfile`, `.env.example`, `setup.sh`, and the `systemd/` and `udev/` folders. Copy that whole folder onto your Pi (for example, clone the repo with `git`, or copy with a USB drive or `scp`).
+2. **Get the Stockbot files onto the Pi.** The deployment files live in this repository's `deploy/` folder: `docker-compose.yml`, `Caddyfile`, `.env.example`, `setup.sh`, and the `systemd/` and `udev/` folders. Copy that whole folder onto your Pi (for example, clone the repo with `git`, or copy with a USB drive or `scp`).
 
 3. **Run the setup script.** From the `deploy/` folder you copied over:
 
@@ -16,7 +31,7 @@ New to this? Follow these steps in order on your Raspberry Pi and you'll have Pa
    sudo ./setup.sh
    ```
 
-   This installs Docker if needed, copies the deployment files into `/opt/pantry`, creates your configuration, installs the scanner udev rule, starts Pantry, and waits until it reports healthy. It is safe to re-run: it never overwrites configuration values you already set. When `PUBLIC_HOST` is already set and `/opt/pantry/auth.caddy` exists, it also keeps the public HTTPS proxy on the current compose file and Caddyfile, and it applies the LAN firewall on the published Pantry port. `install`, `publish`, and `firewall` are the same command.
+   This installs Docker if needed, copies the deployment files into `/opt/pantry`, creates your configuration, installs the scanner udev rule, starts Stockbot, and waits until it reports healthy. It is safe to re-run: it never overwrites configuration values you already set. When `PUBLIC_HOST` is already set and `/opt/pantry/auth.caddy` exists, it also keeps the public HTTPS proxy on the current compose file and Caddyfile, and it applies the LAN firewall on the published Stockbot port. `install`, `publish`, and `firewall` are the same command.
 
 4. **Check it works.** The installer already polled `/health` for you, but you can confirm any time. This should print `{"status":"ok"}`:
 
@@ -42,11 +57,11 @@ After `git pull` on the Pi, from `deploy/`:
 sudo ./setup.sh
 ```
 
-That one command is the whole update. It copies `deploy/` to `/opt/pantry`, pulls the Pantry image when the public site is on, starts the containers from the compose file you just pulled (including the public HTTPS proxy when `PUBLIC_HOST` is set and `/opt/pantry/auth.caddy` is already there), restarts Caddy so the current `Caddyfile` is what is serving, applies the LAN firewall for the published Pantry port, and republishes `pantry.local` when Avahi is installed. When `CLOUDFLARE_TUNNEL_TOKEN` is set, the same command keeps the tunnel profile instead of ports 80 and 443. The public hostname shows the in-app login page. These paths stay reachable with no login: `GET /api/telemetry`, `POST /api/telemetry/client`, `GET /api/build`, `GET /brand/logo.png`, `GET /terms`, `GET /privacy`, and `POST /api/deploy-hook`. Run it again any time. Existing `.env` values stay, an existing `auth.caddy` is not regenerated, and the session secret in `.env` is not replaced, so phones that are already signed in stay signed in. A site that is already on the public internet stays there. LAN `http://<pi-ip>:8080` stays up and still does not ask for a password. On the certificate path, the public name still hangs on home Wi-Fi until the router hairpins or you use the LAN address; see [Home Wi-Fi hangs on the public name](#home-wi-fi-hangs-on-the-public-name). Tunnel mode does not have that hang.
+That one command is the whole update. It copies `deploy/` to `/opt/pantry`, pulls the Stockbot image when the public site is on, starts the containers from the compose file you just pulled (including the public HTTPS proxy when `PUBLIC_HOST` is set and `/opt/pantry/auth.caddy` is already there), restarts Caddy so the current `Caddyfile` is what is serving, applies the LAN firewall for the published Stockbot port, and republishes `pantry.local` when Avahi is installed. When `CLOUDFLARE_TUNNEL_TOKEN` is set, the same command keeps the tunnel profile instead of ports 80 and 443. The public hostname shows the in-app login page. These paths stay reachable with no login: `GET /api/telemetry`, `POST /api/telemetry/client`, `GET /api/build`, `GET /brand/logo.png`, `GET /terms`, `GET /privacy`, and `POST /api/deploy-hook`. Run it again any time. Existing `.env` values stay, an existing `auth.caddy` is not regenerated, and the session secret in `.env` is not replaced, so phones that are already signed in stay signed in. A site that is already on the public internet stays there. LAN `http://<pi-ip>:8080` stays up and still does not ask for a password. On the certificate path, the public name still hangs on home Wi-Fi until the router hairpins or you use the LAN address; see [Home Wi-Fi hangs on the public name](#home-wi-fi-hangs-on-the-public-name). Tunnel mode does not have that hang.
 
 `sudo ./setup.sh firewall-off` removes the port rule until the next setup. To leave it off, set `PANTRY_LAN_FIREWALL=off` in `/opt/pantry/.env` and run `sudo ./setup.sh` again.
 
-**The scanner is optional at every step.** Pantry starts and serves the web UI whether or not a barcode scanner is attached, and you can connect or disconnect the scanner at any time — see [Headless Scanner Input](#headless-scanner-input).
+**The scanner is optional at every step.** Stockbot starts and serves the web UI whether or not a barcode scanner is attached, and you can connect or disconnect the scanner at any time — see [Headless Scanner Input](#headless-scanner-input).
 
 The rest of this guide is reference material: configuration options, backups, the barcode scanner, rolling back, and troubleshooting.
 
@@ -54,7 +69,7 @@ The rest of this guide is reference material: configuration options, backups, th
 
 **Target:** 64-bit Raspberry Pi OS on arm64 hardware
 
-Pantry is packaged as a `linux/arm64` container image and requires 64-bit Raspberry Pi OS running on compatible hardware (Raspberry Pi 3B+, 4, 5, or newer models with arm64 architecture).
+Stockbot is packaged as a `linux/arm64` container image and requires 64-bit Raspberry Pi OS running on compatible hardware (Raspberry Pi 3B+, 4, 5, or newer models with arm64 architecture).
 
 ## First-Time Setup
 
@@ -106,9 +121,9 @@ The script's `.env` handling is idempotent: it creates `.env` from `.env.example
 sudo ./setup.sh rule
 ```
 
-This detects your scanner and writes `/etc/udev/rules.d/99-pantry-scanner.rules` with a symlink at `/dev/input/pantry-scanner`. The generated match uses the input parent's vendor and product IDs, which covers USB HID and Bluetooth HID. See [Headless Scanner Input](#headless-scanner-input) to write the rule by hand. This step is optional — Pantry runs without it — but scanning won't work until a matching rule exists.
+This detects your scanner and writes `/etc/udev/rules.d/99-pantry-scanner.rules` with a symlink at `/dev/input/pantry-scanner`. The generated match uses the input parent's vendor and product IDs, which covers USB HID and Bluetooth HID. See [Headless Scanner Input](#headless-scanner-input) to write the rule by hand. This step is optional — Stockbot runs without it — but scanning won't work until a matching rule exists.
 
-### 4. Start Pantry
+### 4. Start Stockbot
 
 ```bash
 cd /opt/pantry
@@ -131,7 +146,7 @@ sudo ./setup.sh status
 
 ## Public Internet access
 
-This puts the Pantry UI on a hostname you already own, with HTTPS, using the same Docker Compose stack. The recommended name is a subdomain (`pantry.rhionin.com`) so the bare domain can stay unused.
+This puts the Stockbot UI on a hostname you already own, with HTTPS, using the same Docker Compose stack. The recommended name is a subdomain (`pantry.rhionin.com`) so the bare domain can stay unused.
 
 The Gryphon in this house does not hairpin, so `https://pantry.rhionin.com` hangs on home Wi-Fi when DNS points at the router's WAN address. [Cloudflare Tunnel](#cloudflare-tunnel) is how that URL works on home Wi-Fi and on cellular without forwarding ports 80 and 443. The steps in this section are the certificate and port-forward path. Leave those forwards in place until the tunnel has been tested on both networks.
 
@@ -185,7 +200,7 @@ UDP 443 is optional. It enables HTTP/3. The site works with only the two TCP for
 
 Do not forward port 8080. Leave UPnP off, and delete any other forward you are not using.
 
-The published Pantry port is IPv4-only (`0.0.0.0`). That keeps a global IPv6 address on the Pi from answering on 8080. It does not stop a router forward: a forwarded packet is still addressed to the Pi's LAN IPv4 address, and Docker's userland proxy accepts it. `ufw` does not close that port either. Docker accepts the connection in its own proxy and, separately, DNATs it around the `INPUT` chain `ufw` edits.
+The published Stockbot port is IPv4-only (`0.0.0.0`). That keeps a global IPv6 address on the Pi from answering on 8080. It does not stop a router forward: a forwarded packet is still addressed to the Pi's LAN IPv4 address, and Docker's userland proxy accepts it. `ufw` does not close that port either. Docker accepts the connection in its own proxy and, separately, DNATs it around the `INPUT` chain `ufw` edits.
 
 If `sudo ufw status` says `active`, allow the proxy ports. Leave a firewall that is currently inactive turned off. Enabling it without an SSH allow rule can lock you out of the Pi.
 
@@ -195,7 +210,7 @@ sudo ufw allow 443/tcp
 sudo ufw allow 443/udp
 ```
 
-`sudo ./setup.sh` also drops non-LAN clients that reach the Pantry port (loopback, private LAN, and Tailscale `100.64.0.0/10` stay allowed; ports 80 and 443 are not changed). That runs whenever compose publishes the port, which the stock file always does, and whenever the public proxy is on. Set `PANTRY_LAN_FIREWALL=off` in `/opt/pantry/.env` and run `sudo ./setup.sh` again to leave the port reachable from any source. `sudo ./setup.sh firewall-off` removes the rule only until the next setup. Do not forward port 8080 either way. The router rule above is the one that matters for the public site.
+`sudo ./setup.sh` also drops non-LAN clients that reach the Stockbot port (loopback, private LAN, and Tailscale `100.64.0.0/10` stay allowed; ports 80 and 443 are not changed). That runs whenever compose publishes the port, which the stock file always does, and whenever the public proxy is on. Set `PANTRY_LAN_FIREWALL=off` in `/opt/pantry/.env` and run `sudo ./setup.sh` again to leave the port reachable from any source. `sudo ./setup.sh firewall-off` removes the rule only until the next setup. Do not forward port 8080 either way. The router rule above is the one that matters for the public site.
 
 ### 3. Point pantry.rhionin.com at this Pi
 
@@ -243,7 +258,7 @@ BASIC_AUTH_PASSWORD=replace-with-a-long-passphrase
 sudo ./setup.sh
 ```
 
-That refreshes `docker-compose.yml` and `Caddyfile` into `/opt/pantry`, starts Pantry, and starts [Caddy](https://caddyserver.com/) on ports 80 and 443. Caddy requests a Let's Encrypt certificate for `PUBLIC_HOST` and renews it on its own. Starting the proxy accepts the Let's Encrypt subscriber agreement. The same command restarts Caddy after a later pull so a new `Caddyfile` is what is serving.
+That refreshes `docker-compose.yml` and `Caddyfile` into `/opt/pantry`, starts Stockbot, and starts [Caddy](https://caddyserver.com/) on ports 80 and 443. Caddy requests a Let's Encrypt certificate for `PUBLIC_HOST` and renews it on its own. Starting the proxy accepts the Let's Encrypt subscriber agreement. The same command restarts Caddy after a later pull so a new `Caddyfile` is what is serving.
 
 Certificates are stored in the Docker volume `caddy-data`. Do not delete that volume to "retry" a failure: Let's Encrypt rate-limits repeat issuances (on the order of five duplicate certificates per hostname per week).
 
@@ -279,7 +294,7 @@ To change the password, edit `BASIC_AUTH_PASSWORD`, remove `/opt/pantry/auth.cad
 
 ### Home Wi-Fi hangs on the public name
 
-On the certificate path, `https://pantry.rhionin.com` loads on cellular and sits there on home Wi-Fi until the browser gives up. Caddy and Pantry are up the whole time. [Cloudflare Tunnel](#cloudflare-tunnel) is how the same name loads on both. The rest of this section is the port-forward behavior. The phone on Wi-Fi looks up the public DNS A record, gets the router's WAN address (`38.148.49.79` in this house), and sends the connection to the Gryphon. Cellular never does that: it is already outside the house, so the same port forward delivers it to the Pi.
+On the certificate path, `https://pantry.rhionin.com` loads on cellular and sits there on home Wi-Fi until the browser gives up. Caddy and Stockbot are up the whole time. [Cloudflare Tunnel](#cloudflare-tunnel) is how the same name loads on both. The rest of this section is the port-forward behavior. The phone on Wi-Fi looks up the public DNS A record, gets the router's WAN address (`38.148.49.79` in this house), and sends the connection to the Gryphon. Cellular never does that: it is already outside the house, so the same port forward delivers it to the Pi.
 
 That inside-the-house path is NAT hairpin (also called NAT loopback or NAT reflection). The router has to send a connection aimed at its own WAN address back to `192.168.1.203`. Many home routers drop or ignore that connection instead of refusing it, so the browser hangs rather than showing an error. Nothing on the Pi can answer a packet that never arrives. This repository does not change the Gryphon.
 
@@ -287,7 +302,7 @@ That inside-the-house path is NAT hairpin (also called NAT loopback or NAT refle
 
 | From a phone on this Wi-Fi | What it is |
 |-----------------------------|------------|
-| `http://192.168.1.203:8080` | Pantry on the Pi's LAN address. `sudo ./setup.sh status` prints the address it detected. |
+| `http://192.168.1.203:8080` | Stockbot on the Pi's LAN address. `sudo ./setup.sh status` prints the address it detected. |
 | `http://pantry.local:8080` | The same port, published with mDNS when Avahi is installed. |
 
 `192.168.1.203` is this Pi's reserved LAN address. If `status` prints a different address, use that one. If it prints a Docker bridge (often `172.17.0.1`), set `PANTRY_LAN_IPV4` to the Pi's real LAN address in `/opt/pantry/.env` and run `sudo ./setup.sh` again. Do not forward port 8080. That listener has no password.
@@ -352,7 +367,7 @@ sudo docker compose --profile public logs --tail=80 caddy
 | Certificate error mentioning timeout, connection refused, or `404` from another site | Port 80 is not reaching this Pi. Re-check the router forward and that no other program is bound to port 80. |
 | Browser warning, certificate name mismatch | `PUBLIC_HOST` and the Squarespace host are not the same name. They must match exactly. |
 | `https://` works at home but not on cellular | The phone is still using the LAN address, or the forward is wrong. Test on cellular. |
-| `https://` hangs on home Wi-Fi and loads on cellular | The router is not hairpinning. Pantry is reachable at `http://<pi-ip>:8080` and, when Avahi is installed, `http://pantry.local:8080`. See [Home Wi-Fi hangs on the public name](#home-wi-fi-hangs-on-the-public-name). |
+| `https://` hangs on home Wi-Fi and loads on cellular | The router is not hairpinning. Stockbot is reachable at `http://<pi-ip>:8080` and, when Avahi is installed, `http://pantry.local:8080`. See [Home Wi-Fi hangs on the public name](#home-wi-fi-hangs-on-the-public-name). |
 | Browser shows the login page, or curl gets `401` JSON | The shared password is missing or does not match the hash in `auth.caddy`. A request with no password is supposed to be rejected, except `GET /api/telemetry`, `POST /api/telemetry/client`, `GET /api/build`, `GET /brand/logo.png`, `GET /terms`, `GET /privacy`, and `POST /api/deploy-hook`, which are public. A browser page load shows the login page. An API call with no cookie and no `Authorization: Basic` header returns `401` JSON. Edit `BASIC_AUTH_PASSWORD`, remove `/opt/pantry/auth.caddy`, and run `sudo ./setup.sh`. Do not delete `auth/household` by itself; setup copies it from `auth.caddy`. |
 | UI loads, but the scan queue never updates live | `/api/events` is being buffered. `deploy/Caddyfile` must keep `flush_interval -1` on that path. Run `sudo ./setup.sh` after pulling a fresh `Caddyfile`. |
 
@@ -434,7 +449,7 @@ BASIC_AUTH_USER=pantry
 BASIC_AUTH_PASSWORD=replace-with-a-long-passphrase
 ```
 
-`ACME_EMAIL` can stay. Tunnel mode does not request a certificate. Keep `BASIC_AUTH_PASSWORD` as it already is if `/opt/pantry/auth.caddy` exists. Setup will not regenerate that file. Leave the Dynu client installed. With the token set, Pantry no longer depends on it, and emptying the token later does not restart or stop that client.
+`ACME_EMAIL` can stay. Tunnel mode does not request a certificate. Keep `BASIC_AUTH_PASSWORD` as it already is if `/opt/pantry/auth.caddy` exists. Setup will not regenerate that file. Leave the Dynu client installed. With the token set, Stockbot no longer depends on it, and emptying the token later does not restart or stop that client.
 
 ```bash
 sudo ./setup.sh publish --tunnel
@@ -495,7 +510,7 @@ Kroger client secrets and refresh tokens are stored in `pantry.db` as plain text
 
 Automatic updates run as root and pull `latest` when you enable the timer. A bad image then starts on the same Pi that is reachable from the internet. Leave the timer off unless you want that.
 
-Prefer a tunnel or Tailscale when you do not need a public listener. If you keep the port forward: only TCP 80 and 443, DHCP reservation, UPnP off, no forward of 8080. `sudo ./setup.sh` already limits the Pantry port to LAN sources, so a mistaken forward of that port still has to come from the LAN unless `PANTRY_LAN_FIREWALL=off`.
+Prefer a tunnel or Tailscale when you do not need a public listener. If you keep the port forward: only TCP 80 and 443, DHCP reservation, UPnP off, no forward of 8080. `sudo ./setup.sh` already limits the Stockbot port to LAN sources, so a mistaken forward of that port still has to come from the LAN unless `PANTRY_LAN_FIREWALL=off`.
 
 ### Keeping HTTPS across automatic updates
 
@@ -535,11 +550,11 @@ All configuration is handled through environment variables in `/opt/pantry/.env`
 | `PUBLIC_HOST` | empty | Hostname for the public HTTPS proxy, such as `pantry.rhionin.com`. Empty keeps the install LAN-only. No `https://` |
 | `PUBLISH_MODE` | empty | `tunnel` selects Cloudflare Tunnel and requires `CLOUDFLARE_TUNNEL_TOKEN`. Empty or `acme` is the certificate path, unless that token is set — a non-empty token selects tunnel on its own |
 | `CLOUDFLARE_TUNNEL_TOKEN` | empty | Token for the existing tunnel pantry-pi. Empty keeps Let's Encrypt, the Gryphon forwards, and the Dynu update client. Secret. The hostname's service URL is `http://caddy:80` |
-| `ACME_EMAIL` | empty | Email Let's Encrypt uses for certificate expiry notices. Required when `PUBLIC_HOST` is set and the token is empty. Not used in tunnel mode. Not a Pantry login |
+| `ACME_EMAIL` | empty | Email Let's Encrypt uses for certificate expiry notices. Required when `PUBLIC_HOST` is set and the token is empty. Not used in tunnel mode. Not a Stockbot login |
 | `BASIC_AUTH_USER` | `pantry` | Username the login page asks for on the public site. Also accepted in an `Authorization: Basic` header |
 | `BASIC_AUTH_PASSWORD` | empty | Shared password for the public site, 12 to 72 characters. Required the first time the public proxy starts, unless `auth.caddy` already exists. The hash is written to `auth.caddy` and copied to `auth/household`; this value stays in `.env`. Setup does not replace an existing `auth.caddy` |
 | `PANTRY_SESSION_SECRET` | empty | Signs the login cookie. Setup and the update timer fill it in once when `auth.caddy` exists, and do not rotate it. Leave it alone so phones stay signed in |
-| `VAPID_PUBLIC_KEY` | generated | Public half of the Web Push identity for scan alerts while Pantry is closed. `sudo ./setup.sh` fills it once. Not a secret |
+| `VAPID_PUBLIC_KEY` | generated | Public half of the Web Push identity for scan alerts while Stockbot is closed. `sudo ./setup.sh` fills it once. Not a secret |
 | `VAPID_PRIVATE_KEY` | generated | Private half of that identity. A secret. Setup fills it once and does not rotate a pair that is already set |
 | `VAPID_SUBJECT` | generated | Contact on each push, `mailto:` or `https://`. Setup uses `mailto:pantry@PUBLIC_HOST`, or `mailto:pantry@localhost` when the install is LAN-only |
 | `PANTRY_LAN_FIREWALL` | `on` | `off` leaves `HOST_PORT` reachable from any source. Any other value, including empty, installs the LAN-only rule when compose publishes that port or the public proxy is on |
@@ -560,8 +575,8 @@ All configuration is handled through environment variables in `/opt/pantry/.env`
 | `DEPLOY_HOOK_SECRET` | generated | Shared HMAC secret for `POST /api/deploy-hook`. `sudo ./setup.sh` fills this in when it is empty and never replaces a value already set. The same value is the GitHub Actions secret `DEPLOY_HOOK_SECRET`. Print it with `sudo ./setup.sh deploy-secret` |
 | `GROCY_URL` | empty | Grocy base URL from the sidecar, usually `http://grocy:80`. Empty keeps grocy-sync off. See [Grocy sync](#grocy-sync) |
 | `GROCY_API_KEY` | empty | API key created in the Grocy UI. Stored only in `/opt/pantry/.env` |
-| `PANTRY_SYNC_TOKEN` | empty | Read-only secret the sidecar sends to Pantry. Generate with `openssl rand -hex 32` |
-| `GROCY_SYNC_INTERVAL` | `5m` | How often the sidecar re-reads Pantry and writes Grocy |
+| `PANTRY_SYNC_TOKEN` | empty | Read-only secret the sidecar sends to Stockbot. Generate with `openssl rand -hex 32` |
+| `GROCY_SYNC_INTERVAL` | `5m` | How often the sidecar re-reads Stockbot and writes Grocy |
 | `TZ` | empty | Time zone for stock dates. Set it to the same value as the Grocy container |
 
 **Note:** The variables `ADDR` and `DB_PATH` are pinned by the Docker Compose file and should not be overridden. To change the host port, use `HOST_PORT` instead of modifying `ADDR`.
@@ -577,7 +592,7 @@ Setting `PUBLIC_HOST` does not publish the site by itself. Run `sudo ./setup.sh`
 
 ## Headless Scanner Input
 
-Pantry reads barcode scans directly from the scanner's evdev device (`/dev/input/eventN`) instead of standard input, so it works headlessly without a keyboard, monitor, or attached terminal session.
+Stockbot reads barcode scans directly from the scanner's evdev device (`/dev/input/eventN`) instead of standard input, so it works headlessly without a keyboard, monitor, or attached terminal session.
 
 **The container starts whether or not the scanner is attached, and the scanner may be connected or disconnected at any time.** There is no requirement to install the udev rule or attach the scanner before starting the container.
 
@@ -659,7 +674,7 @@ Pantry reads barcode scans directly from the scanner's evdev device (`/dev/input
 
 ### Security: per-device scoping
 
-Per-device scoping now comes from the scanner node's **ownership and mode**, not from the container seeing only one node. The container bind-mounts all of `/dev/input`, but the udev rule grants only the scanner's node `GROUP="65532"` mode `0640`. Every other input node stays `root:input` mode `0600`, so the container process (uid 65532, group 65532) can open the scanner and nothing else. This is why Pantry does not become a keylogger for every attached keyboard, and it is why the service user is deliberately **not** added to the `input` group — doing so would grant read access to every input device on the box.
+Per-device scoping now comes from the scanner node's **ownership and mode**, not from the container seeing only one node. The container bind-mounts all of `/dev/input`, but the udev rule grants only the scanner's node `GROUP="65532"` mode `0640`. Every other input node stays `root:input` mode `0600`, so the container process (uid 65532, group 65532) can open the scanner and nothing else. This is why Stockbot does not become a keylogger for every attached keyboard, and it is why the service user is deliberately **not** added to the `input` group — doing so would grant read access to every input device on the box.
 
 ### Local Development
 
@@ -675,7 +690,7 @@ Type barcodes directly into the terminal and press Enter. The scanner status wil
 First, distinguish the two very different situations that both show `connected: false`:
 
 - **Scanner absent** — no scanner is plugged in. This is a fully **supported** state: the container is running, `/health` returns `status: ok`, and the web UI works. Nothing is wrong. Plug the scanner in and it is picked up within 30 seconds.
-- **Scanner present but unreadable** — the scanner is attached but Pantry cannot read it. This is the case worth investigating. The `lastError` field tells you which of three causes applies, in the order worth checking:
+- **Scanner present but unreadable** — the scanner is attached but Stockbot cannot read it. This is the case worth investigating. The `lastError` field tells you which of three causes applies, in the order worth checking:
 
 | `lastError` | Meaning | Fix |
 |---|---|---|
@@ -704,7 +719,7 @@ When an update recreates the container, the scanner session is dropped, but the 
 
 ### Database Location
 
-Pantry stores its SQLite database in a Docker named volume called `pantry-data`. To inspect the volume:
+Stockbot stores its SQLite database in a Docker named volume called `pantry-data`. To inspect the volume:
 
 ```bash
 sudo docker volume inspect pantry-data
@@ -775,7 +790,7 @@ A pinned tag is preserved across re-runs of `sudo ./setup.sh` and is never silen
 
 If you need to rollback to a previous version:
 
-1. Find the commit SHA of the working version from the [repository](https://github.com/Rhionin/pantry)
+1. Find the commit SHA of the working version from the [repository](https://github.com/Rhionin/stockbot)
 2. Update `.env`:
    ```bash
    PANTRY_IMAGE_TAG=<previous-commit-sha>
@@ -832,7 +847,7 @@ Do this once, after the files from this change are on the Pi:
    ```bash
    sudo ./setup.sh deploy-secret
    ```
-4. On GitHub, open the `Rhionin/pantry` repository, then **Settings → Secrets and variables → Actions → New repository secret**. Name it `DEPLOY_HOOK_SECRET` and paste the printed value. There is no other repository secret to add. The hook URL is `https://pantry.rhionin.com/api/deploy-hook`.
+4. On GitHub, open the `Rhionin/stockbot` repository, then **Settings → Secrets and variables → Actions → New repository secret**. Name it `DEPLOY_HOOK_SECRET` and paste the printed value. There is no other repository secret to add. The hook URL is `https://pantry.rhionin.com/api/deploy-hook`.
 5. The next push to `master` that publishes `latest` sends the hook. If `DEPLOY_HOOK_SECRET` is not set on the repository, that workflow step skips and the 1-minute timer still deploys.
 
 `sudo ./setup.sh freeze` masks both the timer and the path unit so a hook does not change the image while you are iterating. `sudo ./setup.sh thaw` turns them back on.
@@ -932,7 +947,7 @@ The credentials are stored in root's Docker config, which is the identity the up
 
 ## Issue webhook
 
-`.github/workflows/issue-webhook.yml` tells the Pantry bot when a GitHub issue is opened, reopened, or assigned. These are Actions secrets on the repository (Settings → Secrets and variables → Actions). They are not `/opt/pantry/.env` values.
+`.github/workflows/issue-webhook.yml` tells the Stockbot bot when a GitHub issue is opened, reopened, or assigned. These are Actions secrets on the repository (Settings → Secrets and variables → Actions). They are not `/opt/pantry/.env` values.
 
 - `PANTRY_WEBHOOK_URL` — HTTPS endpoint that receives the POST.
 - `PANTRY_WEBHOOK_KEY` — bearer token. The workflow sends it as `Authorization: Bearer <key>` and does not print it.
@@ -941,13 +956,13 @@ If either secret is empty, the run logs a notice and exits successfully. Otherwi
 
 ## Grocy sync
 
-Pantry can copy itself into [Grocy](https://grocy.info/) on the same Pi. Pantry stays the source of truth. Grocy being down does not stop Pantry, and Pantry being down does not stop Grocy. The copy is a separate container, `pantry-grocy-sync`, and it stays off until the three values below are set.
+Stockbot can copy itself into [Grocy](https://grocy.info/) on the same Pi. Stockbot stays the source of truth. Grocy being down does not stop Stockbot, and Stockbot being down does not stop Grocy. The copy is a separate container, `pantry-grocy-sync`, and it stays off until the three values below are set.
 
 Grocy itself is not in this repository. On this Pi it is the linuxserver image, container name `grocy`, started from `/home/pantrybot/grocy`, and attached to the Docker network `pantry_cf-tunnel`. Other containers reach it at `http://grocy:80`.
 
 ### Turn it on
 
-1. In Grocy, open the user menu and create an API key. That key is not a Pantry password.
+1. In Grocy, open the user menu and create an API key. That key is not a Stockbot password.
 2. On the Pi, edit `/opt/pantry/.env`. This file is never committed. Leave the values empty in git.
 
 ```bash
@@ -966,7 +981,7 @@ TZ=America/Denver
 
 `TZ` must be the same zone the Grocy container uses, or a stock-in late in the evening can land on the previous day in Grocy. The sidecar image has the zone database; the zone name is enough.
 
-3. Recreate Pantry so it loads the token, and start the sidecar. From `/opt/pantry`, after `sudo ./setup.sh` has copied `docker-compose.grocy.yml`:
+3. Recreate Stockbot so it loads the token, and start the sidecar. From `/opt/pantry`, after `sudo ./setup.sh` has copied `docker-compose.grocy.yml`:
 
 ```bash
 cd /opt/pantry
@@ -979,13 +994,13 @@ sudo docker logs pantry-grocy-sync --tail=40
 
 The sidecar is limited to 64 MB. It has no published ports. It joins the Compose project network (hostname `pantry`) and the existing network `pantry_cf-tunnel` (hostname `grocy`). That second network only hands out dynamic addresses from `10.77.77.4/30`, and Grocy already uses one. If `up` says the pool is exhausted, another container is holding the remaining address. Do not pin this service to `10.77.77.2` or `10.77.77.3`.
 
-The first reconcile creates a Grocy location named Pantry, a quantity unit named Piece, products, barcodes, current stock, and a shopping list named Pantry. Grocy's own default shopping list is left alone. After that it repeats every five minutes, and sooner when Pantry's event stream reports a change.
+The first reconcile creates a Grocy location named Pantry, a quantity unit named Piece, products, barcodes, current stock, and a shopping list named Pantry. Grocy's own default shopping list is left alone. After that it repeats every five minutes, and sooner when Stockbot's event stream reports a change.
 
-Grocy product names are unique regardless of case. A group that shares a name with a product is the parent `Name (group)`. Products that share a name are told apart with a brand, a package size, or a short Pantry id. The original name stays in the `pantry_name` userfield. Existing Grocy products are matched by that `pantry_id` userfield and renamed in place.
+Grocy product names are unique regardless of case. A group that shares a name with a product is the parent `Name (group)`. Products that share a name are told apart with a brand, a package size, or a short Stockbot id. The original name stays in the `pantry_name` userfield. Existing Grocy products are matched by that `pantry_id` userfield and renamed in place.
 
 ### Past uses, once
 
-New uses are written through Grocy's API when they happen. Grocy's API cannot backdate a consume, so older Pantry history is a separate command. It is not part of the five-minute sync. It writes one row per Pantry stock move into Grocy's `stock_log` with the real date, after copying `grocy.db`.
+New uses are written through Grocy's API when they happen. Grocy's API cannot backdate a consume, so older Stockbot history is a separate command. It is not part of the five-minute sync. It writes one row per Stockbot stock move into Grocy's `stock_log` with the real date, after copying `grocy.db`.
 
 Stop Grocy first. The database is `data/grocy.db` inside the directory the linuxserver image mounts at `/config`. On this Pi that compose file is `/home/pantrybot/grocy`; confirm the host path before you mount it. The mount has to be writable: the command writes a `grocy.db.bak-<timestamp>` beside the live file, then the journal rows.
 
@@ -1014,7 +1029,7 @@ sudo docker start grocy
 ### What didn't map
 
 - Group rules, pinned products, and "don't restock" are notes on the Grocy product. They do not change how Grocy shops.
-- A time window or a grams/milliliters target is not a Grocy minimum stock. Minimum stock is set only where Pantry has a fixed item count (`target_quantity`). Parent products roll that count up from their members.
+- A time window or a grams/milliliters target is not a Grocy minimum stock. Minimum stock is set only where Stockbot has a fixed item count (`target_quantity`). Parent products roll that count up from their members.
 - A barcode override replaces the global barcode. Grocy stores one product per barcode and does not keep the source.
 - Package size stays a note and a `pantry_size` userfield. Grocy still counts pieces. There is no unit conversion.
 - Prices and deals are not sent. Brand is not its own Grocy field.
@@ -1023,7 +1038,7 @@ sudo docker start grocy
 - Grocy recipes, chores, batteries, equipment, and locations other than Pantry are left alone. So is Grocy's default shopping list.
 - A consume written through the API is stamped when Grocy receives it. Only the one-time backfill keeps the original past date.
 - Correcting a backfilled journal row is applied the next time you run `backfill`. Correcting current stock undoes the matching Grocy booking and posts it again on the next sync.
-- One household (`user-1`). Parent products are a single level. When a product is in a Pantry group, that group's name is the Grocy product group. The Pantry category is a product group only for products that are not in a Pantry group; otherwise the category is a note.
+- One household (`user-1`). Parent products are a single level. When a product is in a Stockbot group, that group's name is the Grocy product group. The Stockbot category is a product group only for products that are not in a Stockbot group; otherwise the category is a note.
 
 ## Troubleshooting
 
@@ -1123,7 +1138,7 @@ sudo docker compose up -d
 ## Support
 
 For issues and support:
-- Check the [Pantry repository](https://github.com/Rhionin/pantry) for documentation and issues
+- Check the [Stockbot repository](https://github.com/Rhionin/stockbot) for documentation and issues
 - Review container logs: `sudo docker compose logs pantry`
 - Check system resources: `free -h && df -h`
 - Verify network connectivity to GitHub Container Registry

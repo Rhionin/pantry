@@ -3,7 +3,7 @@ package scanlistener
 import (
 	"sync"
 
-	"github.com/Rhionin/pantry/internal/scan"
+	"github.com/Rhionin/stockbot/internal/scan"
 )
 
 // ModeControl is the direction stamped on the next product barcode. Set changes

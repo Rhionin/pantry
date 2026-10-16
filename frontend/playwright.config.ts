@@ -11,8 +11,8 @@ const databasePath = join(tmpdir(), `pantry-playwright-${process.pid}.db`)
 // so Playwright launches an already-compiled binary instead of cold-compiling
 // `go run` under the default webServer timeout. It lives in the repo-root `bin/`
 // directory, which is git-ignored. Build locally with:
-//   go build -o ../bin/pantry-server ../cmd/server
-const serverBinary = join('..', 'bin', 'pantry-server')
+//   go build -o ../bin/stockbot-server ../cmd/server
+const serverBinary = join('..', 'bin', 'stockbot-server')
 
 export default defineConfig({
   testDir: './e2e',

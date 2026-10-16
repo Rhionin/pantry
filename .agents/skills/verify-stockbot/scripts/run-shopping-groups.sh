@@ -5,10 +5,10 @@
 set -uo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../../.." && pwd)"
-SKILL_DIR="$REPO_ROOT/.agents/skills/verify-pantry"
+SKILL_DIR="$REPO_ROOT/.agents/skills/verify-stockbot"
 FRONTEND_DIR="$REPO_ROOT/frontend"
 RUN_DIR="$SKILL_DIR/evidence/shopping-groups"
-SERVER_BIN="$SKILL_DIR/.bin/pantry-server"
+SERVER_BIN="$SKILL_DIR/.bin/stockbot-server"
 API_PORT="${API_PORT:-18080}"
 WEB_PORT="${WEB_PORT:-5173}"
 API_URL="http://127.0.0.1:${API_PORT}"

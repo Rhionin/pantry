@@ -7,11 +7,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Rhionin/pantry/internal/cart/connection"
-	"github.com/Rhionin/pantry/internal/inventory"
-	"github.com/Rhionin/pantry/internal/product"
-	"github.com/Rhionin/pantry/internal/shopping"
-	"github.com/Rhionin/pantry/internal/suggestion"
+	"github.com/Rhionin/stockbot/internal/cart/connection"
+	"github.com/Rhionin/stockbot/internal/inventory"
+	"github.com/Rhionin/stockbot/internal/product"
+	"github.com/Rhionin/stockbot/internal/shopping"
+	"github.com/Rhionin/stockbot/internal/suggestion"
 )
 
 // ReplenishmentMode identifies the shopping list calculation mode.

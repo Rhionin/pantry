@@ -1,4 +1,4 @@
-// harness.mjs — shared Playwright driving helpers for verify-pantry drivers.
+// harness.mjs — shared Playwright driving helpers for verify-stockbot drivers.
 //
 // A driver script imports these, opens a browser against PANTRY_WEB_URL, drives
 // one feature the way a user would (HID scanner input, tab clicks, buttons),
@@ -9,7 +9,7 @@
 // here) and reading back stored state for side-effect proof.
 //
 // Chromium comes from the frontend's installed @playwright/test. Run drivers
-// through scripts/pantry-verify.sh so the servers exist and are torn down.
+// through scripts/stockbot-verify.sh so the servers exist and are torn down.
 // @playwright/test ships as CommonJS; import the default and destructure.
 import { createRequire } from 'node:module';
 import { mkdir, writeFile } from 'node:fs/promises';
