@@ -28,6 +28,8 @@ type pushSubscriptionBody struct {
 		P256dh string `json:"p256dh"`
 		Auth   string `json:"auth"`
 	} `json:"keys"`
+	UserID   string `json:"userId"`
+	DeviceID string `json:"deviceId"`
 }
 
 type pushEndpointResponse struct {
@@ -52,9 +54,18 @@ func (h *PushHandler) Save(req Request[pushSubscriptionBody, struct{}]) (pushEnd
 		Endpoint: strings.TrimSpace(req.Body.Endpoint),
 		P256dh:   strings.TrimSpace(req.Body.Keys.P256dh),
 		Auth:     strings.TrimSpace(req.Body.Keys.Auth),
+		Origin:   push.OriginHost(req.RawRequest),
+		UserID:   strings.TrimSpace(req.Body.UserID),
+		DeviceID: strings.TrimSpace(req.Body.DeviceID),
 	}
 	if problem := sub.Problem(); problem != "" {
 		return pushEndpointResponse{}, BadRequest(problem)
+	}
+	if h.Keys.RejectsOrigin(sub.Origin) {
+		if _, err := h.Subscriptions.DeleteHost(req.Context, sub.Origin); err != nil {
+			return pushEndpointResponse{}, InternalError(err)
+		}
+		return pushEndpointResponse{}, BadRequest("This address no longer sends scan alerts. Open the current site and allow notifications again.")
 	}
 	if err := h.Subscriptions.Save(req.Context, sub); err != nil {
 		return pushEndpointResponse{}, InternalError(err)

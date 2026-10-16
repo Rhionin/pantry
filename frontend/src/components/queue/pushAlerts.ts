@@ -3,6 +3,11 @@ import { report } from '../../telemetry/client';
 import type { ScanDirection } from '../../types';
 
 const preferenceKey = 'pantry-scan-alerts';
+const deviceKey = 'pantry-push-device';
+// One household, the same id the scan queue uses. The device id lives in this
+// origin's storage, so a later subscribe from this browser replaces its older
+// endpoints. A new hostname starts a new id; the server drops the previous host.
+const pushUserId = 'user-1';
 
 // Reasons ensurePushSubscription can name. Anything else is a precondition
 // (permission, or this device has alerts turned off), not a failed subscribe.
@@ -81,6 +86,20 @@ export function directionFromAlertURL(url: string): ScanDirection | null {
     return null;
   }
   return null;
+}
+
+function pushDeviceId(): string {
+  try {
+    const existing = localStorage.getItem(deviceKey)?.trim() ?? '';
+    if (existing !== '') return existing;
+    const created = typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+      ? crypto.randomUUID()
+      : `device-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+    localStorage.setItem(deviceKey, created);
+    return created;
+  } catch {
+    return '';
+  }
 }
 
 function applicationServerKey(publicKey: string): BufferSource {
@@ -236,6 +255,8 @@ export async function ensurePushSubscription(): Promise<PushSubscribeResult> {
     await savePushSubscription({
       endpoint: body.endpoint,
       keys: { p256dh: body.keys.p256dh, auth: body.keys.auth },
+      userId: pushUserId,
+      deviceId: pushDeviceId(),
     });
   } catch (error) {
     return fail('save-failed', error);

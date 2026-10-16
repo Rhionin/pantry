@@ -152,7 +152,12 @@ describe('Scan alerts on Settings', () => {
       'On: alerts arrive even when Stockbot is closed',
     );
     await waitFor(() => expect(posted).toEqual([
-      { endpoint: 'https://push.example/device', keys: { p256dh: 'p256', auth: 'auth' } },
+      {
+        endpoint: 'https://push.example/device',
+        keys: { p256dh: 'p256', auth: 'auth' },
+        userId: 'user-1',
+        deviceId: localStorage.getItem('pantry-push-device'),
+      },
     ]));
     expect(toggle).toBeChecked();
 

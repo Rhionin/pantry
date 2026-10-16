@@ -20,9 +20,16 @@ type Config struct {
 	Settle time.Duration
 	// Post replaces the push network call. Production leaves it nil.
 	Post func(ctx context.Context, sub Subscription, payload []byte) (status int, err error)
+	// PublicHost is the hostname that should receive alerts. Empty means every
+	// subscription except the previous public host.
+	PublicHost string
+	// LegacyHost is the previous public hostname. Subscriptions from it are
+	// dropped. A value equal to PublicHost, or one that includes a scheme, is ignored.
+	LegacyHost string
 }
 
-// ConfigFromEnv reads VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY, and VAPID_SUBJECT.
+// ConfigFromEnv reads VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY, VAPID_SUBJECT,
+// PUBLIC_HOST, and LEGACY_PUBLIC_HOST.
 func ConfigFromEnv(getenv func(string) string) Config {
 	if getenv == nil {
 		return Config{}
@@ -31,6 +38,8 @@ func ConfigFromEnv(getenv func(string) string) Config {
 		PublicKey:  strings.TrimSpace(getenv("VAPID_PUBLIC_KEY")),
 		PrivateKey: strings.TrimSpace(getenv("VAPID_PRIVATE_KEY")),
 		Subject:    strings.TrimSpace(getenv("VAPID_SUBJECT")),
+		PublicHost: strings.TrimSpace(getenv("PUBLIC_HOST")),
+		LegacyHost: strings.TrimSpace(getenv("LEGACY_PUBLIC_HOST")),
 	}
 }
 
