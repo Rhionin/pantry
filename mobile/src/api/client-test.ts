@@ -98,6 +98,32 @@ describe('createStockbotClient', () => {
     }
   });
 
+  it('keeps pantry suggestions when a stock-out commit is refused', async () => {
+    const suggestions = [{ itemId: 'item-pears', productId: 'prod-pears', name: 'Sliced Pears', onHand: 3 }];
+    const fetchImpl = jest.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const body = JSON.parse(String(init?.body)) as { linkProductId?: string };
+      if (body.linkProductId === 'prod-pears') return jsonResponse(200, { id: 'scan-1', status: 'committed' });
+      return jsonResponse(409, {
+        error: 'Not in your pantry',
+        code: 'no_item',
+        suggestions,
+      });
+    });
+    const { client } = clientWith(fetchImpl);
+
+    await expect(client.commitScan('scan-1')).rejects.toMatchObject({
+      status: 409,
+      code: 'no_item',
+      message: 'Not in your pantry',
+      suggestions,
+    });
+    await expect(client.commitScan('scan-1', 'prod-pears')).resolves.toMatchObject({ status: 'committed' });
+    const linkCall = fetchImpl.mock.calls.find((call) => String(call[1]?.body).includes('prod-pears'));
+    expect(String(linkCall?.[0])).toBe(`${serverUrl}${scanCommitPath('scan-1')}`);
+    expect(JSON.parse(String(linkCall?.[1]?.body))).toEqual({ linkProductId: 'prod-pears' });
+    expect(new Headers(linkCall?.[1]?.headers).get('Authorization')).toBe(basicAuthorization(HOUSEHOLD_USERNAME, password));
+  });
+
   it('reads and sets the shared scanner mode', async () => {
     const fetchImpl = jest.fn(async (url: RequestInfo | URL, init?: RequestInit) => {
       if (init?.method === 'POST') return jsonResponse(200, { mode: 'stock_out' });

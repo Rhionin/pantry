@@ -10,8 +10,8 @@ import {
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import type { ScanEntry } from '../../../frontend/src/types';
-import type { StockbotClient } from '../api/client';
+import type { PantryLinkSuggestion, ScanEntry } from '../../../frontend/src/types';
+import { ApiError, type StockbotClient } from '../api/client';
 import { modeLabel } from '../scanner/modeLabel';
 import { colors, fonts } from '../ui/theme';
 
@@ -27,10 +27,12 @@ export function QueueScreen({ client, warning }: QueueScreenProps) {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
   const [busyId, setBusyId] = useState('');
+  const [offer, setOffer] = useState<{ scanId: string; suggestions: PantryLinkSuggestion[] } | null>(null);
 
   const applyEntries = useCallback((next: ScanEntry[], nextError = '') => {
     setEntries(next);
     setError(nextError);
+    setOffer((current) => (current && next.some((entry) => entry.id === current.scanId) ? current : null));
     setLoading(false);
     setRefreshing(false);
   }, []);
@@ -68,6 +70,25 @@ export function QueueScreen({ client, warning }: QueueScreenProps) {
     setError('');
     try {
       await client.commitScan(id);
+      setOffer((current) => (current?.scanId === id ? null : current));
+      await refresh();
+    } catch (requestError) {
+      if (requestError instanceof ApiError && requestError.code === 'no_item') {
+        setOffer({ scanId: id, suggestions: requestError.suggestions });
+        return;
+      }
+      setError(requestError instanceof Error ? requestError.message : 'That scan could not be confirmed.');
+    } finally {
+      setBusyId('');
+    }
+  }
+
+  async function linkOne(id: string, productId: string) {
+    setBusyId(id);
+    setError('');
+    try {
+      await client.commitScan(id, productId);
+      setOffer((current) => (current?.scanId === id ? null : current));
       await refresh();
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : 'That scan could not be confirmed.');
@@ -117,23 +138,33 @@ export function QueueScreen({ client, warning }: QueueScreenProps) {
           ListEmptyComponent={<Text style={styles.empty}>Nothing is waiting. A scan you take shows up here until you confirm it.</Text>}
           renderItem={({ item }) => (
             <View style={[styles.row, { borderLeftColor: item.direction === 'stock_out' ? colors.using : colors.shelf }]}>
-              <View style={styles.rowCopy}>
-                <Text style={styles.name}>{item.product?.name || item.barcode}</Text>
-                <Text style={styles.meta}>
-                  {item.product?.name ? item.barcode : 'No name yet'}
-                  {'  '}
-                  {item.direction === null ? 'No direction' : modeLabel(item.direction)}
-                </Text>
+              <View style={styles.rowMain}>
+                <View style={styles.rowCopy}>
+                  <Text style={styles.name}>{item.product?.name || item.barcode}</Text>
+                  <Text style={styles.meta}>
+                    {item.product?.name ? item.barcode : 'No name yet'}
+                    {'  '}
+                    {item.direction === null ? 'No direction' : modeLabel(item.direction)}
+                  </Text>
+                </View>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={`Confirm ${item.product?.name || item.barcode}`}
+                  disabled={busyId !== ''}
+                  onPress={() => { void confirmOne(item.id); }}
+                  style={styles.confirm}
+                >
+                  <Text style={styles.confirmText}>{busyId === item.id ? 'Confirming' : 'Confirm'}</Text>
+                </Pressable>
               </View>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel={`Confirm ${item.product?.name || item.barcode}`}
-                disabled={busyId !== ''}
-                onPress={() => { void confirmOne(item.id); }}
-                style={styles.confirm}
-              >
-                <Text style={styles.confirmText}>{busyId === item.id ? 'Confirming' : 'Confirm'}</Text>
-              </Pressable>
+              {offer?.scanId === item.id && (
+                <LinkOffer
+                  suggestions={offer.suggestions}
+                  busy={busyId === item.id}
+                  onLink={(productId) => { void linkOne(item.id, productId); }}
+                  onDismiss={() => setOffer(null)}
+                />
+              )}
             </View>
           )}
         />
@@ -150,6 +181,55 @@ export function QueueScreen({ client, warning }: QueueScreenProps) {
           <Text style={styles.confirmAllText}>{busyId === 'all' ? 'Confirming' : 'Confirm all'}</Text>
         </Pressable>
       )}
+    </View>
+  );
+}
+
+function LinkOffer({
+  suggestions,
+  busy,
+  onLink,
+  onDismiss,
+}: {
+  suggestions: PantryLinkSuggestion[];
+  busy: boolean;
+  onLink: (productId: string) => void;
+  onDismiss: () => void;
+}) {
+  return (
+    <View style={styles.offer}>
+      <Text style={styles.offerTitle}>Not in your pantry</Text>
+      <Text style={styles.offerCopy}>
+        {suggestions.length === 0
+          ? 'No stocked item matches this barcode.'
+          : 'Link the barcode to an item you stock. That scan out uses the item you pick.'}
+      </Text>
+      {suggestions.map((suggestion) => (
+        <View key={suggestion.itemId} style={styles.offerRow}>
+          <View style={styles.rowCopy}>
+            <Text style={styles.name}>{suggestion.name}</Text>
+            <Text style={styles.meta}>{suggestion.onHand} in stock</Text>
+          </View>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={`Link ${suggestion.name} and scan it out`}
+            disabled={busy}
+            onPress={() => onLink(suggestion.productId)}
+            style={styles.confirm}
+          >
+            <Text style={styles.confirmText}>{busy ? 'Linking' : 'Link'}</Text>
+          </Pressable>
+        </View>
+      ))}
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel="Dismiss"
+        disabled={busy}
+        onPress={onDismiss}
+        style={styles.dismiss}
+      >
+        <Text style={styles.dismissText}>Dismiss</Text>
+      </Pressable>
     </View>
   );
 }
@@ -206,14 +286,16 @@ const styles = StyleSheet.create({
     maxWidth: 340,
   },
   row: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
     borderLeftWidth: 4,
     paddingLeft: 12,
     paddingVertical: 14,
     borderBottomWidth: 1,
     borderBottomColor: colors.rule,
+  },
+  rowMain: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
   },
   rowCopy: {
     flex: 1,
@@ -243,6 +325,37 @@ const styles = StyleSheet.create({
     fontFamily: fonts.bold,
     fontSize: 15,
     color: colors.white,
+  },
+  offer: {
+    marginTop: 14,
+    gap: 10,
+  },
+  offerTitle: {
+    fontFamily: fonts.bold,
+    fontSize: 18,
+    lineHeight: 24,
+    color: colors.ink,
+  },
+  offerCopy: {
+    fontFamily: fonts.regular,
+    fontSize: 16,
+    lineHeight: 22,
+    color: colors.ink,
+  },
+  offerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  dismiss: {
+    alignSelf: 'flex-start',
+    minHeight: 44,
+    justifyContent: 'center',
+  },
+  dismissText: {
+    fontFamily: fonts.bold,
+    fontSize: 16,
+    color: colors.ink,
   },
   confirmAll: {
     minHeight: 52,

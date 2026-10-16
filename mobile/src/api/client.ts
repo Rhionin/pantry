@@ -13,18 +13,28 @@ import {
   scanCommitPath,
   scansQuery,
 } from '../../../frontend/src/api/contract';
-import type { BatchCommitResponse, ScanDirection, ScanEntry, ScannerConfig } from '../../../frontend/src/types';
+import type {
+  BatchCommitResponse,
+  PantryLinkSuggestion,
+  ScanDirection,
+  ScanEntry,
+  ScannerConfig,
+} from '../../../frontend/src/types';
 
 // The public hostname's login name. See deploy/README.md.
 export const HOUSEHOLD_USERNAME = 'pantry';
 
 export class ApiError extends Error {
   readonly status: number;
+  readonly code: string;
+  readonly suggestions: PantryLinkSuggestion[];
 
-  constructor(status: number, message: string) {
+  constructor(status: number, message: string, code = '', suggestions: PantryLinkSuggestion[] = []) {
     super(message);
     this.name = 'ApiError';
     this.status = status;
+    this.code = code;
+    this.suggestions = suggestions;
   }
 }
 
@@ -39,7 +49,7 @@ export interface StockbotClient {
   setScannerMode: (mode: ScanDirection) => Promise<SetScannerModeResponse>;
   createScan: (barcode: string, direction: ScanDirection) => Promise<ScanEntry>;
   listPending: () => Promise<ScanEntry[]>;
-  commitScan: (id: string) => Promise<ScanEntry>;
+  commitScan: (id: string, linkProductId?: string) => Promise<ScanEntry>;
   batchCommit: (ids: string[]) => Promise<BatchCommitResponse>;
 }
 
@@ -74,10 +84,9 @@ export function createStockbotClient(credentials: StockbotCredentials, options: 
 
     if (!res.ok) {
       if (res.status === 401) options.onUnauthorized?.();
-      const message = res.status === 401
-        ? 'That password was rejected.'
-        : await readErrorMessage(res);
-      throw new ApiError(res.status, message);
+      const parsed = await readError(res);
+      const message = res.status === 401 ? 'That password was rejected.' : parsed.message;
+      throw new ApiError(res.status, message, parsed.code, parsed.suggestions);
     }
 
     const text = await res.text();
@@ -117,10 +126,12 @@ export function createStockbotClient(credentials: StockbotCredentials, options: 
       const entries = await request<ScanEntry[]>(scansQuery(DEFAULT_SCAN_USER_ID, 'pending'));
       return Array.isArray(entries) ? entries : [];
     },
-    commitScan(id) {
+    commitScan(id, linkProductId) {
+      const body: { linkProductId?: string } = {};
+      if (linkProductId) body.linkProductId = linkProductId;
       return request<ScanEntry>(scanCommitPath(id), {
         method: 'POST',
-        body: JSON.stringify({}),
+        body: JSON.stringify(body),
       });
     },
     batchCommit(ids) {
@@ -133,12 +144,15 @@ export function createStockbotClient(credentials: StockbotCredentials, options: 
   };
 }
 
-async function readErrorMessage(res: Response): Promise<string> {
+async function readError(res: Response): Promise<{ message: string; code: string; suggestions: PantryLinkSuggestion[] }> {
   try {
-    const body = (await res.json()) as { error?: string };
-    if (body.error) return body.error;
+    const body = (await res.json()) as { error?: string; code?: string; suggestions?: PantryLinkSuggestion[] };
+    return {
+      message: body.error || res.statusText || 'The request failed.',
+      code: body.code ?? '',
+      suggestions: body.suggestions ?? [],
+    };
   } catch {
-    // The status line is enough when the body is empty.
+    return { message: res.statusText || 'The request failed.', code: '', suggestions: [] };
   }
-  return res.statusText || 'The request failed.';
 }
