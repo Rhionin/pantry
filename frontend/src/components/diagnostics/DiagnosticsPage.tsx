@@ -134,7 +134,7 @@ export const DiagnosticsPage = () => {
     <Stack gap="sm">
       <Title order={1} size="h3">Diagnostics</Title>
       <Text c="dimmed" size="sm">
-        Timings from this pantry. Barcodes and product names are left out.
+        Timings from this Stockbot. Barcodes and product names are left out.
       </Text>
       {error !== '' && <Text c="red">{error}</Text>}
       {snapshot === null && error === '' && <Text c="dimmed">Loading diagnostics.</Text>}

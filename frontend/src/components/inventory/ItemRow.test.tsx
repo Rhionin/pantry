@@ -53,6 +53,26 @@ const withProduct = (product: Partial<InventoryItem['item']['product']>): Invent
 });
 
 describe('ItemRow', () => {
+  it('colors a stocked row full and an empty row out', () => {
+    const { rerender } = renderRow();
+    expect(document.querySelector('.shelf-row')).toHaveAttribute('data-stock', 'full');
+
+    rerender(
+      <MantineProvider>
+        <ItemRow
+          inventoryItem={{ ...inventoryItem, instanceCount: 0 }}
+          hand="0 carton"
+          selected={false}
+          controlsId="controls-item-1"
+          onSelect={vi.fn()}
+          onAdd={vi.fn()}
+          onStartGroup={vi.fn()}
+        />
+      </MantineProvider>,
+    );
+    expect(document.querySelector('.shelf-row')).toHaveAttribute('data-stock', 'out');
+  });
+
   it('names the data source in quiet text instead of a control', () => {
     renderRow(withProduct({ externalSource: 'openfoodfacts' }));
 

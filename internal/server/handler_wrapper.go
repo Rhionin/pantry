@@ -40,9 +40,10 @@ type SeeOther struct {
 type NoContent struct{}
 
 type errorPayload struct {
-	Error   string `json:"error"`
-	Code    string `json:"code,omitempty"`
-	Members any    `json:"members,omitempty"`
+	Error       string `json:"error"`
+	Code        string `json:"code,omitempty"`
+	Members     any    `json:"members,omitempty"`
+	Suggestions any    `json:"suggestions,omitempty"`
 }
 
 // handlerFunc is a handler function that takes a parsed request and returns a response.
@@ -156,7 +157,7 @@ func writeError(w http.ResponseWriter, status int, message string) {
 	writeHTTPError(w, status, errors.New(message))
 }
 
-// writeHTTPError writes a JSON error. A 409 can include a code and a member list.
+// writeHTTPError writes a JSON error. A 409 can include a code, a member list, and suggestions.
 func writeHTTPError(w http.ResponseWriter, status int, err error) {
 	message := ""
 	if err != nil {
@@ -165,15 +166,17 @@ func writeHTTPError(w http.ResponseWriter, status int, err error) {
 	var httpErr *HTTPError
 	var code string
 	var members any
+	var suggestions any
 	extra := false
 	if errors.As(err, &httpErr) {
 		if httpErr.Message != "" {
 			message = httpErr.Message
 		}
-		if httpErr.ErrorCode != "" || httpErr.Members != nil {
+		if httpErr.ErrorCode != "" || httpErr.Members != nil || httpErr.Suggestions != nil {
 			extra = true
 			code = httpErr.ErrorCode
 			members = httpErr.Members
+			suggestions = httpErr.Suggestions
 		}
 	}
 	if status >= 500 {
@@ -182,7 +185,7 @@ func writeHTTPError(w http.ResponseWriter, status int, err error) {
 		extra = false
 	}
 	if extra {
-		writeJSON(w, status, errorPayload{Error: message, Code: code, Members: members})
+		writeJSON(w, status, errorPayload{Error: message, Code: code, Members: members, Suggestions: suggestions})
 		return
 	}
 	writeJSON(w, status, map[string]string{"error": message})
