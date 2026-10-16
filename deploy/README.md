@@ -2,11 +2,13 @@
 
 This guide covers deploying Stockbot on a Raspberry Pi using Docker Compose.
 
+The public site is `https://stockbot.rhionin.com`. The previous name `pantry.rhionin.com` redirects there while `LEGACY_PUBLIC_HOST` is set. See [Previous public hostname](#previous-public-hostname).
+
 ## Names that stay pantry
 
 The Go module is `github.com/Rhionin/stockbot`. The Pi keeps the names from the first install. Changing them would point at a different directory, image, volume, or Grocy record.
 
-- Public hostname `pantry.rhionin.com`, LAN name `pantry.local`, and Avahi file `pantry-http.service`. The on-screen mDNS label is Stockbot.
+- LAN name `pantry.local` and Avahi file `pantry-http.service`. The on-screen mDNS label is Stockbot.
 - Directory `/opt/pantry`. That directory name is the Compose project. Grocy on this Pi is `/home/pantrybot/grocy`.
 - Images `ghcr.io/rhionin/pantry` and `ghcr.io/rhionin/pantry-grocy-sync`. Containers `pantry`, `pantry-caddy`, `pantry-cloudflared`, and `pantry-grocy-sync`. Volume `pantry-data`. Database `/data/pantry.db`.
 - Compose service `pantry`. The sidecar calls it at `http://pantry:8080`. Docker network `pantry_cf-tunnel`.
@@ -39,7 +41,7 @@ New to this? Follow these steps in order on your Raspberry Pi and you'll have St
    curl http://localhost:8080/health
    ```
 
-   You can also open `http://<pi-ip-address>:8080` in a web browser on any device on the same network. After setup, `sudo ./setup.sh status` prints that address. When Avahi is installed it also publishes `http://pantry.local:8080`. If `https://pantry.rhionin.com` hangs on home Wi-Fi and loads on cellular, the router is not hairpinning; use the LAN address. See [Home Wi-Fi hangs on the public name](#home-wi-fi-hangs-on-the-public-name).
+   You can also open `http://<pi-ip-address>:8080` in a web browser on any device on the same network. After setup, `sudo ./setup.sh status` prints that address. When Avahi is installed it also publishes `http://pantry.local:8080`. If `https://stockbot.rhionin.com` hangs on home Wi-Fi and loads on cellular, the router is not hairpinning; use the LAN address. See [Home Wi-Fi hangs on the public name](#home-wi-fi-hangs-on-the-public-name).
 
 5. **See the full picture.** Run the diagnostic any time to see the whole chain from udev rule to scan ingestion:
 
@@ -47,7 +49,7 @@ New to this? Follow these steps in order on your Raspberry Pi and you'll have St
    sudo ./setup.sh status
    ```
 
-6. **Optional: open it to the public internet.** The steps above stay on your home network. To serve the same UI at a hostname you own, such as `https://pantry.rhionin.com`, follow [Public Internet access](#public-internet-access). The Gryphon router does not hairpin, so that name hangs on home Wi-Fi when it is reached through a port forward. [Cloudflare Tunnel](#cloudflare-tunnel) is the path that works on home Wi-Fi and on cellular without forwarding ports. The public site shows a login page for the one shared password. The timing snapshot at `/api/telemetry` and the running build at `/api/build` are public on that hostname.
+6. **Optional: open it to the public internet.** The steps above stay on your home network. To serve the same UI at a hostname you own, such as `https://stockbot.rhionin.com`, follow [Public Internet access](#public-internet-access). The Gryphon router does not hairpin, so that name hangs on home Wi-Fi when it is reached through a port forward. [Cloudflare Tunnel](#cloudflare-tunnel) is the path that works on home Wi-Fi and on cellular without forwarding ports. The public site shows a login page for the one shared password. The timing snapshot at `/api/telemetry` and the running build at `/api/build` are public on that hostname.
 
 ## Updating
 
@@ -146,9 +148,9 @@ sudo ./setup.sh status
 
 ## Public Internet access
 
-This puts the Stockbot UI on a hostname you already own, with HTTPS, using the same Docker Compose stack. The recommended name is a subdomain (`pantry.rhionin.com`) so the bare domain can stay unused.
+This puts the Stockbot UI on a hostname you already own, with HTTPS, using the same Docker Compose stack. The recommended name is a subdomain (`stockbot.rhionin.com`) so the bare domain can stay unused.
 
-The Gryphon in this house does not hairpin, so `https://pantry.rhionin.com` hangs on home Wi-Fi when DNS points at the router's WAN address. [Cloudflare Tunnel](#cloudflare-tunnel) is how that URL works on home Wi-Fi and on cellular without forwarding ports 80 and 443. The steps in this section are the certificate and port-forward path. Leave those forwards in place until the tunnel has been tested on both networks.
+The Gryphon in this house does not hairpin, so `https://stockbot.rhionin.com` hangs on home Wi-Fi when DNS points at the router's WAN address. [Cloudflare Tunnel](#cloudflare-tunnel) is how that URL works on home Wi-Fi and on cellular without forwarding ports 80 and 443. The steps in this section are the certificate and port-forward path. Leave those forwards in place until the tunnel has been tested on both networks.
 
 The public site asks for one shared password before it serves the UI, the API, and the live scan stream. That stops scanners and other bots that do not have the password. It is not separate accounts, and anyone who has the password can change the pantry. These exact paths stay open without that password: `GET /api/telemetry`, `POST /api/telemetry/client`, `GET /api/build`, `GET /brand/logo.png`, `GET /terms`, `GET /privacy`, and `POST /api/deploy-hook`. The snapshot is counters and durations only — no barcodes, product names, or user ids — so an agent can `curl` it. `GET /api/build` is the running commit, build time, and version, also with no secrets. The brand mark and the two legal pages are public because a grocery login stores those URLs. The deploy hook does not use the household password; it rejects any request whose HMAC signature or timestamp does not check out. See [Deploy when the image is published](#deploy-when-the-image-is-published). The home-network address `http://<pi-ip>:8080` does not ask for the password, so do not forward port 8080 on the router.
 
@@ -165,12 +167,12 @@ The public site asks for one shared password before it serves the UI, the API, a
 | `subject` | Commit subject. Omitted when unset |
 
 ```bash
-curl -fsS https://pantry.rhionin.com/api/build
+curl -fsS https://stockbot.rhionin.com/api/build
 ```
 
 The menu's Build section shows the same version and commit. The document has no environment values, hostnames, or paths.
 
-The path below is Caddy in the `public` Compose profile, a Let's Encrypt certificate, and the Dynu A record for `pantry.rhionin.com`. It needs a public IPv4 address and the ability to forward TCP ports 80 and 443. If your ISP uses CGNAT, skip to [When port forwarding cannot work](#when-port-forwarding-cannot-work). With `CLOUDFLARE_TUNNEL_TOKEN` empty, these steps are unchanged, and `setup.sh` does not call Dynu or stop its update client.
+The path below is Caddy in the `public` Compose profile, a Let's Encrypt certificate, and the Dynu A record for `stockbot.rhionin.com`. It needs a public IPv4 address and the ability to forward TCP ports 80 and 443. If your ISP uses CGNAT, skip to [When port forwarding cannot work](#when-port-forwarding-cannot-work). With `CLOUDFLARE_TUNNEL_TOKEN` empty, these steps are unchanged, and `setup.sh` does not call Dynu or stop its update client.
 
 ### 1. Confirm the Pi is reachable from the internet
 
@@ -212,17 +214,17 @@ sudo ufw allow 443/udp
 
 `sudo ./setup.sh` also drops non-LAN clients that reach the Stockbot port (loopback, private LAN, and Tailscale `100.64.0.0/10` stay allowed; ports 80 and 443 are not changed). That runs whenever compose publishes the port, which the stock file always does, and whenever the public proxy is on. Set `PANTRY_LAN_FIREWALL=off` in `/opt/pantry/.env` and run `sudo ./setup.sh` again to leave the port reachable from any source. `sudo ./setup.sh firewall-off` removes the rule only until the next setup. Do not forward port 8080 either way. The router rule above is the one that matters for the public site.
 
-### 3. Point pantry.rhionin.com at this Pi
+### 3. Point stockbot.rhionin.com at this Pi
 
-DNS for `rhionin.com` is at [Dynu](https://www.dynu.com/) today (dynamic DNS). While Dynu's nameservers are in place, the record phones look up is the one in Dynu. A custom record at Squarespace is not authoritative. `sudo ./setup.sh` does not call Dynu and does not stop a Dynu update client. With `CLOUDFLARE_TUNNEL_TOKEN` empty, leave that client running so `pantry.rhionin.com` keeps tracking the WAN address.
+DNS for `rhionin.com` is at [Dynu](https://www.dynu.com/) today (dynamic DNS). While Dynu's nameservers are in place, the record phones look up is the one in Dynu. A custom record at Squarespace is not authoritative. `sudo ./setup.sh` does not call Dynu and does not stop a Dynu update client. With `CLOUDFLARE_TUNNEL_TOKEN` empty, leave that client running so `stockbot.rhionin.com` keeps tracking the WAN address.
 
-In the Dynu panel, confirm `pantry` is an A record, or a Dynu dynamic hostname, for the IPv4 from `curl -4 https://ifconfig.me` on the Pi. Then:
+In the Dynu panel, confirm `stockbot` is an A record, or a Dynu dynamic hostname, for the IPv4 from `curl -4 https://ifconfig.me` on the Pi. Then:
 
 ```bash
-dig +short pantry.rhionin.com A
+dig +short stockbot.rhionin.com A
 ```
 
-The answer must be the same address `curl -4 https://ifconfig.me` prints. If `dig` is not installed, `getent hosts pantry.rhionin.com` is enough. When the home IP changes, the Dynu client updates this record. Do not turn the client off while the tunnel token is empty. Tunnel mode stops using the A record only after the Cloudflare hostname route is saved and the token is set. Until then, cellular still needs Dynu.
+The answer must be the same address `curl -4 https://ifconfig.me` prints. If `dig` is not installed, `getent hosts stockbot.rhionin.com` is enough. When the home IP changes, the Dynu client updates this record. Do not turn the client off while the tunnel token is empty. Tunnel mode stops using the A record only after the Cloudflare hostname route is saved and the token is set. Until then, cellular still needs Dynu.
 
 If the nameservers point at Squarespace instead of Dynu, add the record there. That is not this house's current DNS. Registration can stay at Squarespace either way.
 
@@ -232,12 +234,12 @@ If the nameservers point at Squarespace instead of Dynu, add the record there. T
 4. Under **Custom records**, click **Add record**.
 5. Set:
    - **Type:** A
-   - **Host:** `pantry`  
+   - **Host:** `stockbot`  
      Squarespace appends `.rhionin.com`. Do not type the full name, and do not type `https://`.
    - **Data** (IP address): the IPv4 from `curl -4 https://ifconfig.me`
 6. Save the record.
 
-Leave the Squarespace default records for `@` and `www` alone. A new host named `pantry` does not conflict with them. Use host `@` only if you want `https://rhionin.com` itself; in that case delete the Squarespace default A and CNAME records for `@` first, because a custom record cannot override those presets. Squarespace does not offer a TTL field. Those steps do nothing for resolution while Dynu is authoritative.
+Leave the Squarespace default records for `@` and `www` alone. A new host named `stockbot` does not conflict with them. Use host `@` only if you want `https://rhionin.com` itself; in that case delete the Squarespace default A and CNAME records for `@` first, because a custom record cannot override those presets. Squarespace does not offer a TTL field. Those steps do nothing for resolution while Dynu is authoritative.
 
 When your home IP changes and Dynu is still authoritative, the Dynu update client changes the A record. The certificate is for the hostname, so HTTPS starts working again as soon as DNS matches the new address. Leave that client running whenever `CLOUDFLARE_TUNNEL_TOKEN` is empty. Squarespace itself has no dynamic-DNS service; a Squarespace A record would be a manual edit, and only if Squarespace is actually the DNS host.
 
@@ -246,7 +248,7 @@ When your home IP changes and Dynu is still authoritative, the Dynu update clien
 On the Pi, edit `/opt/pantry/.env` (create the LAN install first with `sudo ./setup.sh` if you have not):
 
 ```bash
-PUBLIC_HOST=pantry.rhionin.com
+PUBLIC_HOST=stockbot.rhionin.com
 ACME_EMAIL=you@example.com
 BASIC_AUTH_USER=pantry
 BASIC_AUTH_PASSWORD=replace-with-a-long-passphrase
@@ -267,23 +269,23 @@ Certificates are stored in the Docker volume `caddy-data`. Do not delete that vo
 From a phone on cellular data, not the home Wi-Fi:
 
 ```bash
-curl -fsS -u 'pantry:replace-with-a-long-passphrase' https://pantry.rhionin.com/health
+curl -fsS -u 'pantry:replace-with-a-long-passphrase' https://stockbot.rhionin.com/health
 ```
 
-Without the password, that command returns `401` JSON and does not open a browser password prompt. With the `Authorization: Basic` header, expect `{"status":"ok",...}`. Then open `https://pantry.rhionin.com` in the phone's browser. The login page asks for the same username and password. After that, the pantry UI loads. The session cookie is HttpOnly and SameSite=Lax, Secure on the public site, and lasts 180 days, so the phone stays signed in. Log out is in the header menu. The scan queue and inventory pages keep a live connection to `/api/events`; new scans should show up without a refresh.
+Without the password, that command returns `401` JSON and does not open a browser password prompt. With the `Authorization: Basic` header, expect `{"status":"ok",...}`. Then open `https://stockbot.rhionin.com` in the phone's browser. The login page asks for the same username and password. After that, the pantry UI loads. The session cookie is HttpOnly and SameSite=Lax, Secure on the public site, and lasts 180 days, so the phone stays signed in. Log out is in the header menu. The scan queue and inventory pages keep a live connection to `/api/events`; new scans should show up without a refresh.
 
 The timing snapshot does not use the password. From the same phone:
 
 ```bash
-curl -fsS https://pantry.rhionin.com/api/telemetry
+curl -fsS https://stockbot.rhionin.com/api/telemetry
 ```
 
 Expect JSON with a `pageLoad` object. A `401` on `/health` without a password is still correct. Caddy also serves these exact paths without the password:
 
 ```bash
-curl -fsS -D - -o /dev/null https://pantry.rhionin.com/brand/logo.png
-curl -fsS -D - -o /dev/null https://pantry.rhionin.com/terms
-curl -fsS -D - -o /dev/null https://pantry.rhionin.com/privacy
+curl -fsS -D - -o /dev/null https://stockbot.rhionin.com/brand/logo.png
+curl -fsS -D - -o /dev/null https://stockbot.rhionin.com/terms
+curl -fsS -D - -o /dev/null https://stockbot.rhionin.com/privacy
 ```
 
 Expect `200` with `image/png` for the mark and `text/html` for the two pages. `GET /api/build` is also public. `GET /api/providers/kroger/callback` stays behind the login. The browser sends the SameSite=Lax session cookie on the redirect from Kroger. `/favicon.ico`, `/health`, and every path that is not listed as public still require the password. If the password file is missing, the public hostname refuses API calls with `401` and still serves the login page, which cannot sign in. The `sudo ./setup.sh` above is what puts that Caddyfile in front of the site. An image update does not reload it.
@@ -294,7 +296,7 @@ To change the password, edit `BASIC_AUTH_PASSWORD`, remove `/opt/pantry/auth.cad
 
 ### Home Wi-Fi hangs on the public name
 
-On the certificate path, `https://pantry.rhionin.com` loads on cellular and sits there on home Wi-Fi until the browser gives up. Caddy and Stockbot are up the whole time. [Cloudflare Tunnel](#cloudflare-tunnel) is how the same name loads on both. The rest of this section is the port-forward behavior. The phone on Wi-Fi looks up the public DNS A record, gets the router's WAN address (`38.148.49.79` in this house), and sends the connection to the Gryphon. Cellular never does that: it is already outside the house, so the same port forward delivers it to the Pi.
+On the certificate path, `https://stockbot.rhionin.com` loads on cellular and sits there on home Wi-Fi until the browser gives up. Caddy and Stockbot are up the whole time. [Cloudflare Tunnel](#cloudflare-tunnel) is how the same name loads on both. The rest of this section is the port-forward behavior. The phone on Wi-Fi looks up the public DNS A record, gets the router's WAN address (`38.148.49.79` in this house), and sends the connection to the Gryphon. Cellular never does that: it is already outside the house, so the same port forward delivers it to the Pi.
 
 That inside-the-house path is NAT hairpin (also called NAT loopback or NAT reflection). The router has to send a connection aimed at its own WAN address back to `192.168.1.203`. Many home routers drop or ignore that connection instead of refusing it, so the browser hangs rather than showing an error. Nothing on the Pi can answer a packet that never arrives. This repository does not change the Gryphon.
 
@@ -320,10 +322,10 @@ Phones and computers that resolve `.local` (current iOS, Android, macOS, and Win
 
 1. In the Gryphon Connect app, confirm the Pi's DHCP reservation is still `192.168.1.203` (or whatever `PANTRY_LAN_IPV4` is).
 2. Confirm the existing forwards, which are what make cellular work: external TCP 80 to the Pi's TCP 80, and external TCP 443 to the Pi's TCP 443. Leave UDP 443 optional. Do not add 8080.
-3. Look through the app's network and advanced screens for NAT loopback, NAT reflection, or hairpin NAT. Gryphon's public help does not document that switch. If it is there, enable it for those two forwards and try `https://pantry.rhionin.com` on Wi-Fi again.
+3. Look through the app's network and advanced screens for NAT loopback, NAT reflection, or hairpin NAT. Gryphon's public help does not document that switch. If it is there, enable it for those two forwards and try `https://stockbot.rhionin.com` on Wi-Fi again.
 4. If the switch is not there, ask Gryphon support from the in-app chat to enable NAT loopback for the existing 80 and 443 forwards. Until they do, home Wi-Fi keeps using the LAN address above. The public name, the Let's Encrypt certificate, and the shared password stay as they are for everyone off the LAN.
 
-**Same hostname on the LAN, without hairpin.** Caddy is already listening on the Pi's port 443. If a client resolves `pantry.rhionin.com` to the Pi's LAN address, it gets the real certificate and the same shared password. Internet DNS is left pointing at the WAN address, so cellular and other outside clients are unchanged.
+**Same hostname on the LAN, without hairpin.** Caddy is already listening on the Pi's port 443. If a client resolves `stockbot.rhionin.com` to the Pi's LAN address, it gets the real certificate and the same shared password. Internet DNS is left pointing at the WAN address, so cellular and other outside clients are unchanged.
 
 That resolution is split-horizon DNS. It only helps devices that query the Pi. Gryphon often answers DNS itself for filtering, and the Connect app does not document a house-wide DNS server field. If a device cannot be pointed at the Pi, skip this and use the LAN URL.
 
@@ -345,12 +347,12 @@ Then `sudo ./setup.sh`. It writes a dnsmasq config that answers only this hostna
 Check from a computer that is using the Pi as its DNS server:
 
 ```bash
-dig +short pantry.rhionin.com A @192.168.1.203
+dig +short stockbot.rhionin.com A @192.168.1.203
 ```
 
-The answer has to be `192.168.1.203`. If a phone on Wi-Fi still resolves the name to the WAN address, the phone is not using the Pi, and `https://pantry.rhionin.com` will keep hanging. Set `PANTRY_SPLIT_DNS=off` and run `sudo ./setup.sh` to remove the config.
+The answer has to be `192.168.1.203`. If a phone on Wi-Fi still resolves the name to the WAN address, the phone is not using the Pi, and `https://stockbot.rhionin.com` will keep hanging. Set `PANTRY_SPLIT_DNS=off` and run `sudo ./setup.sh` to remove the config.
 
-A computer can also pin the name without dnsmasq, by adding a line to its hosts file (`192.168.1.203 pantry.rhionin.com`). Phones generally cannot edit a hosts file. Use the LAN URL on those.
+A computer can also pin the name without dnsmasq, by adding a line to its hosts file (`192.168.1.203 stockbot.rhionin.com`). Phones generally cannot edit a hosts file. Use the LAN URL on those.
 
 ### When something fails
 
@@ -363,7 +365,7 @@ sudo docker compose --profile public logs --tail=80 caddy
 
 | What you see | What to fix |
 |--------------|-------------|
-| `NXDOMAIN`, or `dig` returns no address | The Dynu A record is missing or still cached (or, if nameservers are not Dynu's, the record at the DNS host that is). Wait, then check `dig +short pantry.rhionin.com A` again. |
+| `NXDOMAIN`, or `dig` returns no address | The Dynu A record is missing or still cached (or, if nameservers are not Dynu's, the record at the DNS host that is). Wait, then check `dig +short stockbot.rhionin.com A` again. |
 | Certificate error mentioning timeout, connection refused, or `404` from another site | Port 80 is not reaching this Pi. Re-check the router forward and that no other program is bound to port 80. |
 | Browser warning, certificate name mismatch | `PUBLIC_HOST` and the Squarespace host are not the same name. They must match exactly. |
 | `https://` works at home but not on cellular | The phone is still using the LAN address, or the forward is wrong. Test on cellular. |
@@ -373,7 +375,7 @@ sudo docker compose --profile public logs --tail=80 caddy
 
 ### Cloudflare Tunnel
 
-This is the way `https://pantry.rhionin.com` works on home Wi-Fi and on cellular when the Gryphon does not hairpin, without forwarding ports 80 or 443. The Pi opens an outbound connection to Cloudflare. The tunnel **pantry-pi** (`9e158cce-4d31-4881-82f3-d905af6164e7`) already exists and is remotely managed, so the Pi only runs `cloudflared` with `CLOUDFLARE_TUNNEL_TOKEN`. Do not create a second tunnel, and do not add a local ingress file. An empty token leaves Let's Encrypt, the Gryphon forwards, and the Dynu dynamic DNS client exactly as they are. The login page asks for the same household password, and these paths stay public: `GET /api/telemetry`, `POST /api/telemetry/client`, `GET /api/build`, `GET /brand/logo.png`, `GET /terms`, `GET /privacy`, and `POST /api/deploy-hook`. Do not point the tunnel at port 8080. That port has no password. Do not turn on Cloudflare Access for this hostname. The login page already asks for the password, and Access would be a second login.
+This is the way `https://stockbot.rhionin.com` works on home Wi-Fi and on cellular when the Gryphon does not hairpin, without forwarding ports 80 or 443. The Pi opens an outbound connection to Cloudflare. The tunnel **pantry-pi** (`9e158cce-4d31-4881-82f3-d905af6164e7`) already exists and is remotely managed, so the Pi only runs `cloudflared` with `CLOUDFLARE_TUNNEL_TOKEN`. Do not create a second tunnel, and do not add a local ingress file. An empty token leaves Let's Encrypt, the Gryphon forwards, and the Dynu dynamic DNS client exactly as they are. The login page asks for the same household password, and these paths stay public: `GET /api/telemetry`, `POST /api/telemetry/client`, `GET /api/build`, `GET /brand/logo.png`, `GET /terms`, `GET /privacy`, and `POST /api/deploy-hook`. Do not point the tunnel at port 8080. That port has no password. Do not turn on Cloudflare Access for this hostname. The login page already asks for the password, and Access would be a second login.
 
 LAN `http://192.168.1.203:8080` and `http://pantry.local:8080` keep working the whole time, with no password. Use them if the public name is down during the cutover.
 
@@ -410,7 +412,7 @@ Wait until Cloudflare says the site is active. Check from the Pi:
 dig +short NS rhionin.com
 ```
 
-The answers should be Cloudflare's nameservers, not Dynu's. The Dynu update client can keep running; it no longer affects this name once the nameservers have moved. The existing `pantry` A record, now served by Cloudflare, still points at the home address, so cellular keeps working through the Gryphon forwards. Home Wi-Fi still hangs on that name. That is expected until the tunnel hostname replaces the A record.
+The answers should be Cloudflare's nameservers, not Dynu's. The Dynu update client can keep running; it no longer affects this name once the nameservers have moved. The existing public A record (`stockbot`, or `pantry` until that name is removed), now served by Cloudflare, still points at the home address, so cellular keeps working through the Gryphon forwards. Home Wi-Fi still hangs on that name. That is expected until the tunnel hostname replaces the A record.
 
 #### 4. Copy the token from pantry-pi
 
@@ -423,11 +425,11 @@ You will put that token in `/opt/pantry/.env` as `CLOUDFLARE_TUNNEL_TOKEN`. Do n
 
 #### 5. Set the public hostname service URL
 
-On **pantry-pi**, open **Routes** (or **Public Hostname**). Add or edit the published application for `pantry.rhionin.com`. This is the remotely managed ingress. Nothing on the Pi stores it.
+On **pantry-pi**, open **Routes** (or **Public Hostname**). Add or edit the published application for `stockbot.rhionin.com`. This is the remotely managed ingress. Nothing on the Pi stores it.
 
 | Field | Value |
 |-------|--------|
-| Subdomain | `pantry` |
+| Subdomain | `stockbot` |
 | Domain | `rhionin.com` |
 | Path | leave empty |
 | Type | HTTP |
@@ -435,14 +437,14 @@ On **pantry-pi**, open **Routes** (or **Public Hostname**). Add or edit the publ
 
 `http://caddy:80` is how `cloudflared` reaches Caddy. Both containers share the Compose network `cf-tunnel`. The tunnel Caddy service is `caddy-tunnel`, and that network gives it the DNS name `caddy`. Its HTTP listener is port 80 inside the network. It is not a port on the Pi, and it is not port 8080. If the form asks for a type separately, choose **HTTP** and enter `caddy:80` so the scheme is not doubled. The public side is HTTPS with Cloudflare's certificate. Caddy sees the original `https` scheme and the visitor address only because that connection comes from cloudflared (`10.77.77.2`).
 
-Saving this hostname replaces the `pantry` A record with the tunnel. The public name stops working until the Pi is running cloudflared. Have the next command ready, then save the hostname.
+Saving this hostname replaces the `stockbot` A record with the tunnel. The public name stops working until the Pi is running cloudflared. Have the next command ready, then save the hostname. The tunnel may already publish `pantry.rhionin.com`. Leave that route in place and follow [Previous public hostname](#previous-public-hostname).
 
 #### 6. Put the token on the Pi and switch
 
 On the Pi, edit `/opt/pantry/.env`:
 
 ```bash
-PUBLIC_HOST=pantry.rhionin.com
+PUBLIC_HOST=stockbot.rhionin.com
 PUBLISH_MODE=tunnel
 CLOUDFLARE_TUNNEL_TOKEN=paste-the-token-here
 BASIC_AUTH_USER=pantry
@@ -457,15 +459,15 @@ sudo ./setup.sh publish --tunnel
 
 That is the command that switches modes. A later `sudo ./setup.sh` stays on the tunnel as long as the token is set, which is also what the automatic-update timer does. The command copies the tunnel compose file, starts `cloudflared` with `tunnel run`, and starts Caddy on an internal HTTP port only. Nothing on the Pi listens on 80 or 443. The shared password is unchanged. The login page replaces the browser prompt, and the public paths stay public.
 
-If `PANTRY_SPLIT_DNS` was on, this run removes it. A LAN answer for `pantry.rhionin.com` would send phones to the Pi, and Caddy is no longer on port 443 there. Leave `PANTRY_SPLIT_DNS=off`.
+If `PANTRY_SPLIT_DNS` was on, this run removes it. A LAN answer for `stockbot.rhionin.com` would send phones to the Pi, and Caddy is no longer on port 443 there. Leave `PANTRY_SPLIT_DNS=off`.
 
 #### 7. Test on home Wi-Fi and on cellular
 
-From a phone on home Wi-Fi, open `https://pantry.rhionin.com`, sign in on the login page with the household password, and confirm the pantry loads. Repeat on cellular data, with Wi-Fi off. Both should load. Neither should hang. A phone that already signed in stays signed in.
+From a phone on home Wi-Fi, open `https://stockbot.rhionin.com`, sign in on the login page with the household password, and confirm the pantry loads. Repeat on cellular data, with Wi-Fi off. Both should load. Neither should hang. A phone that already signed in stays signed in.
 
 ```bash
-curl -fsS -u 'pantry:replace-with-a-long-passphrase' https://pantry.rhionin.com/health
-curl -fsS https://pantry.rhionin.com/api/telemetry
+curl -fsS -u 'pantry:replace-with-a-long-passphrase' https://stockbot.rhionin.com/health
+curl -fsS https://stockbot.rhionin.com/api/telemetry
 ```
 
 `/health` without the password is `401` JSON. `/api/telemetry` and `/api/build` without the password are JSON. The brand mark, terms, and privacy URLs are still public. `GET /api/providers/kroger/callback` stays behind the login; the browser sends the session cookie on the way back from Kroger. Tunnel mode reads the visitor address from `Cf-Connecting-Ip`, so one person cannot pause sign-in for everyone else.
@@ -478,19 +480,43 @@ Do this only after both networks load the public name. In Gryphon Connect, delet
 
 If you previously ran `sudo ufw allow 80/tcp` and `sudo ufw allow 443/tcp`, you can delete those allows. Leave a firewall that is currently inactive turned off.
 
+#### Previous public hostname
+
+`https://stockbot.rhionin.com` is the public site. `pantry.rhionin.com` is the previous name. `sudo ./setup.sh` does not replace a `PUBLIC_HOST` that is already set, so a Pi that still says `pantry.rhionin.com` keeps serving that name until you edit `/opt/pantry/.env`:
+
+```bash
+PUBLIC_HOST=stockbot.rhionin.com
+LEGACY_PUBLIC_HOST=pantry.rhionin.com
+```
+
+Then run `sudo ./setup.sh`. Caddy serves the new name. Requests for the old name get a 308 redirect to `https://stockbot.rhionin.com` with the same path and query. On the certificate path, Caddy also requests a certificate for the old name so that redirect can be HTTPS. Tunnel mode does not. Cloudflare's certificate covers the name, and Caddy only sees HTTP from cloudflared. Clear `LEGACY_PUBLIC_HOST` and run `sudo ./setup.sh` again when that redirect should stop. A value equal to `PUBLIC_HOST`, or a value that includes `https://`, is ignored and the old name is not a second site.
+
+The session cookie is for one hostname. A phone that was signed in on `pantry.rhionin.com` signs in again on `stockbot.rhionin.com`. Scan-alert subscriptions belong to the site that created them. Open the new name and allow notifications again. Leave the VAPID keys and `VAPID_SUBJECT` as they are. Setup does not rotate them.
+
+Cloudflare still owns the tunnel routes. Nothing in this repo calls the Cloudflare API. On the existing tunnel **pantry-pi** (`9e158cce-4d31-4881-82f3-d905af6164e7`):
+
+1. Add a public hostname for `stockbot.rhionin.com`. Subdomain `stockbot`, domain `rhionin.com`, path empty, type HTTP, URL `http://caddy:80`. Do not create a second tunnel. Do not point it at port 8080. Do not turn on Cloudflare Access.
+2. Leave `pantry.rhionin.com` on that same tunnel with the same URL, so Caddy can redirect it.
+3. On the Pi, set the two variables above and run `sudo ./setup.sh`. Until `PUBLIC_HOST` is `stockbot.rhionin.com`, Caddy does not answer that Host header.
+4. Open `https://stockbot.rhionin.com` on home Wi-Fi and on cellular, sign in, and confirm a scan shows up. Then open `https://pantry.rhionin.com/api/build` and confirm the response redirects to `https://stockbot.rhionin.com/api/build`.
+
+GitHub Actions posts `POST /api/deploy-hook` to `https://stockbot.rhionin.com` first. If that request fails, it tries `https://pantry.rhionin.com`. The one-minute timer still pulls the image if both fail. After the new name answers, the fallback is unused. A redirect on the old name does not accept the hook; the primary URL has to answer.
+
+Empty `LEGACY_PUBLIC_HOST`, run `sudo ./setup.sh`, and delete the `pantry.rhionin.com` public hostname in the tunnel when you retire the old name.
+
 #### Rollback
 
 Smaller rollback, DNS stays at Cloudflare:
 
 1. Put the Gryphon TCP 80 and TCP 443 forwards back, to the Pi, before changing DNS.
-2. In the tunnel, delete the public hostname `pantry.rhionin.com`.
-3. In Cloudflare DNS, add an A record: name `pantry`, value the address from `curl -4 https://ifconfig.me` on the Pi.
-4. On the Pi, empty `CLOUDFLARE_TUNNEL_TOKEN` in `/opt/pantry/.env`. Leave `PUBLIC_HOST=pantry.rhionin.com`. Set `PUBLISH_MODE=acme` or leave it empty. A non-empty token keeps tunnel mode, so the token line has to be empty. Set `ACME_EMAIL` if it is empty.
+2. In the tunnel, delete the public hostnames `stockbot.rhionin.com` and `pantry.rhionin.com`.
+3. In Cloudflare DNS, add an A record: name `stockbot`, value the address from `curl -4 https://ifconfig.me` on the Pi.
+4. On the Pi, empty `CLOUDFLARE_TUNNEL_TOKEN` in `/opt/pantry/.env`. Leave `PUBLIC_HOST=stockbot.rhionin.com`. Set `PUBLISH_MODE=acme` or leave it empty. A non-empty token keeps tunnel mode, so the token line has to be empty. Set `ACME_EMAIL` if it is empty.
 5. Run `sudo ./setup.sh`. That stops cloudflared and starts Caddy on ports 80 and 443 again. The certificate volume from the earlier certificate path is still there.
 6. Test on cellular. Home Wi-Fi hangs on the public name again. Use `http://192.168.1.203:8080` or `http://pantry.local:8080` on that network.
 7. Leave the **pantry-pi** tunnel in the dashboard. Emptying the token stops only the connector on the Pi.
 
-To move DNS back to Dynu, after the smaller rollback is working, copy every record Cloudflare is serving (website, mail, and `pantry`) into Dynu first, and point `pantry` at the WAN address again. Then set the registrar nameservers back to Dynu's, confirm `dig +short NS rhionin.com` and `dig +short pantry.rhionin.com A`, and turn the Dynu update client back on if you stopped it. Only then turn DNSSEC back on if you want it. With the token empty, that dynamic DNS client is what keeps the port-forward site on the current home IP.
+To move DNS back to Dynu, after the smaller rollback is working, copy every record Cloudflare is serving (website, mail, and `stockbot`) into Dynu first, and point `stockbot` at the WAN address again. Copy `pantry` too if that name is still published. Then set the registrar nameservers back to Dynu's, confirm `dig +short NS rhionin.com` and `dig +short stockbot.rhionin.com A`, and turn the Dynu update client back on if you stopped it. Only then turn DNSSEC back on if you want it. With the token empty, that dynamic DNS client is what keeps the port-forward site on the current home IP.
 
 `sudo ./setup.sh unpublish` stops the proxy and cloudflared and leaves the LAN site up. Clear `PUBLIC_HOST` and `CLOUDFLARE_TUNNEL_TOKEN` as well when the update timer is enabled, or the next update starts the tunnel again.
 
@@ -547,7 +573,8 @@ All configuration is handled through environment variables in `/opt/pantry/.env`
 |----------|---------|-------------|
 | `PANTRY_IMAGE_TAG` | `latest` | Container image tag to deploy. Use `latest` for newest build, `master` for master branch, or full commit SHA to pin version |
 | `HOST_PORT` | `8080` | IPv4 port for the LAN site. The container still listens on 8080. Published on `0.0.0.0` only, not IPv6. Do not forward this port on the router |
-| `PUBLIC_HOST` | empty | Hostname for the public HTTPS proxy, such as `pantry.rhionin.com`. Empty keeps the install LAN-only. No `https://` |
+| `PUBLIC_HOST` | empty | Hostname for the public HTTPS proxy, such as `stockbot.rhionin.com`. Empty keeps the install LAN-only. No `https://`. Setup does not replace a value that is already set |
+| `LEGACY_PUBLIC_HOST` | empty | Previous hostname that redirects to `PUBLIC_HOST`, such as `pantry.rhionin.com`. Empty serves `PUBLIC_HOST` only. Setup writes the redirect and ignores a value that matches `PUBLIC_HOST` or includes a scheme |
 | `PUBLISH_MODE` | empty | `tunnel` selects Cloudflare Tunnel and requires `CLOUDFLARE_TUNNEL_TOKEN`. Empty or `acme` is the certificate path, unless that token is set — a non-empty token selects tunnel on its own |
 | `CLOUDFLARE_TUNNEL_TOKEN` | empty | Token for the existing tunnel pantry-pi. Empty keeps Let's Encrypt, the Gryphon forwards, and the Dynu update client. Secret. The hostname's service URL is `http://caddy:80` |
 | `ACME_EMAIL` | empty | Email Let's Encrypt uses for certificate expiry notices. Required when `PUBLIC_HOST` is set and the token is empty. Not used in tunnel mode. Not a Stockbot login |
@@ -837,7 +864,7 @@ For automatic updates, you can install systemd units that periodically check for
 
 ### Deploy when the image is published
 
-The timer above is the fallback. After `ghcr.io/rhionin/pantry:latest` is pushed, GitHub Actions POSTs a signed request to `https://pantry.rhionin.com/api/deploy-hook`. Caddy does not ask for the household password on that path. The app checks an HMAC of the timestamp and body, rejects a replay older than five minutes (and a timestamp more than a minute ahead), and writes `/opt/pantry/deploy-trigger/request`. `pantry-update.path` starts `pantry-update.service`, which is the same pull the timer runs. Two hooks that arrive together share one pull; a hook that arrives during a pull causes one more pull. The container cannot call `systemctl` itself. Nothing on the router is opened: the request comes in through the existing Cloudflare tunnel (`cloudflared` to `caddy:80`).
+The timer above is the fallback. After `ghcr.io/rhionin/pantry:latest` is pushed, GitHub Actions POSTs a signed request to `https://stockbot.rhionin.com/api/deploy-hook`, and tries `https://pantry.rhionin.com/api/deploy-hook` only if the new name does not answer. Caddy does not ask for the household password on that path. The app checks an HMAC of the timestamp and body, rejects a replay older than five minutes (and a timestamp more than a minute ahead), and writes `/opt/pantry/deploy-trigger/request`. `pantry-update.path` starts `pantry-update.service`, which is the same pull the timer runs. Two hooks that arrive together share one pull; a hook that arrives during a pull causes one more pull. The container cannot call `systemctl` itself. Nothing on the router is opened: the request comes in through the existing Cloudflare tunnel (`cloudflared` to `caddy:80`).
 
 Do this once, after the files from this change are on the Pi:
 
@@ -847,7 +874,7 @@ Do this once, after the files from this change are on the Pi:
    ```bash
    sudo ./setup.sh deploy-secret
    ```
-4. On GitHub, open the `Rhionin/stockbot` repository, then **Settings → Secrets and variables → Actions → New repository secret**. Name it `DEPLOY_HOOK_SECRET` and paste the printed value. There is no other repository secret to add. The hook URL is `https://pantry.rhionin.com/api/deploy-hook`.
+4. On GitHub, open the `Rhionin/stockbot` repository, then **Settings → Secrets and variables → Actions → New repository secret**. Name it `DEPLOY_HOOK_SECRET` and paste the printed value. There is no other repository secret to add. The hook URL is `https://stockbot.rhionin.com/api/deploy-hook`. The workflow also tries `https://pantry.rhionin.com/api/deploy-hook` when the new name fails.
 5. The next push to `master` that publishes `latest` sends the hook. If `DEPLOY_HOOK_SECRET` is not set on the repository, that workflow step skips and the 1-minute timer still deploys.
 
 `sudo ./setup.sh freeze` masks both the timer and the path unit so a hook does not change the image while you are iterating. `sudo ./setup.sh thaw` turns them back on.

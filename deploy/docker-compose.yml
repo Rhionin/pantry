@@ -99,6 +99,7 @@ services:
       - no-new-privileges:true
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./Caddyfile.legacy:/etc/caddy/Caddyfile.legacy:ro
       - caddy-data:/data
       - caddy-config:/config
 

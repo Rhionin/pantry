@@ -28,6 +28,10 @@
 	}
 }
 
+# Previous public name. setup.sh rewrites Caddyfile.legacy when
+# LEGACY_PUBLIC_HOST is set. A comment-only file serves PUBLIC_HOST only.
+import Caddyfile.legacy
+
 {$PUBLIC_HOST} {
 	# handle is first-match. This matcher is exact: /api/telemetry and
 	# /api/telemetry/client only. The snapshot has no barcodes, product names,

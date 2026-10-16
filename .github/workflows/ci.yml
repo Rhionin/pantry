@@ -264,14 +264,24 @@ jobs:
             echo "DEPLOY_HOOK_SECRET is not set; skipping the deploy hook. The Pi timer will pull this image."
             exit 0
           fi
-          url="https://pantry.rhionin.com/api/deploy-hook"
           body="{\"sha\":\"${GITHUB_SHA}\",\"ref\":\"${GITHUB_REF_NAME}\"}"
           ts="$(date +%s)"
           sig="$(printf '%s.%s' "$ts" "$body" | openssl dgst -sha256 -hmac "$DEPLOY_HOOK_SECRET" -hex | awk '{print $NF}')"
-          curl --fail --silent --show-error --max-time 30 \
-            -X POST "$url" \
-            -H "Content-Type: application/json" \
-            -H "X-Pantry-Deploy-Timestamp: ${ts}" \
-            -H "X-Pantry-Deploy-Signature: ${sig}" \
-            --data-binary "$body"
-          echo "Deploy hook accepted for ${GITHUB_SHA}."
+          post_hook() {
+            curl --fail --silent --show-error --max-time 30 \
+              -X POST "$1" \
+              -H "Content-Type: application/json" \
+              -H "X-Pantry-Deploy-Timestamp: ${ts}" \
+              -H "X-Pantry-Deploy-Signature: ${sig}" \
+              --data-binary "$body"
+          }
+          # Primary host is stockbot. The previous name still answers until
+          # the tunnel route and the Pi env have both moved.
+          if post_hook "https://stockbot.rhionin.com/api/deploy-hook"; then
+            echo "Deploy hook accepted for ${GITHUB_SHA}."
+          elif post_hook "https://pantry.rhionin.com/api/deploy-hook"; then
+            echo "Deploy hook accepted on the previous host for ${GITHUB_SHA}."
+          else
+            echo "Deploy hook failed for https://stockbot.rhionin.com and https://pantry.rhionin.com."
+            exit 1
+          fi
