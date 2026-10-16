@@ -252,6 +252,9 @@ have "$LAST_OUT" "Stockbot setup complete" "LAN success"
 have "$LAST_OUT" "Non-LAN clients are blocked on port 9090" "LAN firewall summary"
 have "$LAST_OUT" "LAN: http://" "LAN URL is printed"
 lack "$LAST_OUT" "Home Wi-Fi cannot open" "LAN-only must not warn about hairpin"
+have "$(cat "$lan/Caddyfile.legacy")" "No LEGACY_PUBLIC_HOST" "LAN snippet does not redirect"
+lack "$(cat "$lan/Caddyfile.legacy")" "redir" "LAN snippet is not a redirect"
+lack "$(cat "$lan/Caddyfile.tunnel.legacy")" "redir" "LAN tunnel snippet is not a redirect"
 lack "$LAST_SYSTEMCTL" "pantry-mdns.service" "default test run does not install mDNS"
 grep -q '0\.0\.0\.0:.*:8080' "$lan/docker-compose.yml" || fail "compose must still publish the LAN port"
 
@@ -505,7 +508,7 @@ set -e
 # The certificate profile stays off, and the token is not printed.
 tun=$(mktemp -d)
 write_env "$tun" \
-  "PUBLIC_HOST=pantry.rhionin.com" \
+  "PUBLIC_HOST=stockbot.rhionin.com" \
   "ACME_EMAIL=" \
   "BASIC_AUTH_USER=pantry" \
   "BASIC_AUTH_PASSWORD=" \
@@ -535,7 +538,7 @@ cmp "$tun/auth.caddy" "$tun/auth.caddy.before" || fail "publish --tunnel regener
 
 # PUBLISH_MODE=acme does not override a token that is still set.
 write_env "$tun" \
-  "PUBLIC_HOST=pantry.rhionin.com" \
+  "PUBLIC_HOST=stockbot.rhionin.com" \
   "ACME_EMAIL=you@example.com" \
   "BASIC_AUTH_USER=pantry" \
   "BASIC_AUTH_PASSWORD=" \
@@ -568,7 +571,7 @@ lack "$LAST_DOCKER" "--profile public" "missing token must not start the certifi
 # Token set, password not ready: LAN still comes up, tunnel stays off.
 unready=$(mktemp -d)
 write_env "$unready" \
-  "PUBLIC_HOST=pantry.rhionin.com" \
+  "PUBLIC_HOST=stockbot.rhionin.com" \
   "BASIC_AUTH_USER=pantry" \
   "BASIC_AUTH_PASSWORD=" \
   "HOST_PORT=8080" \
@@ -583,7 +586,7 @@ have "$LAST_OUT" "The tunnel was not started" "unready tunnel explains why"
 # Split-horizon DNS would point the public name at the Pi. Tunnel mode removes it.
 tunsplit=$(mktemp -d)
 write_env "$tunsplit" \
-  "PUBLIC_HOST=pantry.rhionin.com" \
+  "PUBLIC_HOST=stockbot.rhionin.com" \
   "BASIC_AUTH_USER=pantry" \
   "BASIC_AUTH_PASSWORD=" \
   "HOST_PORT=8080" \
@@ -595,14 +598,68 @@ run_setup "$tunsplit"
 [[ "$LAST_RC" -eq 0 ]] || fail "tunnel split-dns exited $LAST_RC: $LAST_OUT"
 have "$LAST_OUT" "PANTRY_SPLIT_DNS is on" "tunnel warns about split-horizon"
 have "$LAST_OUT" "Split-horizon DNS was removed" "tunnel removes split-horizon"
-lack "$LAST_DNSMASQ" "address=/pantry.rhionin.com/192.168.1.203" "tunnel must not install dnsmasq"
+lack "$LAST_DNSMASQ" "address=/stockbot.rhionin.com/192.168.1.203" "tunnel must not install dnsmasq"
 have "$LAST_DOCKER" "--profile tunnel" "split-horizon removal keeps the tunnel"
+
+# The previous public name redirects only when it is a different hostname.
+legacy=$(mktemp -d)
+write_env "$legacy" \
+  "PUBLIC_HOST=stockbot.rhionin.com" \
+  "LEGACY_PUBLIC_HOST=pantry.rhionin.com" \
+  "ACME_EMAIL=you@example.com" \
+  "BASIC_AUTH_USER=pantry" \
+  "BASIC_AUTH_PASSWORD=" \
+  "HOST_PORT=8080" \
+  "CLOUDFLARE_TUNNEL_TOKEN=test-tunnel-token"
+printf '%s\n' 'basic_auth bcrypt Pantry {' '	pantry ORIGINAL-HASH' '}' > "$legacy/auth.caddy"
+run_setup "$legacy"
+[[ "$LAST_RC" -eq 0 ]] || fail "legacy host setup exited $LAST_RC: $LAST_OUT"
+have "$LAST_OUT" "https://pantry.rhionin.com redirects to https://stockbot.rhionin.com" "legacy redirect is logged"
+have "$(cat "$legacy/Caddyfile.legacy")" 'pantry.rhionin.com {' "certificate snippet names the previous host"
+# shellcheck disable=SC2016 # Caddy expands {$PUBLIC_HOST}; the snippet keeps the placeholder.
+have "$(cat "$legacy/Caddyfile.legacy")" 'redir https://{$PUBLIC_HOST}{uri} 308' "certificate snippet redirects"
+have "$(cat "$legacy/Caddyfile.tunnel.legacy")" 'http://pantry.rhionin.com {' "tunnel snippet names the previous host"
+# shellcheck disable=SC2016 # Caddy expands {$PUBLIC_HOST}; the snippet keeps the placeholder.
+have "$(cat "$legacy/Caddyfile.tunnel.legacy")" 'redir https://{$PUBLIC_HOST}{uri} 308' "tunnel snippet redirects"
+lack "$(cat "$legacy/Caddyfile.legacy")" "http://pantry.rhionin.com" "certificate snippet is not the tunnel site address"
+
+# The same name twice would make Caddy refuse to start. Leave a comment instead.
+write_env "$legacy" \
+  "PUBLIC_HOST=stockbot.rhionin.com" \
+  "LEGACY_PUBLIC_HOST=stockbot.rhionin.com" \
+  "ACME_EMAIL=you@example.com" \
+  "BASIC_AUTH_USER=pantry" \
+  "BASIC_AUTH_PASSWORD=" \
+  "HOST_PORT=8080"
+printf '%s\n' 'basic_auth bcrypt Pantry {' '	pantry ORIGINAL-HASH' '}' > "$legacy/auth.caddy"
+run_setup "$legacy"
+[[ "$LAST_RC" -eq 0 ]] || fail "duplicate legacy host exited $LAST_RC: $LAST_OUT"
+have "$LAST_OUT" "is not a different hostname" "duplicate legacy host is ignored"
+have "$(cat "$legacy/Caddyfile.legacy")" "No LEGACY_PUBLIC_HOST" "duplicate legacy host writes a comment"
+lack "$(cat "$legacy/Caddyfile.tunnel.legacy")" "redir" "duplicate legacy host does not redirect"
+
+# A scheme is not a hostname. The primary site still starts.
+write_env "$legacy" \
+  "PUBLIC_HOST=stockbot.rhionin.com" \
+  "LEGACY_PUBLIC_HOST=https://pantry.rhionin.com" \
+  "ACME_EMAIL=you@example.com" \
+  "BASIC_AUTH_USER=pantry" \
+  "BASIC_AUTH_PASSWORD=" \
+  "HOST_PORT=8080"
+printf '%s\n' 'basic_auth bcrypt Pantry {' '	pantry ORIGINAL-HASH' '}' > "$legacy/auth.caddy"
+run_setup "$legacy"
+[[ "$LAST_RC" -eq 0 ]] || fail "invalid legacy host exited $LAST_RC: $LAST_OUT"
+have "$LAST_OUT" "without a scheme or path" "invalid legacy host is named"
+lack "$(cat "$legacy/Caddyfile.legacy")" "redir" "invalid legacy host does not redirect"
+have "$LAST_DOCKER" "--profile public" "invalid legacy host still starts the primary proxy"
 
 # publish_mode_from_env
 # shellcheck disable=SC1091
 source "$ROOT/deploy/publish-mode.sh"
 mode_dir=$(mktemp -d)
 write_env "$mode_dir" "PUBLIC_HOST=" "CLOUDFLARE_TUNNEL_TOKEN=" "PUBLISH_MODE="
+# publish_mode_from_env reads PANTRY_DIR. shellcheck does not follow the source above.
+# shellcheck disable=SC2034
 PANTRY_DIR="$mode_dir"
 got=$(publish_mode_from_env)
 [[ "$got" == none ]] || fail "empty env mode, got $got"

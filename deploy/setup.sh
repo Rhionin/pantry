@@ -155,7 +155,7 @@ copy_deploy_files() {
   log_info "Copying deployment files to ${PANTRY_DIR}..."
   mkdir -p "${PANTRY_DIR}"
   local item src dest
-  for item in docker-compose.yml docker-compose.tunnel.yml docker-compose.grocy.yml .env.example Caddyfile Caddyfile.tunnel publish-mode.sh auth-migrate.sh vapid-env.sh udev systemd firewall mdns dns; do
+  for item in docker-compose.yml docker-compose.tunnel.yml docker-compose.grocy.yml .env.example Caddyfile Caddyfile.tunnel Caddyfile.legacy Caddyfile.tunnel.legacy publish-mode.sh auth-migrate.sh vapid-env.sh udev systemd firewall mdns dns; do
     src="$SCRIPT_DIR/$item"
     dest="${PANTRY_DIR}/$item"
     if [[ ! -e "$src" ]]; then
@@ -230,6 +230,54 @@ write_auth_from_env() {
   return 0
 }
 
+# valid_hostname is 0 when $1 is a DNS name with no scheme, port, or path.
+valid_hostname() {
+  local host="$1"
+  [[ "$host" =~ ^[A-Za-z0-9.-]+$ && "$host" == *.* && "$host" != .* && "$host" != *. ]]
+}
+
+# write_legacy_snippet DEST SITE writes one Caddy site that redirects to
+# PUBLIC_HOST, or a comment when SITE is empty. SITE is a site address
+# (a hostname, or http://hostname in tunnel mode) and is already validated.
+write_legacy_snippet() {
+  local dest="$1" site="$2" tmp
+  tmp=$(mktemp "${dest}.XXXXXX")
+  if [[ -n "$site" ]]; then
+    # {$PUBLIC_HOST} is expanded by Caddy when the proxy starts.
+    # shellcheck disable=SC2016
+    printf '%s {\n\tredir https://{$PUBLIC_HOST}{uri} 308\n}\n' "$site" > "$tmp"
+  else
+    printf '%s\n' '# No LEGACY_PUBLIC_HOST. Caddy serves PUBLIC_HOST only.' > "$tmp"
+  fi
+  mv "$tmp" "$dest"
+}
+
+# write_legacy_public_host refreshes the redirect snippets from .env.
+# An empty LEGACY_PUBLIC_HOST serves PUBLIC_HOST only. The same value as
+# PUBLIC_HOST is ignored so Caddy does not get two blocks for one name.
+write_legacy_public_host() {
+  local legacy public site=""
+  legacy=$(env_value LEGACY_PUBLIC_HOST)
+  public=$(env_value PUBLIC_HOST)
+  if [[ -n "$legacy" ]]; then
+    if ! valid_hostname "$legacy"; then
+      log_warn "LEGACY_PUBLIC_HOST must be a hostname such as pantry.rhionin.com, without a scheme or path (got: $legacy). The previous name will not redirect."
+    elif [[ -z "$public" || "$legacy" == "$public" ]]; then
+      log_warn "LEGACY_PUBLIC_HOST ($legacy) is not a different hostname from PUBLIC_HOST. The previous name will not redirect."
+    else
+      site="$legacy"
+      log_info "https://${legacy} redirects to https://${public}"
+    fi
+  fi
+  if [[ -n "$site" ]]; then
+    write_legacy_snippet "${PANTRY_DIR}/Caddyfile.legacy" "$site"
+    write_legacy_snippet "${PANTRY_DIR}/Caddyfile.tunnel.legacy" "http://${site}"
+  else
+    write_legacy_snippet "${PANTRY_DIR}/Caddyfile.legacy" ""
+    write_legacy_snippet "${PANTRY_DIR}/Caddyfile.tunnel.legacy" ""
+  fi
+}
+
 # prepare_public_profile is 0 when compose should include the public profile.
 # An existing auth.caddy is never rewritten and the operator is never prompted,
 # so a re-run cannot wipe BASIC_AUTH_PASSWORD or force it to be typed again.
@@ -239,12 +287,12 @@ prepare_public_profile() {
   public_host=$(env_value PUBLIC_HOST)
   if [[ -z "$public_host" ]]; then
     if [[ "${publish_mode:-}" == tunnel ]]; then
-      log_warn "CLOUDFLARE_TUNNEL_TOKEN is set but PUBLIC_HOST is empty. The tunnel was not started. Set PUBLIC_HOST=pantry.rhionin.com in ${PANTRY_DIR}/.env."
+      log_warn "CLOUDFLARE_TUNNEL_TOKEN is set but PUBLIC_HOST is empty. The tunnel was not started. Set PUBLIC_HOST=stockbot.rhionin.com in ${PANTRY_DIR}/.env."
     fi
     return 1
   fi
-  if [[ ! "$public_host" =~ ^[A-Za-z0-9.-]+$ ]] || [[ "$public_host" != *.* ]] || [[ "$public_host" == .* ]] || [[ "$public_host" == *. ]]; then
-    log_warn "PUBLIC_HOST must be a hostname such as pantry.rhionin.com, without a scheme or path (got: $public_host). The public proxy was left unchanged."
+  if ! valid_hostname "$public_host"; then
+    log_warn "PUBLIC_HOST must be a hostname such as stockbot.rhionin.com, without a scheme or path (got: $public_host). The public proxy was left unchanged."
     return 1
   fi
   if [[ -d "$PANTRY_DIR/Caddyfile" ]]; then
@@ -634,6 +682,7 @@ cmd_apply() {
   if [[ -f "$PANTRY_DIR/.env" ]]; then
     chmod 600 "$PANTRY_DIR/.env"
   fi
+  write_legacy_public_host
   prepare_deploy_trigger_dir
 
   if [[ ! -d /dev/input ]]; then
@@ -1342,7 +1391,7 @@ EXAMPLES:
   sudo rm /opt/pantry/auth.caddy
   sudo ./setup.sh
 
-  # Publish https://pantry.rhionin.com through Cloudflare Tunnel.
+  # Publish https://stockbot.rhionin.com through Cloudflare Tunnel.
   # Put CLOUDFLARE_TUNNEL_TOKEN in /opt/pantry/.env first. The service URL
   # saved on the tunnel hostname is http://caddy:80
   sudo ./setup.sh publish --tunnel
