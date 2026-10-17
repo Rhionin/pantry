@@ -41,10 +41,12 @@ func TestOpenSQLiteStoresDenverTimesAsUTC(t *testing.T) {
 	}
 	now := time.Now().In(denver)
 	fixed := time.Date(2026, 11, 1, 0, 30, 0, 0, denver)
-	if _, err := db.Exec(`INSERT INTO stamps (id, at) VALUES ('now', ?), ('fixed', ?)`, now, fixed); err != nil {
+	// time.Now still carries a monotonic reading. CAST keeps the stored text;
+	// a plain SELECT into a string is reformatted by the driver and hides " m=+".
+	if _, err := db.Exec(`INSERT INTO stamps (id, at) VALUES ('now', ?), ('fixed', ?), ('mono', ?)`, now, fixed, time.Now()); err != nil {
 		t.Fatal(err)
 	}
-	rows, err := db.Query(`SELECT id, quote(at) FROM stamps ORDER BY id`)
+	rows, err := db.Query(`SELECT id, CAST(at AS TEXT) FROM stamps ORDER BY id`)
 	if err != nil {
 		t.Fatal(err)
 	}

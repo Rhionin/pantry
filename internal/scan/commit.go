@@ -73,7 +73,7 @@ func (r *Queue) CommitStockIn(ctx context.Context, scanEntry *ScanEntry) error {
 		UPDATE scan_entries 
 		SET status = ?, committed_at = ?
 		WHERE id = ?`,
-		string(Committed), time.Now(), scanEntry.ID,
+		string(Committed), time.Now().UTC(), scanEntry.ID,
 	)
 	if err != nil {
 		return fmt.Errorf("update scan entry: %w", err)
@@ -528,14 +528,14 @@ func (r *Queue) commitStockOut(ctx context.Context, scanEntry *ScanEntry, instan
 			UPDATE scan_entries
 			SET product_id = ?, status = ?, committed_at = ?
 			WHERE id = ?`,
-			linkProductID, string(Committed), time.Now(), scanEntry.ID,
+			linkProductID, string(Committed), time.Now().UTC(), scanEntry.ID,
 		)
 	} else {
 		_, err = tx.ExecContext(ctx, `
 			UPDATE scan_entries
 			SET status = ?, committed_at = ?
 			WHERE id = ?`,
-			string(Committed), time.Now(), scanEntry.ID,
+			string(Committed), time.Now().UTC(), scanEntry.ID,
 		)
 	}
 	if err != nil {

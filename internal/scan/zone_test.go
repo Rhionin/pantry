@@ -34,7 +34,7 @@ func TestStockOutTakesTheEarlierExpiryAcrossDST(t *testing.T) {
 	}
 	var id, raw string
 	if err := db.QueryRow(`
-		SELECT id, quote(removed_at) FROM item_instances WHERE removed_at IS NOT NULL`).Scan(&id, &raw); err != nil {
+		SELECT id, CAST(removed_at AS TEXT) FROM item_instances WHERE removed_at IS NOT NULL`).Scan(&id, &raw); err != nil {
 		t.Fatal(err)
 	}
 	if id != "early" {
