@@ -14,9 +14,10 @@ import (
 )
 
 const (
-	keyStarted    = "onboarding_started_at"
-	keyMonths     = "supply_months"
-	householdUser = "user-1"
+	keyStarted     = "onboarding_started_at"
+	keyTargetKind  = "supply_target_kind"
+	keyTargetValue = "supply_target_value"
+	householdUser  = "user-1"
 )
 
 func readPhaseAndMonths(ctx context.Context, tx *sql.Tx) (Phase, Months, error) {
@@ -72,19 +73,33 @@ func readPhase(ctx context.Context, q queryer) (Phase, error) {
 }
 
 func readMonths(ctx context.Context, q queryer) (Months, error) {
-	var raw string
-	err := q.QueryRowContext(ctx, `SELECT value FROM app_settings WHERE key = ?`, keyMonths).Scan(&raw)
-	if errors.Is(err, sql.ErrNoRows) {
+	var kind string
+	err := q.QueryRowContext(ctx, `SELECT value FROM app_settings WHERE key = ?`, keyTargetKind).Scan(&kind)
+	if errors.Is(err, sql.ErrNoRows) || kind == "" {
 		return DefaultMonths, nil
 	}
 	if err != nil {
 		return 0, fmt.Errorf("could not read the supply length: %w", err)
 	}
-	n, err := strconv.Atoi(raw)
+	if kind != string(restock.KindMonths) {
+		return DefaultMonths, nil
+	}
+	var raw string
+	err = q.QueryRowContext(ctx, `SELECT value FROM app_settings WHERE key = ?`, keyTargetValue).Scan(&raw)
+	if errors.Is(err, sql.ErrNoRows) || raw == "" {
+		return DefaultMonths, nil
+	}
 	if err != nil {
 		return 0, fmt.Errorf("could not read the supply length: %w", err)
 	}
-	months, err := ParseMonths(n)
+	n, err := strconv.ParseFloat(raw, 64)
+	if err != nil {
+		return 0, fmt.Errorf("could not read the supply length: %w", err)
+	}
+	if n == 0 {
+		return 0, nil
+	}
+	months, err := ParseMonths(int(n))
 	if err != nil {
 		return 0, fmt.Errorf("could not read the supply length: %w", err)
 	}
@@ -105,12 +120,24 @@ func completeOpening(ctx context.Context, db *sql.DB, now time.Time) (Phase, err
 }
 
 func writeMonths(ctx context.Context, db *sql.DB, months Months) error {
-	_, err := db.ExecContext(ctx, `
-		INSERT INTO app_settings (key, value) VALUES (?, ?)
-		ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
-		keyMonths, strconv.Itoa(int(months)),
-	)
+	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
+		return fmt.Errorf("could not save the supply length: %w", err)
+	}
+	defer tx.Rollback()
+	for _, setting := range []struct{ key, value string }{
+		{keyTargetKind, string(restock.KindMonths)},
+		{keyTargetValue, strconv.Itoa(int(months))},
+	} {
+		if _, err := tx.ExecContext(ctx, `
+			INSERT INTO app_settings (key, value) VALUES (?, ?)
+			ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
+			setting.key, setting.value,
+		); err != nil {
+			return fmt.Errorf("could not save the supply length: %w", err)
+		}
+	}
+	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("could not save the supply length: %w", err)
 	}
 	return nil
@@ -180,9 +207,6 @@ func wipeHousehold(ctx context.Context, db *sql.DB) error {
 		`DELETE FROM item_instances WHERE item_id IN (SELECT id FROM items WHERE user_id = ?)`,
 		`DELETE FROM stock_in_events WHERE product_id IN (SELECT product_id FROM items WHERE user_id = ?)`,
 		`DELETE FROM stock_moves WHERE item_id IN (SELECT id FROM items WHERE user_id = ?)`,
-		`DELETE FROM item_targets WHERE item_id IN (SELECT id FROM items WHERE user_id = ?)`,
-		`DELETE FROM item_categories WHERE item_id IN (SELECT id FROM items WHERE user_id = ?)`,
-		`DELETE FROM category_suggestion_dismissals WHERE item_id IN (SELECT id FROM items WHERE user_id = ?)`,
 		`DELETE FROM items WHERE user_id = ?`,
 	}
 	for _, query := range statements {

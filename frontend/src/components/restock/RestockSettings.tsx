@@ -44,7 +44,7 @@ export function RestockSettings() {
   };
 
   return (
-    <div>
+    <div className="restock-settings">
       <Title order={2} size="h4">{restockCopy.section}</Title>
       <Text size="sm" c="dimmed">{restockCopy.sectionBody}</Text>
       <div className="restock-order">

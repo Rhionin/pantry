@@ -291,9 +291,8 @@ func Validate(target Target) error {
 	return nil
 }
 
-// SetHousehold stores the default target. Months from 1 to 12 also update the
-// older supply length so existing readers stay in step. Zero stays on the new
-// keys because the older reader only accepts 1 to 12.
+// SetHousehold stores the default target. The older supply_months key is not
+// written; migration 019 copied it into these keys once.
 func (t *Targets) SetHousehold(ctx context.Context, target Target) error {
 	target, err := prepare(target)
 	if err != nil {
@@ -309,11 +308,6 @@ func (t *Targets) SetHousehold(ctx context.Context, target Target) error {
 	}
 	if err := putSetting(ctx, tx, "supply_target_value", strconv.FormatFloat(target.Value, 'f', -1, 64)); err != nil {
 		return err
-	}
-	if target.Kind == KindMonths && target.Value >= 1 && target.Value <= 12 {
-		if err := putSetting(ctx, tx, "supply_months", strconv.Itoa(int(target.Value))); err != nil {
-			return err
-		}
 	}
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("could not save the household default")
@@ -1095,17 +1089,13 @@ func loadCategoryRows(ctx context.Context, q Queryer, household string) ([]categ
 func readHousehold(ctx context.Context, q Queryer) (Target, error) {
 	kind := readSetting(ctx, q, "supply_target_kind")
 	value := readSetting(ctx, q, "supply_target_value")
-	if kind == string(KindAmount) {
+	if kind == string(KindAmount) && value != "" {
 		return Target{Kind: KindAmount, Value: parseNumber(value, 0)}, nil
 	}
 	if kind == string(KindMonths) && value != "" {
 		return Target{Kind: KindMonths, Value: parseNumber(value, 3)}, nil
 	}
-	months := readSetting(ctx, q, "supply_months")
-	if months == "" {
-		return Target{Kind: KindMonths, Value: 3}, nil
-	}
-	return Target{Kind: KindMonths, Value: parseNumber(months, 3)}, nil
+	return Target{Kind: KindMonths, Value: 3}, nil
 }
 
 func readSetting(ctx context.Context, q Queryer, key string) string {
