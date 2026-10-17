@@ -1,6 +1,8 @@
 -- Restock targets by level. A target of 0 means don't restock.
 -- household_id is the tenant key (today the same id as items.user_id).
 -- Item targets are keyed by the household's item, not the shared product.
+-- The migrator writes a pantry-pre-targets backup, then applies this file
+-- in one transaction so a failure leaves the database unchanged.
 
 -- A group may set an explicit 0. NULL still means the group sets nothing.
 -- SQLite cannot change a CHECK, so product_groups is rebuilt.
