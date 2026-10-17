@@ -30,30 +30,96 @@ jobs:
       - name: Run counting, exclusion, and diff tests
         run: python3 scripts/count_tests_test.py
 
-  measure:
-    name: Metrics (${{ matrix.target }})
+  measure-head:
+    name: Metrics (head)
     runs-on: ubuntu-latest
     continue-on-error: true
     timeout-minutes: 45
     permissions:
       contents: read
       actions: write
-    strategy:
-      fail-fast: false
-      matrix:
-        target: [head, base]
-    # Weekly and manual runs measure the checked-out commit only.
-    if: matrix.target == 'head' || github.event_name == 'pull_request'
     steps:
       - name: Checkout the tree to measure
         uses: actions/checkout@v7
         with:
-          ref: ${{ matrix.target == 'base' && github.event.pull_request.base.sha || github.event.pull_request.head.sha || github.sha }}
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
           path: repo
           fetch-depth: 1
 
-      - name: Checkout the script from this workflow
-        if: matrix.target == 'base'
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: repo/go.mod
+          cache: true
+          cache-dependency-path: repo/go.sum
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: repo/frontend/.nvmrc
+          cache: npm
+          cache-dependency-path: repo/frontend/package-lock.json
+
+      - name: Collect coverage and write the report
+        id: collect
+        run: |
+          set +e
+          out="${RUNNER_TEMP}/test-metrics"
+          bash repo/scripts/collect-test-metrics.sh repo "$out" repo/scripts/count-tests.py
+          status=$?
+          echo "out=$out" >> "$GITHUB_OUTPUT"
+          if [ -s "$out/metrics.json" ]; then
+            echo "ok=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "ok=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::metrics.json was not written (collect exited ${status})"
+          fi
+          exit 0
+
+      - name: Publish the densities on the job summary
+        if: steps.collect.outputs.ok == 'true'
+        run: |
+          {
+            echo "## Test calorie density (head)"
+            echo
+            echo 'Advisory only. This job does not fail the build.'
+            echo
+            echo '```'
+            cat "${{ steps.collect.outputs.out }}/metrics.txt"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload the metrics JSON
+        if: steps.collect.outputs.ok == 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ github.event_name == 'pull_request' && 'test-metrics-head' || 'test-metrics' }}
+          path: |
+            ${{ steps.collect.outputs.out }}/metrics.json
+            ${{ steps.collect.outputs.out }}/metrics.txt
+            ${{ steps.collect.outputs.out }}/status.json
+          retention-days: 30
+          if-no-files-found: warn
+
+  measure-base:
+    name: Metrics (base)
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    timeout-minutes: 45
+    if: github.event_name == 'pull_request'
+    permissions:
+      contents: read
+      actions: write
+    steps:
+      - name: Checkout the base tree
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          path: repo
+          fetch-depth: 1
+
+      # The base commit does not have this script until the change is merged.
+      - name: Checkout the script from the pull request
         uses: actions/checkout@v7
         with:
           ref: ${{ github.event.pull_request.head.sha }}
@@ -78,14 +144,8 @@ jobs:
         id: collect
         run: |
           set +e
-          script="repo/scripts/count-tests.py"
-          collect="repo/scripts/collect-test-metrics.sh"
-          if [ ! -f "$script" ]; then
-            script="tooling/scripts/count-tests.py"
-            collect="tooling/scripts/collect-test-metrics.sh"
-          fi
           out="${RUNNER_TEMP}/test-metrics"
-          bash "$collect" repo "$out" "$script"
+          bash tooling/scripts/collect-test-metrics.sh repo "$out" tooling/scripts/count-tests.py
           status=$?
           echo "out=$out" >> "$GITHUB_OUTPUT"
           if [ -s "$out/metrics.json" ]; then
@@ -100,7 +160,7 @@ jobs:
         if: steps.collect.outputs.ok == 'true'
         run: |
           {
-            echo "## Test calorie density (${{ matrix.target }})"
+            echo "## Test calorie density (base)"
             echo
             echo 'Advisory only. This job does not fail the build.'
             echo
@@ -113,7 +173,7 @@ jobs:
         if: steps.collect.outputs.ok == 'true'
         uses: actions/upload-artifact@v7
         with:
-          name: ${{ github.event_name == 'pull_request' && format('test-metrics-{0}', matrix.target) || 'test-metrics' }}
+          name: test-metrics-base
           path: |
             ${{ steps.collect.outputs.out }}/metrics.json
             ${{ steps.collect.outputs.out }}/metrics.txt
@@ -123,7 +183,7 @@ jobs:
 
   comment:
     name: Sticky pull request comment
-    needs: [script-tests, measure]
+    needs: [script-tests, measure-head, measure-base]
     if: always() && github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     continue-on-error: true
