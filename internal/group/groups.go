@@ -1248,6 +1248,11 @@ func contains(ids []string, id string) bool {
 
 func parseDBTime(s string) time.Time {
 	s = strings.TrimSpace(s)
+	// time.Time.String appends " m=+…" while a monotonic reading is present.
+	// The sqlite driver stores that whole string, and MAX returns it as text.
+	if i := strings.Index(s, " m="); i >= 0 {
+		s = s[:i]
+	}
 	layouts := []string{
 		time.RFC3339Nano,
 		time.RFC3339,
