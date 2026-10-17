@@ -30,7 +30,7 @@ func TestStockInThenTickFinishesTheBoughtLine(t *testing.T) {
 		t.Fatalf("stock-in hid the line before it was ticked: %+v", shoppingLines(t, handler))
 	}
 	tickBought(t, handler, bought.ID)
-	useOne(t, handler, itemID)
+	useOneByScan(t, env, handler, "000111222001")
 
 	lines := fillShopping(t, handler)
 	planned := shopLineByItem(lines, itemID)
@@ -45,7 +45,7 @@ func TestTickThenStockInFinishesTheBoughtLine(t *testing.T) {
 
 	tickBought(t, handler, bought.ID)
 	stockInByScan(t, env, handler, "000111222002")
-	useOne(t, handler, itemID)
+	useOneByScan(t, env, handler, "000111222002")
 
 	lines := fillShopping(t, handler)
 	planned := shopLineByItem(lines, itemID)
@@ -88,7 +88,7 @@ func TestOneFillCleansUpEveryFinishedBoughtLine(t *testing.T) {
 		t.Fatalf("second stock-in hid the line before it was ticked: %+v", shoppingLines(t, handler))
 	}
 	tickBought(t, handler, second.ID)
-	useOne(t, handler, itemID)
+	useOneByScan(t, env, handler, "000111222004")
 
 	lines := fillShopping(t, handler)
 	firstGone := shoppingLineStatus(t, handler, first.ID) == http.StatusNotFound
@@ -121,8 +121,13 @@ func openAmountShortfall(t *testing.T, productID, name, itemID, barcode string, 
 
 func stockInByScan(t *testing.T, env testEnv, handler http.Handler, barcode string) {
 	t.Helper()
+	commitDirectedScan(t, env, handler, barcode, "stock_in")
+}
+
+func commitDirectedScan(t *testing.T, env testEnv, handler http.Handler, barcode, direction string) {
+	t.Helper()
 	body := exchangeJSON(t, handler, http.MethodPost, "/api/scans",
-		`{"barcode":"`+barcode+`","direction":"stock_in","userId":"user-1"}`, http.StatusCreated)
+		`{"barcode":"`+barcode+`","direction":"`+direction+`","userId":"user-1"}`, http.StatusCreated)
 	var created struct {
 		ID        string  `json:"id"`
 		Status    string  `json:"status"`
@@ -132,7 +137,7 @@ func stockInByScan(t *testing.T, env testEnv, handler http.Handler, barcode stri
 		t.Fatalf("scan: %v body %s", err, body)
 	}
 	if created.ID == "" || created.Status != "pending" || created.ProductID == nil {
-		t.Fatalf("scan was not a pending stock-in: %s", body)
+		t.Fatalf("scan was not pending: %s", body)
 	}
 	env.Refresher.Wait()
 	exchangeJSON(t, handler, http.MethodPost, "/api/scans/"+created.ID+"/commit", ``, http.StatusOK)
@@ -143,7 +148,7 @@ func tickBought(t *testing.T, handler http.Handler, id string) {
 	exchangeJSON(t, handler, http.MethodPatch, "/api/shopping-list/items/"+id, `{"purchased":true}`, http.StatusOK)
 }
 
-func useOne(t *testing.T, handler http.Handler, itemID string) {
+func useOneByScan(t *testing.T, env testEnv, handler http.Handler, barcode string) {
 	t.Helper()
-	exchangeJSON(t, handler, http.MethodPost, "/api/inventory/"+itemID+"/stock-out", ``, http.StatusOK)
+	commitDirectedScan(t, env, handler, barcode, "stock_out")
 }
