@@ -242,8 +242,11 @@ func TestPublicProxyIsOptIn(t *testing.T) {
 	if !strings.Contains(updaterText, "--profile public") || !strings.Contains(updaterText, "PUBLIC_HOST") {
 		t.Fatal("automatic updates must include the public profile only when PUBLIC_HOST is set")
 	}
-	if !strings.Contains(updaterText, "-f /opt/pantry/auth.caddy") {
-		t.Fatal("automatic updates must not start the public proxy without the password hash file")
+	if !strings.Contains(updaterText, `-f "$PANTRY_DIR/auth.caddy"`) {
+		t.Fatal("automatic updates must not start the public proxy without this install's password hash file")
+	}
+	if strings.Contains(updaterText, "-f /opt/pantry/auth.caddy") {
+		t.Fatal("automatic updates must read the password file from PANTRY_DIR, not a hard-coded /opt/pantry path")
 	}
 	if !strings.Contains(updaterText, "auth-migrate.sh") || !strings.Contains(updaterText, "ensure_session_secret") {
 		t.Fatal("automatic updates must copy the existing password hash and keep the session secret")
