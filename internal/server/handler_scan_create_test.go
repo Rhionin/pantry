@@ -217,6 +217,45 @@ func TestScanCreateHandler_MergeBehavior(t *testing.T) {
 				},
 			),
 		},
+		{
+			name: "rescanning an older card makes it the most recently scanned",
+			httpExchange: httpExchange{
+				method:         "POST",
+				path:           "/api/scans",
+				body:           `{"barcode":"444555666777","userId":"user-scan-reorder","direction":"stock_in"}`,
+				expectedStatus: http.StatusCreated,
+			},
+			afterRequest: exchanges(
+				httpExchange{
+					method:         "POST",
+					path:           "/api/scans",
+					body:           `{"barcode":"555666777888","userId":"user-scan-reorder","direction":"stock_in"}`,
+					expectedStatus: http.StatusCreated,
+				},
+				httpExchange{
+					method:         "POST",
+					path:           "/api/scans",
+					body:           `{"barcode":"444555666777","userId":"user-scan-reorder","direction":"stock_in"}`,
+					expectedStatus: http.StatusCreated,
+					assertions: []assertion{
+						{path: "$.unitCount", value: float64(2)},
+						{path: "$.barcode", value: "444555666777"},
+					},
+				},
+				httpExchange{
+					method:         "GET",
+					path:           "/api/scans",
+					query:          map[string]string{"userId": "user-scan-reorder", "status": "flagged"},
+					expectedStatus: http.StatusOK,
+					assertions: []assertion{
+						{path: "$[0].barcode", value: "555666777888"},
+						{path: "$[0].unitCount", value: float64(1)},
+						{path: "$[1].barcode", value: "444555666777"},
+						{path: "$[1].unitCount", value: float64(2)},
+					},
+				},
+			),
+		},
 	}
 
 	runHandlerTests(t, tests)

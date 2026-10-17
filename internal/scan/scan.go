@@ -125,8 +125,11 @@ func NewQueue(db *sql.DB) *Queue {
 // CreateScanEntry inserts a new scan entry, unless a pending or flagged entry
 // already exists for the same user, barcode, and direction — in that case
 // the existing entry's unit_count is incremented instead of inserting a
-// duplicate row, and scanned_at is left unchanged. If entry.ID is empty, a
-// new UUID is generated for the inserted row. Status defaults to "pending"
+// duplicate row, and scanned_at moves to this scan. The queue orders by
+// scanned_at, so the open card returns to the top, where a new scan lands.
+// A missing incoming time is treated as now. A time older than the card is
+// ignored so a late timestamp cannot bury it. If entry.ID is empty, a new
+// UUID is generated for the inserted row. Status defaults to "pending"
 // if not set.
 func (r *Queue) CreateScanEntry(ctx context.Context, entry ScanEntry) (*ScanEntry, error) {
 	existing, err := r.findMergeableScanEntry(ctx, entry.UserID, entry.Barcode, entry.Direction)
@@ -139,10 +142,35 @@ func (r *Queue) CreateScanEntry(ctx context.Context, entry ScanEntry) (*ScanEntr
 			delta = 1
 		}
 		newUnitCount := existing.UnitCount + delta
-		if err := r.UpdateScanEntry(ctx, existing.ID, nil, &newUnitCount, nil, nil, nil); err != nil {
+		scannedAt := entry.ScannedAt
+		if scannedAt.IsZero() {
+			scannedAt = time.Now()
+		}
+		if !scannedAt.After(existing.ScannedAt) {
+			scannedAt = existing.ScannedAt
+		}
+		res, err := r.db.ExecContext(ctx,
+			`UPDATE scan_entries SET unit_count = ?, scanned_at = ? WHERE id = ?`,
+			newUnitCount, scannedAt, existing.ID,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("CreateScanEntry merge: %w", err)
+		}
+		n, err := res.RowsAffected()
+		if err != nil {
+			return nil, fmt.Errorf("CreateScanEntry merge rows affected: %w", err)
+		}
+		if n == 0 {
+			return nil, fmt.Errorf("CreateScanEntry: scan entry %q not found", existing.ID)
+		}
+		updated, err := r.GetScanEntry(ctx, existing.ID)
+		if err != nil {
 			return nil, err
 		}
-		return r.GetScanEntry(ctx, existing.ID)
+		if updated != nil && r.Broadcaster != nil {
+			r.Broadcaster.PublishScanEvent(*updated)
+		}
+		return updated, nil
 	}
 
 	if entry.ID == "" {
@@ -288,8 +316,9 @@ func (r *Queue) ListScanEntries(ctx context.Context, userID string, status ScanS
 }
 
 // UpdateScanEntry updates direction, unit_count, expires_at, product_id, and
-// status for the given scan entry ID. This is the single allowed UPDATE path
-// for scan entries (enforcing append-only semantics at the application layer).
+// status for the given scan entry ID. Field edits go through here. A repeat
+// scan does not: CreateScanEntry writes unit_count and scanned_at together so
+// the live event carries the new activity time.
 //
 // Pass nil for fields that should not be updated. To clear a nullable field,
 // pass a pointer to a zero value (e.g., &time.Time{} for expires_at).
