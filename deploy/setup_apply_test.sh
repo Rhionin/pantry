@@ -46,6 +46,9 @@ if [[ "$1" == "inspect" ]]; then
   exit 0
 fi
 if [[ "$*" == *hash-password* ]]; then
+  # docker run -i reads the password. Exit first and the writer dies with
+  # SIGPIPE, so pipefail reports that the hash failed.
+  cat >/dev/null
   printf '%s\n' '$2a$14$abcdefghijklmnopqrstuuabcdefghijklmnopqrstuvwxyz012'
   exit 0
 fi
