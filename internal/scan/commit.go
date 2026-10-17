@@ -21,6 +21,10 @@ var (
 	ErrLinkNotStocked = errors.New("that product is not in your pantry")
 )
 
+// NoneOnHandMessage is the household-facing sentence for a scan-out that
+// would take the shelf below zero. Change this constant to change the wording.
+const NoneOnHandMessage = "There's none of this on hand to take out."
+
 // CommitStockIn commits a stock-in scan entry by creating one item instance
 // per unit and marking the scan entry as committed. A remembered pack count
 // greater than one splits the barcode into that many units, so a 6-pack scan
@@ -432,6 +436,8 @@ func (r *Queue) findOrCreateItem(ctx context.Context, tx *sql.Tx, userID, produc
 // that specific instance is removed.
 //
 // A missing household item returns *NoItemError and changes nothing.
+// An item with nothing left on the shelf returns ErrNoneOnHand and changes
+// nothing, including a barcode link started in the same transaction.
 // CommitStockOutLink is the explicit choice that adds the scanned barcode
 // and decrements that product. Nothing is linked on its own.
 //
@@ -512,7 +518,7 @@ func (r *Queue) commitStockOut(ctx context.Context, scanEntry *ScanEntry, instan
 	scanID := scanEntry.ID
 	if err := r.recordStockOutTx(ctx, tx, itemID, instanceID, scanEntry.ScannedAt, &scanID); err != nil {
 		if errors.Is(err, ErrNoneOnHand) {
-			return fmt.Errorf("no available instances for item %q: %w", itemID, err)
+			return ErrNoneOnHand
 		}
 		if errors.Is(err, inventory.ErrInstanceNotFound) {
 			missing := ""
