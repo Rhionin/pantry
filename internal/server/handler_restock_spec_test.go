@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/Rhionin/stockbot/internal/restock"
+	"github.com/Rhionin/stockbot/internal/scan"
 	"github.com/Rhionin/stockbot/internal/shopping"
 )
 
@@ -61,15 +62,6 @@ func TestWipeKeepsRestockTargets(t *testing.T) {
 			t.Fatalf("household target after wipe = %+v, want 6 months", after.Household)
 		}
 	})
-	t.Run("item target stays", func(t *testing.T) {
-		item := restockItem(after, "item-salt")
-		if item == nil {
-			t.Fatal("wipe removed Salt and its item target; wiping stock must keep the item target")
-		}
-		if item.Target.Kind != restock.KindAmount || item.Target.Value != 4 || item.Level != restock.LevelItem {
-			t.Fatalf("wipe changed Salt's item target to %+v level %s; want amount 4 set on the item", item.Target, item.Level)
-		}
-	})
 	t.Run("category targets stay", func(t *testing.T) {
 		if got := categoryTarget(after, "Produce"); got == nil || got.Kind != restock.KindAmount || got.Value != 2 {
 			t.Fatalf("Produce target after wipe = %+v", got)
@@ -104,6 +96,23 @@ func TestWipeKeepsRestockTargets(t *testing.T) {
 		}
 		if len(instances) != 0 {
 			t.Fatalf("stock after wipe = %s", body)
+		}
+	})
+	t.Run("item target stays", func(t *testing.T) {
+		if restockItem(after, "item-salt") != nil || restockByProduct(after, "prod-salt") != nil {
+			t.Fatal("wipe left Salt on restock; a wiped product stays hidden until it is stocked in again")
+		}
+		if lines := fillShopping(t, handler); len(lines) != 0 {
+			t.Fatalf("wipe suggested a buy: %+v", lines)
+		}
+
+		insertPendingScan(env, "scan-salt-again", "prod-salt", scan.StockIn)
+		exchangeJSON(t, handler, http.MethodPost, "/api/scans/scan-salt-again/commit", ``, http.StatusOK)
+
+		back := mustRestock(t, handler)
+		item := restockByProduct(back, "prod-salt")
+		if item == nil || item.Target.Kind != restock.KindAmount || item.Target.Value != 4 || item.Level != restock.LevelItem || item.SourceLabel != "Set on this item" {
+			t.Fatalf("stocking Salt in again did not bring back its item target of 4 set on this item: %+v", item)
 		}
 	})
 }
