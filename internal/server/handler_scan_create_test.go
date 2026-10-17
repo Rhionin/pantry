@@ -219,45 +219,6 @@ func TestScanCreateHandler_MergeBehavior(t *testing.T) {
 				},
 			),
 		},
-		{
-			name: "rescanning an older card makes it the most recently scanned",
-			httpExchange: httpExchange{
-				method:         "POST",
-				path:           "/api/scans",
-				body:           `{"barcode":"444555666777","userId":"user-scan-reorder","direction":"stock_in"}`,
-				expectedStatus: http.StatusCreated,
-			},
-			afterRequest: exchanges(
-				httpExchange{
-					method:         "POST",
-					path:           "/api/scans",
-					body:           `{"barcode":"555666777888","userId":"user-scan-reorder","direction":"stock_in"}`,
-					expectedStatus: http.StatusCreated,
-				},
-				httpExchange{
-					method:         "POST",
-					path:           "/api/scans",
-					body:           `{"barcode":"444555666777","userId":"user-scan-reorder","direction":"stock_in"}`,
-					expectedStatus: http.StatusCreated,
-					assertions: []assertion{
-						{path: "$.unitCount", value: float64(2)},
-						{path: "$.barcode", value: "444555666777"},
-					},
-				},
-				httpExchange{
-					method:         "GET",
-					path:           "/api/scans",
-					query:          map[string]string{"userId": "user-scan-reorder", "status": "flagged"},
-					expectedStatus: http.StatusOK,
-					assertions: []assertion{
-						{path: "$[0].barcode", value: "555666777888"},
-						{path: "$[0].unitCount", value: float64(1)},
-						{path: "$[1].barcode", value: "444555666777"},
-						{path: "$[1].unitCount", value: float64(2)},
-					},
-				},
-			),
-		},
 	}
 
 	runHandlerTests(t, tests)
@@ -266,9 +227,10 @@ func TestScanCreateHandler_MergeBehavior(t *testing.T) {
 // TestScanCreateHandler_RescanSortsWithNewestScans is the HTTP contract for a
 // repeat scan of an item already on the queue. GET /api/scans lists oldest
 // scanned_at first; the UI sorts that same column newest-first. After oats,
-// milk, then oats again, oats is last in the list (first on screen) and its
-// scannedAt is later than milk's, which is what a reload and every SSE client
-// order by.
+// milk, then oats again, the rescan merges into the oats row, increments the
+// count once, and leaves milk at one. Oats is last in the list (first on
+// screen) and its scannedAt is later than milk's, which is what a reload and
+// every SSE client order by.
 func TestScanCreateHandler_RescanSortsWithNewestScans(t *testing.T) {
 	const userID = "user-rescan-order"
 	tests := []handlerTestCase{
@@ -307,6 +269,9 @@ func TestScanCreateHandler_RescanSortsWithNewestScans(t *testing.T) {
 				if oats.ID != first.ID {
 					env.T.Fatalf("rescan id: want merged %s, got %s", first.ID, oats.ID)
 				}
+				if oats.Barcode != "810000000001" {
+					env.T.Fatalf("rescan barcode: want 810000000001, got %s", oats.Barcode)
+				}
 				if oats.UnitCount != 2 {
 					env.T.Fatalf("rescan unitCount: want 2, got %d", oats.UnitCount)
 				}
@@ -324,6 +289,9 @@ func TestScanCreateHandler_RescanSortsWithNewestScans(t *testing.T) {
 				}
 				if listed[0].Barcode != "810000000002" || listed[1].Barcode != "810000000001" {
 					env.T.Fatalf("oldest-first list: want milk then rescanned oats, got %s then %s", listed[0].Barcode, listed[1].Barcode)
+				}
+				if listed[0].UnitCount != 1 {
+					env.T.Fatalf("milk unitCount: want 1, got %d", listed[0].UnitCount)
 				}
 				if listed[1].ID != oats.ID || listed[1].UnitCount != 2 || !listed[1].ScannedAt.Equal(oats.ScannedAt) {
 					env.T.Fatalf("reloaded oats: want id %s unitCount 2 scannedAt %s, got %+v", oats.ID, oats.ScannedAt, listed[1])
