@@ -30,10 +30,16 @@
 # on /health, so a check there would look like a failed deploy.
 #
 # On timeout or a mismatch, each service that had a running image is
-# re-pinned to that digest and started with --pull never. .env is not
-# rewritten. PANTRY_IMAGE_TAG and the setup last-known-good sha (#152) stay
-# whatever they already were. The rejected digest is recorded so the next
-# minute does not start that same image again.
+# re-pinned to that digest and started with --pull never. The local tag
+# compose uses (ghcr.io/rhionin/pantry:$PANTRY_IMAGE_TAG, and the same for
+# any other service whose digest changed) is moved back to that previous
+# digest. A later manual `docker compose up -d` or setup.sh would otherwise
+# start the rejected image with no health check. .env is not rewritten.
+# PANTRY_IMAGE_TAG and the setup last-known-good sha (#152) stay whatever
+# they already were. The rejected digest is recorded so the next minute
+# does not start that same image again. Comparison happens after pull, so
+# the restored local tag is not treated as the remote image: a new digest
+# is still deployed, and the rejected one is still skipped.
 #
 # Re-pinning the image does not undo a migration. The migration runner is
 # not transactional (#249). This script does not copy pantry-pre-*.db back
@@ -361,6 +367,38 @@ wait_for_expected_build() {
   return 1
 }
 
+# restore_local_tags moves each compose ref whose pulled digest differs
+# from the image recorded before pull back onto that previous digest.
+# Pull points the local tag at the remote image. Doing this after the
+# remote digest has been inspected keeps the next run honest: a new
+# remote digest still looks new, and the rejected digest still does not
+# look like the image that is running.
+restore_local_tags() {
+  local state="$1" svc running_id good pin ref remote remote_id
+  while IFS=$'\t' read -r svc running_id good; do
+    [[ -z "$svc" ]] && continue
+    ref=$(awk -F '\t' -v s="$svc" '$1 == s { print $2; exit }' "$state/refs.tsv")
+    [[ -z "$ref" || "$ref" == *@sha256:* ]] && continue
+    pin=$good
+    [[ -z "$pin" ]] && pin=$running_id
+    [[ -z "$pin" ]] && continue
+    remote=$(image_repo_digest "$ref" "$ref")
+    remote_id=$(docker image inspect -f '{{.Id}}' "$ref" 2>/dev/null || true)
+    remote_id=$(one_line "$remote_id")
+    if [[ -n "$good" && -n "$remote" && "$remote" == "$good" ]]; then
+      continue
+    fi
+    if [[ -n "$running_id" && -n "$remote_id" && "$remote_id" == "$running_id" ]]; then
+      continue
+    fi
+    if ! docker tag "$pin" "$ref"; then
+      echo "pantry update: could not retag ${ref} to ${pin}" >&2
+      return 1
+    fi
+    echo "pantry update: retagged ${ref} to ${pin}" >&2
+  done < "$state/running.tsv"
+}
+
 # rollback_images re-pins every service that had an image before the pull.
 # The pin is a compose override so .env and PANTRY_IMAGE_TAG stay put.
 rollback_images() {
@@ -415,6 +453,11 @@ apply_compose() {
 
   desired=$(pantry_desired_digest "$state")
   if digest_was_rejected "$desired"; then
+    # Pull moved the local tag onto this digest. Point it back at the
+    # running image so the skip does not leave :latest on the bad image.
+    if ! restore_local_tags "$state"; then
+      echo "pantry update: could not point the local image tag back at the previous digest." >&2
+    fi
     log_already_rejected "$desired"
     rm -rf "$state"
     exit 1
@@ -441,6 +484,9 @@ apply_compose() {
     echo "pantry update: docker compose up failed" >&2
   fi
   if rollback_images "$state"; then
+    if ! restore_local_tags "$state"; then
+      echo "pantry update: the previous container is running, but the local tag still names the rejected image. A manual docker compose up would start it." >&2
+    fi
     if ! remember_rejected_digest "$desired"; then
       echo "pantry update: could not record the rejected digest; the next run may try this image again" >&2
     fi

@@ -51,6 +51,45 @@ tsv_col() {
   return 1
 }
 
+# Local tags survive across runs. Pull moves each ref onto the remote
+# image. docker tag records a switch back to an older digest.
+set_tag() {
+  local ref="$1" id="$2" dig="$3" tmp tref tid tdig
+  [[ -n "${STUB_TAG_STATE:-}" ]] || return 0
+  tmp=$(mktemp)
+  if [[ -f "$STUB_TAG_STATE" ]]; then
+    while IFS=$'\t' read -r tref tid tdig || [[ -n "$tref" ]]; do
+      [[ -z "$tref" || "$tref" == "$ref" ]] && continue
+      printf '%s\t%s\t%s\n' "$tref" "$tid" "$tdig" >> "$tmp"
+    done < "$STUB_TAG_STATE"
+  fi
+  printf '%s\t%s\t%s\n' "$ref" "$id" "$dig" >> "$tmp"
+  mv "$tmp" "$STUB_TAG_STATE"
+}
+
+tag_field() {
+  local ref="$1" col="$2" tref tid tdig
+  [[ -n "${STUB_TAG_STATE:-}" && -f "$STUB_TAG_STATE" ]] || return 1
+  while IFS=$'\t' read -r tref tid tdig || [[ -n "$tref" ]]; do
+    [[ "$tref" == "$ref" ]] || continue
+    case "$col" in
+      id) printf '%s' "$tid" ;;
+      dig) printf '%s' "$tdig" ;;
+      *) return 1 ;;
+    esac
+    return 0
+  done < "$STUB_TAG_STATE"
+  return 1
+}
+
+apply_pull_tags() {
+  local svc ref run_id run_dig pull_id pull_dig revision
+  while IFS=$'\t' read -r svc ref run_id run_dig pull_id pull_dig revision || [[ -n "$svc" ]]; do
+    [[ -z "$svc" || "$svc" == \#* ]] && continue
+    set_tag "$ref" "$pull_id" "$pull_dig"
+  done < "${STUB_IMAGES:?}"
+}
+
 format_arg() {
   local prev="" arg
   for arg in "$@"; do
@@ -84,10 +123,46 @@ if [[ "$1" == inspect ]]; then
   exit 1
 fi
 
+if [[ "$1" == tag ]]; then
+  src=$2
+  dest=$3
+  found_id=""
+  found_dig=""
+  while IFS=$'\t' read -r svc ref run_id run_dig pull_id pull_dig revision || [[ -n "${svc:-}" ]]; do
+    [[ -z "${svc:-}" || "$svc" == \#* ]] && continue
+    if [[ "$src" == "$run_dig" || "$src" == "$run_id" ]]; then
+      found_id=$run_id
+      found_dig=$run_dig
+      break
+    fi
+    if [[ "$src" == "$pull_dig" || "$src" == "$pull_id" ]]; then
+      found_id=$pull_id
+      found_dig=$pull_dig
+      break
+    fi
+  done < "${STUB_IMAGES:?}"
+  if [[ -z "$found_id" ]]; then
+    echo "stub docker tag: unknown source ${src}" >&2
+    exit 1
+  fi
+  set_tag "$dest" "$found_id" "$found_dig"
+  exit 0
+fi
+
 if [[ "$1" == image && "$2" == inspect ]]; then
   format=$(format_arg "$@")
   target=${*: -1}
+  tagged_id=""
+  tagged_dig=""
+  if [[ "$target" != sha256:* ]]; then
+    tagged_id=$(tag_field "$target" id || true)
+    tagged_dig=$(tag_field "$target" dig || true)
+  fi
   if [[ "$format" == *RepoDigests* ]]; then
+    if [[ -n "$tagged_dig" ]]; then
+      printf '%s\n' "$tagged_dig"
+      exit 0
+    fi
     run_id=$(tsv_col "$target" run_id || true)
     if [[ -n "$run_id" && "$run_id" == "$target" ]]; then
       tsv_col "$target" run_dig || true
@@ -99,11 +174,20 @@ if [[ "$1" == image && "$2" == inspect ]]; then
     exit 0
   fi
   if [[ "$format" == *org.opencontainers.image.revision* ]]; then
+    if [[ -n "$tagged_id" ]]; then
+      rev=$(tsv_col "$tagged_id" revision || true)
+      printf '%s\n' "$rev"
+      exit 0
+    fi
     tsv_col "$target" revision || true
     printf '\n'
     exit 0
   fi
   if [[ "$format" == *'.Id'* ]]; then
+    if [[ -n "$tagged_id" ]]; then
+      printf '%s\n' "$tagged_id"
+      exit 0
+    fi
     tsv_col "$target" pull_id || true
     printf '\n'
     exit 0
@@ -127,6 +211,10 @@ with open(sys.argv[1]) as fh:
 json.dump({"services": services}, sys.stdout)
 PY
     printf '\n'
+    exit 0
+  fi
+  if [[ "$joined" == *" pull" || "$joined" == *" pull "* ]]; then
+    apply_pull_tags
     exit 0
   fi
   if [[ "$joined" == *" ps "* ]]; then
@@ -228,6 +316,7 @@ run_update() {
     CURL_LOG="$work/curl.log" \
     SEQUENCE_LOG="$work/sequence.log" \
     STUB_IMAGES="$pantry/images.tsv" \
+    STUB_TAG_STATE="$pantry/tag-state.tsv" \
     STUB_HEALTH_BODY="${STUB_HEALTH_BODY-}" \
     STUB_HEALTH_RC="${STUB_HEALTH_RC:-0}" \
     STUB_BUILD_BODY="${STUB_BUILD_BODY-}" \
@@ -355,6 +444,10 @@ have "$LAST_DOCKER" "image: ghcr.io/rhionin/pantry@sha256:oldpantry" "mismatch o
 have "$LAST_DOCKER" "image: caddy@sha256:oldcaddy" "mismatch override pins the caddy digest"
 lack "$LAST_OUT" "pantry update: healthy, running commit" "mismatch does not keep the new image"
 lack "$LAST_OUT" "pantry update: finished" "mismatch does not report success"
+have "$LAST_DOCKER" "tag ghcr.io/rhionin/pantry@sha256:oldpantry ghcr.io/rhionin/pantry:latest" "rollback retags the pantry ref to the good digest"
+have "$LAST_DOCKER" "tag caddy@sha256:oldcaddy caddy:2.11.7-alpine" "rollback retags a changed sidecar ref"
+have "$(cat "$mismatch/tag-state.tsv")" "ghcr.io/rhionin/pantry:latest	sha256:runpantry	ghcr.io/rhionin/pantry@sha256:oldpantry" "local pantry tag resolves to the good digest"
+have "$(cat "$mismatch/tag-state.tsv")" "caddy:2.11.7-alpine	sha256:runcaddy	caddy@sha256:oldcaddy" "local caddy tag resolves to the good digest"
 env_unchanged "$mismatch"
 have "$(cat "$mismatch/.update-rejected-digest")" "ghcr.io/rhionin/pantry@sha256:newpantry" "mismatch remembers the rejected digest"
 have "$(cat "$mismatch/.update-rejected-digest")" "Not a setup last-known-good sha" "rejected file is not the setup sha"
@@ -365,14 +458,34 @@ probed=$(line_of "$LAST_SEQUENCE" "curl ")
 [[ -n "$forward_up" && -n "$probed" && "$forward_up" -lt "$probed" ]] || fail "mismatch polled health before the new image was started"
 [[ -n "$probed" && -n "$rollback_up" && "$probed" -lt "$rollback_up" ]] || fail "mismatch re-pinned before the health check failed"
 
-# The next minute must not start the rejected digest again.
+# The next minute pulls the same bad remote digest, does not start it, and
+# leaves the local tag on the good digest. The restored tag must not make
+# this look like "images unchanged".
 run_update "$mismatch"
 [[ "$LAST_RC" -ne 0 ]] || fail "rejected digest should stay failed: $LAST_OUT"
 have "$LAST_OUT" "was already rolled back; leaving the previous image running." "second run leaves the previous image"
 have "$LAST_OUT" "pantry-pre-*.db" "second run still names the manual snapshot path"
+have "$LAST_DOCKER" " pull" "second run still pulls the remote digest"
+lack "$LAST_OUT" "images unchanged" "retagged local tag is not treated as the remote image"
 lack "$LAST_DOCKER" " up " "second run does not recreate containers"
 lack "$LAST_DOCKER" "--pull never" "second run does not roll back again"
 [[ -z "$LAST_CURL" ]] || fail "second run polled health: $LAST_CURL"
+have "$(cat "$mismatch/tag-state.tsv")" "ghcr.io/rhionin/pantry:latest	sha256:runpantry	ghcr.io/rhionin/pantry@sha256:oldpantry" "second run puts the local tag back on the good digest"
+env_unchanged "$mismatch"
+
+# A newer remote digest is not stuck behind the retag.
+write_images "$mismatch/images.tsv" \
+  sha256:newerpantry ghcr.io/rhionin/pantry@sha256:newerpantry \
+  sha256:newercaddy caddy@sha256:newercaddy
+STUB_HEALTH_BODY='{"status":"ok"}'
+STUB_BUILD_BODY="{\"commit\":\"${NEW_COMMIT}\",\"version\":\"vtest\"}"
+run_update "$mismatch"
+[[ "$LAST_RC" -eq 0 ]] || fail "new digest after a rollback exited $LAST_RC: $LAST_OUT"
+have "$LAST_OUT" "pantry update: healthy, running commit ${NEW_COMMIT}" "new digest is deployed"
+have "$LAST_DOCKER" " up -d" "new digest recreates the stack"
+lack "$LAST_OUT" "images unchanged" "new digest is not skipped as unchanged"
+lack "$LAST_OUT" "was already rolled back" "new digest is not the rejected one"
+have "$(cat "$mismatch/tag-state.tsv")" "ghcr.io/rhionin/pantry:latest	sha256:newerpantry	ghcr.io/rhionin/pantry@sha256:newerpantry" "new digest keeps the local tag"
 env_unchanged "$mismatch"
 unset STUB_HEALTH_BODY STUB_BUILD_BODY STUB_HEALTH_RC STUB_BUILD_RC
 
@@ -394,6 +507,8 @@ have "$LAST_OUT" "not transactional" "unhealthy rollback names the migration run
 have "$LAST_OUT" "pantry-pre-*.db" "unhealthy rollback names the snapshot files"
 have "$LAST_OUT" "does not restore the database" "unhealthy rollback does not restore the database"
 have "$LAST_OUT" "pantry update: re-pinning pantry to ghcr.io/rhionin/pantry@sha256:oldpantry" "unhealthy rollback re-pins pantry"
+have "$LAST_DOCKER" "tag ghcr.io/rhionin/pantry@sha256:oldpantry ghcr.io/rhionin/pantry:latest" "unhealthy rollback retags pantry"
+lack "$LAST_DOCKER" "tag caddy@" "unchanged sidecar tag is left alone"
 have "$LAST_DOCKER" "--pull never" "unhealthy rollback starts the previous image"
 have "$LAST_DOCKER" "image: ghcr.io/rhionin/pantry@sha256:oldpantry" "unhealthy override pins the pantry digest"
 lack "$LAST_OUT" "pantry update: finished" "unhealthy rollback does not report success"
