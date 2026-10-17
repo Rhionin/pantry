@@ -9,6 +9,9 @@ import (
 // RestockHandler serves household restock targets and categories.
 type RestockHandler struct {
 	Targets *restock.Targets
+	// Refresh recomputes the staged shopping list after a target change.
+	// Nil skips that step, which unit tests use.
+	Refresh func(ctx context.Context) error
 }
 
 type restockItemParams struct {
@@ -29,9 +32,19 @@ type restockGroupParams struct {
 }
 
 type restockTargetBody struct {
-	Kind  string  `json:"kind"`
-	Value float64 `json:"value"`
-	Clear *bool   `json:"clear"`
+	Kind  *string  `json:"kind"`
+	Value *float64 `json:"value"`
+	Clear *bool    `json:"clear"`
+}
+
+func explicitTarget(body restockTargetBody) (restock.Target, error) {
+	if body.Kind == nil || (*body.Kind != string(restock.KindMonths) && *body.Kind != string(restock.KindAmount)) {
+		return restock.Target{}, BadRequest("Choose months of supply or a fixed amount.")
+	}
+	if body.Value == nil {
+		return restock.Target{}, BadRequest("Enter a target. 0 means don't restock.")
+	}
+	return restock.Target{Kind: restock.Kind(*body.Kind), Value: *body.Value}, nil
 }
 
 type restockNameBody struct {
@@ -66,8 +79,15 @@ func (h *RestockHandler) Snapshot(req Request[struct{}, struct{}]) (*restock.Sna
 }
 
 func (h *RestockHandler) PutHousehold(req Request[restockTargetBody, struct{}]) (*restock.Snapshot, error) {
-	if err := h.Targets.SetHousehold(req.Context, restock.Target{Kind: restock.Kind(req.Body.Kind), Value: req.Body.Value}); err != nil {
+	target, err := explicitTarget(req.Body)
+	if err != nil {
+		return nil, err
+	}
+	if err := h.Targets.SetHousehold(req.Context, target); err != nil {
 		return nil, restockError(err)
+	}
+	if err := h.syncList(req.Context); err != nil {
+		return nil, err
 	}
 	return h.Snapshot(Request[struct{}, struct{}]{Context: req.Context})
 }
@@ -76,8 +96,15 @@ func (h *RestockHandler) PutItem(req Request[restockTargetBody, restockItemParam
 	if req.PathParams.ItemID == "" {
 		return nil, BadRequest("missing item id")
 	}
-	if err := h.Targets.SetItem(req.Context, req.PathParams.ItemID, restock.Target{Kind: restock.Kind(req.Body.Kind), Value: req.Body.Value}); err != nil {
+	target, err := explicitTarget(req.Body)
+	if err != nil {
+		return nil, err
+	}
+	if err := h.Targets.SetItem(req.Context, req.PathParams.ItemID, target); err != nil {
 		return nil, restockError(err)
+	}
+	if err := h.syncList(req.Context); err != nil {
+		return nil, err
 	}
 	return h.oneItem(req.Context, req.PathParams.ItemID)
 }
@@ -88,6 +115,9 @@ func (h *RestockHandler) DeleteItem(req Request[struct{}, restockItemParams]) (*
 	}
 	if err := h.Targets.ClearItem(req.Context, req.PathParams.ItemID); err != nil {
 		return nil, restockError(err)
+	}
+	if err := h.syncList(req.Context); err != nil {
+		return nil, err
 	}
 	return h.oneItem(req.Context, req.PathParams.ItemID)
 }
@@ -119,6 +149,9 @@ func (h *RestockHandler) DontRestock(req Request[struct{}, restockItemParams]) (
 	if err := h.Targets.SetItem(req.Context, itemID, restock.Target{Kind: restock.KindMonths, Value: 0}); err != nil {
 		return nil, restockError(err)
 	}
+	if err := h.syncList(req.Context); err != nil {
+		return nil, err
+	}
 	return &restockDontResponse{
 		Previous: previous,
 		Title:    name + " won't be restocked",
@@ -148,17 +181,27 @@ func (h *RestockHandler) PutCategoryTarget(req Request[restockTargetBody, restoc
 	}
 	var target *restock.Target
 	if req.Body.Clear == nil || !*req.Body.Clear {
-		value := restock.Target{Kind: restock.Kind(req.Body.Kind), Value: req.Body.Value}
+		value, err := explicitTarget(req.Body)
+		if err != nil {
+			return nil, err
+		}
 		target = &value
 	}
 	if err := h.Targets.SetCategoryTarget(req.Context, req.PathParams.ID, target); err != nil {
 		return nil, restockError(err)
 	}
+	if err := h.syncList(req.Context); err != nil {
+		return nil, err
+	}
 	return h.Snapshot(Request[struct{}, struct{}]{Context: req.Context})
 }
 
 func (h *RestockHandler) PreviewCategory(req Request[restockTargetBody, restockCategoryParams]) (*restock.Preview, error) {
-	preview, err := h.Targets.PreviewCategory(req.Context, req.PathParams.ID, restock.Target{Kind: restock.Kind(req.Body.Kind), Value: req.Body.Value})
+	target, err := explicitTarget(req.Body)
+	if err != nil {
+		return nil, err
+	}
+	preview, err := h.Targets.PreviewCategory(req.Context, req.PathParams.ID, target)
 	if err != nil {
 		return nil, restockError(err)
 	}
@@ -201,7 +244,11 @@ func (h *RestockHandler) RemoveItemCategory(req Request[struct{}, restockItemCat
 }
 
 func (h *RestockHandler) PreviewGroup(req Request[restockTargetBody, restockGroupParams]) (*restock.Preview, error) {
-	preview, err := h.Targets.PreviewGroup(req.Context, req.PathParams.ID, restock.Target{Kind: restock.Kind(req.Body.Kind), Value: req.Body.Value})
+	target, err := explicitTarget(req.Body)
+	if err != nil {
+		return nil, err
+	}
+	preview, err := h.Targets.PreviewGroup(req.Context, req.PathParams.ID, target)
 	if err != nil {
 		return nil, restockError(err)
 	}
@@ -244,6 +291,16 @@ func (h *RestockHandler) oneItem(ctx context.Context, itemID string) (*restock.I
 		}
 	}
 	return nil, NotFound("That item isn't in the household.")
+}
+
+func (h *RestockHandler) syncList(ctx context.Context) error {
+	if h == nil || h.Refresh == nil {
+		return nil
+	}
+	if err := h.Refresh(ctx); err != nil {
+		return InternalError(err)
+	}
+	return nil
 }
 
 func restockError(err error) error {

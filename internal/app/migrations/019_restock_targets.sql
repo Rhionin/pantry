@@ -130,3 +130,18 @@ WHERE i.target_quantity > 0
   AND NOT EXISTS (SELECT 1 FROM item_targets t WHERE t.household_id = i.user_id AND t.item_id = i.id)
   AND NOT EXISTS (SELECT 1 FROM product_group_members m WHERE m.product_id = i.product_id)
   AND NOT EXISTS (SELECT 1 FROM supply_overrides o WHERE o.product_id = i.product_id);
+
+-- Copy the old household supply window into the new default once.
+-- Later reads and writes use only the new keys.
+INSERT INTO app_settings (key, value)
+SELECT 'supply_target_kind', 'months'
+WHERE EXISTS (
+    SELECT 1 FROM app_settings WHERE key = 'supply_months' AND TRIM(value) <> ''
+)
+AND NOT EXISTS (SELECT 1 FROM app_settings WHERE key = 'supply_target_kind');
+
+INSERT INTO app_settings (key, value)
+SELECT 'supply_target_value', TRIM(value)
+FROM app_settings
+WHERE key = 'supply_months' AND TRIM(value) <> ''
+AND NOT EXISTS (SELECT 1 FROM app_settings WHERE key = 'supply_target_value');

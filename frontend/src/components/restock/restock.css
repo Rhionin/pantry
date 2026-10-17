@@ -1,8 +1,10 @@
-.restock-target {
-  border: 1px solid var(--mantine-color-gray-3);
+.restock-target,
+.restock-card {
+  border: 1px solid var(--mantine-color-default-border);
   border-radius: 6px;
   padding: 12px;
-  background: #fff;
+  background: var(--mantine-color-body);
+  color: var(--mantine-color-text);
 }
 
 .restock-kicker {
@@ -92,7 +94,7 @@
 }
 
 .restock-cell.is-win .v {
-  color: var(--mantine-color-teal-7);
+  color: var(--mantine-color-teal-9);
   font-weight: 650;
 }
 
@@ -117,7 +119,7 @@
 }
 
 .restock-quiet.is-own {
-  color: var(--mantine-color-teal-7);
+  color: var(--mantine-color-teal-9);
 }
 
 :where([data-mantine-color-scheme='dark']) .restock-quiet {
@@ -149,7 +151,7 @@
 
 .restock-order span.is-here {
   background: var(--mantine-color-teal-0);
-  color: var(--mantine-color-teal-7);
+  color: var(--mantine-color-teal-9);
 }
 
 .restock-row {
@@ -191,16 +193,21 @@
 .restock-suggest {
   border-radius: 6px;
   background: var(--mantine-color-teal-0);
+  color: var(--mantine-color-teal-9);
   padding: 12px;
   display: flex;
   gap: 10px;
   align-items: center;
 }
 
-.restock-card {
-  border: 1px solid var(--mantine-color-gray-3);
-  border-radius: 6px;
-  padding: 12px;
+.restock-target .mantine-Button-root[data-variant='light'],
+.restock-settings .mantine-Button-root[data-variant='light'],
+.restock-suggest .mantine-Button-root[data-variant='filled'],
+.restock-card .mantine-Button-root[data-variant='light'] {
+  --button-color: var(--mantine-color-teal-9);
+  --button-bg: var(--mantine-color-teal-0);
+  color: var(--mantine-color-teal-9);
+  background: var(--mantine-color-teal-0);
 }
 
 .restock-note {
@@ -213,4 +220,64 @@
 
 .restock-toast {
   border-left: 4px solid var(--mantine-color-teal-6);
+}
+
+:where([data-mantine-color-scheme='dark']) .restock-target,
+:where([data-mantine-color-scheme='dark']) .restock-card,
+:where([data-mantine-color-scheme='dark']) .restock-suggest,
+:where([data-mantine-color-scheme='dark']) .restock-note {
+  background: var(--mantine-color-dark-6);
+  color: var(--mantine-color-gray-1);
+  border-color: var(--mantine-color-dark-4);
+}
+
+:where([data-mantine-color-scheme='dark']) .restock-kicker,
+:where([data-mantine-color-scheme='dark']) .restock-unit,
+:where([data-mantine-color-scheme='dark']) .restock-source,
+:where([data-mantine-color-scheme='dark']) .restock-cell .k,
+:where([data-mantine-color-scheme='dark']) .restock-cell .v,
+:where([data-mantine-color-scheme='dark']) .restock-row .name span,
+:where([data-mantine-color-scheme='dark']) .restock-row .meta,
+:where([data-mantine-color-scheme='dark']) .restock-row .value span {
+  color: var(--mantine-color-gray-4);
+}
+
+:where([data-mantine-color-scheme='dark']) .restock-source b,
+:where([data-mantine-color-scheme='dark']) .restock-value,
+:where([data-mantine-color-scheme='dark']) .restock-row .name b {
+  color: var(--mantine-color-gray-0);
+}
+
+:where([data-mantine-color-scheme='dark']) .restock-cell {
+  background: var(--mantine-color-dark-7);
+  border-color: var(--mantine-color-dark-4);
+}
+
+:where([data-mantine-color-scheme='dark']) .restock-cell.is-win {
+  background: var(--mantine-color-dark-5);
+}
+
+:where([data-mantine-color-scheme='dark']) .restock-cell.is-win .v,
+:where([data-mantine-color-scheme='dark']) .restock-quiet.is-own,
+:where([data-mantine-color-scheme='dark']) .restock-order span.is-here {
+  color: var(--mantine-color-teal-2);
+}
+
+:where([data-mantine-color-scheme='dark']) .restock-order span {
+  background: var(--mantine-color-dark-5);
+  color: var(--mantine-color-gray-1);
+}
+
+:where([data-mantine-color-scheme='dark']) .restock-order span.is-here {
+  background: var(--mantine-color-teal-9);
+}
+
+:where([data-mantine-color-scheme='dark']) .restock-target .mantine-Button-root[data-variant='light'],
+:where([data-mantine-color-scheme='dark']) .restock-settings .mantine-Button-root[data-variant='light'],
+:where([data-mantine-color-scheme='dark']) .restock-suggest .mantine-Button-root[data-variant='filled'],
+:where([data-mantine-color-scheme='dark']) .restock-card .mantine-Button-root[data-variant='light'] {
+  --button-color: var(--mantine-color-gray-0);
+  --button-bg: var(--mantine-color-teal-9);
+  color: var(--mantine-color-gray-0);
+  background: var(--mantine-color-teal-9);
 }

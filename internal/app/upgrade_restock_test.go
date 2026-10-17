@@ -51,6 +51,7 @@ func TestUpgradeRestockTargetsFrom018(t *testing.T) {
 		`INSERT INTO supply_overrides (product_id, quantity) VALUES ('gprod', 4)`,
 		`INSERT INTO supply_overrides (product_id, window_months) VALUES ('wprod', 6)`,
 		`INSERT INTO supply_overrides (product_id, quantity) VALUES ('qprod', 3)`,
+		`INSERT INTO app_settings (key, value) VALUES ('supply_months', '4')`,
 	}
 	for _, stmt := range stmts {
 		if _, err := conn.Exec(stmt); err != nil {
@@ -97,6 +98,16 @@ func TestUpgradeRestockTargetsFrom018(t *testing.T) {
 		if got[id] != value {
 			t.Fatalf("%s: got %s want %s (all %#v)", id, got[id], value, got)
 		}
+	}
+	var kind, value string
+	if err := conn.QueryRow(`SELECT value FROM app_settings WHERE key = 'supply_target_kind'`).Scan(&kind); err != nil {
+		t.Fatal(err)
+	}
+	if err := conn.QueryRow(`SELECT value FROM app_settings WHERE key = 'supply_target_value'`).Scan(&value); err != nil {
+		t.Fatal(err)
+	}
+	if kind != "months" || value != "4" {
+		t.Fatalf("household default: %s %s", kind, value)
 	}
 }
 

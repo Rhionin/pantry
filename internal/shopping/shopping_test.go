@@ -16,6 +16,7 @@ import (
 
 // testDeps holds all stores needed for shopping list tests.
 type testDeps struct {
+	db        *sql.DB
 	shopping  *shopping.Store
 	inventory *inventory.Pantry
 	product   *product.Catalog
@@ -34,6 +35,7 @@ func newTestStore(t *testing.T) testDeps {
 		t.Fatalf("RunMigrations: %v", err)
 	}
 	return testDeps{
+		db:        conn,
 		shopping:  shopping.NewStore(conn),
 		inventory: inventory.NewPantry(conn),
 		product:   product.NewCatalog(conn),

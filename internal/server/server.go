@@ -2,11 +2,13 @@
 package server
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/Rhionin/stockbot/internal/brand"
 	"github.com/Rhionin/stockbot/internal/cart"
@@ -504,6 +506,12 @@ func newAPIMux(
 		Registry:     registry,
 		Adjustments:  shoppingList,
 	}
+	refreshPlan := func(ctx context.Context) error {
+		_, err := stageShoppingPlan(ctx, "user-1", pantry, shoppingList, supplySvc, time.Now())
+		return err
+	}
+	restockHandler.Refresh = refreshPlan
+	groupHandler.Refresh = refreshPlan
 	shoppingListItemCreateHandler := &ShoppingListItemCreateHandler{
 		ShoppingList: shoppingList,
 		Pantry:       pantry,

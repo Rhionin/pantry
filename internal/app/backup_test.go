@@ -163,6 +163,42 @@ func TestShoppingBackupFailureStopsMigration(t *testing.T) {
 	}
 }
 
+func TestSnapshotIgnoresALeftoverTempFile(t *testing.T) {
+	dir := t.TempDir()
+	leftover := filepath.Join(dir, ".pantry-pre-targets-crash.db.tmp")
+	if err := os.WriteFile(leftover, []byte("partial"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	conn := openFileDB(t, filepath.Join(dir, "pantry.db"))
+	if err := RunMigrations(conn); err != nil {
+		t.Fatalf("RunMigrations: %v", err)
+	}
+	matches, err := filepath.Glob(filepath.Join(dir, "pantry-pre-targets-*.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(matches) != 1 {
+		t.Fatalf("backups: %v", matches)
+	}
+	if _, err := os.Stat(leftover); err != nil {
+		t.Fatal(err)
+	}
+	temps, err := filepath.Glob(filepath.Join(dir, ".pantry-pre-targets-*.db.tmp"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(temps) != 1 || temps[0] != leftover {
+		t.Fatalf("temp files: %v", temps)
+	}
+	raw, err := os.ReadFile(matches[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(raw) < 16 || string(raw[:15]) != "SQLite format 3" {
+		t.Fatal("snapshot is not a complete database")
+	}
+}
+
 func TestTargetsBackupOnceBeforeTheTables(t *testing.T) {
 	dir := t.TempDir()
 	conn := openFileDB(t, filepath.Join(dir, "pantry.db"))

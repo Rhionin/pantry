@@ -96,6 +96,89 @@ func TestRestockHandler(t *testing.T) {
 			},
 		},
 		{
+			name:  "a missing target value is rejected and changes nothing",
+			setup: seed,
+			httpExchange: httpExchange{
+				method:         "PUT",
+				path:           "/api/restock/household",
+				body:           `{"kind":"months"}`,
+				expectedStatus: http.StatusBadRequest,
+			},
+			afterRequest: exchanges(httpExchange{
+				method:         "GET",
+				path:           "/api/restock",
+				expectedStatus: http.StatusOK,
+				assertions: []assertion{
+					{path: "$.household.value", value: float64(3)},
+					{path: "$.items[0].target.value", value: float64(3)},
+					{path: "$.items[0].level", value: "household"},
+				},
+			}),
+		},
+		{
+			name:  "a missing kind is rejected and zero is not assumed",
+			setup: seed,
+			httpExchange: httpExchange{
+				method:         "PUT",
+				path:           "/api/restock/items/item-bananas",
+				body:           `{"value":0}`,
+				expectedStatus: http.StatusBadRequest,
+			},
+			afterRequest: exchanges(httpExchange{
+				method:         "GET",
+				path:           "/api/restock",
+				expectedStatus: http.StatusOK,
+				assertions: []assertion{
+					{path: "$.items[0].level", value: "household"},
+					{path: "$.items[0].target.value", value: float64(3)},
+				},
+			}),
+		},
+		{
+			name: "don't restock drops the open shopping row and keeps a purchased one",
+			setup: func(env testEnv) {
+				seed(env)
+				if _, err := env.DB.Exec(`
+					INSERT INTO shopping_list_items (id, user_id, item_id, quantity, source, note) VALUES
+						('row-open', 'user-1', 'item-bananas', 1, 'auto', 'replacing 1 you used'),
+						('row-manual', 'user-1', 'item-bananas', 2, 'manual', '')`); err != nil {
+					env.T.Fatal(err)
+				}
+				if _, err := env.DB.Exec(`
+					INSERT INTO shopping_list_items (id, user_id, item_id, quantity, source, note, purchased_at)
+					VALUES ('row-bought', 'user-1', 'item-bananas', 1, 'auto', 'replacing 1 you used', datetime('now'))`); err != nil {
+					env.T.Fatal(err)
+				}
+			},
+			httpExchange: httpExchange{
+				method:         "POST",
+				path:           "/api/restock/items/item-bananas/dont-restock",
+				expectedStatus: http.StatusOK,
+			},
+			afterRequest: func(env testEnv) {
+				exchanges(httpExchange{
+					method:         "GET",
+					path:           "/api/shopping-list",
+					expectedStatus: http.StatusOK,
+					assertions: []assertion{
+						{path: "$[0].source", value: "manual"},
+						{path: "$[0].quantity", value: float64(2)},
+						{path: "$[1]", absent: true},
+					},
+				})(env)
+				var bought, open int
+				if err := env.DB.QueryRow(`SELECT COUNT(*) FROM shopping_list_items WHERE id = 'row-bought' AND purchased_at IS NOT NULL`).Scan(&bought); err != nil {
+					env.T.Fatal(err)
+				}
+				if err := env.DB.QueryRow(`SELECT COUNT(*) FROM shopping_list_items WHERE id = 'row-open'`).Scan(&open); err != nil {
+					env.T.Fatal(err)
+				}
+				if bought != 1 || open != 0 {
+					env.T.Fatalf("bought %d open %d", bought, open)
+				}
+			},
+		},
+		{
 			name: "an unknown item is not found",
 			httpExchange: httpExchange{
 				method:         "POST",

@@ -105,20 +105,29 @@ func (s *Store) SavePlannedLines(ctx context.Context, userID string, lines []Pla
 
 func upsertAutoLine(ctx context.Context, tx *sql.Tx, userID, itemID, groupID string, quantity int, note string) error {
 	rows, err := tx.QueryContext(ctx, `
-		SELECT id FROM shopping_list_items
+		SELECT id, purchased_at IS NOT NULL FROM shopping_list_items
 		WHERE user_id = ? AND item_id = ? AND source = 'auto'
 		ORDER BY created_at ASC, rowid ASC`, userID, itemID)
 	if err != nil {
 		return fmt.Errorf("could not load shopping list item %q: %w", itemID, err)
 	}
-	var ids []string
+	var openID, boughtID string
+	var extras []string
 	for rows.Next() {
 		var id string
-		if err := rows.Scan(&id); err != nil {
+		var purchased bool
+		if err := rows.Scan(&id, &purchased); err != nil {
 			rows.Close()
 			return fmt.Errorf("could not read shopping list item %q: %w", itemID, err)
 		}
-		ids = append(ids, id)
+		switch {
+		case !purchased && openID == "":
+			openID = id
+		case purchased && boughtID == "":
+			boughtID = id
+		case !purchased:
+			extras = append(extras, id)
+		}
 	}
 	if err := rows.Err(); err != nil {
 		rows.Close()
@@ -132,7 +141,11 @@ func upsertAutoLine(ctx context.Context, tx *sql.Tx, userID, itemID, groupID str
 	if groupID != "" {
 		storedGroup = groupID
 	}
-	if len(ids) == 0 {
+	targetID := openID
+	if targetID == "" {
+		targetID = boughtID
+	}
+	if targetID == "" {
 		_, err := tx.ExecContext(ctx, `
 			INSERT INTO shopping_list_items (id, user_id, item_id, quantity, source, note, created_at, group_id)
 			VALUES (?, ?, ?, ?, 'auto', ?, ?, ?)`,
@@ -151,12 +164,12 @@ func upsertAutoLine(ctx context.Context, tx *sql.Tx, userID, itemID, groupID str
 		    group_id = ?,
 		    purchased_at = CASE WHEN quantity = ? AND note = ? THEN purchased_at ELSE NULL END
 		WHERE id = ?`,
-		quantity, note, storedGroup, quantity, note, ids[0],
+		quantity, note, storedGroup, quantity, note, targetID,
 	)
 	if err != nil {
 		return fmt.Errorf("could not refresh shopping list item %q: %w", itemID, err)
 	}
-	for _, extra := range ids[1:] {
+	for _, extra := range extras {
 		if _, err := tx.ExecContext(ctx, `DELETE FROM shopping_list_items WHERE id = ?`, extra); err != nil {
 			return fmt.Errorf("could not refresh shopping list item %q: %w", itemID, err)
 		}
@@ -237,7 +250,7 @@ func groupSkipped(skipped, skippedGroups map[string]struct{}, key, itemID string
 func deleteUnplannedAuto(ctx context.Context, tx *sql.Tx, userID string, keep map[string]struct{}) error {
 	rows, err := tx.QueryContext(ctx, `
 		SELECT id, item_id, touched FROM shopping_list_items
-		WHERE user_id = ? AND source = 'auto'`, userID)
+		WHERE user_id = ? AND source = 'auto' AND purchased_at IS NULL`, userID)
 	if err != nil {
 		return fmt.Errorf("could not load derived shopping list items: %w", err)
 	}

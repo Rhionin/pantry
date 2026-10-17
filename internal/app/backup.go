@@ -2,9 +2,12 @@ package app
 
 import (
 	"database/sql"
+	"errors"
 	"fmt"
 	"log"
+	"os"
 	"path/filepath"
+	"syscall"
 	"time"
 )
 
@@ -80,12 +83,50 @@ func writeSnapshot(db *sql.DB, spec snapshotSpec) error {
 		log.Printf("%s: %s", spec.already, matches[0])
 		return nil
 	}
-	dest := filepath.Join(dir, spec.prefix+"-"+time.Now().UTC().Format("20060102T150405Z")+".db")
-	if _, err := db.Exec(`VACUUM INTO ?`, dest); err != nil {
+	// The temp name must not match prefix-*.db. A crash can leave the temp
+	// behind, and the next run must still write a real snapshot.
+	name := spec.prefix + "-" + time.Now().UTC().Format("20060102T150405Z") + ".db"
+	dest := filepath.Join(dir, name)
+	temp := filepath.Join(dir, "."+name+".tmp")
+	if _, err := db.Exec(`VACUUM INTO ?`, temp); err != nil {
+		_ = os.Remove(temp)
+		return fmt.Errorf("%s: %w", spec.fail, err)
+	}
+	if err := syncFile(temp); err != nil {
+		_ = os.Remove(temp)
+		return fmt.Errorf("%s: %w", spec.fail, err)
+	}
+	if err := os.Rename(temp, dest); err != nil {
+		_ = os.Remove(temp)
+		return fmt.Errorf("%s: %w", spec.fail, err)
+	}
+	if err := syncDir(dir); err != nil {
 		return fmt.Errorf("%s: %w", spec.fail, err)
 	}
 	log.Printf("%s: %s", spec.wrote, dest)
 	return nil
+}
+
+func syncFile(path string) error {
+	file, err := os.Open(path)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+	return file.Sync()
+}
+
+func syncDir(dir string) error {
+	file, err := os.Open(dir)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+	err = file.Sync()
+	if err == nil || errors.Is(err, syscall.EINVAL) || errors.Is(err, syscall.ENOTSUP) || errors.Is(err, syscall.EPERM) {
+		return nil
+	}
+	return err
 }
 
 func sqliteMainPath(db *sql.DB) (string, error) {

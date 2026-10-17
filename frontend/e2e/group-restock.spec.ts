@@ -4,7 +4,7 @@ import AxeBuilder from '@axe-core/playwright'
 import { expect, test, type APIRequestContext, type Page } from '@playwright/test'
 import { commitSelectedScan, resetToStockIn, scanBarcode } from './helpers'
 
-const artifacts = '/opt/cursor/artifacts'
+const artifacts = process.env.E2E_ARTIFACTS_DIR ?? join(process.cwd(), 'test-results', 'group-restock')
 
 // The suite shares one database. These scans have to land after opening so
 // variety can see a stock-in time. Shopping list, which runs later, still

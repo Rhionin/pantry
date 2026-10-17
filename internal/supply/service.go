@@ -16,7 +16,7 @@ import (
 // the copy sentence all use it. Do not call AddDate.
 type Months int
 
-// DefaultMonths is the account window when supply_months has not been set.
+// DefaultMonths is the account window when the household default has not been set.
 const DefaultMonths Months = 3
 
 // WipePhrase is the sole copy of the typed confirmation.

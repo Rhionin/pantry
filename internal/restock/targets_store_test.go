@@ -177,8 +177,9 @@ func TestHouseholdDefaultMayBeZero(t *testing.T) {
 		t.Fatalf("household 0: %+v item %+v", snap.Household, snap.Items[0].Target)
 	}
 	var months string
-	if err := db.QueryRow(`SELECT value FROM app_settings WHERE key = 'supply_months'`).Scan(&months); err == nil && months == "0" {
-		t.Fatal("a household default of 0 must not be written as supply_months")
+	err = db.QueryRow(`SELECT value FROM app_settings WHERE key = 'supply_months'`).Scan(&months)
+	if err != sql.ErrNoRows {
+		t.Fatalf("supply_months must not be written, got %q (%v)", months, err)
 	}
 }
 
