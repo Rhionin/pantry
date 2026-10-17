@@ -163,7 +163,52 @@ func TestPlannerSkipsShelvedItems(t *testing.T) {
 	}
 }
 
-func TestScanRestockKeepsTheShoppingNote(t *testing.T) {
+func TestAmountTargetClearsTheReplaceNote(t *testing.T) {
+	handler, env := setupTestWithDB(t)
+	now := time.Now().UTC()
+	beginUsing(t, env.DB, now.Add(-30*24*time.Hour))
+	createItemViaStockIn(t, env.DB, env.ProductStore, "user-1", "prod-amt", "Amount", "item-amt")
+	insertConsumptionEvent(t, env.DB, "ce-amt", "item-amt", now.Add(-2*24*time.Hour))
+
+	lines := fillShopping(t, handler)
+	line := shopLineByItem(lines, "item-amt")
+	if line == nil || line.Note != "replacing 1 you used" || line.Quantity != 1 {
+		t.Fatalf("setup fill: %+v", lines)
+	}
+	exchangeJSON(t, handler, http.MethodPut, "/api/restock/items/item-amt", `{"kind":"amount","value":4}`, http.StatusOK)
+
+	again := shopLineByItem(fillShopping(t, handler), "item-amt")
+	if again == nil || again.Note != "" || again.Quantity != 3 {
+		t.Fatalf("amount target left the replace note on the line: %+v", again)
+	}
+	if listed := shopLineByItem(shoppingLines(t, handler), "item-amt"); listed == nil || listed.Note != "" || listed.Quantity != 3 {
+		t.Fatalf("shopping list note: %+v", shoppingLines(t, handler))
+	}
+}
+
+func TestNewLineDoesNotInheritAFinishedNote(t *testing.T) {
+	handler, env := setupTestWithDB(t)
+	now := time.Now().UTC()
+	beginUsing(t, env.DB, now.Add(-30*24*time.Hour))
+	createItemViaStockIn(t, env.DB, env.ProductStore, "user-1", "prod-inherit", "Inherit", "item-inherit")
+	insertConsumptionEvent(t, env.DB, "ce-inherit", "item-inherit", now.Add(-2*24*time.Hour))
+
+	lines := fillShopping(t, handler)
+	bought := shopLineByItem(lines, "item-inherit")
+	if bought == nil || bought.Note != "replacing 1 you used" {
+		t.Fatalf("setup fill: %+v", lines)
+	}
+	exchangeJSON(t, handler, http.MethodPatch, "/api/shopping-list/items/"+bought.ID, `{"purchased":true}`, http.StatusOK)
+	commitScanStockIn(t, handler, env, "scan-inherit-in", "prod-inherit", time.Now().UTC())
+	exchangeJSON(t, handler, http.MethodPut, "/api/restock/items/item-inherit", `{"kind":"amount","value":4}`, http.StatusOK)
+
+	again := shopLineByItem(fillShopping(t, handler), "item-inherit")
+	if again == nil || again.ID == bought.ID || again.Note != "" || again.Quantity != 2 {
+		t.Fatalf("the new line kept the finished row's note: %+v", again)
+	}
+}
+
+func TestScanRestockWritesThePlannerNote(t *testing.T) {
 	handler, env := setupTestWithDB(t)
 	now := time.Now().UTC()
 	beginUsing(t, env.DB, now.Add(-30*24*time.Hour))
@@ -175,14 +220,14 @@ func TestScanRestockKeepsTheShoppingNote(t *testing.T) {
 	if line == nil || line.Note != "replacing 1 you used" {
 		t.Fatalf("setup fill: %+v", lines)
 	}
-	setSupplyQuantity(t, env.DB, "prod-note", 4)
+	exchangeJSON(t, handler, http.MethodPut, "/api/restock/items/item-note", `{"kind":"amount","value":4}`, http.StatusOK)
 	commitScanStockIn(t, handler, env, "scan-note-in", "prod-note", time.Now().UTC())
 
 	again := shopLineByItem(fillShopping(t, handler), "item-note")
-	if again == nil || again.Note != "replacing 1 you used" || again.Quantity != 2 {
-		t.Fatalf("scan restock re-attached the line without its note: %+v", again)
+	if again == nil || again.Note != "" || again.Quantity != 2 {
+		t.Fatalf("scan restock kept the replace note on an amount line: %+v", again)
 	}
-	if listed := shopLineByItem(shoppingLines(t, handler), "item-note"); listed == nil || listed.Note != "replacing 1 you used" {
+	if listed := shopLineByItem(shoppingLines(t, handler), "item-note"); listed == nil || listed.Note != "" {
 		t.Fatalf("shopping list note: %+v", shoppingLines(t, handler))
 	}
 }

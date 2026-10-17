@@ -148,7 +148,7 @@ func upsertAutoLine(ctx context.Context, tx *sql.Tx, userID, itemID, groupID str
 	if err != nil {
 		return err
 	}
-	var openID, openNote, keptNote string
+	var openID string
 	var extras []string
 	alreadyBought := false
 	for _, row := range existing {
@@ -157,9 +157,6 @@ func upsertAutoLine(ctx context.Context, tx *sql.Tx, userID, itemID, groupID str
 			// at or after the line was added. The tick time does not matter.
 			// A finished line must not hold back the next need.
 			if stockInFinishesLine(stockIns, row.added) {
-				if row.note != "" {
-					keptNote = row.note
-				}
 				continue
 			}
 			if row.qty == quantity && row.note == note {
@@ -169,7 +166,6 @@ func upsertAutoLine(ctx context.Context, tx *sql.Tx, userID, itemID, groupID str
 		}
 		if openID == "" {
 			openID = row.id
-			openNote = row.note
 			continue
 		}
 		extras = append(extras, row.id)
@@ -178,13 +174,6 @@ func upsertAutoLine(ctx context.Context, tx *sql.Tx, userID, itemID, groupID str
 	var storedGroup any
 	if groupID != "" {
 		storedGroup = groupID
-	}
-	if note == "" {
-		if openNote != "" {
-			note = openNote
-		} else {
-			note = keptNote
-		}
 	}
 	if openID == "" {
 		// A checked-off row for this exact line stays checked off. A different

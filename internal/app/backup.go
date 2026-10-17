@@ -108,6 +108,13 @@ func writeSnapshot(db *sql.DB, spec snapshotSpec) error {
 		_ = os.Remove(temp)
 		return fmt.Errorf("%s: %w", spec.fail, err)
 	}
+	// The temp still has the mode it was created with. chmod has not run.
+	if snapshotCopyHook != nil {
+		if err := snapshotCopyHook(temp); err != nil {
+			_ = os.Remove(temp)
+			return fmt.Errorf("%s: %w", spec.fail, err)
+		}
+	}
 	if err := syncFile(temp); err != nil {
 		_ = os.Remove(temp)
 		return fmt.Errorf("%s: %w", spec.fail, err)
@@ -128,6 +135,10 @@ func writeSnapshot(db *sql.DB, spec snapshotSpec) error {
 	log.Printf("%s: %s", spec.wrote, dest)
 	return nil
 }
+
+// snapshotCopyHook runs after VACUUM INTO and before the temp is chmodded.
+// Tests use it to read the mode the copy itself created.
+var snapshotCopyHook func(temp string) error
 
 func removeSnapshotTemps(dir string) {
 	for _, prefix := range []string{"pantry-pre-groups", "pantry-pre-restock", "pantry-pre-targets"} {
