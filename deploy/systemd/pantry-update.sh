@@ -53,8 +53,11 @@
 # the images did not change. A down sidecar warns again until it is
 # running. A proxy stays on the list until a later probe passes, even
 # while its container is running: "running" is not the same as answering.
-# A deploy removes a non-proxy line once that container is running, and
-# removes a proxy line only after the probe passes. A line whose service
+# That later probe is the same check a deploy makes, against the pantry
+# image already recorded for this run, so a healthy tunnel can match its
+# commit on a minute when no image changed. A deploy removes a non-proxy
+# line once that container is running, and removes a proxy line only
+# after the probe passes. A line whose service
 # is not in this compose config is dropped, so turning a profile off does
 # not warn forever. Status and RestartCount are read again after
 # PANTRY_UPDATE_SETTLE_SECONDS (default 12, never more than 15). A restart
@@ -1090,15 +1093,17 @@ proxy_marker_service() {
 }
 
 # proxy_probe_recovered is true when the marked proxy answers again.
+# STATE is this run's directory, which already lists the pantry image.
+# The tunnel probe reads that ref for the expected commit. A fresh empty
+# directory would fail a healthy listener with "wanted commit <missing>".
 # A skipped probe is not a pass, so the marker stays.
 proxy_probe_recovered() {
-  local state host
+  local state="$1" host
   host=$(publish_env_value PUBLIC_HOST)
   [[ -n "$host" ]] || return 1
   publish_auth_present || return 1
-  state=$(mktemp -d) || return 1
+  [[ -n "$state" ]] || return 1
   probe_public_proxy "$state" || true
-  rm -rf "$state"
   [[ "$PROXY_PROBE_PASSED" -eq 1 ]]
 }
 
@@ -1123,7 +1128,7 @@ clear_proxy_marker() {
 # journal warning for whatever is still listed. mode "clear" only removes
 # running non-proxy lines, which a deploy does before it checks containers.
 rewrite_sidecar_marker() {
-  local marker_mode="$1" mark="$PANTRY_DIR/.update-sidecar-warn" tmp raw svc line status known config_ok=0
+  local marker_mode="$1" state="$2" mark="$PANTRY_DIR/.update-sidecar-warn" tmp raw svc line status known config_ok=0
   [[ -f "$mark" ]] || return 0
   tmp=$(mktemp) || return 0
   if known=$(compose_service_images); then
@@ -1142,7 +1147,7 @@ rewrite_sidecar_marker() {
     status=${line%% *}
     if [[ "$status" == running ]]; then
       if proxy_marker_service "$svc"; then
-        if [[ "$marker_mode" == warn ]] && proxy_probe_recovered; then
+        if [[ "$marker_mode" == warn ]] && proxy_probe_recovered "$state"; then
           echo "pantry update: ${svc} probe passed"
           continue
         fi
@@ -1168,7 +1173,7 @@ rewrite_sidecar_marker() {
 # A running sidecar is dropped. A proxy is dropped only when its probe
 # passes. It runs even when no image changed.
 recheck_sidecar_warnings() {
-  rewrite_sidecar_marker warn
+  rewrite_sidecar_marker warn "$1"
 }
 
 # confirm_recreated checks changed services, then checks them again after a
@@ -1564,7 +1569,7 @@ apply_compose() {
   fi
 
   if images_unchanged "$state"; then
-    recheck_sidecar_warnings
+    recheck_sidecar_warnings "$state"
     echo "pantry update: images unchanged"
     clear_state
     return 0
@@ -1574,7 +1579,7 @@ apply_compose() {
     echo "pantry update: could not point a rejected image tag back at the previous digest." >&2
   fi
   if images_unchanged "$state"; then
-    recheck_sidecar_warnings
+    recheck_sidecar_warnings "$state"
     clear_state
     return 0
   fi
@@ -1620,7 +1625,7 @@ apply_compose() {
   if "${compose[@]}" up -d; then
     up_ok=1
   fi
-  rewrite_sidecar_marker clear
+  rewrite_sidecar_marker clear "$state"
   PANTRY_VERIFIED=0
   FAILED_SERVICES=""
   containers_ok=0

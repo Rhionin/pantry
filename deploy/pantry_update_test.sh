@@ -2106,6 +2106,91 @@ have "$LAST_OUT" "caddy probe passed" "a passing caddy probe clears its marker"
 [[ ! -e "$proxy_mark/.update-sidecar-warn" ]] || fail "a passing caddy probe left a marker: $(cat "$proxy_mark/.update-sidecar-warn")"
 unset STUB_CADDY_RC STUB_HEALTH_BODY STUB_BUILD_BODY
 
+# A deploy whose probe passes drops the proxy line itself. The next minute
+# is not what clears it. A sidecar on the same list stays.
+marker_deploy_clear=$(mktemp -d)
+prepare_pantry "$marker_deploy_clear"
+public_env "$marker_deploy_clear"
+write_images "$marker_deploy_clear/images.tsv" \
+  sha256:newpantry ghcr.io/rhionin/pantry@sha256:newpantry \
+  sha256:runcaddy caddy@sha256:oldcaddy
+printf '%s\n' $'grocy-sync\tghcr.io/rhionin/pantry-grocy-sync:latest\tsha256:rungrocy\tghcr.io/rhionin/pantry-grocy-sync@sha256:oldgrocy\tsha256:rungrocy\tghcr.io/rhionin/pantry-grocy-sync@sha256:oldgrocy\t' >> "$marker_deploy_clear/images.tsv"
+printf '%s\n' caddy grocy-sync > "$marker_deploy_clear/.update-sidecar-warn"
+printf '%s\n' $'grocy-sync\texited\t0' > "$marker_deploy_clear/status.tsv"
+STUB_STATUS_TSV="$marker_deploy_clear/status.tsv"
+STUB_CADDY_RC=0
+STUB_HEALTH_BODY='{"status":"ok"}'
+STUB_BUILD_BODY="{\"commit\":\"${NEW_COMMIT}\"}"
+run_update "$marker_deploy_clear"
+[[ "$LAST_RC" -eq 0 ]] || fail "deploy proxy clear exited $LAST_RC: $LAST_OUT"
+lack "$LAST_OUT" "images unchanged" "a passing deploy probe clears the proxy without waiting for the next minute"
+lack "$LAST_OUT" "caddy is running again" "a passing deploy probe does not clear caddy for being running"
+lack "$LAST_OUT" "caddy probe passed" "the deploy clear is not the unchanged-minute probe"
+have "$(cat "$marker_deploy_clear/.update-sidecar-warn")" "grocy-sync" "a deploy that clears the proxy keeps the down sidecar"
+lack "$(cat "$marker_deploy_clear/.update-sidecar-warn")" "caddy" "a passing deploy probe drops the proxy marker"
+unset STUB_STATUS_TSV STUB_CADDY_RC STUB_HEALTH_BODY STUB_BUILD_BODY
+
+# Tunnel mode: a marked caddy-tunnel stays while the probe fails, and the
+# next unchanged minute clears it once the listener returns the running commit.
+tunnel_mark=$(mktemp -d)
+prepare_pantry "$tunnel_mark"
+tunnel_env "$tunnel_mark"
+write_images "$tunnel_mark/images.tsv" \
+  sha256:newpantry ghcr.io/rhionin/pantry@sha256:newpantry \
+  sha256:runcaddy caddy@sha256:oldcaddy
+printf '%s\n' $'caddy-tunnel\tcaddy:tunnel\tsha256:runtunnel\tcaddy@sha256:oldtunnel\tsha256:runtunnel\tcaddy@sha256:oldtunnel\t' >> "$tunnel_mark/images.tsv"
+STUB_TUNNEL_OLD_RC=7
+STUB_TUNNEL_RC=0
+STUB_TUNNEL_STATUS=502
+STUB_HEALTH_BODY='{"status":"ok"}'
+STUB_BUILD_BODY="{\"commit\":\"${NEW_COMMIT}\"}"
+run_update "$tunnel_mark"
+[[ "$LAST_RC" -eq 0 ]] || fail "tunnel marker write exited $LAST_RC: $LAST_OUT"
+lack "$LAST_OUT" "rejecting pantry" "an already-failing tunnel does not reject pantry"
+[[ "$(grep -c -x caddy-tunnel "$tunnel_mark/.update-sidecar-warn")" -eq 1 ]] || fail "a tunnel probe failure was not remembered: $(cat "$tunnel_mark/.update-sidecar-warn" 2>/dev/null)"
+cat > "$tunnel_mark/images.tsv" << EOF
+pantry	ghcr.io/rhionin/pantry:latest	sha256:newpantry	ghcr.io/rhionin/pantry@sha256:newpantry	sha256:newpantry	ghcr.io/rhionin/pantry@sha256:newpantry	${NEW_COMMIT}	
+caddy	caddy:2.11.7-alpine	sha256:runcaddy	caddy@sha256:oldcaddy	sha256:runcaddy	caddy@sha256:oldcaddy		
+caddy-tunnel	caddy:tunnel	sha256:runtunnel	caddy@sha256:oldtunnel	sha256:runtunnel	caddy@sha256:oldtunnel		
+EOF
+STUB_TUNNEL_OLD_RC=0
+STUB_TUNNEL_OLD_STATUS=502
+STUB_TUNNEL_RC=0
+STUB_TUNNEL_STATUS=502
+run_update "$tunnel_mark"
+[[ "$LAST_RC" -eq 0 ]] || fail "tunnel marker recheck exited $LAST_RC: $LAST_OUT"
+have "$LAST_OUT" "images unchanged" "a tunnel marker is rechecked when images do not change"
+have "$LAST_OUT" "<4>pantry update: warning: caddy-tunnel probe failed and its image did not change; not rolling back" "a running tunnel with a failed probe warns again"
+lack "$LAST_OUT" "caddy-tunnel probe passed" "a failed tunnel probe does not clear its marker"
+[[ "$(grep -c -x caddy-tunnel "$tunnel_mark/.update-sidecar-warn")" -eq 1 ]] || fail "a failed tunnel probe dropped its marker: $(cat "$tunnel_mark/.update-sidecar-warn" 2>/dev/null)"
+unset STUB_TUNNEL_OLD_RC STUB_TUNNEL_OLD_STATUS
+STUB_TUNNEL_RC=0
+STUB_TUNNEL_STATUS=200
+run_update "$tunnel_mark"
+[[ "$LAST_RC" -eq 0 ]] || fail "tunnel marker clear exited $LAST_RC: $LAST_OUT"
+have "$LAST_OUT" "caddy-tunnel probe passed" "a healthy tunnel clears its marker"
+lack "$LAST_OUT" "wanted commit <missing>" "a healthy tunnel is checked against the recorded pantry revision"
+[[ ! -e "$tunnel_mark/.update-sidecar-warn" ]] || fail "a healthy tunnel left a marker: $(cat "$tunnel_mark/.update-sidecar-warn")"
+unset STUB_TUNNEL_RC STUB_TUNNEL_STATUS STUB_HEALTH_BODY STUB_BUILD_BODY
+
+# No password file: the recheck cannot probe, and that skip is not a pass.
+marker_no_auth=$(mktemp -d)
+prepare_pantry "$marker_no_auth"
+public_env "$marker_no_auth"
+rm -f "$marker_no_auth/auth.caddy"
+cat > "$marker_no_auth/images.tsv" << EOF
+pantry	ghcr.io/rhionin/pantry:latest	sha256:runpantry	ghcr.io/rhionin/pantry@sha256:oldpantry	sha256:runpantry	ghcr.io/rhionin/pantry@sha256:oldpantry	${NEW_COMMIT}	${OLD_COMMIT}
+caddy	caddy:2.11.7-alpine	sha256:runcaddy	caddy@sha256:oldcaddy	sha256:runcaddy	caddy@sha256:oldcaddy		
+EOF
+printf '%s\n' caddy > "$marker_no_auth/.update-sidecar-warn"
+run_update "$marker_no_auth"
+[[ "$LAST_RC" -eq 0 ]] || fail "marker without auth exited $LAST_RC: $LAST_OUT"
+have "$LAST_OUT" "images unchanged" "a marker without auth is still rechecked"
+have "$LAST_OUT" "<4>pantry update: warning: caddy probe failed and its image did not change; not rolling back" "a skipped recheck keeps warning"
+lack "$LAST_OUT" "caddy probe passed" "a skipped recheck is not a passing probe"
+lack "$LAST_OUT" "caddy is running again" "a skipped recheck does not clear a running proxy"
+[[ "$(grep -c -x caddy "$marker_no_auth/.update-sidecar-warn")" -eq 1 ]] || fail "a skipped recheck dropped the proxy marker: $(cat "$marker_no_auth/.update-sidecar-warn" 2>/dev/null)"
+
 # A trigger that lands during the pull is pulled again instead of dropped.
 repull=$(mktemp -d)
 prepare_pantry "$repull"
@@ -2195,5 +2280,5 @@ have "$lock_out" "another update is running" "a held lock is waited on"
 lack "$lock_out" "pantry update: lock acquired" "the waiter does not pass the lock while it is held"
 rm -rf "$lock_work"
 
-rm -rf "$healthy" "$noop" "$mismatch" "$unhealthy" "$caddy_only" "$rollback_fail" "$unlabeled" "$polled" "$migrating" "$migr_cap" "$pending" "$exited" "$proxied" "$full_disk" "$grocy" "$grocy_up" "$crash" "$resumed" "$gone" "$degraded" "$snap" "$snap_old" "$rollback_unhealthy" "$stale" "$unpinned" "$spill" "$grocy_ok" "$grocy_bad" "$flap" "$pantry_restart" "$caddy_fail" "$tunnel_ok" "$tunnel_skip" "$tunnel_bad" "$acme_same" "$tunnel_same" "$tunnel_refused" "$tunnel_commit" "$grocy_now" "$warned" "$grocy_keep" "$caddy_keep" "$name_conflict" "$acme_regress" "$tunnel_regress" "$tunnel_hang" "$tunnel_late" "$tunnel_reset" "$caddy_exit" "$caddy_up_down" "$tunnel_restart" "$tunnel_502" "$tunnel_empty" "$stale_grocy" "$marker_off" "$marker_cr" "$marker_clear" "$marker_park" "$proxy_grocy" "$reach_reset" "$caddy_newid" "$caddy_restarts" "$caddy_started" "$caddy_retry" "$probe_cap" "$proxy_mark" "$repull" "$wrong_project" "$blank_project" "$locked"
+rm -rf "$healthy" "$noop" "$mismatch" "$unhealthy" "$caddy_only" "$rollback_fail" "$unlabeled" "$polled" "$migrating" "$migr_cap" "$pending" "$exited" "$proxied" "$full_disk" "$grocy" "$grocy_up" "$crash" "$resumed" "$gone" "$degraded" "$snap" "$snap_old" "$rollback_unhealthy" "$stale" "$unpinned" "$spill" "$grocy_ok" "$grocy_bad" "$flap" "$pantry_restart" "$caddy_fail" "$tunnel_ok" "$tunnel_skip" "$tunnel_bad" "$acme_same" "$tunnel_same" "$tunnel_refused" "$tunnel_commit" "$grocy_now" "$warned" "$grocy_keep" "$caddy_keep" "$name_conflict" "$acme_regress" "$tunnel_regress" "$tunnel_hang" "$tunnel_late" "$tunnel_reset" "$caddy_exit" "$caddy_up_down" "$tunnel_restart" "$tunnel_502" "$tunnel_empty" "$stale_grocy" "$marker_off" "$marker_cr" "$marker_clear" "$marker_park" "$proxy_grocy" "$reach_reset" "$caddy_newid" "$caddy_restarts" "$caddy_started" "$caddy_retry" "$probe_cap" "$proxy_mark" "$marker_deploy_clear" "$tunnel_mark" "$marker_no_auth" "$repull" "$wrong_project" "$blank_project" "$locked"
 echo "pantry_update_test ok"
