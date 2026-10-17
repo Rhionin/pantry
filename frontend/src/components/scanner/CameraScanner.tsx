@@ -17,6 +17,7 @@ import {
 } from './cameraAccess';
 import { outlineAttribute } from './cameraOverlay';
 import { createFrameDecoder, DEFAULT_BARCODE_FORMATS, type DecodedBarcode, type FrameDecoder } from './frameDecoder';
+import { useCameraPaused } from './useCameraPaused';
 
 export interface CameraScannerProps {
   onScan: (barcode: string) => void;
@@ -66,6 +67,16 @@ export function CameraScanner({
   const [flash, setFlash] = useState(false);
   const [outline, setOutline] = useState<DecodedBarcode | null>(null);
   const [manualBarcode, setManualBarcode] = useState('');
+  const releaseCameraRef = useRef<() => void>(() => {});
+  // Hide and page unload release the live stream immediately. The flag also
+  // drops the capture effect so a visible page can open a fresh stream, and
+  // so a scan the user already stopped stays stopped.
+  const cameraPaused = useCameraPaused(active && block === null, () => {
+    releaseCameraRef.current();
+    setPreviewReady(false);
+    setNeedsTap(false);
+    setOutline(null);
+  });
 
   const markCaptured = useCallback((value: string) => {
     setLastScan(value);
@@ -86,10 +97,11 @@ export function CameraScanner({
   }, [active]);
 
   useEffect(() => {
-    if (!active || block !== null) return;
+    if (!active || block !== null || cameraPaused) return;
 
     let cancelled = false;
     let stream: MediaStream | null = null;
+    let opening: Promise<MediaStream> | null = null;
     let timer = 0;
     let last: PriorScan | null = null;
 
@@ -97,12 +109,30 @@ export function CameraScanner({
       timer = window.setTimeout(resolve, ms);
     });
 
+    const stopTracks = (media: MediaStream) => {
+      media.getTracks().forEach((track) => track.stop());
+    };
+
+    // Stop whatever is already open, and any getUserMedia that resolves after
+    // the page freezes. Does not by itself mark the session cancelled: a
+    // failed preview still needs to explain why.
     const releaseStream = () => {
       window.clearTimeout(timer);
-      stream?.getTracks().forEach((track) => track.stop());
-      stream = null;
+      if (stream) {
+        stopTracks(stream);
+        stream = null;
+      }
+      if (opening) {
+        void opening.then(stopTracks).catch(() => undefined);
+        opening = null;
+      }
       if (videoRef.current) videoRef.current.srcObject = null;
     };
+    const abortCapture = () => {
+      cancelled = true;
+      releaseStream();
+    };
+    releaseCameraRef.current = abortCapture;
 
     void (async () => {
       let decoder: FrameDecoder | null;
@@ -121,6 +151,7 @@ export function CameraScanner({
       }
 
       const pending = openCameraStream(facing);
+      opening = pending;
       let timedOut = false;
       let opened: MediaStream;
       try {
@@ -137,18 +168,18 @@ export function CameraScanner({
         // getUserMedia can still resolve after we gave up. Stop that stream so
         // the camera indicator does not stay on.
         if (timedOut) {
-          void pending.then((late) => {
-            late.getTracks().forEach((track) => track.stop());
-          }).catch(() => undefined);
+          void pending.then(stopTracks).catch(() => undefined);
         }
+        opening = null;
         if (!cancelled) setBlock({ kind: 'camera', message: describeCameraError(error) });
         return;
       }
       window.clearTimeout(timer);
       if (cancelled) {
-        opened.getTracks().forEach((track) => track.stop());
+        stopTracks(opened);
         return;
       }
+      opening = null;
       stream = opened;
 
       const video = videoRef.current;
@@ -189,9 +220,15 @@ export function CameraScanner({
       }
 
       while (!cancelled) {
+        // A hidden tab has nothing to decode. The tracks themselves are
+        // released by useCameraPaused; this only avoids work in the gap
+        // before that pause commits.
         if (!document.hidden) {
           try {
             const hits = await decoder.detect(video);
+            // The page may have hidden while this frame was in flight. The
+            // tracks are already stopped; don't treat that frame as a scan.
+            if (cancelled) break;
             const hit = hits.find((entry) => entry.value !== '');
             const located = hit !== undefined && hit.frameWidth > 0 && hit.frameHeight > 0 && hit.corners.length >= 2
               ? hit
@@ -213,10 +250,10 @@ export function CameraScanner({
     })();
 
     return () => {
-      cancelled = true;
-      releaseStream();
+      abortCapture();
+      if (releaseCameraRef.current === abortCapture) releaseCameraRef.current = () => {};
     };
-  }, [active, block, createDecoder, facing, formats, markCaptured]);
+  }, [active, block, cameraPaused, createDecoder, facing, formats, markCaptured]);
 
   function open() {
     const blocked = cameraBlockReason();
