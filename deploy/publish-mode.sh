@@ -73,24 +73,32 @@ publish_container() {
   esac
 }
 
-# publish_container_label prints NAME's compose project label, or nothing
-# when the container is absent.
+# publish_container_label prints NAME's compose project label.
+# Returns 1 when the container is absent. An empty label means the
+# container exists and is not part of a compose project.
 publish_container_label() {
-  local label
-  label=$(docker inspect -f '{{index .Config.Labels "com.docker.compose.project"}}' "$1" 2>/dev/null || true)
+  local label rc=0
+  label=$(docker inspect -f '{{index .Config.Labels "com.docker.compose.project"}}' "$1" 2>/dev/null) || rc=$?
+  if [[ "$rc" -ne 0 ]]; then
+    return 1
+  fi
   label=${label//$'\r'/}
   label=${label//$'\n'/}
   printf '%s' "$label"
 }
 
 # remove_project_container runs docker rm only when the compose project matches.
-# An absent container is a no-op. A container that only shares the name is left
-# alone and named in the log.
+# An absent container is a no-op. A container that only shares the name, or
+# that has the proxy's name and no project label, is left alone and named.
 remove_project_container() {
-  local name="$1" project label
+  local name="$1" project label rc=0
   project=$(compose_project_name)
-  label=$(publish_container_label "$name")
+  label=$(publish_container_label "$name") || rc=$?
+  if [[ "$rc" -ne 0 ]]; then
+    return 0
+  fi
   if [[ -z "$label" ]]; then
+    echo "[info] Not removing ${name}; it has no compose project label" >&2
     return 0
   fi
   if [[ "$label" != "$project" ]]; then
