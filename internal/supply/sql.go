@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/Rhionin/stockbot/internal/shopping"
@@ -498,6 +499,7 @@ func attachGroupSignals(ctx context.Context, tx *sql.Tx, facts map[ProductID]*Fa
 }
 
 func parseSQLiteTime(raw string) (time.Time, error) {
+	raw = stripMonotonic(raw)
 	layouts := []string{
 		time.RFC3339Nano,
 		time.RFC3339,
@@ -532,4 +534,14 @@ func shoppingDeal(itemID, label string, noted time.Time, price, regular sql.Null
 
 type queryer interface {
 	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
+}
+
+// stripMonotonic drops the " m=+1.234" suffix time.Time.String appends when
+// the value still carries a monotonic clock reading. The sqlite driver writes
+// that string as-is, and an aggregate such as MAX returns it as plain text.
+func stripMonotonic(raw string) string {
+	if i := strings.Index(raw, " m="); i >= 0 {
+		return raw[:i]
+	}
+	return raw
 }
