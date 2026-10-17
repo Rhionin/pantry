@@ -430,8 +430,22 @@ func TestScanCommitStockOut(t *testing.T) {
 			httpExchange: httpExchange{
 				method:         "POST",
 				path:           "/api/scans/scan-out-empty/commit",
-				expectedStatus: http.StatusInternalServerError,
+				expectedStatus: http.StatusConflict,
+				assertions: []assertion{
+					{path: "$.error", value: "There's none of this on hand to take out."},
+				},
 			},
+			afterRequest: exchanges(httpExchange{
+				method:         "GET",
+				path:           "/api/scans",
+				query:          map[string]string{"userId": "user-empty", "status": "pending"},
+				expectedStatus: http.StatusOK,
+				assertions: []assertion{
+					{path: "$[0].id", value: "scan-out-empty"},
+					{path: "$[0].status", value: "pending"},
+					{path: "$[1]", absent: true},
+				},
+			}),
 		},
 	}
 
@@ -1006,4 +1020,142 @@ func TestScanCommitStockOutNoItemLink(t *testing.T) {
 	}
 
 	runHandlerTests(t, tests)
+}
+
+// TestScanOutOfEmptyShelf is the #277 repro: stock a product in, scan it out
+// until the shelf is empty, then commit another scan-out. The handler suite
+// opens a temporary SQLite database with sql.Open("sqlite", ":memory:") and
+// applies migrations before the request.
+func TestScanOutOfEmptyShelf(t *testing.T) {
+	runHandlerTests(t, []handlerTestCase{
+		{
+			name: "committing a scan-out when nothing is on hand is a conflict and writes nothing",
+			setup: func(env testEnv) {
+				finishOpening(env)
+				seedShelfItem(env, "prod-zero", "Oat Milk", "item-zero")
+				seedScanAt(env, "scan-in", "prod-zero", scan.StockIn, 1, time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC))
+				seedScanAt(env, "scan-out-1", "prod-zero", scan.StockOut, 1, time.Date(2026, 6, 2, 12, 0, 0, 0, time.UTC))
+				h := handlerFromEnv(env)
+				commitScan(env, h, "scan-in")
+				commitScan(env, h, "scan-out-1")
+				// The first stock-out is committed, so scanning the product out again is a new card.
+				seedScanAt(env, "scan-out-2", "prod-zero", scan.StockOut, 1, time.Date(2026, 6, 3, 12, 0, 0, 0, time.UTC))
+			},
+			httpExchange: httpExchange{
+				method:         "POST",
+				path:           "/api/scans/scan-out-2/commit",
+				expectedStatus: http.StatusConflict,
+				assertions: []assertion{
+					{path: "$.error", value: "There's none of this on hand to take out."},
+					{path: "$.code", absent: true},
+					{path: "$.suggestions", absent: true},
+				},
+				bodyExcludes: []string{"Something went wrong", "no available instances", "item-zero"},
+			},
+			afterRequest: exchanges(
+				httpExchange{
+					method:         "GET",
+					path:           "/api/inventory",
+					expectedStatus: http.StatusOK,
+					assertions: []assertion{
+						{path: "$[0].item.id", value: "item-zero"},
+						{path: "$[0].instanceCount", value: float64(0)},
+						{path: "$[1]", absent: true},
+					},
+				},
+				httpExchange{
+					method:         "GET",
+					path:           "/api/scans",
+					query:          map[string]string{"userId": "user-1", "status": "pending"},
+					expectedStatus: http.StatusOK,
+					assertions: []assertion{
+						{path: "$[0].id", value: "scan-out-2"},
+						{path: "$[0].status", value: "pending"},
+						{path: "$[0].productId", value: "prod-zero"},
+						{path: "$[1]", absent: true},
+					},
+				},
+				httpExchange{
+					method:         "GET",
+					path:           "/api/scans/history",
+					query:          map[string]string{"userId": "user-1"},
+					expectedStatus: http.StatusOK,
+					bodyContains:   []string{"scan-in", "scan-out-1"},
+					bodyExcludes:   []string{"scan-out-2"},
+				},
+				httpExchange{
+					method:         "GET",
+					path:           "/api/items/item-zero/history",
+					expectedStatus: http.StatusOK,
+					assertions: []assertion{
+						{path: "$.onHand", value: float64(0)},
+						{path: "$.moves[0].direction", value: "out"},
+						{path: "$.moves[0].quantity", value: float64(1)},
+						{path: "$.moves[0].source", value: "scan"},
+						{path: "$.moves[1].direction", value: "in"},
+						{path: "$.moves[1].quantity", value: float64(1)},
+						{path: "$.moves[2]", absent: true},
+					},
+				},
+			),
+		},
+		{
+			name: "linking a barcode onto an empty shelf does not keep the link",
+			setup: func(env testEnv) {
+				finishOpening(env)
+				seedShelfItem(env, "prod-empty", "Empty Oats", "item-empty")
+				seedShelfItem(env, "prod-other", "Other Oats", "item-other")
+				seedScanAt(env, "scan-link", "prod-other", scan.StockOut, 1, time.Date(2026, 6, 4, 12, 0, 0, 0, time.UTC))
+			},
+			httpExchange: httpExchange{
+				method:         "POST",
+				path:           "/api/scans/scan-link/commit",
+				body:           `{"linkProductId":"prod-empty"}`,
+				expectedStatus: http.StatusConflict,
+				assertions: []assertion{
+					{path: "$.error", value: "There's none of this on hand to take out."},
+					{path: "$.code", absent: true},
+				},
+			},
+			afterRequest: exchanges(
+				httpExchange{
+					method:         "GET",
+					path:           "/api/scans",
+					query:          map[string]string{"userId": "user-1", "status": "pending"},
+					expectedStatus: http.StatusOK,
+					assertions: []assertion{
+						{path: "$[0].id", value: "scan-link"},
+						{path: "$[0].status", value: "pending"},
+						{path: "$[0].productId", value: "prod-other"},
+					},
+				},
+				httpExchange{
+					method:         "GET",
+					path:           "/api/products/prod-empty",
+					expectedStatus: http.StatusOK,
+					assertions:     []assertion{{path: "$.barcodes[0]", absent: true}},
+					bodyExcludes:   []string{"scan-link"},
+				},
+				httpExchange{
+					method:         "GET",
+					path:           "/api/items/item-empty/history",
+					expectedStatus: http.StatusOK,
+					assertions: []assertion{
+						{path: "$.onHand", value: float64(0)},
+						{path: "$.moves", value: []any{}},
+					},
+				},
+				httpExchange{
+					method:         "GET",
+					path:           "/api/inventory",
+					expectedStatus: http.StatusOK,
+					assertions: []assertion{
+						{path: "$[0].instanceCount", value: float64(0)},
+						{path: "$[1].instanceCount", value: float64(0)},
+						{path: "$[2]", absent: true},
+					},
+				},
+			),
+		},
+	})
 }

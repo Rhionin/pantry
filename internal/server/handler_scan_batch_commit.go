@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"github.com/Rhionin/stockbot/internal/scan"
@@ -103,7 +104,7 @@ func (h *ScanBatchCommitHandler) Handle(req Request[batchCommitRequest, struct{}
 
 			if commitErr != nil {
 				failedIDs = append(failedIDs, id)
-				failedReasons = append(failedReasons, commitErr.Error())
+				failedReasons = append(failedReasons, commitFailureReason(commitErr))
 			} else {
 				committedIDs = append(committedIDs, id)
 			}
@@ -115,4 +116,13 @@ func (h *ScanBatchCommitHandler) Handle(req Request[batchCommitRequest, struct{}
 	}
 
 	return response, nil
+}
+
+// commitFailureReason is the sentence stored with a batch entry that did not
+// commit. An empty shelf uses the same wording as a single scan-out.
+func commitFailureReason(err error) string {
+	if errors.Is(err, scan.ErrNoneOnHand) {
+		return scan.NoneOnHandMessage
+	}
+	return err.Error()
 }

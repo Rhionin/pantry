@@ -94,5 +94,8 @@ func stockOutError(err error) error {
 	if errors.Is(err, scan.ErrLinkNotStocked) {
 		return BadRequest("That product is not in your pantry")
 	}
+	if errors.Is(err, scan.ErrNoneOnHand) {
+		return Conflict(scan.NoneOnHandMessage)
+	}
 	return InternalError(err)
 }
