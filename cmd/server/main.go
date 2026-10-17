@@ -3,13 +3,16 @@ package main
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"log"
 	"net"
 	"net/http"
 	"os"
+	"os/signal"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/Rhionin/stockbot/internal/app"
@@ -232,8 +235,16 @@ func main() {
 		log.Println("product contribution: not signed in; opted-in products stay in this pantry")
 	}
 
+	sentrySettings := server.LoadSentrySettings(os.Getenv)
+	if err := server.InitSentry(sentrySettings); err != nil || sentrySettings.DSN == "" {
+		log.Print("sentry: error reporting is off")
+	} else {
+		log.Print("sentry: error reporting is on")
+	}
+
 	opts := []server.Option{
 		server.WithBroadcaster(broadcaster),
+		server.WithSentryTunnel(sentrySettings.TunnelConfig()),
 		server.WithScannerConfig(server.ScannerConfig{
 			StockInBarcode:  stockInBarcode,
 			StockOutBarcode: stockOutBarcode,
@@ -284,8 +295,44 @@ func main() {
 		IdleTimeout:       120 * time.Second,
 		MaxHeaderBytes:    1 << 16,
 	}
-	if err := srv.ListenAndServe(); err != nil {
+	stop := make(chan struct{})
+	sigs := make(chan os.Signal, 1)
+	signal.Notify(sigs, os.Interrupt, syscall.SIGTERM)
+	go func() {
+		<-sigs
+		close(stop)
+	}()
+	if err := runHTTPServer(srv, stop, server.FlushSentry); err != nil {
 		log.Fatalf("listen: %v", err)
+	}
+}
+
+// runHTTPServer serves until stop is closed or the listener fails, then
+// flushes error reports. A closed stop shuts the listener down.
+func runHTTPServer(srv *http.Server, stop <-chan struct{}, flush func()) error {
+	errCh := make(chan error, 1)
+	go func() {
+		err := srv.ListenAndServe()
+		if errors.Is(err, http.ErrServerClosed) {
+			err = nil
+		}
+		errCh <- err
+	}()
+	select {
+	case err := <-errCh:
+		if flush != nil {
+			flush()
+		}
+		return err
+	case <-stop:
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		err := srv.Shutdown(ctx)
+		<-errCh
+		if flush != nil {
+			flush()
+		}
+		return err
 	}
 }
 
