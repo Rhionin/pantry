@@ -1,5 +1,6 @@
 import { Button, Group, Modal, Stack, Text } from '@mantine/core';
 import type { RestockPreview } from '../../restock/types';
+import './restock.css';
 
 export function StopDialog({
   preview,
@@ -25,7 +26,7 @@ export function StopDialog({
               {preview.stop.map((line) => (
                 <Group key={line.itemId} justify="space-between" py={6} wrap="nowrap">
                   <Text size="sm" fw={600}>{line.name}</Text>
-                  <Text size="sm" c="dimmed">{line.before} → <Text span fw={700} c="dark">{line.after}</Text></Text>
+                  <Text size="sm" c="dimmed">{line.before} → <Text span fw={700} className="restock-stop-after">{line.after}</Text></Text>
                 </Group>
               ))}
             </div>

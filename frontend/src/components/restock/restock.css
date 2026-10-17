@@ -185,6 +185,17 @@
   font-size: 15px;
 }
 
+.restock-row .name a,
+.restock-row .name a:visited {
+  color: var(--mantine-color-teal-8);
+  text-decoration: underline;
+  text-underline-offset: 0.16em;
+}
+
+.restock-stop-after {
+  color: var(--mantine-color-text);
+}
+
 .restock-row .name span,
 .restock-row .meta {
   font-size: 13px;
@@ -272,6 +283,11 @@
 :where([data-mantine-color-scheme='dark']) .restock-value,
 :where([data-mantine-color-scheme='dark']) .restock-row .name b {
   color: var(--mantine-color-gray-0);
+}
+
+:where([data-mantine-color-scheme='dark']) .restock-row .name a,
+:where([data-mantine-color-scheme='dark']) .restock-row .name a:visited {
+  color: var(--mantine-color-teal-4);
 }
 
 :where([data-mantine-color-scheme='dark']) .restock-cell {
