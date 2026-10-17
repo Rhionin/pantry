@@ -174,8 +174,8 @@ func ValidateTarget(in *TargetInput) error {
 	if set != 1 {
 		return invalid("Choose a window, a quantity, or clearing the target.")
 	}
-	if in.Window != nil && (*in.Window < 1 || *in.Window > 12) {
-		return invalid("The supply window has to be between 1 and 12 months.")
+	if in.Window != nil && (*in.Window < 0 || *in.Window > 12) {
+		return invalid("The supply window has to be between 0 and 12 months.")
 	}
 	if in.Quantity != nil {
 		q := *in.Quantity
