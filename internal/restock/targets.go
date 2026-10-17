@@ -86,11 +86,9 @@ type Snapshot struct {
 
 type loadedItem struct {
 	view       ItemView
-	groupID    string
 	window     sql.NullInt64
 	quantity   sql.NullFloat64
 	dimension  string
-	noRestock  bool
 	categories []CategoryTarget
 	memberOf   []Membership
 }
@@ -109,9 +107,6 @@ func Load(ctx context.Context, q Queryer, household string) (Snapshot, error) {
 		return Snapshot{}, err
 	}
 	if err := attachStoredTargets(ctx, q, household, items); err != nil {
-		return Snapshot{}, err
-	}
-	if err := attachOverrides(ctx, q, items); err != nil {
 		return Snapshot{}, err
 	}
 	if err := attachCategories(ctx, q, household, items); err != nil {
@@ -133,10 +128,7 @@ func Load(ctx context.Context, q Queryer, household string) (Snapshot, error) {
 			input.Group = &target
 			input.GroupName = item.view.GroupName
 		}
-		if item.noRestock && item.view.Input.Item == nil {
-			zero := Target{Kind: KindMonths, Value: 0}
-			input.Item = &zero
-		} else if item.view.Input.Item != nil {
+		if item.view.Input.Item != nil {
 			input.Item = item.view.Input.Item
 		}
 		res := Resolve(input)
@@ -269,6 +261,19 @@ func (t *Targets) ensureStarters(ctx context.Context) error {
 	return tx.Commit()
 }
 
+// prepare clamps a whole amount above 999 down to 999, then validates.
+// Months above 12 and fractional values are still rejected.
+func prepare(target Target) (Target, error) {
+	if target.Kind == KindAmount && !math.IsNaN(target.Value) && !math.IsInf(target.Value, 0) &&
+		target.Value == math.Trunc(target.Value) && target.Value > 999 {
+		target.Value = 999
+	}
+	if err := Validate(target); err != nil {
+		return Target{}, err
+	}
+	return target, nil
+}
+
 // Validate rejects a target the screens cannot store.
 func Validate(target Target) error {
 	if target.Kind != KindMonths && target.Kind != KindAmount {
@@ -290,7 +295,8 @@ func Validate(target Target) error {
 // older supply length so existing readers stay in step. Zero stays on the new
 // keys because the older reader only accepts 1 to 12.
 func (t *Targets) SetHousehold(ctx context.Context, target Target) error {
-	if err := Validate(target); err != nil {
+	target, err := prepare(target)
+	if err != nil {
 		return err
 	}
 	tx, err := t.db.BeginTx(ctx, nil)
@@ -334,13 +340,14 @@ func (t *Targets) ItemTarget(ctx context.Context, itemID string) (*Target, error
 
 // SetItem stores an item target. Zero means don't restock.
 func (t *Targets) SetItem(ctx context.Context, itemID string, target Target) error {
-	if err := Validate(target); err != nil {
+	target, err := prepare(target)
+	if err != nil {
 		return err
 	}
 	if err := ensureItem(ctx, t.db, itemID); err != nil {
 		return err
 	}
-	_, err := t.db.ExecContext(ctx, `
+	_, err = t.db.ExecContext(ctx, `
 		INSERT INTO item_targets (household_id, item_id, kind, value)
 		VALUES (?, ?, ?, ?)
 		ON CONFLICT (household_id, item_id) DO UPDATE SET kind = excluded.kind, value = excluded.value`,
@@ -348,7 +355,7 @@ func (t *Targets) SetItem(ctx context.Context, itemID string, target Target) err
 	if err != nil {
 		return fmt.Errorf("could not save the restock target")
 	}
-	return t.syncNoRestock(ctx, itemID, target.Value == 0)
+	return nil
 }
 
 // ClearItem removes the item target so a broader one applies.
@@ -356,7 +363,22 @@ func (t *Targets) ClearItem(ctx context.Context, itemID string) error {
 	if _, err := t.db.ExecContext(ctx, `DELETE FROM item_targets WHERE household_id = ? AND item_id = ?`, HouseholdID, itemID); err != nil {
 		return fmt.Errorf("could not clear the restock target")
 	}
-	return t.syncNoRestock(ctx, itemID, false)
+	return nil
+}
+
+// ItemIDByProduct is the household item for a product. An empty id means
+// the product is not on the household's shelf.
+func (t *Targets) ItemIDByProduct(ctx context.Context, productID string) (string, error) {
+	var id string
+	err := t.db.QueryRowContext(ctx, `
+		SELECT id FROM items WHERE user_id = ? AND product_id = ?`, HouseholdID, productID).Scan(&id)
+	if err == sql.ErrNoRows {
+		return "", nil
+	}
+	if err != nil {
+		return "", fmt.Errorf("could not read the restock target")
+	}
+	return id, nil
 }
 
 // SetCategoryTarget stores or clears a category target. A nil target clears it.
@@ -371,14 +393,15 @@ func (t *Targets) SetCategoryTarget(ctx context.Context, categoryID string, targ
 		}
 		return nil
 	}
-	if err := Validate(*target); err != nil {
+	prepared, err := prepare(*target)
+	if err != nil {
 		return err
 	}
-	_, err := t.db.ExecContext(ctx, `
+	_, err = t.db.ExecContext(ctx, `
 		INSERT INTO category_targets (household_id, category_id, kind, value)
 		VALUES (?, ?, ?, ?)
 		ON CONFLICT (household_id, category_id) DO UPDATE SET kind = excluded.kind, value = excluded.value`,
-		HouseholdID, categoryID, string(target.Kind), target.Value)
+		HouseholdID, categoryID, string(prepared.Kind), prepared.Value)
 	if err != nil {
 		return fmt.Errorf("could not save the category target")
 	}
@@ -387,7 +410,8 @@ func (t *Targets) SetCategoryTarget(ctx context.Context, categoryID string, targ
 
 // PreviewCategory shows what setting a category target would change.
 func (t *Targets) PreviewCategory(ctx context.Context, categoryID string, target Target) (Preview, error) {
-	if err := Validate(target); err != nil {
+	target, err := prepare(target)
+	if err != nil {
 		return Preview{}, err
 	}
 	name, err := categoryName(ctx, t.db, categoryID)
@@ -414,11 +438,12 @@ func (t *Targets) PreviewCategory(ctx context.Context, categoryID string, target
 
 // PreviewGroup shows what setting a group target would change.
 func (t *Targets) PreviewGroup(ctx context.Context, groupID string, target Target) (Preview, error) {
-	if err := Validate(target); err != nil {
+	target, err := prepare(target)
+	if err != nil {
 		return Preview{}, err
 	}
 	var name string
-	err := t.db.QueryRowContext(ctx, `SELECT name FROM product_groups WHERE id = ? AND user_id = ?`, groupID, HouseholdID).Scan(&name)
+	err = t.db.QueryRowContext(ctx, `SELECT name FROM product_groups WHERE id = ? AND user_id = ?`, groupID, HouseholdID).Scan(&name)
 	if err == sql.ErrNoRows {
 		return Preview{}, fmt.Errorf("That group isn't in the household.")
 	}
@@ -724,12 +749,12 @@ func CopyLegacy(ctx context.Context, q Queryer) error {
 		`INSERT INTO item_targets (household_id, item_id, kind, value)
 		 SELECT i.user_id, i.id,
 		   CASE WHEN o.window_months IS NOT NULL THEN 'months' ELSE 'amount' END,
-		   CASE WHEN o.window_months IS NOT NULL THEN o.window_months ELSE o.quantity END
+		   CASE WHEN o.window_months IS NOT NULL THEN o.window_months ELSE MIN(o.quantity, 999) END
 		 FROM supply_overrides o
 		 JOIN items i ON i.product_id = o.product_id
 		 WHERE NOT EXISTS (SELECT 1 FROM product_group_members m WHERE m.product_id = o.product_id)
 		   AND NOT EXISTS (SELECT 1 FROM item_targets t WHERE t.household_id = i.user_id AND t.item_id = i.id)
-		   AND (o.window_months IS NOT NULL OR o.quantity IS NOT NULL)`,
+		   AND (o.window_months IS NOT NULL OR (o.quantity IS NOT NULL AND o.quantity > 0))`,
 		`INSERT INTO item_targets (household_id, item_id, kind, value)
 		 SELECT i.user_id, i.id, 'months', 0
 		 FROM product_group_members m
@@ -737,9 +762,9 @@ func CopyLegacy(ctx context.Context, q Queryer) error {
 		 WHERE m.no_restock = 1
 		   AND NOT EXISTS (SELECT 1 FROM item_targets t WHERE t.household_id = i.user_id AND t.item_id = i.id)`,
 		`INSERT INTO item_targets (household_id, item_id, kind, value)
-		 SELECT i.user_id, i.id, 'amount', i.target_quantity
+		 SELECT i.user_id, i.id, 'amount', MIN(i.target_quantity, 999)
 		 FROM items i
-		 WHERE i.target_quantity IS NOT NULL
+		 WHERE i.target_quantity > 0
 		   AND COALESCE(i.replenishment_mode, 'target') = 'target'
 		   AND NOT EXISTS (SELECT 1 FROM item_targets t WHERE t.household_id = i.user_id AND t.item_id = i.id)
 		   AND NOT EXISTS (SELECT 1 FROM product_group_members m WHERE m.product_id = i.product_id)
@@ -953,8 +978,7 @@ func loadItems(ctx context.Context, q Queryer, household string) (map[string]*lo
 	rows, err := q.QueryContext(ctx, `
 		SELECT i.id, i.product_id, p.name, COALESCE(p.unit_of_measure, ''),
 			COALESCE(g.id, ''), COALESCE(g.name, ''),
-			g.window_months, g.quantity_base_value, COALESCE(g.quantity_dimension, ''),
-			COALESCE(m.no_restock, 0)
+			g.window_months, g.quantity_base_value, COALESCE(g.quantity_dimension, '')
 		FROM items i
 		JOIN products p ON p.id = i.product_id
 		LEFT JOIN product_group_members m ON m.product_id = i.product_id
@@ -969,16 +993,13 @@ func loadItems(ctx context.Context, q Queryer, household string) (map[string]*lo
 	for rows.Next() {
 		var item loadedItem
 		var unit string
-		var noRestock int
-		if err := rows.Scan(&item.view.ItemID, &item.view.ProductID, &item.view.Name, &unit, &item.view.GroupID, &item.view.GroupName, &item.window, &item.quantity, &item.dimension, &noRestock); err != nil {
+		if err := rows.Scan(&item.view.ItemID, &item.view.ProductID, &item.view.Name, &unit, &item.view.GroupID, &item.view.GroupName, &item.window, &item.quantity, &item.dimension); err != nil {
 			return nil, fmt.Errorf("could not read restock targets")
 		}
 		if unit == "" {
 			unit = "units"
 		}
 		item.view.Unit = unit
-		item.groupID = item.view.GroupID
-		item.noRestock = noRestock != 0
 		out[item.view.ItemID] = &item
 	}
 	return out, rows.Err()
@@ -1001,40 +1022,6 @@ func attachStoredTargets(ctx context.Context, q Queryer, household string, items
 			continue
 		}
 		target := Target{Kind: Kind(kind), Value: value}
-		item.view.Input.Item = &target
-	}
-	return rows.Err()
-}
-
-func attachOverrides(ctx context.Context, q Queryer, items map[string]*loadedItem) error {
-	rows, err := q.QueryContext(ctx, `SELECT product_id, window_months, quantity FROM supply_overrides`)
-	if err != nil {
-		return fmt.Errorf("could not read restock targets")
-	}
-	defer rows.Close()
-	byProduct := map[string]*loadedItem{}
-	for _, item := range items {
-		byProduct[item.view.ProductID] = item
-	}
-	for rows.Next() {
-		var id string
-		var window, qty sql.NullInt64
-		if err := rows.Scan(&id, &window, &qty); err != nil {
-			return fmt.Errorf("could not read restock targets")
-		}
-		item := byProduct[id]
-		if item == nil || item.view.Input.Item != nil || item.groupID != "" {
-			continue
-		}
-		var target Target
-		switch {
-		case window.Valid:
-			target = Target{Kind: KindMonths, Value: float64(window.Int64)}
-		case qty.Valid:
-			target = Target{Kind: KindAmount, Value: float64(qty.Int64)}
-		default:
-			continue
-		}
 		item.view.Input.Item = &target
 	}
 	return rows.Err()
@@ -1237,20 +1224,4 @@ func parseNumber(raw string, fallback float64) float64 {
 		return fallback
 	}
 	return n
-}
-
-func (t *Targets) syncNoRestock(ctx context.Context, itemID string, off bool) error {
-	flag := 0
-	if off {
-		flag = 1
-	}
-	_, err := t.db.ExecContext(ctx, `
-		UPDATE product_group_members
-		SET no_restock = ?
-		WHERE product_id = (SELECT product_id FROM items WHERE id = ? AND user_id = ?)`,
-		flag, itemID, HouseholdID)
-	if err != nil {
-		return fmt.Errorf("could not save the restock target")
-	}
-	return nil
 }

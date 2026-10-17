@@ -88,7 +88,14 @@ export function RestockSettings() {
             </Menu.Target>
             <Menu.Dropdown>
               <Menu.Item component={Link} to={`/inventory/categories/${category.id}`}>Restock target…</Menu.Item>
-              <Menu.Item color="red" onClick={() => void deleteCategory(category.id).then(() => load())}>Delete category…</Menu.Item>
+              <Menu.Item color="red" onClick={() => {
+                if (window.confirm(`Delete ${category.name}? Items stay in inventory.`)) {
+                  void deleteCategory(category.id).then(() => load());
+                }
+              }}
+              >
+                Delete category…
+              </Menu.Item>
             </Menu.Dropdown>
           </Menu>
         </div>

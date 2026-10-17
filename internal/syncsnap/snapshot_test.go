@@ -75,8 +75,13 @@ func TestBuildPrefersItemTargets(t *testing.T) {
 		INSERT INTO items (id, user_id, product_id) VALUES
 			('item-chips', 'user-1', 'chips'),
 			('item-beans', 'user-1', 'beans');
+		INSERT INTO products (id, name) VALUES ('salt', 'Salt');
+		INSERT INTO items (id, user_id, product_id) VALUES ('item-salt', 'user-1', 'salt');
+		INSERT INTO categories (id, household_id, name, name_key) VALUES ('cat-salt', 'user-1', 'Spices', 'spices');
+		INSERT INTO category_targets (household_id, category_id, kind, value) VALUES ('user-1', 'cat-salt', 'months', 0);
+		INSERT INTO item_categories (household_id, item_id, category_id, source) VALUES ('user-1', 'item-salt', 'cat-salt', 'user');
 		INSERT INTO item_targets (household_id, item_id, kind, value) VALUES
-			('user-1', 'item-chips', 'amount', 4),
+			('user-1', 'item-chips', 'amount', 4.6),
 			('user-1', 'item-beans', 'months', 0);
 	`); err != nil {
 		t.Fatal(err)
@@ -90,11 +95,15 @@ func TestBuildPrefersItemTargets(t *testing.T) {
 		byID[product.ID] = product
 	}
 	chips := byID["chips"]
-	if chips.TargetQuantity == nil || *chips.TargetQuantity != 4 || chips.NoRestock {
+	if chips.TargetQuantity == nil || *chips.TargetQuantity != 5 || chips.NoRestock {
 		t.Fatalf("amount target: %+v", chips)
 	}
 	beans := byID["beans"]
 	if !beans.NoRestock || beans.TargetQuantity != nil {
 		t.Fatalf("zero target: %+v", beans)
+	}
+	salt := byID["salt"]
+	if !salt.NoRestock {
+		t.Fatalf("category zero resolves to noRestock: %+v", salt)
 	}
 }

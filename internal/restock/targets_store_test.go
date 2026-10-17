@@ -273,9 +273,6 @@ func TestRejectedTargets(t *testing.T) {
 		{"fraction", func() error {
 			return targets.SetItem(ctx, "item-salt", Target{Kind: KindAmount, Value: 1.5})
 		}},
-		{"too big", func() error {
-			return targets.SetItem(ctx, "item-salt", Target{Kind: KindAmount, Value: 1000})
-		}},
 		{"missing item", func() error {
 			return targets.SetItem(ctx, "missing", Target{Kind: KindMonths, Value: 1})
 		}},
@@ -301,5 +298,12 @@ func TestRejectedTargets(t *testing.T) {
 		if err := tc.run(); err == nil {
 			t.Errorf("%s: expected a rejection", tc.name)
 		}
+	}
+	if err := targets.SetItem(ctx, "item-salt", Target{Kind: KindAmount, Value: 1000}); err != nil {
+		t.Fatal(err)
+	}
+	clamped, err := targets.ItemTarget(ctx, "item-salt")
+	if err != nil || clamped == nil || clamped.Value != 999 {
+		t.Fatalf("amounts over 999 are clamped, got %+v %v", clamped, err)
 	}
 }

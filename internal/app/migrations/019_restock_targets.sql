@@ -101,12 +101,12 @@ CREATE TABLE product_off_tags (
 INSERT INTO item_targets (household_id, item_id, kind, value)
 SELECT i.user_id, i.id,
     CASE WHEN o.window_months IS NOT NULL THEN 'months' ELSE 'amount' END,
-    CASE WHEN o.window_months IS NOT NULL THEN o.window_months ELSE o.quantity END
+    CASE WHEN o.window_months IS NOT NULL THEN o.window_months ELSE MIN(o.quantity, 999) END
 FROM supply_overrides o
 JOIN items i ON i.product_id = o.product_id
 WHERE NOT EXISTS (SELECT 1 FROM product_group_members m WHERE m.product_id = o.product_id)
   AND NOT EXISTS (SELECT 1 FROM item_targets t WHERE t.household_id = i.user_id AND t.item_id = i.id)
-  AND (o.window_months IS NOT NULL OR o.quantity IS NOT NULL);
+  AND (o.window_months IS NOT NULL OR (o.quantity IS NOT NULL AND o.quantity > 0));
 
 -- A member marked don't restock becomes an item target of 0.
 INSERT INTO item_targets (household_id, item_id, kind, value)
@@ -118,10 +118,12 @@ WHERE m.no_restock = 1
 
 -- A fixed quantity in target mode becomes an item amount, when nothing else
 -- already set a target and the product is not in a group.
+-- A stored count of 0 was ignored by the planner, so it is not "don't restock".
+-- Counts above 999 are clamped to the amount the screens can store.
 INSERT INTO item_targets (household_id, item_id, kind, value)
-SELECT i.user_id, i.id, 'amount', i.target_quantity
+SELECT i.user_id, i.id, 'amount', MIN(i.target_quantity, 999)
 FROM items i
-WHERE i.target_quantity IS NOT NULL
+WHERE i.target_quantity > 0
   AND COALESCE(i.replenishment_mode, 'target') = 'target'
   AND NOT EXISTS (SELECT 1 FROM item_targets t WHERE t.household_id = i.user_id AND t.item_id = i.id)
   AND NOT EXISTS (SELECT 1 FROM product_group_members m WHERE m.product_id = i.product_id)

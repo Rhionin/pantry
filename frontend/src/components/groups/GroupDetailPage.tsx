@@ -16,6 +16,7 @@ import {
 import { RulePicker } from './RulePicker';
 import { restockNote } from './restock';
 import { StopDialog } from '../restock/StopDialog';
+import { restockCopy } from '../../restock/copy';
 import { Seesaw } from './Seesaw';
 import type { RestockPreview } from '../../restock/types';
 import { seesawView, stockMeter, type SeesawDraft } from './seesaw';
@@ -241,10 +242,37 @@ export const GroupDetailPage = () => {
 
   return (
     <Stack gap="lg" className="bin-page">
-      <Group gap="md">
-        <Anchor className="history-back" component={Link} to="/inventory?filter=groups">Inventory</Anchor>
+      <Group justify="space-between">
+        <Group gap="md">
+          <Anchor className="history-back" component={Link} to="/inventory?filter=groups">Inventory</Anchor>
+          {group && (
+            <Anchor className="history-back" component={Link} to={`/groups/${group.id}/history`}>History</Anchor>
+          )}
+        </Group>
         {group && (
-          <Anchor className="history-back" component={Link} to={`/groups/${group.id}/history`}>History</Anchor>
+          <Menu position="bottom-end" withInitialFocusPlaceholder={false} transitionProps={{ duration: 0 }}>
+            <Menu.Target>
+              <ActionIcon
+                variant="subtle"
+                color="dark"
+                className="bin-icon-button"
+                style={iconInk}
+                aria-label={`Actions for ${group.name}`}
+              >
+                <KebabIcon />
+              </ActionIcon>
+            </Menu.Target>
+            <Menu.Dropdown className="bin-member-menu">
+              <Menu.Item
+                onClick={() => {
+                  void previewGroupTarget(group.id, { kind: 'months', value: 0 }).then(setGroupPreview);
+                }}
+              >
+                <span className="bin-menu-label">Don't restock…</span>
+                <span className="bin-menu-hint">{restockCopy.previewHint(group.members.length)}</span>
+              </Menu.Item>
+            </Menu.Dropdown>
+          </Menu>
         )}
       </Group>
       {error !== '' && !renaming && <Alert color="red" py="xs">{error}</Alert>}
@@ -273,17 +301,6 @@ export const GroupDetailPage = () => {
                 onDraft={setDraft}
                 onSave={saveTarget}
               />
-              <Button
-                className="restock-text-action"
-                size="xs"
-                variant="subtle"
-                mt="xs"
-                onClick={() => {
-                  void previewGroupTarget(group.id, { kind: 'months', value: 0 }).then(setGroupPreview);
-                }}
-              >
-                Don't restock this group…
-              </Button>
             </div>
             <div className="bin-copy">
               <div className="rule-block">
