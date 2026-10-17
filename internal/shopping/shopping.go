@@ -97,7 +97,9 @@ func (s *Store) RemoveItem(ctx context.Context, id string) error {
 		return fmt.Errorf("failed to remove shopping list item: %w", err)
 	}
 	defer tx.Rollback()
-	if item.Source == "auto" {
+	// Removing an open auto line keeps it off this trip. Clearing a bought
+	// line ends that protection, so the next list may plan the item again.
+	if item.Source == "auto" && item.PurchasedAt == nil {
 		var groupID any
 		if item.GroupID != "" {
 			groupID = item.GroupID

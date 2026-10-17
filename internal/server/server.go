@@ -570,7 +570,10 @@ func newAPIMux(
 		Ledger:           ledger,
 	}
 	providerLedgerGetHandler := &ProviderLedgerGetHandler{ProviderLedgerHandler: *providerLedgerHandler}
-	providerLedgerResetHandler := &ProviderLedgerResetHandler{ProviderLedgerHandler: *providerLedgerHandler}
+	providerLedgerResetHandler := &ProviderLedgerResetHandler{
+		ProviderLedgerHandler: *providerLedgerHandler,
+		ShoppingList:          shoppingList,
+	}
 
 	apiMux.HandleFunc("GET /api/providers", HandleJSON(listProvidersHandler.Handle))
 	apiMux.HandleFunc("GET /api/providers/{providerId}/authorize", HandleJSON(providerAuthorizeHandler.Handle))

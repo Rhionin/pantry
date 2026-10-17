@@ -68,9 +68,7 @@ func TestInventoryWipeHandler(t *testing.T) {
 					path:           "/api/inventory",
 					expectedStatus: http.StatusOK,
 					assertions: []assertion{
-						{path: "$[0].item.id", value: "item-wipe"},
-						{path: "$[0].item.product.name", value: "Milk"},
-						{path: "$[0].instanceCount", value: float64(0)},
+						{path: "$", value: []interface{}{}},
 					},
 				},
 				httpExchange{

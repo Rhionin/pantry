@@ -75,6 +75,9 @@ func writeSnapshot(db *sql.DB, spec snapshotSpec) error {
 		return nil
 	}
 	dir := filepath.Dir(path)
+	// A killed run can leave a temp that holds credentials. It is not a
+	// snapshot, and it should not still be on disk at the next startup.
+	removeSnapshotTemps(dir)
 	matches, err := filepath.Glob(filepath.Join(dir, spec.prefix+"-*.db"))
 	if err != nil {
 		return fmt.Errorf("%s: %w", spec.fail, err)
@@ -96,6 +99,12 @@ func writeSnapshot(db *sql.DB, spec snapshotSpec) error {
 		_ = os.Remove(temp)
 		return fmt.Errorf("%s: %w", spec.fail, err)
 	}
+	// VACUUM INTO follows the process umask, which leaves the file readable
+	// by other users. The snapshot is a full pantry copy.
+	if err := os.Chmod(temp, 0o600); err != nil {
+		_ = os.Remove(temp)
+		return fmt.Errorf("%s: %w", spec.fail, err)
+	}
 	if err := os.Rename(temp, dest); err != nil {
 		_ = os.Remove(temp)
 		return fmt.Errorf("%s: %w", spec.fail, err)
@@ -105,6 +114,18 @@ func writeSnapshot(db *sql.DB, spec snapshotSpec) error {
 	}
 	log.Printf("%s: %s", spec.wrote, dest)
 	return nil
+}
+
+func removeSnapshotTemps(dir string) {
+	for _, prefix := range []string{"pantry-pre-groups", "pantry-pre-restock", "pantry-pre-targets"} {
+		matches, err := filepath.Glob(filepath.Join(dir, "."+prefix+"-*.db.tmp"))
+		if err != nil {
+			continue
+		}
+		for _, match := range matches {
+			_ = os.Remove(match)
+		}
+	}
 }
 
 func syncFile(path string) error {

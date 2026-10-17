@@ -142,15 +142,22 @@ WHERE i.target_quantity > 0
 
 -- Copy the old household supply window into the new default once.
 -- Later reads and writes use only the new keys.
+-- Only a whole number from 1 to 12 is a window. Anything else is left unset
+-- so the household default stays at 3 months.
 INSERT INTO app_settings (key, value)
 SELECT 'supply_target_kind', 'months'
 WHERE EXISTS (
-    SELECT 1 FROM app_settings WHERE key = 'supply_months' AND TRIM(value) <> ''
+    SELECT 1 FROM app_settings
+    WHERE key = 'supply_months'
+      AND printf('%d', CAST(TRIM(value) AS INTEGER)) = TRIM(value)
+      AND CAST(TRIM(value) AS INTEGER) BETWEEN 1 AND 12
 )
 AND NOT EXISTS (SELECT 1 FROM app_settings WHERE key = 'supply_target_kind');
 
 INSERT INTO app_settings (key, value)
 SELECT 'supply_target_value', TRIM(value)
 FROM app_settings
-WHERE key = 'supply_months' AND TRIM(value) <> ''
+WHERE key = 'supply_months'
+  AND printf('%d', CAST(TRIM(value) AS INTEGER)) = TRIM(value)
+  AND CAST(TRIM(value) AS INTEGER) BETWEEN 1 AND 12
 AND NOT EXISTS (SELECT 1 FROM app_settings WHERE key = 'supply_target_value');

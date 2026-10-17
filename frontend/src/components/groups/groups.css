@@ -70,6 +70,15 @@
   color: var(--suggestion-danger);
 }
 
+/* The default unchecked box is about 1.4:1 on the page. UI components need 3:1. */
+.suggestion-member .mantine-Checkbox-input:not(:checked) {
+  border-color: var(--mantine-color-gray-7);
+}
+
+:where([data-mantine-color-scheme='dark']) .suggestion-member .mantine-Checkbox-input:not(:checked) {
+  border-color: var(--mantine-color-gray-3);
+}
+
 .bin-page .suggestion-member .suggestion-name {
   color: inherit !important;
 }

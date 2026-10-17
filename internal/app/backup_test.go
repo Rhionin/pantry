@@ -180,15 +180,22 @@ func TestSnapshotIgnoresALeftoverTempFile(t *testing.T) {
 	if len(matches) != 1 {
 		t.Fatalf("backups: %v", matches)
 	}
-	if _, err := os.Stat(leftover); err != nil {
-		t.Fatal(err)
+	if _, err := os.Stat(leftover); !os.IsNotExist(err) {
+		t.Fatalf("leftover temp still present: %v", err)
 	}
 	temps, err := filepath.Glob(filepath.Join(dir, ".pantry-pre-targets-*.db.tmp"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(temps) != 1 || temps[0] != leftover {
+	if len(temps) != 0 {
 		t.Fatalf("temp files: %v", temps)
+	}
+	info, err := os.Stat(matches[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Mode().Perm() != 0o600 {
+		t.Fatalf("snapshot mode %o, want 0600", info.Mode().Perm())
 	}
 	raw, err := os.ReadFile(matches[0])
 	if err != nil {

@@ -207,6 +207,9 @@ func wipeHousehold(ctx context.Context, db *sql.DB) error {
 		`DELETE FROM item_instances WHERE item_id IN (SELECT id FROM items WHERE user_id = ?)`,
 		`DELETE FROM stock_in_events WHERE product_id IN (SELECT product_id FROM items WHERE user_id = ?)`,
 		`DELETE FROM stock_moves WHERE item_id IN (SELECT id FROM items WHERE user_id = ?)`,
+		// Keep the item row so its target can reattach, but hide it until a
+		// stock-in after this wipe. Inventory and the planner both skip it.
+		`UPDATE items SET shelved = 1 WHERE user_id = ?`,
 	}
 	for _, query := range statements {
 		if _, err := tx.ExecContext(ctx, query, householdUser); err != nil {
@@ -234,7 +237,7 @@ func loadFacts(ctx context.Context, tx *sql.Tx, phase Phase) ([]Fact, error) {
 		JOIN products p ON p.id = i.product_id
 		LEFT JOIN product_group_members gm ON gm.product_id = i.product_id
 		LEFT JOIN product_groups g ON g.id = gm.group_id AND g.user_id = i.user_id
-		WHERE i.user_id = ?
+		WHERE i.user_id = ? AND i.shelved = 0
 		ORDER BY i.product_id, i.id`, householdUser)
 	if err != nil {
 		return nil, fmt.Errorf("could not read supply: %w", err)
