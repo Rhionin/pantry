@@ -6,18 +6,40 @@ set -euo pipefail
 
 # The suite runs where /opt/pantry/auth.caddy exists, the way the Pi does.
 # A mount namespace keeps that decoy off the host. 437999f reads the literal
-# path, so marker_no_auth clears the marker and this run fails.
-if [[ "${PANTRY_UPDATE_DECOY:-}" != 1 ]]; then
+# path, so marker_no_auth clears the marker and this run fails. A runner that
+# cannot make a user namespace still executes the literal-path guard below.
+if [[ "${PANTRY_UPDATE_DECOY:-}" != 1 && "${PANTRY_UPDATE_DECOY:-}" != skipped ]]; then
+  decoy_log=$(mktemp)
+  set +e
   # $1 is the script path for the inner bash, not this shell.
   # shellcheck disable=SC2016
-  exec unshare --user --map-root-user --mount bash -c '
+  unshare --user --map-root-user --mount bash -c '
     set -euo pipefail
     mount -t tmpfs tmpfs /opt
     mkdir -p /opt/pantry
     printf "%s\n" "basic_auth bcrypt Pantry {" "}" > /opt/pantry/auth.caddy
     export PANTRY_UPDATE_DECOY=1
     exec bash "$1"
-  ' bash "$0"
+  ' bash "$0" >"$decoy_log" 2>&1
+  decoy_rc=$?
+  set -e
+  if [[ "$decoy_rc" -eq 0 ]]; then
+    cat "$decoy_log"
+    rm -f "$decoy_log"
+    exit 0
+  fi
+  if grep -q 'pantry_update_test: decoy auth.caddy is mounted' "$decoy_log"; then
+    cat "$decoy_log" >&2
+    rm -f "$decoy_log"
+    exit "$decoy_rc"
+  fi
+  echo "pantry_update_test: could not mount a decoy /opt/pantry ($(tr '\n' ' ' < "$decoy_log")); the literal-path guard still runs" >&2
+  rm -f "$decoy_log"
+  export PANTRY_UPDATE_DECOY=skipped
+fi
+
+if [[ "${PANTRY_UPDATE_DECOY:-}" == 1 ]]; then
+  echo "pantry_update_test: decoy auth.caddy is mounted"
 fi
 
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
