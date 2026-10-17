@@ -176,8 +176,7 @@ func TestShoppingListUsesGroups(t *testing.T) {
 			setup: func(env testEnv) {
 				createItemViaStockIn(env.T, env.DB, env.ProductStore, "user-1", "prod-a", "Can A", "item-a")
 				createItemViaStockIn(env.T, env.DB, env.ProductStore, "user-1", "prod-b", "Can B", "item-b")
-				months := 3
-				if _, err := group.NewGroups(env.DB).Create(env.T.Context(), "Cut green beans", []string{"prod-a", "prod-b"}, &group.TargetInput{Window: &months}); err != nil {
+				if _, err := group.NewGroups(env.DB).Create(env.T.Context(), "Cut green beans", []string{"prod-a", "prod-b"}, nil); err != nil {
 					env.T.Fatal(err)
 				}
 				started := time.Now().UTC().Add(-60 * 24 * time.Hour)
@@ -198,7 +197,7 @@ func TestShoppingListUsesGroups(t *testing.T) {
 			},
 		},
 		{
-			name: "a group with no target plans each item on its own",
+			name: "a group with no target pools at the household window",
 			setup: func(env testEnv) {
 				createItemViaStockIn(env.T, env.DB, env.ProductStore, "user-1", "prod-a", "Can A", "item-a")
 				createItemViaStockIn(env.T, env.DB, env.ProductStore, "user-1", "prod-b", "Can B", "item-b")
@@ -215,27 +214,10 @@ func TestShoppingListUsesGroups(t *testing.T) {
 				method:         "POST",
 				path:           "/api/shopping-list/fill",
 				expectedStatus: http.StatusOK,
-			},
-			afterRequest: func(env testEnv) {
-				handler := stagedCartHandler(env)
-				body := exchangeJSON(env.T, handler, http.MethodGet, "/api/shopping-list", ``, http.StatusOK)
-				var rows []struct {
-					ItemID string `json:"itemId"`
-					Group  *struct {
-						Name string `json:"name"`
-					} `json:"group"`
-				}
-				if err := json.Unmarshal(body, &rows); err != nil {
-					env.T.Fatal(err)
-				}
-				if len(rows) == 0 {
-					env.T.Fatal("expected each item to be planned on its own")
-				}
-				for _, row := range rows {
-					if row.Group != nil {
-						env.T.Fatalf("a group with no target must not pool: %s", body)
-					}
-				}
+				assertions: []assertion{
+					{path: "$[0].group.name", value: "Cut green beans"},
+					{path: "$[1]", absent: true},
+				},
 			},
 		},
 		{

@@ -397,8 +397,9 @@ func newAPIMux(
 	createHandler.Groups = groups
 	updateHandler.Groups = groups
 	lookupHandler.Groups = groups
-	supplyOverrideGetHandler := &SupplyOverrideGetHandler{Supply: supplySvc, Groups: groups}
-	supplyOverridePutHandler := &SupplyOverridePutHandler{Supply: supplySvc, Groups: groups}
+	restockTargets := restock.NewTargets(db)
+	supplyOverrideGetHandler := &SupplyOverrideGetHandler{Targets: restockTargets, Groups: groups}
+	supplyOverridePutHandler := &SupplyOverridePutHandler{Targets: restockTargets, Groups: groups}
 	onboardingCompleteHandler := &OnboardingCompleteHandler{Supply: supplySvc}
 
 	apiMux.HandleFunc("GET /api/inventory", HandleJSON(inventoryListHandler.Handle))
@@ -427,7 +428,6 @@ func newAPIMux(
 	apiMux.HandleFunc("PUT /api/products/{id}/supply-override", HandleJSON(supplyOverridePutHandler.Handle))
 	apiMux.HandleFunc("POST /api/onboarding/complete", HandleJSON(onboardingCompleteHandler.Handle))
 
-	restockTargets := restock.NewTargets(db)
 	restockHandler := &RestockHandler{Targets: restockTargets}
 	apiMux.HandleFunc("GET /api/restock", HandleJSON(restockHandler.Snapshot))
 	apiMux.HandleFunc("PUT /api/restock/household", HandleJSON(restockHandler.PutHousehold))

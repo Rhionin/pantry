@@ -43,11 +43,6 @@
   text-underline-offset: 0.16em;
 }
 
-.bin-page .restock-text-action {
-  --button-color: var(--bin-link);
-  color: var(--bin-link);
-}
-
 .bin-page .mantine-Drawer-header,
 .bin-page .mantine-Drawer-title {
   color: var(--mantine-color-dark-9);

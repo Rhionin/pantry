@@ -334,7 +334,7 @@ func planResolved(now time.Time, phase Phase, account Months, facts []Fact) []Li
 			}
 			continue
 		}
-		if fact.Resolved.Level == restock.LevelGroup && fact.Group != "" {
+		if fact.Group != "" {
 			pools[string(fact.Group)] = append(pools[string(fact.Group)], fact)
 			continue
 		}
@@ -345,10 +345,12 @@ func planResolved(now time.Time, phase Phase, account Months, facts []Fact) []Li
 	}
 	if !phase.isOpening() {
 		for _, members := range pools {
-			if len(members) == 0 || members[0].Resolved.Target.Value == 0 {
+			pooled, alone := splitResolvedGroup(members)
+			solos = append(solos, alone...)
+			if len(pooled) == 0 || groupTargetIsZero(pooled) {
 				continue
 			}
-			if line, ok := planProductGroup(now, phase, account, members); ok {
+			if line, ok := planProductGroup(now, phase, account, pooled); ok {
 				lines = append(lines, line)
 			}
 		}
@@ -364,15 +366,42 @@ func planResolved(now time.Time, phase Phase, account Months, facts []Fact) []Li
 	return lines
 }
 
+// splitResolvedGroup keeps a group together at the household window when the
+// group itself sets nothing. An item target above 0 is planned on its own.
+// An item target of 0 stays in the pool so its stock still counts, and it is
+// not the product the group buys.
+func splitResolvedGroup(members []Fact) (pooled []Fact, solos []Fact) {
+	for _, member := range members {
+		if member.Resolved.Level == restock.LevelItem && member.Resolved.Target.Value > 0 {
+			solos = append(solos, withResolvedOverride(member))
+			continue
+		}
+		if member.Resolved.Level == restock.LevelItem && member.Resolved.Target.Value == 0 {
+			member.NoRestock = true
+		}
+		pooled = append(pooled, member)
+	}
+	return pooled, solos
+}
+
+func groupTargetIsZero(members []Fact) bool {
+	for _, member := range members {
+		if member.Resolved.Level == restock.LevelGroup && member.Resolved.Target.Value == 0 {
+			return true
+		}
+	}
+	return false
+}
+
 func withResolvedOverride(fact Fact) Fact {
 	target := fact.Resolved.Target
 	switch {
 	case target.Kind == restock.KindMonths && target.Value > 0:
-		if override, err := Window(Months(int(target.Value))); err == nil {
+		if override, err := Window(Months(roundHalfUp(target.Value))); err == nil {
 			fact.Override = override
 		}
 	case target.Kind == restock.KindAmount && target.Value > 0:
-		if override, err := Quantity(Units(int(target.Value))); err == nil {
+		if override, err := Quantity(Units(roundHalfUp(target.Value))); err == nil {
 			fact.Override = override
 		}
 	}

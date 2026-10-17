@@ -5,10 +5,12 @@ package syncsnap
 import (
 	"context"
 	"database/sql"
+	"math"
 	"sort"
 	"time"
 
 	"github.com/Rhionin/stockbot/internal/group"
+	"github.com/Rhionin/stockbot/internal/restock"
 )
 
 const householdUser = "user-1"
@@ -125,6 +127,9 @@ func Build(ctx context.Context, db *sql.DB, now time.Time) (Snapshot, error) {
 		return Snapshot{}, err
 	}
 	if err := attachItemTargets(ctx, db, byID); err != nil {
+		return Snapshot{}, err
+	}
+	if err := applyResolvedRestock(ctx, db, byID); err != nil {
 		return Snapshot{}, err
 	}
 	for i := range products {
@@ -310,7 +315,7 @@ func loadGroups(ctx context.Context, db *sql.DB) ([]Group, error) {
 
 func attachMembers(ctx context.Context, db *sql.DB, products map[string]*Product, groups map[string]*Group) error {
 	rows, err := db.QueryContext(ctx, `
-		SELECT group_id, product_id, no_restock
+		SELECT group_id, product_id
 		FROM product_group_members
 		ORDER BY group_id, product_id`)
 	if err != nil {
@@ -319,8 +324,7 @@ func attachMembers(ctx context.Context, db *sql.DB, products map[string]*Product
 	defer rows.Close()
 	for rows.Next() {
 		var groupID, productID string
-		var noRestock int
-		if err := rows.Scan(&groupID, &productID, &noRestock); err != nil {
+		if err := rows.Scan(&groupID, &productID); err != nil {
 			return err
 		}
 		if g := groups[groupID]; g != nil {
@@ -328,9 +332,6 @@ func attachMembers(ctx context.Context, db *sql.DB, products map[string]*Product
 		}
 		if p := products[productID]; p != nil {
 			p.GroupID = groupID
-			if noRestock == 1 {
-				p.NoRestock = true
-			}
 		}
 	}
 	return rows.Err()
@@ -359,16 +360,36 @@ func attachItemTargets(ctx context.Context, db *sql.DB, byProduct map[string]*Pr
 		if p == nil {
 			continue
 		}
-		if value == 0 {
-			p.NoRestock = true
-			continue
-		}
-		if kind == "amount" {
-			n := int(value)
+		if kind == "amount" && value > 0 {
+			n := roundHalfUp(value)
 			p.TargetQuantity = &n
 		}
 	}
 	return rows.Err()
+}
+
+// applyResolvedRestock sets noRestock from the target the household actually
+// uses. Zero at any level means the mobile client should not restock it.
+func applyResolvedRestock(ctx context.Context, db *sql.DB, byProduct map[string]*Product) error {
+	snap, err := restock.Load(ctx, db, restock.HouseholdID)
+	if err != nil {
+		return err
+	}
+	for _, item := range snap.Items {
+		p := byProduct[item.ProductID]
+		if p == nil {
+			continue
+		}
+		p.NoRestock = item.Target.Value == 0
+	}
+	return nil
+}
+
+func roundHalfUp(x float64) int {
+	if x <= 0 {
+		return 0
+	}
+	return int(math.Floor(x + 0.5))
 }
 
 func loadInstances(ctx context.Context, db *sql.DB) ([]Instance, error) {
