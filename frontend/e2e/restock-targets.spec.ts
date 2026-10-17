@@ -1,5 +1,5 @@
 import AxeBuilder from '@axe-core/playwright'
-import { expect, test, type Page } from '@playwright/test'
+import { expect, test, type Locator, type Page } from '@playwright/test'
 import { commitSelectedScan, createKnownProduct, inventoryRow, resetToStockIn, scanBarcode, setScannerMode } from './helpers'
 
 const barcode = '210000231231'
@@ -23,6 +23,37 @@ async function setScheme(page: Page, scheme: 'light' | 'dark') {
   }, scheme)
   await page.reload()
   await expect.poll(() => page.evaluate(() => document.documentElement.getAttribute('data-mantine-color-scheme'))).toBe(scheme)
+}
+
+async function applySchemes(page: Page, os: 'light' | 'dark', app: 'light' | 'dark') {
+  await page.emulateMedia({ colorScheme: os })
+  await setScheme(page, app)
+}
+
+async function expectInside(target: Locator, containerSelector: string) {
+  const box = await target.evaluate((el, selector) => {
+    const parent = el.closest(selector)
+    if (!parent) return { ok: false, reason: `missing ${selector}` }
+    const elBox = el.getBoundingClientRect()
+    const parentBox = parent.getBoundingClientRect()
+    const leftGap = elBox.left - parentBox.left
+    const rightGap = parentBox.right - elBox.right
+    return {
+      ok: leftGap >= -1
+        && rightGap >= -1
+        && el.scrollWidth <= el.clientWidth + 1
+        && el.scrollHeight <= el.clientHeight + 1
+        && parent.scrollWidth <= parent.clientWidth + 1
+        && parentBox.right <= window.innerWidth + 1,
+      leftGap,
+      rightGap,
+      elScroll: [el.scrollWidth, el.clientWidth, el.scrollHeight, el.clientHeight],
+      parentScroll: [parent.scrollWidth, parent.clientWidth],
+      parentRight: parentBox.right,
+      viewport: window.innerWidth,
+    }
+  }, containerSelector)
+  expect(box.ok, JSON.stringify(box)).toBe(true)
 }
 
 test('settings has one household default and readable restock screens', async ({ page, request }) => {
@@ -99,4 +130,108 @@ test('don\'t restock removes the shopping row and keeps it off after reload', as
 
   await page.reload()
   await expect(page.getByRole('row').filter({ hasText: productName })).toHaveCount(0)
+})
+
+test('restock headings follow the app theme when the OS scheme differs', async ({ page, request }) => {
+  test.setTimeout(120_000)
+  const themeBarcode = '210000240111'
+  const themeName = 'Theme oats'
+  await createKnownProduct(request, {
+    barcode: themeBarcode,
+    name: themeName,
+    category: 'Dry goods',
+    unitOfMeasure: 'bag',
+  })
+  await page.goto('/')
+  await resetToStockIn(page)
+  await commitSelectedScan(page, await scanBarcode(page, themeBarcode))
+
+  const inventory = await request.get('/api/inventory')
+  expect(inventory.ok()).toBe(true)
+  const items = await inventory.json() as { item: { id: string; product: { name: string } } }[]
+  const item = items.find((row) => row.item.product.name === themeName)
+  if (!item) throw new Error('theme oats missing from inventory')
+  const restock = await request.get('/api/restock')
+  expect(restock.ok()).toBe(true)
+  const snapshot = await restock.json() as { categories: { id: string; name: string }[] }
+  const produce = snapshot.categories.find((category) => category.name === 'Produce')
+  if (!produce) throw new Error('Produce category missing')
+  const added = await request.post(`/api/restock/items/${item.item.id}/categories`, {
+    data: { categoryId: produce.id },
+  })
+  expect(added.ok()).toBe(true)
+
+  for (const [os, app] of [['light', 'dark'], ['dark', 'light']] as const) {
+    await page.goto('/settings')
+    await applySchemes(page, os, app)
+    await expect(page.getByRole('heading', { name: 'Restock targets' })).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'Categories' })).toBeVisible()
+    await expectContrast(page, '.restock-settings h2')
+    const link = page.locator('.restock-row .name a').first()
+    await expect(link).toBeVisible()
+    await expectContrast(page, '.restock-row .name a')
+    const colors = await link.evaluate((el) => {
+      const scheme = document.documentElement.getAttribute('data-mantine-color-scheme')
+      const token = scheme === 'dark' ? '--mantine-color-teal-4' : '--mantine-color-teal-8'
+      const probe = document.createElement('span')
+      probe.style.color = `var(${token})`
+      document.body.appendChild(probe)
+      const tokenColor = getComputedStyle(probe).color
+      probe.remove()
+      return { color: getComputedStyle(el).color, tokenColor }
+    })
+    expect(colors.color).toBe(colors.tokenColor)
+
+    await page.goto(`/inventory/categories/${produce.id}`)
+    await page.getByRole('button', { name: 'Actions for Produce' }).click()
+    await page.getByRole('menuitem', { name: /Don't restock/ }).click()
+    const dialog = page.getByRole('dialog', { name: 'Stop restocking Produce?' })
+    await expect(dialog).toBeVisible()
+    await page.waitForFunction(() => {
+      const content = document.querySelector('.mantine-Modal-content')
+      if (!content) return false
+      const style = getComputedStyle(content)
+      const opacity = Number.parseFloat(style.opacity)
+      const settled = style.transform === 'none' || style.transform === 'matrix(1, 0, 0, 1, 0, 0)'
+      return opacity >= 0.99 && settled
+    })
+    await expectContrast(page, '[role="dialog"] h2')
+    await expect(dialog.locator('.restock-stop-after', { hasText: '0' })).toBeVisible()
+    await expectContrast(page, '.restock-stop-after')
+    await page.keyboard.press('Escape')
+
+    await page.goto('/shopping')
+    await page.getByRole('button', { name: /the list$/ }).click()
+    await expect(page.getByRole('heading', { name: 'Add an item' })).toBeVisible()
+    await expectContrast(page, 'form h2')
+  }
+})
+
+test('phone width keeps the default pill and the not-restocked filter inside', async ({ page, request }) => {
+  const created = await request.post('/api/products', {
+    data: { name: 'Narrow rice', category: 'Pantry', unitOfMeasure: 'bag' },
+  })
+  expect(created.ok()).toBe(true)
+  const products = await request.get('/api/products')
+  expect(products.ok()).toBe(true)
+  const list = await products.json() as { id: string; name: string }[]
+  const rice = list.find((product) => product.name === 'Narrow rice')
+  if (!rice) throw new Error('narrow rice missing')
+  const group = await request.post('/api/groups', {
+    data: { name: 'Narrow bags', productIds: [rice.id] },
+  })
+  expect(group.ok()).toBe(true)
+  const body = await group.json() as { id: string }
+
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.goto(`/groups/${body.id}`)
+  const pill = page.locator('.seesaw-pill', { has: page.locator('.seesaw-default') })
+  await expect(pill).toBeVisible()
+  await expect(pill).toContainText('3 mo')
+  await expectInside(pill, '.seesaw')
+
+  await page.goto('/inventory')
+  const chip = page.getByRole('button', { name: /^Not restocked/ })
+  await expect(chip).toBeVisible()
+  await expectInside(chip, '.shelf-filters')
 })

@@ -37,7 +37,6 @@
 @media (prefers-color-scheme: dark) {
   :root {
     --text: #9ca3af;
-    --text-h: #f3f4f6;
     --bg: #16171d;
     --border: #2e303a;
     --code-bg: #1f2028;
@@ -54,7 +53,14 @@
   }
 }
 
+/* Headings follow the app theme. The OS media query is the same specificity,
+   so these later rules win once Mantine has set its scheme attribute. */
+[data-mantine-color-scheme='light'] {
+  --text-h: #08060d;
+}
+
 [data-mantine-color-scheme='dark'] {
+  --text-h: #f3f4f6;
   --stock-full-ink: #5eead4;
   --stock-low-ink: #fcd34d;
   --stock-out-ink: #fca5a5;
