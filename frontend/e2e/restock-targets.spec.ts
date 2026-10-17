@@ -28,7 +28,7 @@ async function setScheme(page: Page, scheme: 'light' | 'dark') {
 test('settings has one household default and readable restock screens', async ({ page, request }) => {
   await page.goto('/settings')
   await expect(page.getByRole('heading', { name: 'Settings' })).toBeVisible()
-  await expect(page.getByText('Household default')).toBeVisible()
+  await expect(page.getByRole('paragraph').filter({ hasText: /^Household default$/ })).toBeVisible()
   await expect(page.getByText(/How far ahead the shopping list looks/)).toHaveCount(0)
   await expect(page.getByRole('button', { name: 'Change' })).toHaveCount(1)
   await expectContrast(page, '.restock-settings')
