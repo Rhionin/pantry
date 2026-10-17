@@ -128,7 +128,40 @@ if [[ "$1" == inspect ]]; then
     exit 1
   fi
   if [[ "$format" == *State.Status* ]]; then
-    printf '%s %s\n' "${STUB_CONTAINER_STATUS:-running}" "${STUB_RESTART_COUNT:-0}"
+    name=${target#cid-}
+    status=${STUB_CONTAINER_STATUS:-running}
+    restarts=${STUB_RESTART_COUNT:-0}
+    if [[ -n "${STUB_STATUS_TSV:-}" && -f "$STUB_STATUS_TSV" ]]; then
+      while IFS=$'\t' read -r svc st rc || [[ -n "${svc:-}" ]]; do
+        [[ -z "${svc:-}" || "$svc" == \#* ]] && continue
+        [[ "$svc" == "$name" ]] || continue
+        status=$st
+        restarts=${rc:-0}
+        break
+      done < "$STUB_STATUS_TSV"
+    fi
+    if [[ -n "${STUB_BUMP_SERVICE:-}" && "$name" == "$STUB_BUMP_SERVICE" && -n "${STUB_INSPECT_STATE:-}" ]]; then
+      n=0
+      if [[ -f "$STUB_INSPECT_STATE" ]]; then
+        n=$(awk -F '\t' -v s="$name" '$1 == s { print $2; exit }' "$STUB_INSPECT_STATE")
+        n=${n:-0}
+      fi
+      n=$((n + 1))
+      tmp=$(mktemp)
+      if [[ -f "$STUB_INSPECT_STATE" ]]; then
+        awk -F '\t' -v s="$name" '$1 != s { print }' "$STUB_INSPECT_STATE" > "$tmp"
+      fi
+      printf '%s\t%s\n' "$name" "$n" >> "$tmp"
+      mv "$tmp" "$STUB_INSPECT_STATE"
+      bump_on=${STUB_BUMP_ON_CALL:-2}
+      if [[ "$n" -ge "$bump_on" ]]; then
+        restarts=${STUB_BUMP_RESTARTS:-1}
+        if [[ -n "${STUB_BUMP_STATUS:-}" ]]; then
+          status=$STUB_BUMP_STATUS
+        fi
+      fi
+    fi
+    printf '%s %s\n' "$status" "$restarts"
     exit 0
   fi
   if [[ "$format" == *State.Running* ]]; then
@@ -177,6 +210,15 @@ fi
 if [[ "$1" == image && "$2" == inspect ]]; then
   format=$(format_arg "$@")
   target=${*: -1}
+  if [[ -n "${STUB_ABSENT_REFS:-}" ]]; then
+    IFS=',' read -ra absent_refs <<< "$STUB_ABSENT_REFS"
+    for absent in "${absent_refs[@]}"; do
+      if [[ -n "$absent" && "$target" == "$absent" ]]; then
+        echo "stub docker image inspect: absent ${target}" >&2
+        exit 1
+      fi
+    done
+  fi
   tagged_id=""
   tagged_dig=""
   if [[ "$target" != sha256:* ]]; then
@@ -306,6 +348,13 @@ if [[ "$url" == *"/api/build"* ]]; then
     fi
     exit 0
   fi
+  if [[ -n "${STUB_BUILD_QUEUE:-}" && -s "$STUB_BUILD_QUEUE" ]]; then
+    body=$(head -n 1 "$STUB_BUILD_QUEUE")
+    tail -n +2 "$STUB_BUILD_QUEUE" > "${STUB_BUILD_QUEUE}.next"
+    mv "${STUB_BUILD_QUEUE}.next" "$STUB_BUILD_QUEUE"
+    printf '%s' "$body"
+    exit 0
+  fi
   [[ "${STUB_BUILD_RC:-0}" -eq 0 ]] || exit "$STUB_BUILD_RC"
   printf '%s' "${STUB_BUILD_BODY-}"
   exit 0
@@ -368,6 +417,7 @@ run_update() {
     STUB_BUILD_BODY="${STUB_BUILD_BODY-}" \
     STUB_BUILD_RC="${STUB_BUILD_RC:-0}" \
     STUB_HEALTH_QUEUE="${STUB_HEALTH_QUEUE:-}" \
+    STUB_BUILD_QUEUE="${STUB_BUILD_QUEUE:-}" \
     STUB_UP_RC="${STUB_UP_RC:-0}" \
     STUB_ROLLBACK_RC="${STUB_ROLLBACK_RC:-0}" \
     STUB_ROLLBACK_HEALTH_RC="${STUB_ROLLBACK_HEALTH_RC:-0}" \
@@ -376,12 +426,20 @@ run_update() {
     STUB_CONTAINER_STATUS="${STUB_CONTAINER_STATUS:-running}" \
     STUB_RESTART_COUNT="${STUB_RESTART_COUNT:-0}" \
     STUB_CONTAINER_LOGS="${STUB_CONTAINER_LOGS:-}" \
+    STUB_STATUS_TSV="${STUB_STATUS_TSV:-}" \
+    STUB_BUMP_SERVICE="${STUB_BUMP_SERVICE:-}" \
+    STUB_BUMP_ON_CALL="${STUB_BUMP_ON_CALL:-2}" \
+    STUB_BUMP_RESTARTS="${STUB_BUMP_RESTARTS:-1}" \
+    STUB_BUMP_STATUS="${STUB_BUMP_STATUS:-}" \
+    STUB_INSPECT_STATE="$work/inspect-counts.tsv" \
+    STUB_ABSENT_REFS="${STUB_ABSENT_REFS:-}" \
     PANTRY_DIR="$pantry" \
     PANTRY_SETUP_SKIP_ROOT=1 \
     PANTRY_TEST_PROJECT_PREFIX="${PANTRY_TEST_PROJECT_PREFIX:-}" \
     PANTRY_UPDATE_HEALTH_TIMEOUT="${PANTRY_UPDATE_HEALTH_TIMEOUT:-0}" \
     PANTRY_UPDATE_HEALTH_INTERVAL="${PANTRY_UPDATE_HEALTH_INTERVAL:-1}" \
     PANTRY_UPDATE_MIGRATION_TIMEOUT="${PANTRY_UPDATE_MIGRATION_TIMEOUT:-600}" \
+    PANTRY_UPDATE_SETTLE_SECONDS="${PANTRY_UPDATE_SETTLE_SECONDS:-0}" \
     PANTRY_UPDATE_MIN_FREE_KIB="${PANTRY_UPDATE_MIN_FREE_KIB:-65536}" \
     PATH="$bin:$PATH" \
     bash "$UPDATE" >"$out" 2>"$err"
@@ -421,6 +479,7 @@ env_unchanged() {
 
 NEW_COMMIT=0123456789abcdef0123456789abcdef01234567
 OLD_COMMIT=ffffffffffffffffffffffffffffffffffffffff
+MID_COMMIT=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 
 # Healthy new image: digest recorded before pull, health and commit match,
 # previous digest is not re-pinned, .env is left alone.
@@ -739,5 +798,151 @@ have "$LAST_OUT" "KiB free" "low disk names the free space"
 lack "$LAST_SEQUENCE" " up -d" "low disk does not start containers"
 unset PANTRY_UPDATE_MIN_FREE_KIB
 
-rm -rf "$healthy" "$noop" "$mismatch" "$unhealthy" "$caddy_only" "$rollback_fail" "$unlabeled" "$polled" "$migrating" "$pending" "$exited" "$proxied" "$full_disk"
+# Pantry and grocy-sync both change. grocy-sync exits after a healthy pantry
+# check, so only the sidecar digest is rejected.
+grocy=$(mktemp -d)
+prepare_pantry "$grocy"
+write_images "$grocy/images.tsv" \
+  sha256:newpantry ghcr.io/rhionin/pantry@sha256:newpantry \
+  sha256:runcaddy caddy@sha256:oldcaddy
+printf '%s\n' $'grocy-sync\tghcr.io/rhionin/pantry-grocy-sync:latest\tsha256:rungrocy\tghcr.io/rhionin/pantry-grocy-sync@sha256:oldgrocy\tsha256:newgrocy\tghcr.io/rhionin/pantry-grocy-sync@sha256:newgrocy\t' >> "$grocy/images.tsv"
+printf '%s\n' $'grocy-sync\texited\t0' > "$grocy/status.tsv"
+STUB_STATUS_TSV="$grocy/status.tsv"
+STUB_HEALTH_BODY='{"status":"ok"}'
+STUB_BUILD_BODY="{\"commit\":\"${NEW_COMMIT}\"}"
+run_update "$grocy"
+[[ "$LAST_RC" -ne 0 ]] || fail "grocy-sync exit should fail the deploy: $LAST_OUT"
+have "$LAST_OUT" "grocy-sync is not running" "grocy-sync exit is reported"
+have "$LAST_OUT" "pantry update: healthy, running commit ${NEW_COMMIT}" "pantry passed health before the sidecar check"
+have "$(cat "$grocy/.update-rejected-digest")" $'grocy-sync\tghcr.io/rhionin/pantry-grocy-sync@sha256:newgrocy' "grocy-sync exit rejects the grocy digest"
+lack "$(cat "$grocy/.update-rejected-digest")" "newpantry" "grocy-sync exit does not reject the healthy pantry digest"
+unset STUB_STATUS_TSV STUB_HEALTH_BODY STUB_BUILD_BODY
+
+# compose up fails because grocy-sync is not running. Pantry's health check
+# still passed, so its digest is not rejected either.
+grocy_up=$(mktemp -d)
+prepare_pantry "$grocy_up"
+write_images "$grocy_up/images.tsv" \
+  sha256:newpantry ghcr.io/rhionin/pantry@sha256:newpantry \
+  sha256:runcaddy caddy@sha256:oldcaddy
+printf '%s\n' $'grocy-sync\tghcr.io/rhionin/pantry-grocy-sync:latest\tsha256:rungrocy\tghcr.io/rhionin/pantry-grocy-sync@sha256:oldgrocy\tsha256:newgrocy\tghcr.io/rhionin/pantry-grocy-sync@sha256:newgrocy\t' >> "$grocy_up/images.tsv"
+printf '%s\n' $'grocy-sync\texited\t0' > "$grocy_up/status.tsv"
+STUB_STATUS_TSV="$grocy_up/status.tsv"
+STUB_UP_RC=1
+STUB_HEALTH_BODY='{"status":"ok"}'
+STUB_BUILD_BODY="{\"commit\":\"${NEW_COMMIT}\"}"
+run_update "$grocy_up"
+[[ "$LAST_RC" -ne 0 ]] || fail "grocy-sync up failure should fail the deploy: $LAST_OUT"
+have "$LAST_OUT" "docker compose up failed" "grocy-sync up failure is reported"
+have "$(cat "$grocy_up/.update-rejected-digest")" "newgrocy" "grocy-sync up failure rejects the grocy digest"
+lack "$(cat "$grocy_up/.update-rejected-digest")" "newpantry" "grocy-sync up failure does not reject the healthy pantry digest"
+unset STUB_STATUS_TSV STUB_UP_RC STUB_HEALTH_BODY STUB_BUILD_BODY
+
+# A sidecar that is running at first and then crash-loops is caught on the
+# settle re-check. Pantry already passed health, so only caddy is rejected.
+crash=$(mktemp -d)
+prepare_pantry "$crash"
+write_images "$crash/images.tsv" \
+  sha256:newpantry ghcr.io/rhionin/pantry@sha256:newpantry \
+  sha256:newcaddy caddy@sha256:newcaddy
+STUB_BUMP_SERVICE=caddy
+STUB_BUMP_ON_CALL=2
+STUB_BUMP_RESTARTS=1
+STUB_HEALTH_BODY='{"status":"ok"}'
+STUB_BUILD_BODY="{\"commit\":\"${NEW_COMMIT}\"}"
+run_update "$crash"
+[[ "$LAST_RC" -ne 0 ]] || fail "crash-loop should fail the deploy: $LAST_OUT"
+have "$LAST_OUT" "caddy restarted (0 -> 1)" "settle re-check notices the restart"
+have "$(cat "$crash/.update-rejected-digest")" $'caddy\tcaddy@sha256:newcaddy' "crash-loop rejects the caddy digest"
+lack "$(cat "$crash/.update-rejected-digest")" "newpantry" "crash-loop does not reject the healthy pantry digest"
+unset STUB_BUMP_SERVICE STUB_BUMP_ON_CALL STUB_BUMP_RESTARTS STUB_HEALTH_BODY STUB_BUILD_BODY
+
+# A newer release is pulled before the pending deploy is resumed. Health is
+# compared to the pending digest's label, not the newest image's label.
+resumed=$(mktemp -d)
+prepare_pantry "$resumed"
+cat > "$resumed/images.tsv" << EOF
+pantry	ghcr.io/rhionin/pantry:latest	sha256:runmid	ghcr.io/rhionin/pantry@sha256:midpantry	sha256:newpantry	ghcr.io/rhionin/pantry@sha256:newpantry	${NEW_COMMIT}	${MID_COMMIT}
+caddy	caddy:2.11.7-alpine	sha256:runcaddy	caddy@sha256:oldcaddy	sha256:runcaddy	caddy@sha256:oldcaddy	
+EOF
+printf '%s\n' $'pantry\tghcr.io/rhionin/pantry@sha256:oldpantry\tghcr.io/rhionin/pantry@sha256:midpantry' > "$resumed/.update-pending"
+printf '%s\n' "{\"commit\":\"${MID_COMMIT}\"}" "{\"commit\":\"${NEW_COMMIT}\"}" > "$resumed/build.queue"
+STUB_BUILD_QUEUE="$resumed/build.queue"
+STUB_HEALTH_BODY='{"status":"ok"}'
+STUB_BUILD_BODY="{\"commit\":\"${NEW_COMMIT}\"}"
+run_update "$resumed"
+[[ "$LAST_RC" -eq 0 ]] || fail "resume against the pending digest exited $LAST_RC: $LAST_OUT"
+have "$LAST_OUT" "previous deploy was not confirmed" "resume notices the pending marker"
+have "$LAST_OUT" "waiting for /health and /api/build commit ${MID_COMMIT}" "resume waits for the pending digest's label"
+have "$LAST_OUT" "pending deploy is healthy" "resume keeps the pending digest when its build matches"
+have "$LAST_OUT" "waiting for /health and /api/build commit ${NEW_COMMIT}" "the newer release is deployed after the resume"
+lack "$LAST_OUT" "re-pinning pantry to ghcr.io/rhionin/pantry@sha256:oldpantry" "resume does not roll back to the pre-pending image"
+lack "$LAST_DOCKER" "--pull never" "resume does not start a rollback"
+first_wait=$(printf '%s\n' "$LAST_OUT" | grep -m1 'waiting for /health')
+have "$first_wait" "$MID_COMMIT" "the first health check is the pending digest"
+lack "$first_wait" "$NEW_COMMIT" "the first health check is not the newer release"
+unset STUB_BUILD_QUEUE STUB_HEALTH_BODY STUB_BUILD_BODY
+
+# The pending digest is gone locally. Skip the resume instead of rolling back.
+gone=$(mktemp -d)
+prepare_pantry "$gone"
+cat > "$gone/images.tsv" << EOF
+pantry	ghcr.io/rhionin/pantry:latest	sha256:runmid	ghcr.io/rhionin/pantry@sha256:midpantry	sha256:runmid	ghcr.io/rhionin/pantry@sha256:midpantry	${MID_COMMIT}
+caddy	caddy:2.11.7-alpine	sha256:runcaddy	caddy@sha256:oldcaddy	sha256:runcaddy	caddy@sha256:oldcaddy	
+EOF
+printf '%s\n' $'pantry\tghcr.io/rhionin/pantry@sha256:oldpantry\tghcr.io/rhionin/pantry@sha256:midpantry' > "$gone/.update-pending"
+STUB_ABSENT_REFS='ghcr.io/rhionin/pantry@sha256:midpantry'
+run_update "$gone"
+[[ "$LAST_RC" -eq 0 ]] || fail "missing pending digest exited $LAST_RC: $LAST_OUT"
+have "$LAST_OUT" "not on this machine; skipping the resume check" "a missing pending digest is skipped"
+have "$LAST_OUT" "images unchanged" "a missing pending digest leaves an unchanged stack alone"
+lack "$LAST_OUT" "PANTRY UPDATE FAILED" "a missing pending digest does not fail the run"
+lack "$LAST_OUT" "rolling back" "a missing pending digest does not roll back"
+lack "$LAST_DOCKER" "--pull never" "a missing pending digest does not start a rollback"
+unset STUB_ABSENT_REFS
+
+# /health degraded, even with the expected build commit, is not healthy.
+degraded=$(mktemp -d)
+prepare_pantry "$degraded"
+write_images "$degraded/images.tsv" \
+  sha256:newpantry ghcr.io/rhionin/pantry@sha256:newpantry \
+  sha256:runcaddy caddy@sha256:oldcaddy
+STUB_HEALTH_BODY='{"status":"degraded"}'
+STUB_BUILD_BODY="{\"commit\":\"${NEW_COMMIT}\"}"
+run_update "$degraded"
+[[ "$LAST_RC" -ne 0 ]] || fail "degraded health should exit non-zero: $LAST_OUT"
+have "$LAST_OUT" "PANTRY UPDATE FAILED: rolling back to the previous image." "degraded health rolls back"
+have "$(cat "$degraded/.update-rejected-digest")" "ghcr.io/rhionin/pantry@sha256:newpantry" "degraded health rejects the new pantry digest"
+lack "$LAST_OUT" "healthy, running commit" "degraded health is not treated as ok"
+unset STUB_HEALTH_BODY STUB_BUILD_BODY
+
+# The banner names a snapshot this deploy wrote, not an older "already exists" path.
+snap=$(mktemp -d)
+prepare_pantry "$snap"
+write_images "$snap/images.tsv" \
+  sha256:newpantry ghcr.io/rhionin/pantry@sha256:newpantry \
+  sha256:runcaddy caddy@sha256:oldcaddy
+STUB_HEALTH_RC=1
+STUB_BUILD_RC=1
+STUB_CONTAINER_LOGS=$'shopping backup already exists: /data/pantry-pre-groups-20200101T000000Z.db\nwrote shopping backup: /data/pantry-pre-groups-20261017T150405Z.db'
+run_update "$snap"
+[[ "$LAST_RC" -ne 0 ]] || fail "snapshot rollback should exit non-zero: $LAST_OUT"
+have "$LAST_OUT" "Pre-migration snapshot written by this deploy: /data/pantry-pre-groups-20261017T150405Z.db" "banner names the snapshot this deploy wrote"
+lack "$LAST_OUT" "pantry-pre-groups-20200101T000000Z.db" "banner does not name the already-exists snapshot"
+lack "$LAST_OUT" "no new snapshot found" "a written snapshot is not reported missing"
+
+# Only an "already exists" line: say so, and do not print that older path.
+snap_old=$(mktemp -d)
+prepare_pantry "$snap_old"
+write_images "$snap_old/images.tsv" \
+  sha256:newpantry ghcr.io/rhionin/pantry@sha256:newpantry \
+  sha256:runcaddy caddy@sha256:oldcaddy
+STUB_CONTAINER_LOGS='shopping backup already exists: /data/pantry-pre-groups-20200101T000000Z.db'
+run_update "$snap_old"
+[[ "$LAST_RC" -ne 0 ]] || fail "old snapshot rollback should exit non-zero: $LAST_OUT"
+have "$LAST_OUT" "no new snapshot found" "banner says when this deploy wrote no snapshot"
+lack "$LAST_OUT" "pantry-pre-groups-20200101T000000Z.db" "banner does not name an already-exists snapshot"
+unset STUB_HEALTH_RC STUB_BUILD_RC STUB_CONTAINER_LOGS
+
+rm -rf "$healthy" "$noop" "$mismatch" "$unhealthy" "$caddy_only" "$rollback_fail" "$unlabeled" "$polled" "$migrating" "$pending" "$exited" "$proxied" "$full_disk" "$grocy" "$grocy_up" "$crash" "$resumed" "$gone" "$degraded" "$snap" "$snap_old"
 echo "pantry_update_test ok"
