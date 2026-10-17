@@ -285,15 +285,33 @@ func ensureRemoved(ctx context.Context, tx *sql.Tx) error {
 }
 
 func committedScan(ctx context.Context, tx *sql.Tx, userID, productID, direction string, at time.Time) (*string, string) {
-	var id string
-	err := tx.QueryRowContext(ctx, `
-		SELECT id FROM scan_entries
-		WHERE user_id = ? AND product_id = ? AND direction = ? AND status = 'committed' AND scanned_at = ?
-		LIMIT 1`, userID, productID, direction, at).Scan(&id)
-	if err != nil || id == "" {
+	// scanned_at is stored text. A raw time.Now() from before UTC writes can
+	// carry a " m=+…" suffix, so SQL equality against the reparsed instant misses
+	// and the repair would call the move manual. The driver parses that text,
+	// including the suffix, into a time.Time.
+	rows, err := tx.QueryContext(ctx, `
+		SELECT id, scanned_at FROM scan_entries
+		WHERE user_id = ? AND product_id = ? AND direction = ? AND status = 'committed'
+		ORDER BY id`,
+		userID, productID, direction)
+	if err != nil {
 		return nil, "manual"
 	}
-	return &id, "scan"
+	defer rows.Close()
+	for rows.Next() {
+		var id string
+		var scanned time.Time
+		if err := rows.Scan(&id, &scanned); err != nil {
+			return nil, "manual"
+		}
+		if id != "" && scanned.Equal(at) {
+			return &id, "scan"
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, "manual"
+	}
+	return nil, "manual"
 }
 
 func stockInTracked(ctx context.Context, tx *sql.Tx, productID string, at time.Time) (bool, error) {

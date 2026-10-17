@@ -24,7 +24,6 @@ import (
 	"github.com/Rhionin/stockbot/internal/scan"
 	"github.com/Rhionin/stockbot/internal/scanlistener"
 	"github.com/Rhionin/stockbot/internal/server"
-	_ "modernc.org/sqlite"
 )
 
 // defaultProductCacheTTL is used when PRODUCT_CACHE_TTL is unset, empty, or
@@ -161,7 +160,7 @@ func main() {
 	dbPath := envOrDefault("DB_PATH", "pantry.db")
 	addr := envOrDefault("ADDR", ":8080")
 
-	sqlDB, err := sql.Open("sqlite", dbPath)
+	sqlDB, err := app.OpenSQLite(dbPath)
 	if err != nil {
 		log.Fatalf("open database: %v", err)
 	}

@@ -71,10 +71,9 @@ func (r *Queue) CommitStockIn(ctx context.Context, scanEntry *ScanEntry) error {
 
 	_, err = tx.ExecContext(ctx, `
 		UPDATE scan_entries 
-		SET status = ?, committed_at = CURRENT_TIMESTAMP 
+		SET status = ?, committed_at = ?
 		WHERE id = ?`,
-		string(Committed),
-		scanEntry.ID,
+		string(Committed), time.Now().UTC(), scanEntry.ID,
 	)
 	if err != nil {
 		return fmt.Errorf("update scan entry: %w", err)
@@ -226,9 +225,9 @@ func (r *Queue) recordStockOutTx(ctx context.Context, tx *sql.Tx, itemID string,
 
 	if _, err := tx.ExecContext(ctx, `
 		UPDATE item_instances
-		SET removed_at = CURRENT_TIMESTAMP, removal_reason = 'consumed'
+		SET removed_at = ?, removal_reason = 'consumed'
 		WHERE id = ?`,
-		selected,
+		at, selected,
 	); err != nil {
 		return fmt.Errorf("remove instance: %w", err)
 	}
@@ -527,16 +526,16 @@ func (r *Queue) commitStockOut(ctx context.Context, scanEntry *ScanEntry, instan
 	if linkProductID != "" {
 		_, err = tx.ExecContext(ctx, `
 			UPDATE scan_entries
-			SET product_id = ?, status = ?, committed_at = CURRENT_TIMESTAMP
+			SET product_id = ?, status = ?, committed_at = ?
 			WHERE id = ?`,
-			linkProductID, string(Committed), scanEntry.ID,
+			linkProductID, string(Committed), time.Now().UTC(), scanEntry.ID,
 		)
 	} else {
 		_, err = tx.ExecContext(ctx, `
 			UPDATE scan_entries
-			SET status = ?, committed_at = CURRENT_TIMESTAMP
+			SET status = ?, committed_at = ?
 			WHERE id = ?`,
-			string(Committed), scanEntry.ID,
+			string(Committed), time.Now().UTC(), scanEntry.ID,
 		)
 	}
 	if err != nil {
