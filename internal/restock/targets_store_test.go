@@ -181,3 +181,125 @@ func TestHouseholdDefaultMayBeZero(t *testing.T) {
 		t.Fatal("a household default of 0 must not be written as supply_months")
 	}
 }
+
+func TestMergeMovesMembershipsAndNewCategories(t *testing.T) {
+	targets, db := newTestTargets(t)
+	ctx := context.Background()
+	insertProduct(t, db, "bananas", "Bananas")
+	insertProduct(t, db, "tomatoes", "Crushed tomatoes")
+	if _, err := db.Exec(`
+		INSERT INTO items (id, user_id, product_id) VALUES
+			('item-bananas', 'user-1', 'bananas'),
+			('item-tomatoes', 'user-1', 'tomatoes')`); err != nil {
+		t.Fatal(err)
+	}
+	if err := targets.SaveOffTags(ctx, "tomatoes", []string{"en:vegetables"}, nil); err != nil {
+		t.Fatal(err)
+	}
+
+	from, err := targets.CreateCategory(ctx, "Odds")
+	if err != nil {
+		t.Fatal(err)
+	}
+	into, err := targets.CreateCategory(ctx, "Extras")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := targets.AddItemCategory(ctx, "item-bananas", from.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := targets.MergeCategory(ctx, from.ID, into.ID); err != nil {
+		t.Fatal(err)
+	}
+	snap, err := targets.Snapshot(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var bananas ItemView
+	for _, item := range snap.Items {
+		if item.Name == "Bananas" {
+			bananas = item
+		}
+	}
+	if len(bananas.Categories) != 1 || bananas.Categories[0].Name != "Extras" {
+		t.Fatalf("merged membership: %+v", bananas.Categories)
+	}
+
+	if err := targets.ApplySuggestions(ctx, "Trail snacks", []string{"item-bananas"}); err != nil {
+		t.Fatal(err)
+	}
+	cards, err := targets.Suggestions(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var noted bool
+	for _, card := range cards {
+		if card.Category != "Produce" {
+			continue
+		}
+		for _, name := range card.NotSuggested {
+			if name == "Crushed tomatoes" {
+				noted = true
+			}
+		}
+	}
+	if !noted {
+		t.Fatalf("blocked produce: %+v", cards)
+	}
+}
+
+func TestRejectedTargets(t *testing.T) {
+	targets, db := newTestTargets(t)
+	ctx := context.Background()
+	insertProduct(t, db, "salt", "Salt")
+	if _, err := db.Exec(`INSERT INTO items (id, user_id, product_id) VALUES ('item-salt', 'user-1', 'salt')`); err != nil {
+		t.Fatal(err)
+	}
+	cases := []struct {
+		name string
+		run  func() error
+	}{
+		{"blank name", func() error { _, err := targets.CreateCategory(ctx, "  "); return err }},
+		{"duplicate name", func() error {
+			if _, err := targets.CreateCategory(ctx, "Extras"); err != nil {
+				return err
+			}
+			_, err := targets.CreateCategory(ctx, "Extras")
+			return err
+		}},
+		{"months too high", func() error {
+			return targets.SetHousehold(ctx, Target{Kind: KindMonths, Value: 13})
+		}},
+		{"fraction", func() error {
+			return targets.SetItem(ctx, "item-salt", Target{Kind: KindAmount, Value: 1.5})
+		}},
+		{"too big", func() error {
+			return targets.SetItem(ctx, "item-salt", Target{Kind: KindAmount, Value: 1000})
+		}},
+		{"missing item", func() error {
+			return targets.SetItem(ctx, "missing", Target{Kind: KindMonths, Value: 1})
+		}},
+		{"missing category", func() error {
+			return targets.SetCategoryTarget(ctx, "missing", &Target{Kind: KindMonths, Value: 1})
+		}},
+		{"merge into itself", func() error {
+			created, err := targets.CreateCategory(ctx, "Pantry")
+			if err != nil {
+				return err
+			}
+			return targets.MergeCategory(ctx, created.ID, created.ID)
+		}},
+		{"unknown group", func() error {
+			_, err := targets.PreviewGroup(ctx, "missing", Target{Kind: KindMonths, Value: 0})
+			return err
+		}},
+		{"no suggestion picked", func() error {
+			return targets.ApplySuggestions(ctx, "Produce", nil)
+		}},
+	}
+	for _, tc := range cases {
+		if err := tc.run(); err == nil {
+			t.Errorf("%s: expected a rejection", tc.name)
+		}
+	}
+}

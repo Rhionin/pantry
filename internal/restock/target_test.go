@@ -237,7 +237,101 @@ func TestClassifyTaxonomyProduceAndFallbacks(t *testing.T) {
 	if _, ok := LooseProduce("212345678905"); !ok {
 		t.Fatal("UPC prefix 2 should count as loose produce")
 	}
+	if _, ok := LooseProduce("2012345678901"); !ok {
+		t.Fatal("EAN-13 prefix 2 should count as loose produce")
+	}
 	if _, ok := LooseProduce("0012345678905"); ok {
 		t.Fatal("a normal EAN is not loose produce")
+	}
+	if _, ok := LooseProduce("12ab"); ok {
+		t.Fatal("a barcode with letters is not a PLU")
+	}
+
+	matches, _ = Classify("Carrots", []string{"en:vegetables"}, nil, "")
+	if len(matches) != 1 || matches[0].Checked || !strings.Contains(matches[0].Reason, "Vegetables") {
+		t.Fatalf("carrots: %+v", matches)
+	}
+
+	matches, excluded = Classify("Canned peaches", []string{"en:raspberries"}, nil, "")
+	for _, match := range matches {
+		if match.Category == "Produce" {
+			t.Fatalf("canned fruit suggested as produce: %+v", matches)
+		}
+	}
+	if len(excluded) != 1 {
+		t.Fatalf("canned fruit excluded: %v", excluded)
+	}
+
+	matches, _ = Classify("Trail mix", nil, []string{"en:sugary-snacks", "en:fruits-and-vegetables"}, "")
+	got = map[string]Match{}
+	for _, match := range matches {
+		got[match.Category] = match
+	}
+	if snack, ok := got["Snacks & sweets"]; !ok || !snack.Checked || !strings.Contains(snack.Reason, "Sugary snacks") {
+		t.Fatalf("food group: %+v", matches)
+	}
+	if produce, ok := got["Produce"]; !ok || produce.Checked {
+		t.Fatalf("food-group produce: %+v", got["Produce"])
+	}
+
+	if len(ancestors("")) != 0 || tagLabel("") != "" {
+		t.Fatal("empty tags should stay empty")
+	}
+}
+
+func TestPreviewOfAPositiveTarget(t *testing.T) {
+	snacks := CategoryTarget{ID: "snacks", Name: "Snacks & sweets", Target: months(1)}
+	subjects := []Subject{{
+		ItemID: "tc", Name: "Tortilla chips",
+		Input: Input{Household: months(3), Categories: []CategoryTarget{snacks}},
+	}}
+	preview := BuildPreview("Snacks & sweets", months(2), subjects, func(in Input) Input {
+		return WithCategoryTarget(in, "snacks", "Snacks & sweets", months(2))
+	})
+	if preview.Title != "Set Snacks & sweets to 2 months?" || preview.Confirm != "Change 1" {
+		t.Fatalf("preview: %+v", preview)
+	}
+	if len(preview.Stop) != 1 || preview.Stop[0].Before != "1 mo" || preview.Stop[0].After != "2 mo" {
+		t.Fatalf("stop: %+v", preview.Stop)
+	}
+	if ValuePhrase(amount(4), true) != "Keep 4 each" {
+		t.Fatal("category amounts are per item")
+	}
+	if Short(Target{Kind: KindAmount, Value: 1.5}, "") != "Keep 1.5" {
+		t.Fatal("a fractional amount keeps its decimal")
+	}
+}
+
+func TestCopyNamesEveryLevel(t *testing.T) {
+	if got := Higher(months(4), months(2)); got != months(4) {
+		t.Fatalf("larger months: %+v", got)
+	}
+	if got := Higher(months(2), amount(9)); got != months(2) {
+		t.Fatalf("months beat amount: %+v", got)
+	}
+
+	group := months(1)
+	groupRes := Resolve(Input{Group: &group, GroupName: "Salad kits", Household: months(3)})
+	if RowSource(groupRes) != "1 month, from Salad kits group" {
+		t.Fatalf("group row: %q", RowSource(groupRes))
+	}
+	one := Resolve(Input{Categories: []CategoryTarget{{Name: "Snacks & sweets", Target: months(2)}}, Household: months(3)})
+	if WontChangeReason(one, "") != "From Snacks & sweets" {
+		t.Fatalf("one category: %q", WontChangeReason(one, ""))
+	}
+	if WontChangeReason(Resolve(Input{Household: months(3)}), "") != "Household default" {
+		t.Fatal("household reason")
+	}
+	several := Input{Categories: []CategoryTarget{
+		{Name: "Produce", Target: months(1)},
+		{Name: "Snacks & sweets", Target: months(2)},
+		{Name: "Frozen", Target: months(0)},
+	}, Household: months(3)}
+	three := Resolve(several)
+	if WontChangeReason(three, "") != "From Snacks & sweets, the higher of its categories" {
+		t.Fatalf("three categories: %q", WontChangeReason(three, ""))
+	}
+	if cells := Chain(several, three, ""); cells[2].Value != "2 mo" {
+		t.Fatalf("chain: %+v", cells[2])
 	}
 }
