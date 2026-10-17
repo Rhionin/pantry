@@ -156,7 +156,7 @@ compose=(docker compose --project-directory "$PANTRY_DIR" -f "$PANTRY_DIR/docker
 mode_rc=0
 mode=$(publish_mode_from_env) || mode_rc=$?
 if [[ "$mode_rc" -eq 2 ]]; then
-  echo "Tunnel mode needs CLOUDFLARE_TUNNEL_TOKEN in /opt/pantry/.env. The public proxy was left unchanged. Run: sudo ./setup.sh publish --tunnel" >&2
+  echo "Tunnel mode needs CLOUDFLARE_TUNNEL_TOKEN in ${PANTRY_DIR}/.env. The public proxy was left unchanged. Run: sudo ./setup.sh publish --tunnel" >&2
   exit 1
 elif [[ "$mode_rc" -ne 0 ]]; then
   echo "PUBLISH_MODE must be acme or tunnel. The public proxy was left unchanged." >&2
@@ -170,9 +170,9 @@ if [[ "$mode" == tunnel ]]; then
     compose+=(-f "$PANTRY_DIR/docker-compose.tunnel.yml" --profile tunnel)
   fi
 elif [[ "$mode" == acme ]]; then
-  # -f /opt/pantry/auth.caddy is the production gate. A fixture sets
-  # PANTRY_DIR somewhere else and is checked only then.
-  if [[ -f /opt/pantry/auth.caddy || ( "$PANTRY_DIR" != /opt/pantry && -f "$PANTRY_DIR/auth.caddy" ) ]]; then
+  # Only this install's password file. A host that already has
+  # /opt/pantry/auth.caddy must not count when PANTRY_DIR is a fixture.
+  if [[ -f "$PANTRY_DIR/auth.caddy" ]]; then
     compose+=(--profile public)
   else
     echo "PUBLIC_HOST is set but ${PANTRY_DIR}/auth.caddy is missing; leaving the public proxy stopped. Run: sudo ./setup.sh" >&2
@@ -1285,10 +1285,7 @@ note_stopped_services() {
 }
 
 publish_auth_present() {
-  if [[ -f /opt/pantry/auth.caddy ]]; then
-    return 0
-  fi
-  [[ "$PANTRY_DIR" != /opt/pantry && -f "$PANTRY_DIR/auth.caddy" ]]
+  [[ -f "$PANTRY_DIR/auth.caddy" ]]
 }
 
 # proxy_compose_service is the compose service that publishes the hostname.

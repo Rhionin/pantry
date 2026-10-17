@@ -4,6 +4,22 @@
 
 set -euo pipefail
 
+# The suite runs where /opt/pantry/auth.caddy exists, the way the Pi does.
+# A mount namespace keeps that decoy off the host. 437999f reads the literal
+# path, so marker_no_auth clears the marker and this run fails.
+if [[ "${PANTRY_UPDATE_DECOY:-}" != 1 ]]; then
+  # $1 is the script path for the inner bash, not this shell.
+  # shellcheck disable=SC2016
+  exec unshare --user --map-root-user --mount bash -c '
+    set -euo pipefail
+    mount -t tmpfs tmpfs /opt
+    mkdir -p /opt/pantry
+    printf "%s\n" "basic_auth bcrypt Pantry {" "}" > /opt/pantry/auth.caddy
+    export PANTRY_UPDATE_DECOY=1
+    exec bash "$1"
+  ' bash "$0"
+fi
+
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 UPDATE="$ROOT/deploy/systemd/pantry-update.sh"
 
@@ -13,6 +29,30 @@ fail() {
   echo "FAIL: $*" >&2
   exit 1
 }
+
+# File probes follow PANTRY_DIR. A literal /opt/pantry/ or /run/ path is a
+# file the fixture cannot move, which is how marker_no_auth passed here and
+# failed on the Pi. The production default (PANTRY_DIR=${PANTRY_DIR:-/opt/pantry})
+# and publish-mode.sh's refusal to docker rm when PANTRY_DIR is not that
+# directory stay literal on purpose: they do not open a path under it.
+assert_no_literal_probe_paths() {
+  local file line code
+  for file in \
+    "$UPDATE" \
+    "$ROOT/deploy/publish-mode.sh" \
+    "$ROOT/deploy/auth-migrate.sh" \
+    "$ROOT/deploy/vapid-env.sh"
+  do
+    while IFS= read -r line || [[ -n "$line" ]]; do
+      [[ "$line" =~ ^[[:space:]]*# ]] && continue
+      code=${line%%#*}
+      if [[ "$code" == *"/opt/pantry/"* || "$code" == *"/run/"* ]]; then
+        fail "${file} probes a literal path a fixture cannot redirect: ${line}"
+      fi
+    done < "$file"
+  done
+}
+assert_no_literal_probe_paths
 
 LAST_RC=0
 LAST_OUT=""
