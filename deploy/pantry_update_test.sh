@@ -178,6 +178,16 @@ if [[ "$1" == inspect ]]; then
     printf '%s %s\n' "$status" "$restarts"
     exit 0
   fi
+  if [[ "$format" == *StartedAt* ]]; then
+    name=${target#cid-}
+    name=${name%-new}
+    started=${STUB_STARTED_AT:-2020-01-01T00:00:00.000000000Z}
+    if [[ "${STUB_SHIFT_STARTED_SERVICE:-}" == "$name" && -f "${DOCKER_LOG:-}" ]] && grep -q -F -- ' up' "$DOCKER_LOG"; then
+      started=${STUB_STARTED_AT_AFTER:-2026-10-17T00:00:01.000000000Z}
+    fi
+    printf '%s\n' "$started"
+    exit 0
+  fi
   if [[ "$format" == *State.Running* ]]; then
     name=${target#cid-}
     id=$(tsv_col "$name" run_id || true)
@@ -425,6 +435,8 @@ if [[ "$url" == https://* ]]; then
   printf '%s\n' "$n" > "$count_file"
   if [[ "$n" -eq 1 ]]; then
     rc=${STUB_CADDY_OLD_RC:-${STUB_CADDY_RC:-0}}
+  elif [[ "$n" -ge 3 && -n "${STUB_CADDY_RETRY_RC:-}" ]]; then
+    rc=$STUB_CADDY_RETRY_RC
   else
     rc=${STUB_CADDY_RC:-0}
   fi
@@ -559,6 +571,10 @@ run_update() {
     STUB_ROLLBACK_HEALTH_RC="${STUB_ROLLBACK_HEALTH_RC:-0}" \
     STUB_CADDY_RC="${STUB_CADDY_RC:-0}" \
     STUB_CADDY_OLD_RC="${STUB_CADDY_OLD_RC:-}" \
+    STUB_CADDY_RETRY_RC="${STUB_CADDY_RETRY_RC:-}" \
+    STUB_SHIFT_STARTED_SERVICE="${STUB_SHIFT_STARTED_SERVICE:-}" \
+    STUB_STARTED_AT="${STUB_STARTED_AT:-}" \
+    STUB_STARTED_AT_AFTER="${STUB_STARTED_AT_AFTER:-}" \
     STUB_REWRITE_TRIGGER="${STUB_REWRITE_TRIGGER:-}" \
     STUB_TUNNEL_RC="${STUB_TUNNEL_RC:-0}" \
     STUB_TUNNEL_OLD_RC="${STUB_TUNNEL_OLD_RC:-0}" \
@@ -1417,6 +1433,7 @@ run_update "$acme_same"
 have "$LAST_OUT" "caddy probe failed and its image did not change; not rolling back" "unchanged caddy probe is a warning"
 lack "$LAST_DOCKER" "--pull never" "unchanged caddy probe does not roll back"
 [[ ! -e "$acme_same/.update-rejected-digest" ]] || fail "unchanged caddy probe recorded a digest: $(cat "$acme_same/.update-rejected-digest")"
+[[ "$(grep -c -x caddy "$acme_same/.update-sidecar-warn")" -eq 1 ]] || fail "a running caddy probe failure was not remembered: $(cat "$acme_same/.update-sidecar-warn" 2>/dev/null)"
 unset STUB_HEALTH_BODY STUB_BUILD_BODY STUB_CADDY_RC
 
 # Tunnel mode, caddy-tunnel unchanged, and the old listener was already down.
@@ -1949,6 +1966,146 @@ lack "$LAST_OUT" "rejecting pantry" "a later probe does not reuse the first roun
 [[ ! -e "$reach_reset/.update-rejected-digest" ]] || fail "a later probe recorded a digest: $(cat "$reach_reset/.update-rejected-digest")"
 unset STUB_REWRITE_TRIGGER STUB_TUNNEL_OLD_RC STUB_TUNNEL_OLD_BODY STUB_TUNNEL_RC STUB_TUNNEL_LATER_FROM STUB_TUNNEL_LATER_RC STUB_HEALTH_BODY STUB_BUILD_BODY
 
+# The unchanged proxy is still running, but its container id changed.
+# That is a new container, so a failed probe does not reject pantry.
+caddy_newid=$(mktemp -d)
+prepare_pantry "$caddy_newid"
+public_env "$caddy_newid"
+write_images "$caddy_newid/images.tsv" \
+  sha256:newpantry ghcr.io/rhionin/pantry@sha256:newpantry \
+  sha256:runcaddy caddy@sha256:oldcaddy
+STUB_NEW_CID_SERVICE=caddy
+STUB_CADDY_OLD_RC=0
+STUB_CADDY_RC=22
+STUB_HEALTH_BODY='{"status":"ok"}'
+STUB_BUILD_BODY="{\"commit\":\"${NEW_COMMIT}\"}"
+run_update "$caddy_newid"
+[[ "$LAST_RC" -eq 0 ]] || fail "new caddy id exited $LAST_RC: $LAST_OUT"
+have "$LAST_OUT" "caddy probe failed and its image did not change; not rolling back" "a new caddy id is a warning"
+lack "$LAST_OUT" "rejecting pantry" "a new caddy id does not reject pantry"
+lack "$LAST_DOCKER" "--pull never" "a new caddy id does not roll back"
+[[ ! -e "$caddy_newid/.update-rejected-digest" ]] || fail "a new caddy id recorded a digest: $(cat "$caddy_newid/.update-rejected-digest")"
+unset STUB_NEW_CID_SERVICE STUB_CADDY_OLD_RC STUB_CADDY_RC STUB_HEALTH_BODY STUB_BUILD_BODY
+
+# RestartCount went up by 1 and the container is still running. Same id.
+# A higher count is not the container that passed the old probe.
+caddy_restarts=$(mktemp -d)
+prepare_pantry "$caddy_restarts"
+public_env "$caddy_restarts"
+write_images "$caddy_restarts/images.tsv" \
+  sha256:newpantry ghcr.io/rhionin/pantry@sha256:newpantry \
+  sha256:runcaddy caddy@sha256:oldcaddy
+STUB_BUMP_SERVICE=caddy
+STUB_BUMP_ON_CALL=2
+STUB_BUMP_RESTARTS=1
+STUB_CADDY_OLD_RC=0
+STUB_CADDY_RC=22
+STUB_HEALTH_BODY='{"status":"ok"}'
+STUB_BUILD_BODY="{\"commit\":\"${NEW_COMMIT}\"}"
+run_update "$caddy_restarts"
+[[ "$LAST_RC" -eq 0 ]] || fail "caddy restart count exited $LAST_RC: $LAST_OUT"
+have "$LAST_OUT" "caddy probe failed and its image did not change; not rolling back" "a higher caddy restart count is a warning"
+lack "$LAST_OUT" "rejecting pantry" "a higher caddy restart count does not reject pantry"
+lack "$LAST_DOCKER" "--pull never" "a higher caddy restart count does not roll back"
+[[ ! -e "$caddy_restarts/.update-rejected-digest" ]] || fail "a higher caddy restart count recorded a digest: $(cat "$caddy_restarts/.update-rejected-digest")"
+unset STUB_BUMP_SERVICE STUB_BUMP_ON_CALL STUB_BUMP_RESTARTS STUB_CADDY_OLD_RC STUB_CADDY_RC STUB_HEALTH_BODY STUB_BUILD_BODY
+
+# Same id and restart count, but StartedAt moved. Compose before 2.35
+# restarts Caddy that way. Do not charge pantry.
+caddy_started=$(mktemp -d)
+prepare_pantry "$caddy_started"
+public_env "$caddy_started"
+write_images "$caddy_started/images.tsv" \
+  sha256:newpantry ghcr.io/rhionin/pantry@sha256:newpantry \
+  sha256:runcaddy caddy@sha256:oldcaddy
+STUB_SHIFT_STARTED_SERVICE=caddy
+STUB_CADDY_OLD_RC=0
+STUB_CADDY_RC=22
+STUB_HEALTH_BODY='{"status":"ok"}'
+STUB_BUILD_BODY="{\"commit\":\"${NEW_COMMIT}\"}"
+run_update "$caddy_started"
+[[ "$LAST_RC" -eq 0 ]] || fail "caddy StartedAt change exited $LAST_RC: $LAST_OUT"
+have "$LAST_OUT" "caddy probe failed and its image did not change; not rolling back" "a new caddy StartedAt is a warning"
+lack "$LAST_OUT" "rejecting pantry" "a new caddy StartedAt does not reject pantry"
+lack "$LAST_DOCKER" "--pull never" "a new caddy StartedAt does not roll back"
+[[ ! -e "$caddy_started/.update-rejected-digest" ]] || fail "a new caddy StartedAt recorded a digest: $(cat "$caddy_started/.update-rejected-digest")"
+unset STUB_SHIFT_STARTED_SERVICE STUB_CADDY_OLD_RC STUB_CADDY_RC STUB_HEALTH_BODY STUB_BUILD_BODY
+
+# The first probe after recreate fails. The retry passes. Keep pantry.
+caddy_retry=$(mktemp -d)
+prepare_pantry "$caddy_retry"
+public_env "$caddy_retry"
+write_images "$caddy_retry/images.tsv" \
+  sha256:newpantry ghcr.io/rhionin/pantry@sha256:newpantry \
+  sha256:runcaddy caddy@sha256:oldcaddy
+STUB_CADDY_OLD_RC=0
+STUB_CADDY_RC=22
+STUB_CADDY_RETRY_RC=0
+STUB_HEALTH_BODY='{"status":"ok"}'
+STUB_BUILD_BODY="{\"commit\":\"${NEW_COMMIT}\"}"
+run_update "$caddy_retry"
+[[ "$LAST_RC" -eq 0 ]] || fail "caddy probe retry exited $LAST_RC: $LAST_OUT"
+have "$LAST_OUT" "proxy probe failed; retrying in 0s" "a failed proxy probe is retried"
+lack "$LAST_OUT" "rejecting pantry" "a proxy probe that passes on retry does not reject pantry"
+lack "$LAST_DOCKER" "--pull never" "a proxy probe that passes on retry does not roll back"
+[[ ! -e "$caddy_retry/.update-rejected-digest" ]] || fail "a passing proxy retry recorded a digest: $(cat "$caddy_retry/.update-rejected-digest")"
+[[ ! -e "$caddy_retry/.update-sidecar-warn" ]] || fail "a passing proxy retry left a marker: $(cat "$caddy_retry/.update-sidecar-warn")"
+unset STUB_CADDY_OLD_RC STUB_CADDY_RC STUB_CADDY_RETRY_RC STUB_HEALTH_BODY STUB_BUILD_BODY
+
+# A huge retry delay is capped at 15s, the same ceiling as the settle window.
+probe_cap=$(mktemp -d)
+prepare_pantry "$probe_cap"
+public_env "$probe_cap"
+write_images "$probe_cap/images.tsv" \
+  sha256:newpantry ghcr.io/rhionin/pantry@sha256:newpantry \
+  sha256:runcaddy caddy@sha256:oldcaddy
+STUB_CADDY_OLD_RC=0
+STUB_CADDY_RC=22
+STUB_CADDY_RETRY_RC=0
+STUB_HEALTH_BODY='{"status":"ok"}'
+STUB_BUILD_BODY="{\"commit\":\"${NEW_COMMIT}\"}"
+PANTRY_UPDATE_PROBE_RETRY_SECONDS=99999
+PANTRY_TEST_DEADLINE=30
+run_update "$probe_cap"
+[[ "$LAST_RC" -eq 0 ]] || fail "capped probe retry exited $LAST_RC: $LAST_OUT"
+have "$LAST_OUT" "proxy probe failed; retrying in 15s" "a huge probe retry delay is capped at 15s"
+lack "$LAST_OUT" "retrying in 99999s" "a huge probe retry delay is not slept as given"
+lack "$LAST_OUT" "rejecting pantry" "a capped retry that passes does not reject pantry"
+unset STUB_CADDY_OLD_RC STUB_CADDY_RC STUB_CADDY_RETRY_RC STUB_HEALTH_BODY STUB_BUILD_BODY PANTRY_UPDATE_PROBE_RETRY_SECONDS PANTRY_TEST_DEADLINE
+
+# A running caddy whose probe fails stays on the marker. The next unchanged
+# minute warns again. A later probe that passes removes the line.
+proxy_mark=$(mktemp -d)
+prepare_pantry "$proxy_mark"
+public_env "$proxy_mark"
+write_images "$proxy_mark/images.tsv" \
+  sha256:newpantry ghcr.io/rhionin/pantry@sha256:newpantry \
+  sha256:runcaddy caddy@sha256:oldcaddy
+STUB_CADDY_RC=22
+STUB_HEALTH_BODY='{"status":"ok"}'
+STUB_BUILD_BODY="{\"commit\":\"${NEW_COMMIT}\"}"
+run_update "$proxy_mark"
+[[ "$LAST_RC" -eq 0 ]] || fail "proxy marker write exited $LAST_RC: $LAST_OUT"
+lack "$LAST_OUT" "caddy is running again" "a failed caddy probe is not cleared for being running"
+[[ "$(grep -c -x caddy "$proxy_mark/.update-sidecar-warn")" -eq 1 ]] || fail "a running caddy probe failure was not remembered: $(cat "$proxy_mark/.update-sidecar-warn" 2>/dev/null)"
+cat > "$proxy_mark/images.tsv" << EOF
+pantry	ghcr.io/rhionin/pantry:latest	sha256:newpantry	ghcr.io/rhionin/pantry@sha256:newpantry	sha256:newpantry	ghcr.io/rhionin/pantry@sha256:newpantry	${NEW_COMMIT}	${OLD_COMMIT}
+caddy	caddy:2.11.7-alpine	sha256:runcaddy	caddy@sha256:oldcaddy	sha256:runcaddy	caddy@sha256:oldcaddy		
+EOF
+STUB_CADDY_RC=22
+run_update "$proxy_mark"
+[[ "$LAST_RC" -eq 0 ]] || fail "proxy marker recheck exited $LAST_RC: $LAST_OUT"
+have "$LAST_OUT" "images unchanged" "a proxy marker is rechecked when images do not change"
+have "$LAST_OUT" "<4>pantry update: warning: caddy probe failed and its image did not change; not rolling back" "a running caddy with a failed probe warns again"
+lack "$LAST_OUT" "caddy is running again" "a running caddy with a failed probe stays on the marker"
+[[ "$(grep -c -x caddy "$proxy_mark/.update-sidecar-warn")" -eq 1 ]] || fail "a failed caddy probe dropped its marker: $(cat "$proxy_mark/.update-sidecar-warn" 2>/dev/null)"
+STUB_CADDY_RC=0
+run_update "$proxy_mark"
+[[ "$LAST_RC" -eq 0 ]] || fail "proxy marker clear exited $LAST_RC: $LAST_OUT"
+have "$LAST_OUT" "caddy probe passed" "a passing caddy probe clears its marker"
+[[ ! -e "$proxy_mark/.update-sidecar-warn" ]] || fail "a passing caddy probe left a marker: $(cat "$proxy_mark/.update-sidecar-warn")"
+unset STUB_CADDY_RC STUB_HEALTH_BODY STUB_BUILD_BODY
+
 # A trigger that lands during the pull is pulled again instead of dropped.
 repull=$(mktemp -d)
 prepare_pantry "$repull"
@@ -2038,5 +2195,5 @@ have "$lock_out" "another update is running" "a held lock is waited on"
 lack "$lock_out" "pantry update: lock acquired" "the waiter does not pass the lock while it is held"
 rm -rf "$lock_work"
 
-rm -rf "$healthy" "$noop" "$mismatch" "$unhealthy" "$caddy_only" "$rollback_fail" "$unlabeled" "$polled" "$migrating" "$migr_cap" "$pending" "$exited" "$proxied" "$full_disk" "$grocy" "$grocy_up" "$crash" "$resumed" "$gone" "$degraded" "$snap" "$snap_old" "$rollback_unhealthy" "$stale" "$unpinned" "$spill" "$grocy_ok" "$grocy_bad" "$flap" "$pantry_restart" "$caddy_fail" "$tunnel_ok" "$tunnel_skip" "$tunnel_bad" "$acme_same" "$tunnel_same" "$tunnel_refused" "$tunnel_commit" "$grocy_now" "$warned" "$grocy_keep" "$caddy_keep" "$name_conflict" "$acme_regress" "$tunnel_regress" "$tunnel_hang" "$tunnel_late" "$tunnel_reset" "$caddy_exit" "$caddy_up_down" "$tunnel_restart" "$tunnel_502" "$tunnel_empty" "$stale_grocy" "$marker_off" "$marker_cr" "$marker_clear" "$marker_park" "$proxy_grocy" "$reach_reset" "$repull" "$wrong_project" "$blank_project" "$locked"
+rm -rf "$healthy" "$noop" "$mismatch" "$unhealthy" "$caddy_only" "$rollback_fail" "$unlabeled" "$polled" "$migrating" "$migr_cap" "$pending" "$exited" "$proxied" "$full_disk" "$grocy" "$grocy_up" "$crash" "$resumed" "$gone" "$degraded" "$snap" "$snap_old" "$rollback_unhealthy" "$stale" "$unpinned" "$spill" "$grocy_ok" "$grocy_bad" "$flap" "$pantry_restart" "$caddy_fail" "$tunnel_ok" "$tunnel_skip" "$tunnel_bad" "$acme_same" "$tunnel_same" "$tunnel_refused" "$tunnel_commit" "$grocy_now" "$warned" "$grocy_keep" "$caddy_keep" "$name_conflict" "$acme_regress" "$tunnel_regress" "$tunnel_hang" "$tunnel_late" "$tunnel_reset" "$caddy_exit" "$caddy_up_down" "$tunnel_restart" "$tunnel_502" "$tunnel_empty" "$stale_grocy" "$marker_off" "$marker_cr" "$marker_clear" "$marker_park" "$proxy_grocy" "$reach_reset" "$caddy_newid" "$caddy_restarts" "$caddy_started" "$caddy_retry" "$probe_cap" "$proxy_mark" "$repull" "$wrong_project" "$blank_project" "$locked"
 echo "pantry_update_test ok"
