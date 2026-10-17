@@ -61,7 +61,7 @@ func TestBuildReadsBrandFromTheProductName(t *testing.T) {
 }
 
 func TestBuildPrefersItemTargets(t *testing.T) {
-	conn, err := sql.Open("sqlite", ":memory:")
+	conn, err := app.OpenSQLite(":memory:")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -108,7 +108,7 @@ func TestBuildPrefersItemTargets(t *testing.T) {
 }
 
 func TestBuildSkipsShelvedItems(t *testing.T) {
-	conn, err := sql.Open("sqlite", ":memory:")
+	conn, err := app.OpenSQLite(":memory:")
 	if err != nil {
 		t.Fatal(err)
 	}
