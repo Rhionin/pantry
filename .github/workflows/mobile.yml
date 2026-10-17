@@ -27,9 +27,6 @@ jobs:
   mobile:
     name: Mobile typecheck, lint, and tests
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: mobile
     steps:
       - name: Checkout code
         uses: actions/checkout@v7
@@ -42,13 +39,13 @@ jobs:
           cache-dependency-path: mobile/package-lock.json
 
       - name: Install dependencies
-        run: npm ci
+        run: cd mobile && npm ci
 
       - name: Type check
-        run: npm run typecheck
+        run: cd mobile && npm run typecheck
 
       - name: Lint code
-        run: npm run lint
+        run: cd mobile && npm run lint
 
       - name: Run tests
-        run: npm test
+        run: cd mobile && npx jest --ci
