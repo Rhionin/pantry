@@ -16,7 +16,7 @@ import (
 
 func newTestSubscriptions(t *testing.T) *Subscriptions {
 	t.Helper()
-	conn, err := sql.Open("sqlite", ":memory:")
+	conn, err := app.OpenSQLite(":memory:")
 	if err != nil {
 		t.Fatalf("open database: %v", err)
 	}

@@ -10,7 +10,7 @@ import (
 )
 
 func TestSaveKeepsSecretWhenOmitted(t *testing.T) {
-	db, err := sql.Open("sqlite", ":memory:")
+	db, err := app.OpenSQLite(":memory:")
 	if err != nil {
 		t.Fatalf("open: %v", err)
 	}

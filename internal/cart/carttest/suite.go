@@ -53,7 +53,7 @@ func RunContractSuite(t *testing.T, p cart.Provider) {
 	}
 
 	// Run each applicable case
-	db, err := sql.Open("sqlite", ":memory:")
+	db, err := app.OpenSQLite(":memory:")
 	if err != nil {
 		t.Fatalf("open in-memory SQLite: %v", err)
 	}

@@ -11,7 +11,7 @@ import (
 )
 
 func TestBuildEmptyHousehold(t *testing.T) {
-	conn, err := sql.Open("sqlite", ":memory:")
+	conn, err := app.OpenSQLite(":memory:")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -33,7 +33,7 @@ func TestBuildEmptyHousehold(t *testing.T) {
 }
 
 func TestBuildReadsBrandFromTheProductName(t *testing.T) {
-	conn, err := sql.Open("sqlite", ":memory:")
+	conn, err := app.OpenSQLite(":memory:")
 	if err != nil {
 		t.Fatal(err)
 	}

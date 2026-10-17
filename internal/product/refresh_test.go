@@ -398,7 +398,7 @@ func (c *fakeRefreshCatalog) MarkRefreshed(ctx context.Context, id string, refre
 
 func newRefreshCatalog(t *testing.T) *Catalog {
 	t.Helper()
-	conn, err := sql.Open("sqlite", ":memory:")
+	conn, err := app.OpenSQLite(":memory:")
 	if err != nil {
 		t.Fatalf("open in-memory SQLite: %v", err)
 	}

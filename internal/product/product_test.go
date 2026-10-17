@@ -16,7 +16,7 @@ import (
 // newTestCatalog opens an in-memory SQLite database, applies all migrations, and returns a product Catalog.
 func newTestCatalog(t *testing.T) *product.Catalog {
 	t.Helper()
-	conn, err := sql.Open("sqlite", ":memory:")
+	conn, err := app.OpenSQLite(":memory:")
 	if err != nil {
 		t.Fatalf("open in-memory SQLite: %v", err)
 	}
