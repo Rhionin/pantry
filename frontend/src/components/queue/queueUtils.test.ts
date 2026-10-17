@@ -93,6 +93,35 @@ describe('groupScansIntoBatches', () => {
     ]);
   });
 
+  it('moves a rescanned card to the front of the session, on a live event and a reload', () => {
+    const older = scanEntry({ id: 'older', scannedAt: atOffset(base, 0) });
+    const newer = scanEntry({ id: 'newer', scannedAt: atOffset(base, 2 * 60 * 1000) });
+    const rescanned = scanEntry({
+      id: 'older',
+      scannedAt: atOffset(base, 4 * 60 * 1000),
+      unitCount: 2,
+    });
+    const live = groupScansIntoBatches(sortScansNewestFirst(mergeScanEvent([older, newer], rescanned)));
+    const reloaded = groupScansIntoBatches([newer, rescanned]);
+
+    expect(live.map((batch) => batch.map((entry) => entry.id))).toEqual([['older', 'newer']]);
+    expect(live[0][0]?.unitCount).toBe(2);
+    expect(reloaded).toEqual(live);
+  });
+
+  it('pulls a rescanned card out of an older session to the top', () => {
+    const stale = scanEntry({ id: 'stale', scannedAt: atOffset(base, 0) });
+    const recent = scanEntry({ id: 'recent', scannedAt: atOffset(base, 20 * 60 * 1000) });
+    const rescanned = scanEntry({
+      id: 'stale',
+      scannedAt: atOffset(base, 21 * 60 * 1000),
+      unitCount: 2,
+    });
+
+    expect(groupScansIntoBatches(sortScansNewestFirst(mergeScanEvent([stale, recent], rescanned)))
+      .map((batch) => batch.map((entry) => entry.id))).toEqual([['stale', 'recent']]);
+  });
+
   it('orders a fresh oldest-first load the same as a newest-first live insert', () => {
     const older = scanEntry({ id: 'older', scannedAt: atOffset(base, 0) });
     const middle = scanEntry({ id: 'middle', scannedAt: atOffset(base, 2 * 60 * 1000) });
