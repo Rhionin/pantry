@@ -125,9 +125,10 @@ func NewQueue(db *sql.DB) *Queue {
 // CreateScanEntry inserts a new scan entry, unless a pending or flagged entry
 // already exists for the same user, barcode, and direction — in that case
 // the existing entry's unit_count is incremented instead of inserting a
-// duplicate row, and scanned_at is left unchanged. If entry.ID is empty, a
-// new UUID is generated for the inserted row. Status defaults to "pending"
-// if not set.
+// duplicate row, and scanned_at moves forward to this scan. The queue orders
+// by scanned_at, so that move puts the card back with the newest scans for
+// every open client and for a reload. If entry.ID is empty, a new UUID is
+// generated for the inserted row. Status defaults to "pending" if not set.
 func (r *Queue) CreateScanEntry(ctx context.Context, entry ScanEntry) (*ScanEntry, error) {
 	existing, err := r.findMergeableScanEntry(ctx, entry.UserID, entry.Barcode, entry.Direction)
 	if err != nil {
@@ -138,8 +139,11 @@ func (r *Queue) CreateScanEntry(ctx context.Context, entry ScanEntry) (*ScanEntr
 		if delta <= 0 {
 			delta = 1
 		}
-		newUnitCount := existing.UnitCount + delta
-		if err := r.UpdateScanEntry(ctx, existing.ID, nil, &newUnitCount, nil, nil, nil); err != nil {
+		scannedAt := existing.ScannedAt
+		if entry.ScannedAt.After(scannedAt) {
+			scannedAt = entry.ScannedAt
+		}
+		if err := r.recordMergedScan(ctx, existing.ID, existing.UnitCount+delta, scannedAt); err != nil {
 			return nil, err
 		}
 		return r.GetScanEntry(ctx, existing.ID)
@@ -184,6 +188,38 @@ func (r *Queue) CreateScanEntry(ctx context.Context, entry ScanEntry) (*ScanEntr
 	}
 
 	return created, nil
+}
+
+// recordMergedScan applies one more scan to an open entry and publishes that
+// entry once. scannedAt is the later of the stored time and this scan: an
+// older clock must not pull the card backward. ListScanEntries orders by
+// scanned_at, and clients sort the same column newest-first, so one write
+// keeps live updates and reloads in the same order.
+func (r *Queue) recordMergedScan(ctx context.Context, id string, unitCount int, scannedAt time.Time) error {
+	res, err := r.db.ExecContext(ctx,
+		`UPDATE scan_entries SET unit_count = ?, scanned_at = ? WHERE id = ?`,
+		unitCount, scannedAt, id,
+	)
+	if err != nil {
+		return fmt.Errorf("recordMergedScan: %w", err)
+	}
+
+	n, err := res.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("recordMergedScan rows affected: %w", err)
+	}
+	if n == 0 {
+		return fmt.Errorf("recordMergedScan: scan entry %q not found", id)
+	}
+
+	updated, err := r.GetScanEntry(ctx, id)
+	if err != nil {
+		return err
+	}
+	if updated != nil && r.Broadcaster != nil {
+		r.Broadcaster.PublishScanEvent(*updated)
+	}
+	return nil
 }
 
 // GetScanEntry returns the scan entry with the given ID, or nil if no such
