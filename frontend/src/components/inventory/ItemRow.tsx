@@ -146,14 +146,14 @@ export const ItemRow = memo(({
               {onRestockTarget && <Menu.Item onClick={onRestockTarget}>Restock target…</Menu.Item>}
               {onDontRestock && (
                 <Menu.Item onClick={onDontRestock}>
-                  Don't restock
-                  {dontRestockHint && <span className="restock-quiet">{dontRestockHint}</span>}
+                  <span className="bin-menu-label">Don't restock</span>
+                  {dontRestockHint && <span className="bin-menu-hint">{dontRestockHint}</span>}
                 </Menu.Item>
               )}
               {onUseBroader && useBroaderLabel && (
                 <Menu.Item onClick={onUseBroader}>
-                  {useBroaderLabel}
-                  {useBroaderHint && <span className="restock-quiet">{useBroaderHint}</span>}
+                  <span className="bin-menu-label">{useBroaderLabel}</span>
+                  {useBroaderHint && <span className="bin-menu-hint">{useBroaderHint}</span>}
                 </Menu.Item>
               )}
               {(onRestockTarget || onDontRestock) && <Menu.Divider />}
