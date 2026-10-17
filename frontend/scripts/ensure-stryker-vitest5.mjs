@@ -13,34 +13,57 @@
 //   dist/src/stryker-setup.js  — coverage keys written during the dry run
 // Patching only one of them makes every mutant NoCoverage.
 //
-// Drop this script when a published runner contains the fix (stryker-js
-// #6214 / #6220). A runner whose collectTestName no longer matches either
-// shape fails here instead of reporting a silent 0% score.
+// This file only understands 10.0.0, the version pinned in package.json.
+// Any other installed version, or a 10.0.0 build whose collectTestName no
+// longer matches, exits before Stryker starts. Drop the script when a
+// published runner contains the fix (stryker-js #6214 / #6220).
 
 import { readFileSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import path from 'node:path';
 
+const SUPPORTED_VERSION = '10.0.0';
 const broken = "return nameParts.join(' ').trim();";
 const fixed = "return nameParts.filter((part) => part !== '').join(' > ').trim();";
 const files = ['test-helpers.js', 'stryker-setup.js'];
+const issue = 'https://github.com/stryker-mutator/stryker-js/issues/6210';
 
 const require = createRequire(import.meta.url);
-let packageJson;
+let packageJsonPath;
 try {
-  packageJson = require.resolve('@stryker-mutator/vitest-runner/package.json');
+  packageJsonPath = require.resolve('@stryker-mutator/vitest-runner/package.json');
 } catch {
-  console.error(
+  fail(
     'Cannot find @stryker-mutator/vitest-runner. Install frontend dependencies before running mutation tests.',
   );
-  process.exit(1);
 }
 
-const dist = path.join(path.dirname(packageJson), 'dist', 'src');
+const installed = JSON.parse(readFileSync(packageJsonPath, 'utf8'));
+if (installed.version !== SUPPORTED_VERSION) {
+  fail(
+    `@stryker-mutator/vitest-runner@${installed.version ?? 'unknown'} is installed, but the Vitest 5 workaround only matches ${SUPPORTED_VERSION}.`,
+    'Mutation testing stops here. A different runner build reports covered mutants as survivors after zero tests, which shows up as a false 0% score.',
+    `Pin @stryker-mutator/vitest-runner to ${SUPPORTED_VERSION}, or update scripts/ensure-stryker-vitest5.mjs after checking that the new version kills mutants.`,
+    `Upstream: ${issue}`,
+  );
+}
+
+const dist = path.join(path.dirname(packageJsonPath), 'dist', 'src');
 
 for (const file of files) {
   const fullPath = path.join(dist, file);
-  const source = readFileSync(fullPath, 'utf8');
+  let source;
+  try {
+    source = readFileSync(fullPath, 'utf8');
+  } catch (error) {
+    fail(
+      `Cannot read ${fullPath} (${error.code ?? error.message}).`,
+      `@stryker-mutator/vitest-runner@${SUPPORTED_VERSION} was expected to contain collectTestName in this file.`,
+      'Mutation testing stops here. Skipping the patch reports false 0% scores.',
+      `Upstream: ${issue}`,
+    );
+  }
+
   const brokenCount = countOccurrences(source, broken);
   const fixedCount = countOccurrences(source, fixed);
 
@@ -55,15 +78,19 @@ for (const file of files) {
     continue;
   }
 
-  console.error(
-    `${fullPath} does not match the known vitest-runner@10.0.0 collectTestName shape ` +
-      `(space-joined copies: ${brokenCount}, Vitest 5 copies: ${fixedCount}). ` +
-      'Refusing to run Stryker, because an unpatched Vitest 5 filter reports false survivors. ' +
-      'Update scripts/ensure-stryker-vitest5.mjs for this runner version.',
+  fail(
+    `${fullPath} does not contain the ${SUPPORTED_VERSION} collectTestName this workaround knows how to patch (space-joined copies: ${brokenCount}, Vitest 5 copies: ${fixedCount}).`,
+    'Mutation testing stops here. Continuing would report false survivors.',
+    'Update scripts/ensure-stryker-vitest5.mjs for this build of the runner.',
+    `Upstream: ${issue}`,
   );
-  process.exit(1);
 }
 
 function countOccurrences(source, needle) {
   return source.split(needle).length - 1;
+}
+
+function fail(...lines) {
+  console.error(lines.join('\n'));
+  process.exit(1);
 }

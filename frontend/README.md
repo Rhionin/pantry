@@ -93,7 +93,7 @@ The test configuration includes:
 
 ## Mutation testing
 
-Stryker (`@stryker-mutator/core` and `@stryker-mutator/vitest-runner`) mutates `src/**/*.ts` and `src/**/*.tsx`, excluding tests and `src/test-setup.ts`, then re-runs the related Vitest tests. Use Node 24 from `.nvmrc`.
+Stryker (`@stryker-mutator/core` and `@stryker-mutator/vitest-runner`) mutates `src/**/*.ts` and `src/**/*.tsx`, excluding tests and `src/test-setup.ts`, then re-runs the related Vitest tests. Use Node 24 from `.nvmrc`. `@stryker-mutator/vitest-runner` is pinned to exact `10.0.0` (no version range) because [stryker-js#6210](https://github.com/stryker-mutator/stryker-js/issues/6210) is still open. A newer runner without a matching workaround reports false survivors.
 
 ```bash
 npm run test:mutation
@@ -129,15 +129,19 @@ Add `--force` to rebuild that file. Incremental results are only as honest as th
 
 ### Vitest 5 and the test-name patch
 
-`npm run test:mutation` applies `scripts/ensure-stryker-vitest5.mjs` before Stryker starts. `@stryker-mutator/vitest-runner@10.0.0` joins suite and test names with a space. Vitest 5 matches `testNamePattern` against the full name joined with ` > `, so the per-test filter matches nothing and covered mutants are reported as survivors after zero tests. The script patches both copies of `collectTestName` (test ids and dry-run coverage keys). Patching only one of them marks every mutant as having no coverage.
+`npm run test:mutation` applies `scripts/ensure-stryker-vitest5.mjs` before Stryker starts. The installed `@stryker-mutator/vitest-runner` must be exactly `10.0.0`. That release joins suite and test names with a space. Vitest 5 matches `testNamePattern` against the full name joined with ` > `, so the per-test filter matches nothing and covered mutants are reported as survivors after zero tests. The script patches both copies of `collectTestName` (test ids and dry-run coverage keys). Patching only one of them marks every mutant as having no coverage.
+
+The script exits before Stryker starts when the installed version is not `10.0.0`, when either `collectTestName` file is missing, or when the function body is not the `10.0.0` text it knows how to patch. It does not continue into a run that would print a false 0% score.
 
 The Vitest runner still returns that per-test coverage when `coverageAnalysis` is `off`, so the planner keeps filtering and the false survivors remain. The config therefore uses `perTest`.
 
-A published runner that no longer matches either the space-joined or the ` > ` shape makes the script exit with an error instead of printing a silent score. That is [stryker-js#6210](https://github.com/stryker-mutator/stryker-js/issues/6210); remove the script when the fix ships.
+Remove the pin and `scripts/ensure-stryker-vitest5.mjs` when a published runner includes the fix for [stryker-js#6210](https://github.com/stryker-mutator/stryker-js/issues/6210).
 
 Do not invoke `npx stryker run` on its own. The score is only meaningful after the patch.
 
-A manual run can confirm the filter is real: the `||` to `&&` mutant on line 13 of `src/utils/inventoryFilter.ts` is killed by the existing unit tests. A report that calls it a survivor means the patch did not apply.
+### Canary
+
+`npm run test:mutation` runs `scripts/mutation-canary.mjs` before the requested mutate set. The canary mutation-tests only `src/utils/inventoryFilter.ts` and requires the line 13 `LogicalOperator` mutant (`||` replaced with `&&`) to be Killed with at least one test executed. Those unit tests already fail when that edit is applied by hand. The canary writes `reports/mutation/canary.json` and leaves the main report for the run that follows. A failure exits non-zero and skips the rest of the command.
 
 ### Optional GitHub workflow
 

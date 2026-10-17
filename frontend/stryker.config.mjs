@@ -23,12 +23,14 @@ const config = {
   // Per-test is the mode the Vitest 5 name patch makes accurate.
   coverageAnalysis: 'perTest',
   disableTypeChecks: true,
-  reporters: ['clear-text', 'progress', 'html', 'json'],
+  reporters: process.env.MUTATION_CANARY_REPORTERS
+    ? process.env.MUTATION_CANARY_REPORTERS.split(',').map((name) => name.trim()).filter(Boolean)
+    : ['clear-text', 'progress', 'html', 'json'],
   htmlReporter: {
     fileName: 'reports/mutation/index.html',
   },
   jsonReporter: {
-    fileName: 'reports/mutation/mutation-report.json',
+    fileName: process.env.MUTATION_CANARY_JSON ?? 'reports/mutation/mutation-report.json',
   },
   tempDirName: '.stryker-tmp',
   cleanTempDir: 'always',
