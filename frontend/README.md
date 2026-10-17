@@ -60,6 +60,7 @@ This means that when the frontend makes same-origin requests to `/api/products`,
 ### Code Quality
 - `npm run lint` - Run ESLint on all source files
 - `npm test` - Run unit tests with Vitest in watch mode
+- `npm run test:mutation` - Run Stryker mutation tests (see below)
 - `npm run e2e` - Run end-to-end tests with Playwright
 
 ### Testing Approach
@@ -80,10 +81,67 @@ The frontend uses a multi-layered testing strategy:
    - TypeScript provides compile-time type safety
    - Run explicitly with `npx tsc -b` or as part of the build process
 
+4. **Mutation Testing** (Stryker + Vitest)
+   - Checks that the unit tests fail when production code is changed
+   - Run from this directory with `npm run test:mutation`
+   - Does not run in pull-request CI
+
 The test configuration includes:
 - **jsdom** environment for unit tests (configured in `vite.config.ts`)
 - **Setup file** at `./src/test-setup.ts` for test utilities and global configuration
 - **@testing-library/jest-dom** for additional DOM matchers
+
+## Mutation testing
+
+Stryker (`@stryker-mutator/core` and `@stryker-mutator/vitest-runner`) mutates `src/**/*.ts` and `src/**/*.tsx`, excluding tests and `src/test-setup.ts`, then re-runs the related Vitest tests. Use Node 24 from `.nvmrc`.
+
+```bash
+npm run test:mutation
+```
+
+The HTML report is `reports/mutation/index.html` and the JSON report is `reports/mutation/mutation-report.json`. Both directories are gitignored.
+
+### Scope a run
+
+`--mutate` accepts a comma-separated list of globs, relative to this directory. npm forwards arguments after `--`.
+
+```bash
+# One module
+npm run test:mutation -- --mutate src/utils/inventoryFilter.ts
+
+# The utils directory. --mutate replaces the list in stryker.config.mjs,
+# so repeat the test exclusion.
+npm run test:mutation -- --mutate 'src/utils/**/*.ts,!src/utils/**/*.test.ts'
+
+# Production sources changed on this branch (paths stay relative to frontend/)
+npm run test:mutation -- --mutate "$(git diff --name-only --relative --diff-filter=ACMRT origin/master -- 'src/**/*.ts' 'src/**/*.tsx' | grep -v -e '\.test\.' -e 'test-setup.ts' | paste -sd, -)"
+```
+
+If the changed-file command prints nothing, omit `--mutate`. An empty value is not a valid file list.
+
+Incremental mode reuses `reports/mutation/incremental.json` and only rechecks mutants whose code or covering tests changed:
+
+```bash
+npm run test:mutation -- --incremental --incrementalFile reports/mutation/incremental.json
+```
+
+Add `--force` to rebuild that file. Incremental results are only as honest as the run that wrote them, so use a full run when the Stryker or Vitest version changes.
+
+### Vitest 5 and the test-name patch
+
+`npm run test:mutation` applies `scripts/ensure-stryker-vitest5.mjs` before Stryker starts. `@stryker-mutator/vitest-runner@10.0.0` joins suite and test names with a space. Vitest 5 matches `testNamePattern` against the full name joined with ` > `, so the per-test filter matches nothing and covered mutants are reported as survivors after zero tests. The script patches both copies of `collectTestName` (test ids and dry-run coverage keys). Patching only one of them marks every mutant as having no coverage.
+
+The Vitest runner still returns that per-test coverage when `coverageAnalysis` is `off`, so the planner keeps filtering and the false survivors remain. The config therefore uses `perTest`.
+
+A published runner that no longer matches either the space-joined or the ` > ` shape makes the script exit with an error instead of printing a silent score. That is [stryker-js#6210](https://github.com/stryker-mutator/stryker-js/issues/6210); remove the script when the fix ships.
+
+Do not invoke `npx stryker run` on its own. The score is only meaningful after the patch.
+
+A manual run can confirm the filter is real: the `||` to `&&` mutant on line 13 of `src/utils/inventoryFilter.ts` is killed by the existing unit tests. A report that calls it a survivor means the patch did not apply.
+
+### Optional GitHub workflow
+
+`.github/workflows/frontend-mutation.yml` runs only when someone starts it from the Actions tab (`workflow_dispatch`). It does not run on pull requests. The default mutate glob is `src/utils/**/*.ts,!src/utils/**/*.test.ts`. The workflow input can widen it; include a `!` exclusion for tests, because the input replaces the list in `stryker.config.mjs`.
 
 ## Project Structure
 
@@ -102,5 +160,6 @@ The test configuration includes:
 - **Mantine** for UI components
 - **React Router** for client-side routing
 - **Vitest** for unit testing
+- **Stryker** for mutation testing
 - **Playwright** for end-to-end testing
 - **ESLint** for code linting
