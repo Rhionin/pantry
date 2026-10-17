@@ -302,7 +302,8 @@ func (s *Service) Override(ctx context.Context, id ProductID) (Override, error) 
 }
 
 // Wipe returns an error without opening a transaction when phrase != WipePhrase.
-// Otherwise one transaction clears that user's shelves and the start date.
+// Otherwise one transaction clears that user's stock and the start date.
+// The item and every restock target stay. Deleting the item row is what removes its target.
 func (s *Service) Wipe(ctx context.Context, phrase string) error {
 	if phrase != WipePhrase {
 		return fmt.Errorf("Type WIPE INVENTORY to confirm wiping the inventory.")

@@ -118,12 +118,19 @@ func TestSavePlannedLinesSnapshotsAutoRowsAndLeavesManuals(t *testing.T) {
 			continue
 		}
 		found = true
-		if row.ID != autoRow.ID || row.Quantity != 3 || row.PurchasedAt != nil {
-			t.Fatalf("changed plan should refresh the same row, got %#v", row)
+		if row.ID == autoRow.ID || row.Quantity != 3 || row.PurchasedAt != nil {
+			t.Fatalf("changed plan should add a new unpurchased line, got %#v", row)
 		}
 	}
 	if !found {
 		t.Fatalf("auto row missing after change: %#v", active)
+	}
+	purchased, err := deps.shopping.GetItemByID(ctx, autoRow.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if purchased == nil || purchased.PurchasedAt == nil || purchased.Quantity != 2 || purchased.Note != "replacing 2 you used" {
+		t.Fatalf("changed plan rewrote the purchased row: %#v", purchased)
 	}
 
 	if err := deps.shopping.SavePlannedLines(ctx, "user-1", nil, nil); err != nil {

@@ -207,7 +207,6 @@ func wipeHousehold(ctx context.Context, db *sql.DB) error {
 		`DELETE FROM item_instances WHERE item_id IN (SELECT id FROM items WHERE user_id = ?)`,
 		`DELETE FROM stock_in_events WHERE product_id IN (SELECT product_id FROM items WHERE user_id = ?)`,
 		`DELETE FROM stock_moves WHERE item_id IN (SELECT id FROM items WHERE user_id = ?)`,
-		`DELETE FROM items WHERE user_id = ?`,
 	}
 	for _, query := range statements {
 		if _, err := tx.ExecContext(ctx, query, householdUser); err != nil {

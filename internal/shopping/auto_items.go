@@ -105,29 +105,34 @@ func (s *Store) SavePlannedLines(ctx context.Context, userID string, lines []Pla
 
 func upsertAutoLine(ctx context.Context, tx *sql.Tx, userID, itemID, groupID string, quantity int, note string) error {
 	rows, err := tx.QueryContext(ctx, `
-		SELECT id, purchased_at IS NOT NULL FROM shopping_list_items
+		SELECT id, quantity, note, purchased_at IS NOT NULL FROM shopping_list_items
 		WHERE user_id = ? AND item_id = ? AND source = 'auto'
 		ORDER BY created_at ASC, rowid ASC`, userID, itemID)
 	if err != nil {
 		return fmt.Errorf("could not load shopping list item %q: %w", itemID, err)
 	}
-	var openID, boughtID string
+	var openID string
 	var extras []string
+	alreadyBought := false
 	for rows.Next() {
-		var id string
+		var id, rowNote string
+		var rowQty int
 		var purchased bool
-		if err := rows.Scan(&id, &purchased); err != nil {
+		if err := rows.Scan(&id, &rowQty, &rowNote, &purchased); err != nil {
 			rows.Close()
 			return fmt.Errorf("could not read shopping list item %q: %w", itemID, err)
 		}
-		switch {
-		case !purchased && openID == "":
-			openID = id
-		case purchased && boughtID == "":
-			boughtID = id
-		case !purchased:
-			extras = append(extras, id)
+		if purchased {
+			if rowQty == quantity && rowNote == note {
+				alreadyBought = true
+			}
+			continue
 		}
+		if openID == "" {
+			openID = id
+			continue
+		}
+		extras = append(extras, id)
 	}
 	if err := rows.Err(); err != nil {
 		rows.Close()
@@ -141,11 +146,12 @@ func upsertAutoLine(ctx context.Context, tx *sql.Tx, userID, itemID, groupID str
 	if groupID != "" {
 		storedGroup = groupID
 	}
-	targetID := openID
-	if targetID == "" {
-		targetID = boughtID
-	}
-	if targetID == "" {
+	if openID == "" {
+		// A checked-off row for this exact line stays checked off. A different
+		// plan is a new unpurchased line, so the purchase is not rewritten.
+		if alreadyBought {
+			return nil
+		}
 		_, err := tx.ExecContext(ctx, `
 			INSERT INTO shopping_list_items (id, user_id, item_id, quantity, source, note, created_at, group_id)
 			VALUES (?, ?, ?, ?, 'auto', ?, ?, ?)`,
@@ -161,10 +167,9 @@ func upsertAutoLine(ctx context.Context, tx *sql.Tx, userID, itemID, groupID str
 		UPDATE shopping_list_items
 		SET quantity = ?,
 		    note = ?,
-		    group_id = ?,
-		    purchased_at = CASE WHEN quantity = ? AND note = ? THEN purchased_at ELSE NULL END
+		    group_id = ?
 		WHERE id = ?`,
-		quantity, note, storedGroup, quantity, note, targetID,
+		quantity, note, storedGroup, openID,
 	)
 	if err != nil {
 		return fmt.Errorf("could not refresh shopping list item %q: %w", itemID, err)

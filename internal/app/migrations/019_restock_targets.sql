@@ -72,6 +72,15 @@ CREATE TABLE item_targets (
 
 CREATE INDEX idx_item_targets_item ON item_targets (item_id);
 
+-- The item row is the item. Deleting it removes its target. Wiping stock
+-- does not delete the item, so the target stays.
+CREATE TRIGGER delete_item_target_with_item
+AFTER DELETE ON items
+FOR EACH ROW
+BEGIN
+    DELETE FROM item_targets WHERE item_id = OLD.id;
+END;
+
 CREATE TABLE item_categories (
     household_id TEXT NOT NULL,
     item_id      TEXT NOT NULL,
