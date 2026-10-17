@@ -37,7 +37,7 @@ const unreachable: readonly [string, string, string][] = [
   ['#000000', '#111111', '#000000'],
 ]
 
-const rejectedHex = ['not-a-color', '#12', '#gggggg']
+const rejectedHex = ['not-a-color', '#12', '#gggggg', 'x#123456', '#1234567']
 
 describe('contrast', () => {
   it.each(referencePairs)('%s on %s is %s', (foreground, background, ratio) => {
