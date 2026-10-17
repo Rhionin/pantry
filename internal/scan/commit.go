@@ -392,7 +392,9 @@ func (r *Queue) readInstance(ctx context.Context, id string) (*inventory.ItemIns
 }
 
 // findOrCreateItem retrieves the item ID for a user+product combination,
-// creating the item if it doesn't already exist.
+// creating the item if it doesn't already exist. A shelved row is still
+// this household's item: stock-in finds it, and the unshelve trigger puts
+// it back on the shelf.
 func (r *Queue) findOrCreateItem(ctx context.Context, tx *sql.Tx, userID, productID string) (string, error) {
 	var itemID string
 	err := tx.QueryRowContext(ctx, `
@@ -469,13 +471,16 @@ func (r *Queue) commitStockOut(ctx context.Context, scanEntry *ScanEntry, instan
 	}
 
 	var itemID string
+	var shelved int
 	err = tx.QueryRowContext(ctx, `
-		SELECT id FROM items 
+		SELECT id, shelved FROM items 
 		WHERE user_id = ? AND product_id = ?`,
 		scanEntry.UserID, targetProductID,
-	).Scan(&itemID)
+	).Scan(&itemID, &shelved)
 
-	if err == sql.ErrNoRows {
+	// A wipe keeps the item row and hides it. Scanning that product out is
+	// the same as scanning a product the household does not stock.
+	if err == sql.ErrNoRows || (err == nil && shelved != 0) {
 		if linkProductID != "" {
 			return ErrLinkNotStocked
 		}

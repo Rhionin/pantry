@@ -224,7 +224,7 @@ func TestManualStockOutLeavesGroupAndShoppingFillReadable(t *testing.T) {
 		},
 		afterRequest: func(env testEnv) {
 			var at string
-			if err := env.DB.QueryRow(`SELECT at FROM stock_moves WHERE item_id = ?`, "item-oats").Scan(&at); err != nil {
+			if err := env.DB.QueryRow(`SELECT CAST(at AS TEXT) FROM stock_moves WHERE item_id = ?`, "item-oats").Scan(&at); err != nil {
 				env.T.Fatalf("stock_moves.at: %v", err)
 			}
 			if strings.Contains(at, "m=") {
