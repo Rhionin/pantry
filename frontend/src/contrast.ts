@@ -47,7 +47,8 @@ export const contrastRatio = (foreground: string, background: string): number =>
 
 /**
  * Darker palette steps are higher indexes. Returns the first index at or
- * after `start` that clears `minimum` against `background`.
+ * after `start` that clears `minimum` against `background`, or -1 when
+ * none do.
  */
 export const readableShade = (
   colors: readonly string[],
@@ -55,15 +56,16 @@ export const readableShade = (
   start: number,
   minimum = bodyContrastMinimum,
 ): number => {
-  for (let index = start; index < colors.length; index += 1) {
+  for (let index = Math.max(0, start); index < colors.length; index += 1) {
     if (contrastRatio(colors[index], background) >= minimum) return index
   }
-  return colors.length - 1
+  return -1
 }
 
 /**
  * Lighter palette steps are lower indexes. Returns the first index at or
- * before `start` that clears `minimum` against `background`.
+ * before `start` that clears `minimum` against `background`, or -1 when
+ * none do.
  */
 export const readableLightShade = (
   colors: readonly string[],
@@ -71,8 +73,48 @@ export const readableLightShade = (
   start: number,
   minimum = bodyContrastMinimum,
 ): number => {
-  for (let index = start; index >= 0; index -= 1) {
+  for (let index = Math.min(start, colors.length - 1); index >= 0; index -= 1) {
     if (contrastRatio(colors[index], background) >= minimum) return index
   }
-  return 0
+  return -1
+}
+
+const mixChannel = (from: number, to: number, amount: number) =>
+  Math.max(0, Math.min(255, Math.round(from + (to - from) * amount)))
+
+/** Move `ink` toward `target` by `amount` (0 keeps ink, 1 is target). */
+export const mix = (ink: string, target: string, amount: number): string => {
+  const [inkRed, inkGreen, inkBlue] = parseHex(ink)
+  const [targetRed, targetGreen, targetBlue] = parseHex(target)
+  return `#${hexByte(mixChannel(inkRed, targetRed, amount))}${hexByte(mixChannel(inkGreen, targetGreen, amount))}${hexByte(mixChannel(inkBlue, targetBlue, amount))}`
+}
+
+/**
+ * The same hue, moved toward `target` until it clears `minimum` on `background`.
+ * Throws when even `target` cannot.
+ */
+export const towardContrast = (
+  ink: string,
+  target: string,
+  background: string,
+  minimum = bodyContrastMinimum,
+): string => {
+  if (contrastRatio(ink, background) >= minimum) return ink
+  if (contrastRatio(target, background) < minimum) {
+    throw new Error(`no color in this range reaches ${minimum}:1 on ${background}`)
+  }
+  let low = 0
+  let high = 1
+  for (let step = 0; step < 24; step += 1) {
+    const mid = (low + high) / 2
+    if (contrastRatio(mix(ink, target, mid), background) >= minimum) high = mid
+    else low = mid
+  }
+  let amount = high
+  let color = mix(ink, target, amount)
+  while (contrastRatio(color, background) < minimum) {
+    amount = Math.min(1, amount + 1 / 255)
+    color = mix(ink, target, amount)
+  }
+  return color
 }

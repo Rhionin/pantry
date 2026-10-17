@@ -93,6 +93,9 @@ func presentShoppingList(req Request[struct{}, struct{}], provision shoppingProv
 			Adjustment:       adjustment,
 			Group:            shoppingGroupResponse(&row),
 		}
+		if count, ok := provision.Counts[row.ItemID]; ok {
+			entry.Basis = &ShoppingListBasis{InstanceCount: count}
+		}
 		resp = append(resp, entry)
 	}
 	return resp, nil

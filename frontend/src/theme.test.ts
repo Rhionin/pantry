@@ -6,6 +6,7 @@ import { cssVariablesResolver, theme } from './theme';
 const fullTheme = mergeMantineTheme(DEFAULT_THEME, theme);
 
 const token = (value: string | undefined, colors: typeof fullTheme.colors) => {
+  if (value?.startsWith('#')) return value;
   const match = /^var\(--mantine-color-([a-z0-9]+)-(\d)\)$/.exec(value ?? '');
   if (!match) throw new Error(`unresolved token ${value}`);
   const scale = colors[match[1]];
@@ -29,21 +30,32 @@ describe('theme', () => {
     expect(contrastRatio(dimmedLight, fullTheme.white)).toBeGreaterThanOrEqual(4.5);
     expect(contrastRatio(dimmedDark, fullTheme.colors.dark[7])).toBeGreaterThanOrEqual(4.5);
 
-    for (const name of ['teal', 'amber', 'red'] as const) {
-      const scale = fullTheme.colors[name];
-      const lightWash = flatten(scale[6], 0.1, fullTheme.white);
-      const lightInk = token(variables.light[`--mantine-color-${name}-light-color`], fullTheme.colors);
-      expect(scale).toContain(lightInk);
-      expect(contrastRatio(lightInk, lightWash)).toBeGreaterThanOrEqual(4.5);
-
-      const darkWash = flatten(scale[4], 0.15, fullTheme.colors.dark[7]);
-      const darkInk = token(variables.dark[`--mantine-color-${name}-light-color`], fullTheme.colors);
-      expect(scale).toContain(darkInk);
-      expect(contrastRatio(darkInk, darkWash)).toBeGreaterThanOrEqual(4.5);
-    }
-
     expect(token(variables.light['--mantine-color-teal-light-color'], fullTheme.colors)).toBe('#0f766e');
     expect(token(variables.light['--mantine-color-amber-light-color'], fullTheme.colors)).toBe('#b45309');
     expect(token(variables.light['--mantine-color-red-light-color'], fullTheme.colors)).toBe('#c92a2a');
+  });
+
+  it('keeps every color scale readable on its light wash, dark wash, and page background', () => {
+    const variables = cssVariablesResolver(fullTheme);
+    const paper = fullTheme.colors.dark[7];
+    const failures: string[] = [];
+    for (const name of Object.keys(fullTheme.colors)) {
+      const scale = fullTheme.colors[name];
+      if (!Array.isArray(scale) || scale.length < 10) continue;
+      const pairs = [
+        ['light wash', variables.light[`--mantine-color-${name}-light-color`], flatten(scale[6], 0.1, fullTheme.white)],
+        ['dark wash', variables.dark[`--mantine-color-${name}-light-color`], flatten(scale[4], 0.15, paper)],
+        ['light text', variables.light[`--mantine-color-${name}-text`], fullTheme.white],
+        ['light outline', variables.light[`--mantine-color-${name}-outline`], fullTheme.white],
+        ['dark text', variables.dark[`--mantine-color-${name}-text`], paper],
+        ['dark outline', variables.dark[`--mantine-color-${name}-outline`], paper],
+      ] as const;
+      for (const [label, ink, background] of pairs) {
+        const color = token(ink, fullTheme.colors);
+        const ratio = contrastRatio(color, background);
+        if (ratio < 4.5) failures.push(`${name} ${label} ${color} on ${background} is ${ratio.toFixed(2)}`);
+      }
+    }
+    expect(failures).toEqual([]);
   });
 });
