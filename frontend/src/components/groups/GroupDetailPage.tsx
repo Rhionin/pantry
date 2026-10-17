@@ -274,6 +274,7 @@ export const GroupDetailPage = () => {
                 onSave={saveTarget}
               />
               <Button
+                className="restock-text-action"
                 size="xs"
                 variant="subtle"
                 mt="xs"

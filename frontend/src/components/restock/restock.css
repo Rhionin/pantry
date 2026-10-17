@@ -10,7 +10,7 @@
   font-weight: 700;
   letter-spacing: 0.04em;
   text-transform: uppercase;
-  color: var(--mantine-color-gray-6);
+  color: var(--mantine-color-gray-7);
 }
 
 .restock-value {
@@ -74,13 +74,13 @@
 
 .restock-cell .k {
   font-size: 12px;
-  color: var(--mantine-color-gray-6);
+  color: var(--mantine-color-gray-7);
   font-weight: 600;
 }
 
 .restock-cell .v {
   font-size: 13px;
-  color: var(--mantine-color-gray-6);
+  color: var(--mantine-color-gray-7);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -118,6 +118,14 @@
 
 .restock-quiet.is-own {
   color: var(--mantine-color-teal-7);
+}
+
+:where([data-mantine-color-scheme='dark']) .restock-quiet {
+  color: var(--mantine-color-gray-3);
+}
+
+:where([data-mantine-color-scheme='dark']) .restock-quiet.is-own {
+  color: var(--mantine-color-teal-4);
 }
 
 .restock-order {
@@ -177,7 +185,7 @@
 .restock-row .value span {
   display: block;
   font-size: 12px;
-  color: var(--mantine-color-gray-6);
+  color: var(--mantine-color-gray-7);
 }
 
 .restock-suggest {

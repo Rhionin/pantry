@@ -245,12 +245,28 @@ func (t *Targets) ensureStarters(ctx context.Context) error {
 	if count > 0 {
 		return nil
 	}
+	// One transaction so a canceled request does not leave a partial set of starters.
+	tx, err := t.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
 	for _, name := range StarterCategories {
-		if _, err := t.CreateCategory(ctx, name); err != nil {
+		key, err := nameKey(name)
+		if err != nil {
+			return err
+		}
+		_, err = tx.ExecContext(ctx, `
+			INSERT INTO categories (id, household_id, name, name_key) VALUES (?, ?, ?, ?)`,
+			uuid.NewString(), HouseholdID, name, key)
+		if err != nil {
+			if strings.Contains(strings.ToLower(err.Error()), "unique") {
+				return nil
+			}
 			return err
 		}
 	}
-	return nil
+	return tx.Commit()
 }
 
 // Validate rejects a target the screens cannot store.
@@ -441,7 +457,7 @@ func (t *Targets) CreateCategory(ctx context.Context, name string) (CategorySumm
 		if strings.Contains(strings.ToLower(err.Error()), "unique") {
 			return CategorySummary{}, fmt.Errorf("A category named %s already exists.", strings.TrimSpace(name))
 		}
-		return CategorySummary{}, fmt.Errorf("could not add the category")
+		return CategorySummary{}, fmt.Errorf("could not add the category: %w", err)
 	}
 	return CategorySummary{ID: id, Name: strings.TrimSpace(name), SourceLabel: "Household default", ValueLabel: "3 months"}, nil
 }
