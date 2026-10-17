@@ -61,8 +61,10 @@ is stored, the status says alerts arrive even when Stockbot is closed.
 ## Gotchas
 
 - A browser that stores a push subscription gets the same three alerts from
-  the server, including while Stockbot is closed. The page notification is the
-  fallback when that subscription is not available, and it still needs the tab.
+  the server when no Stockbot window is visible. A visible window skips the
+  system notification; the queue already shows the new scans. The page
+  notification is the fallback when that subscription is not available, and it
+  still needs the tab.
 - A browser with no Notification API shows "This browser cannot show
   notifications." on Settings and the switch stays off.
 - The 5-minute wait is the same gap that splits session cards. A driver proves

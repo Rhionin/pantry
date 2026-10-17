@@ -29,8 +29,10 @@ export function takeScanAlertDirection(): ScanDirection | null {
 
 export function showScanAlert(notice: AttentionNotice, onClick: () => void): void {
   // The device switch gates every alert, including the in-page fallback.
-  // A stored push subscription already shows the same alert from the service
-  // worker, including while the tab is open.
+  // A stored push subscription delivers the same alert through the service
+  // worker. That worker shows a system notification only when no Stockbot
+  // window is visible. A visible window already lists the new scans.
+  // This page notification is the fallback when the browser cannot subscribe.
   if (!scanAlertsPreferred()) return;
   if (backgroundAlertsEnabled()) return;
   if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return;

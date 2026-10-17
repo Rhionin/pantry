@@ -1,7 +1,9 @@
-// Scan alerts while Stockbot is closed. The page registers this file at the
-// site root so a click can open the scan queue. The server sends a compact
-// JSON payload: a short title, a body naming the count and the first item
-// names, and a url on this origin. A path that is not on this origin is ignored.
+// Scan alerts while Stockbot is closed or hidden. The page registers this
+// file at the site root so a click can open the scan queue. The server sends
+// a compact JSON payload: a short title, a body naming the count and the
+// first item names, and a url on this origin. A path that is not on this
+// origin is ignored. A visible window already shows the new scans, so this
+// worker skips the system notification.
 
 self.addEventListener('push', (event) => {
   const payload = readPayload(event);
@@ -16,8 +18,37 @@ self.addEventListener('push', (event) => {
   if (payload.tag !== '') {
     options.tag = payload.tag;
   }
-  event.waitUntil(self.registration.showNotification(title, options));
+  event.waitUntil(presentAlert(title, options));
 });
+
+// The push subscription is userVisibleOnly. Chrome accepts a skipped
+// showNotification when a window of this origin is already visible, and
+// otherwise may show a generic notice or stop delivering silent pushes.
+// matchAll is limited to this origin, including windows this worker does
+// not control yet. The hostname stored on the subscription decides whether
+// the push arrives; it does not change which windows are in this list.
+function shouldSuppressSystemNotification(clients) {
+  if (clients == null || typeof clients[Symbol.iterator] !== 'function') return false;
+  for (const client of clients) {
+    if (!client || typeof client !== 'object') continue;
+    if (client.visibilityState === 'visible' || client.focused === true) return true;
+  }
+  return false;
+}
+
+async function presentAlert(title, options) {
+  let windows = [];
+  try {
+    windows = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+  } catch {
+    windows = [];
+  }
+  // The open queue already lists the new scans. Skip the system notification
+  // only then. userVisibleOnly still requires showNotification when no
+  // Stockbot window is visible.
+  if (shouldSuppressSystemNotification(windows)) return;
+  await self.registration.showNotification(title, options);
+}
 
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();

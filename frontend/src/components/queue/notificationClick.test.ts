@@ -9,11 +9,21 @@ interface TraceCall {
   op: string;
   client?: string;
   url?: string;
+  type?: string;
+  title?: string;
   options?: { type?: string; includeUncontrolled?: boolean };
+}
+
+interface ClientState {
+  visibilityState?: string;
+  focused?: boolean;
+  postMessage?: (data: unknown) => void;
 }
 
 interface FakeClient {
   url: string;
+  visibilityState: string;
+  focused: boolean;
   focus: () => Promise<FakeClient>;
   navigate: (url: string) => Promise<FakeClient | null>;
   postMessage: (data: unknown) => void;
@@ -27,6 +37,7 @@ interface ShownNotification {
 interface WorkerApi {
   chooseNotificationClient: (list: Array<{ url: string }>, target: string, pageOrigin: string) => { url: string } | null;
   absoluteAlertURL: (value: unknown, pageOrigin: string) => string;
+  shouldSuppressSystemNotification: (clients: unknown) => boolean;
 }
 
 // The service worker is a classic script. Load that same source so the test
@@ -35,12 +46,19 @@ const loadWorkerSource = new Function(
   'self',
   'URL',
   'console',
-  `${workerSource}\nreturn { chooseNotificationClient, absoluteAlertURL };`,
+  `${workerSource}\nreturn { chooseNotificationClient, absoluteAlertURL, shouldSuppressSystemNotification };`,
 ) as (self: unknown, urlConstructor: typeof URL, console: Console) => WorkerApi;
 
-function fakeClient(url: string, trace: TraceCall[], navigateTo?: (url: string) => Promise<FakeClient | null>): FakeClient {
+function fakeClient(
+  url: string,
+  trace: TraceCall[],
+  navigateTo?: (url: string) => Promise<FakeClient | null>,
+  state: ClientState = {},
+): FakeClient {
   const client: FakeClient = {
     url,
+    visibilityState: state.visibilityState ?? 'hidden',
+    focused: state.focused ?? false,
     async focus() {
       trace.push({ op: 'focus', client: url });
       return client;
@@ -50,8 +68,18 @@ function fakeClient(url: string, trace: TraceCall[], navigateTo?: (url: string) 
       return client;
     }),
     postMessage(data) {
-      const message = data as { url?: string };
-      trace.push({ op: 'postMessage', client: url, url: message?.url });
+      if (state.postMessage) {
+        state.postMessage(data);
+        return;
+      }
+      const message = data as { url?: string; type?: string; title?: string };
+      trace.push({
+        op: 'postMessage',
+        client: url,
+        url: message?.url,
+        type: message?.type,
+        title: message?.title,
+      });
     },
   };
   return client;
@@ -82,7 +110,7 @@ function loadWorker(clients: FakeClient[], trace: TraceCall[] = []) {
     },
   };
   const api = loadWorkerSource(self, URL, console);
-  return { trace, listeners, shown, api };
+  return { trace, listeners, shown, api, self };
 }
 
 async function click(worker: ReturnType<typeof loadWorker>, dataURL: unknown) {
@@ -253,5 +281,92 @@ describe('notification click client selection', () => {
       { op: 'focus', client: `${origin}/inventory` },
     ]);
     expect(fallbackTrace.some((call) => call.op === 'navigate')).toBe(false);
+  });
+});
+
+describe('shouldSuppressSystemNotification', () => {
+  const decide = (clients: unknown) => loadWorker([]).api.shouldSuppressSystemNotification(clients);
+
+  it('suppresses when any matched window is visible', () => {
+    expect(decide([
+      { visibilityState: 'hidden', focused: false },
+      { visibilityState: 'visible', focused: false },
+    ])).toBe(true);
+  });
+
+  it('suppresses when any matched window is focused', () => {
+    expect(decide([{ visibilityState: 'hidden', focused: true }])).toBe(true);
+  });
+
+  it('keeps the system notification when every window is hidden and unfocused', () => {
+    expect(decide([{ visibilityState: 'hidden', focused: false }])).toBe(false);
+    expect(decide([])).toBe(false);
+  });
+
+  it('ignores prerender, unloaded, and values that are not windows', () => {
+    expect(decide([
+      { visibilityState: 'prerender', focused: false },
+      { visibilityState: 'unloaded', focused: false },
+      null,
+      undefined,
+      'visible',
+    ])).toBe(false);
+    expect(decide(null)).toBe(false);
+    expect(decide(undefined)).toBe(false);
+  });
+});
+
+describe('push while a Stockbot window is open', () => {
+  const payload = {
+    title: 'Scan failed',
+    body: "Couldn't look up that barcode.",
+    tag: 'pantry-scan-failure-1',
+    url: '/',
+  };
+
+  it('skips the system notification when a window is visible or focused', async () => {
+    const trace: TraceCall[] = [];
+    const hidden = fakeClient(`${origin}/history`, trace, undefined, { visibilityState: 'hidden', focused: false });
+    const inventory = fakeClient(`${origin}/inventory`, trace, undefined, { visibilityState: 'visible', focused: false });
+    const focused = fakeClient(`${origin}/`, trace, undefined, { visibilityState: 'hidden', focused: true });
+    const worker = loadWorker([hidden, inventory, focused], trace);
+
+    await push(worker, payload);
+
+    expect(worker.shown.current).toBeNull();
+    expect(trace).toContainEqual({
+      op: 'matchAll',
+      options: { type: 'window', includeUncontrolled: true },
+    });
+    expect(trace.some((call) => call.op === 'postMessage')).toBe(false);
+  });
+
+  it('shows the system notification when every window is hidden', async () => {
+    const trace: TraceCall[] = [];
+    const hidden = fakeClient(`${origin}/inventory`, trace, undefined, { visibilityState: 'hidden', focused: false });
+    const worker = loadWorker([hidden], trace);
+
+    await push(worker, payload);
+
+    expect(worker.shown.current?.title).toBe('Scan failed');
+    expect(worker.shown.current?.options.data?.url).toBe(`${origin}/`);
+    expect(trace.some((call) => call.op === 'postMessage')).toBe(false);
+  });
+
+  it('shows the system notification when no window is open', async () => {
+    const worker = loadWorker([]);
+    await push(worker, { ...payload, title: '' });
+    expect(worker.shown.current?.title).toBe('Stockbot');
+  });
+
+  it('shows the system notification when listing windows fails', async () => {
+    const worker = loadWorker([]);
+    worker.self.clients.matchAll = async () => {
+      throw new Error('clients unavailable');
+    };
+
+    await push(worker, payload);
+
+    expect(worker.shown.current?.title).toBe('Scan failed');
   });
 });

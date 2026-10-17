@@ -133,6 +133,29 @@ describe('groupScansIntoBatches', () => {
     expect(live).toEqual(freshLoad);
   });
 
+  it('moves a rescanned entry to the front, matching a reload of its new scannedAt', () => {
+    const oats = scanEntry({ id: 'oats', scannedAt: atOffset(base, 0), unitCount: 1 });
+    const milk = scanEntry({ id: 'milk', scannedAt: atOffset(base, 2 * 60 * 1000) });
+    const rescanned = scanEntry({ id: 'oats', scannedAt: atOffset(base, 4 * 60 * 1000), unitCount: 2 });
+
+    const live = groupScansIntoBatches(sortScansNewestFirst(mergeScanEvent([oats, milk], rescanned)));
+    const reloaded = groupScansIntoBatches([milk, rescanned]);
+
+    expect(live.map((batch) => batch.map((entry) => entry.id))).toEqual([['oats', 'milk']]);
+    expect(live).toEqual(reloaded);
+    expect(live[0][0]?.unitCount).toBe(2);
+  });
+
+  it('moves a rescanned entry into the newest session when the new scan is 5 minutes later', () => {
+    const oats = scanEntry({ id: 'oats', scannedAt: atOffset(base, 0) });
+    const milk = scanEntry({ id: 'milk', scannedAt: atOffset(base, 2 * 60 * 1000) });
+    const rescanned = scanEntry({ id: 'oats', scannedAt: atOffset(base, 20 * 60 * 1000), unitCount: 2 });
+
+    const live = groupScansIntoBatches(sortScansNewestFirst(mergeScanEvent([oats, milk], rescanned)));
+
+    expect(live.map((batch) => batch.map((entry) => entry.id))).toEqual([['oats'], ['milk']]);
+  });
+
   it('keeps an older session newest-first when a live scan opens a new session', () => {
     const older = scanEntry({ id: 'older', scannedAt: atOffset(base, 0) });
     const middle = scanEntry({ id: 'middle', scannedAt: atOffset(base, 2 * 60 * 1000) });
