@@ -42,17 +42,21 @@
 # in the meantime is not the commit that check expects. If the pending digest
 # is no longer on this machine, the resume check is skipped with a warning.
 #
-# Before containers are recreated, each service's status and RestartCount
-# are recorded. Afterwards only a service whose image changed can fail the
-# deploy. `docker compose up` failing is not itself a rollback: if every
-# changed service is healthy, the new images stay. An unchanged grocy-sync
-# or cloudflared that is down logs a journal warning and does not roll
-# back. The service is listed in .update-sidecar-warn. The next run checks
-# that list even when the images did not change, warns again while it is
-# down, and removes it once it is running. Status and RestartCount are
-# read again after PANTRY_UPDATE_SETTLE_SECONDS (default 12, never more
-# than 15). A restart in that window fails the deploy only for a changed
-# image. An unchanged cloudflared that restarts on its own does not.
+# Before containers are recreated, each service's status, RestartCount,
+# and container id are recorded. Afterwards only a service whose image
+# changed can fail the deploy. `docker compose up` failing is not itself
+# a rollback: if every changed service is healthy, the new images stay.
+# On that path a changed container still running the previous image is
+# not healthy. An unchanged service that is down, including the proxy,
+# logs a journal warning and does not roll back. The service is listed in
+# .update-sidecar-warn. The next run checks that list even when the images
+# did not change, warns again while it is down, and removes it once it is
+# running. A deploy also removes a line once that container is running.
+# A line whose service is not in this compose config is dropped, so turning
+# a profile off does not warn forever. Status and RestartCount are read
+# again after PANTRY_UPDATE_SETTLE_SECONDS (default 12, never more than
+# 15). A restart in that window fails the deploy only for a changed image.
+# An unchanged cloudflared that restarts on its own does not.
 #
 # On timeout, a compose failure, or a commit mismatch, each service that
 # was running is re-pinned to its previous digest and started with --pull
@@ -68,9 +72,8 @@
 # they already were. A failure pinned on one changed service rejects that
 # digest. A pantry digest that already passed /health and /api/build is
 # not rejected when a sidecar is the one that failed. Every changed digest
-# is rejected only when pantry itself is unverified, or when no failing
-# changed service can be named. An unchanged service that is merely down
-# is not that named failure.
+# is rejected when pantry itself is unverified. An unchanged service that
+# is merely down is not that named failure.
 # Lines are "service<TAB>digest" in .update-rejected-digest. The next run
 # retags each rejected service back to its previous digest. The first skip
 # of a digest is a journal warning; later minutes log one skip line and do
@@ -83,17 +86,23 @@
 # http://$PUBLIC_HOST/api/build`. PUBLIC_HOST is the hostname compose
 # passes in, and the only site Caddyfile.tunnel serves. The address
 # 10.77.77.3 is caddy-tunnel on the cf-tunnel network. The second check
-# must return the new pantry commit. The probe is skipped only when the
-# pre-deploy request was also unreachable (curl 6, 7, 28, or 52). A refusal
-# or a hang after a reachable old stack fails the deploy. Curl 56 on the
-# old stack is not "unreachable": a healthy new listener still passes.
-# Certificate mode makes the same before-and-after request over HTTPS.
-# An unchanged proxy that passed before and fails after, with a new pantry
-# image, is a pantry failure: roll back and reject pantry. An unchanged
-# proxy that was already failing only warns. A changed proxy that fails
-# rejects that proxy, not a pantry image that already passed /health.
-# The service name is caddy-tunnel in tunnel mode and caddy otherwise.
-# Cloudflare still uses http://caddy:80 inside that network.
+# must return the new pantry commit. The old stack counts as passed only
+# when that response is 2xx and its commit is the running pantry revision.
+# A 502, an empty 200, or the wrong commit does not. The probe is skipped
+# only when the pre-deploy request was also unreachable (curl 6, 7, 28, or
+# 52). A refusal or a hang after a reachable old stack fails the deploy.
+# Curl 56 on the old stack is not "unreachable": a healthy new listener
+# still passes. A failed probe is tried once more after
+# PANTRY_UPDATE_PROBE_RETRY_SECONDS (default 3). Certificate mode makes
+# the same before-and-after request over HTTPS. An unchanged proxy that
+# passed before and fails after is a pantry failure only when that same
+# proxy container is still running, with the same id and restart count.
+# If the proxy container is down, exited, or restarting, the script warns
+# and does not reject pantry. An unchanged proxy that was already failing
+# only warns. A changed proxy that fails rejects that proxy, not a pantry
+# image that already passed /health. The service name is caddy-tunnel in
+# tunnel mode and caddy otherwise. Cloudflare still uses http://caddy:80
+# inside that network.
 #
 # Re-pinning the image does not undo a migration. The migration runner is
 # not transactional (#249). This script does not copy pantry-pre-*.db back
@@ -491,21 +500,6 @@ record_changed_rejections() {
     fi
   done < "$state/running.tsv"
   if [[ "$recorded" -eq 0 ]]; then
-    echo "<4>pantry update: warning: could not pin the failure on one service; rejecting every changed digest" >&2
-    PANTRY_VERIFIED=0
-    FAILED_SERVICES=""
-    while IFS=$'\t' read -r svc running_id previous; do
-      [[ -z "$svc" ]] && continue
-      rc=0
-      remember_changed_digest "$state" "$svc" || rc=$?
-      if [[ "$rc" -eq 0 ]]; then
-        recorded=1
-      elif [[ "$rc" -ne 2 ]]; then
-        failed=1
-      fi
-    done < "$state/running.tsv"
-  fi
-  if [[ "$recorded" -eq 0 ]]; then
     echo "PANTRY UPDATE FAILED: no changed digest was recorded, so the next run may try this release again" >&2
     return 1
   fi
@@ -611,15 +605,39 @@ mono_seconds() {
   printf '%s\n' "${SECONDS:-0}"
 }
 
-container_state() {
-  local cid line
+container_id() {
+  local cid
   cid=$("${compose[@]}" ps -aq "$1" 2>/dev/null | head -n 1 || true)
   cid=$(one_line "$cid")
+  printf '%s' "$cid"
+}
+
+container_state() {
+  local cid line
+  cid=$(container_id "$1")
   [[ -n "$cid" ]] || return 1
   line=$(docker inspect -f '{{.State.Status}} {{.RestartCount}}' "$cid" 2>/dev/null || true)
   line=$(one_line "$line")
   [[ -n "$line" ]] || return 1
   printf '%s' "$line"
+}
+
+# proxy_container_steady is true when the proxy container is the same one
+# that was running before recreate: still running, same id, same restart
+# count. A crash, recreate, or restart is the proxy's failure, not pantry's.
+proxy_container_steady() {
+  local state="$1" svc="$2" line status restarts cid before_status before_restarts before_cid
+  line=$(container_state "$svc" || true)
+  status=${line%% *}
+  restarts=${line##* }
+  [[ "$status" == running ]] || return 1
+  cid=$(container_id "$svc")
+  before_status=$(awk -F '\t' -v s="$svc" '$1 == s { print $2; exit }' "$state/pre-deploy.tsv")
+  before_restarts=$(awk -F '\t' -v s="$svc" '$1 == s { print $3; exit }' "$state/pre-deploy.tsv")
+  before_cid=$(awk -F '\t' -v s="$svc" '$1 == s { print $4; exit }' "$state/pre-deploy.tsv")
+  [[ "$before_status" == running ]] || return 1
+  [[ "$restarts" =~ ^[0-9]+$ && "$before_restarts" =~ ^[0-9]+$ && "$restarts" -eq "$before_restarts" ]] || return 1
+  [[ -n "$cid" && "$cid" == "$before_cid" ]]
 }
 
 # pantry_container_failed BASELINE is true when pantry has exited, is
@@ -999,9 +1017,11 @@ retag_pins() {
   done < "$file"
 }
 
-# record_container_baseline saves status and RestartCount before recreate.
+# record_container_baseline saves status, RestartCount, and container id
+# before recreate. A later proxy failure is pantry's only when all three
+# still match.
 record_container_baseline() {
-  local state="$1" svc image line status restarts
+  local state="$1" svc image line status restarts cid
   : > "$state/pre-deploy.tsv"
   while IFS=$'\t' read -r svc image; do
     [[ -z "$svc" ]] && continue
@@ -1012,7 +1032,8 @@ record_container_baseline() {
       restarts=0
     fi
     [[ -n "$status" ]] || status=missing
-    printf '%s\t%s\t%s\n' "$svc" "$status" "$restarts" >> "$state/pre-deploy.tsv"
+    cid=$(container_id "$svc")
+    printf '%s\t%s\t%s\t%s\n' "$svc" "$status" "$restarts" "$cid" >> "$state/pre-deploy.tsv"
   done < "$state/refs.tsv"
 }
 
@@ -1021,40 +1042,60 @@ pre_status() {
 }
 
 # warn_unchanged logs a journal warning for a service whose image did not
-# change. A down non-proxy service is remembered so the next run repeats
-# the warning until the container is running again.
+# change. A down service, including the proxy, is remembered so the next
+# run repeats the warning until the container is running again.
 warn_unchanged() {
   local svc="$1" detail="$2" mark="$PANTRY_DIR/.update-sidecar-warn" line remember="${3:-}"
   echo "<4>pantry update: warning: ${svc} ${detail}; not rolling back" >&2
   [[ "$remember" == 1 ]] || return 0
-  [[ "$svc" == caddy || "$svc" == caddy-tunnel ]] && return 0
   if [[ -f "$mark" ]]; then
     while IFS= read -r line; do
+      line=${line//$'\r'/}
       [[ "$line" == "$svc" ]] && return 0
     done < "$mark"
   fi
   printf '%s\n' "$svc" >> "$mark"
 }
 
-# recheck_sidecar_warnings repeats warnings for services still down, and
-# drops the ones that are running. It runs even when no image changed.
-recheck_sidecar_warnings() {
-  local mark="$PANTRY_DIR/.update-sidecar-warn" tmp svc line status
+# rewrite_sidecar_marker drops services that are not in this compose config,
+# and drops a container that is running again. mode "warn" repeats the
+# journal warning for whatever is still down. mode "clear" only removes
+# the running ones, which a deploy does before it checks containers.
+rewrite_sidecar_marker() {
+  local mode="$1" mark="$PANTRY_DIR/.update-sidecar-warn" tmp raw svc line status known config_ok=0
   [[ -f "$mark" ]] || return 0
   tmp=$(mktemp) || return 0
-  while IFS= read -r svc || [[ -n "${svc:-}" ]]; do
+  if known=$(compose_service_images); then
+    config_ok=1
+    known=$(printf '%s\n' "$known" | awk -F '\t' '{ print $1 }')
+  else
+    known=""
+  fi
+  while IFS= read -r raw || [[ -n "${raw:-}" ]]; do
+    svc=${raw//$'\r'/}
     [[ -z "${svc:-}" || "$svc" == \#* ]] && continue
+    if [[ "$config_ok" -eq 1 ]] && ! grep -qx -F -- "$svc" <<<"$known"; then
+      continue
+    fi
     line=$(container_state "$svc" || true)
     status=${line%% *}
     if [[ "$status" == running ]]; then
       echo "pantry update: ${svc} is running again"
       continue
     fi
-    echo "<4>pantry update: warning: ${svc} is ${status:-unhealthy} and its image did not change; not rolling back" >&2
+    if [[ "$mode" == warn ]]; then
+      echo "<4>pantry update: warning: ${svc} is ${status:-unhealthy} and its image did not change; not rolling back" >&2
+    fi
     printf '%s\n' "$svc" >> "$tmp"
   done < "$mark"
   mv "$tmp" "$mark"
   [[ -s "$mark" ]] || rm -f "$mark"
+}
+
+# recheck_sidecar_warnings repeats warnings for services still down, and
+# drops the ones that are running. It runs even when no image changed.
+recheck_sidecar_warnings() {
+  rewrite_sidecar_marker warn
 }
 
 # confirm_recreated checks changed services, then checks them again after a
@@ -1141,12 +1182,20 @@ confirm_recreated() {
 }
 
 note_stopped_services() {
-  local state="$1" svc image line status
+  local state="$1" svc image line status now pulled
   while IFS=$'\t' read -r svc image; do
     [[ -z "$svc" ]] && continue
     line=$(container_state "$svc" || true)
     status=${line%% *}
     if [[ "$status" == running ]]; then
+      if service_changed "$state" "$svc"; then
+        now=$(running_image_id "$svc")
+        pulled=$(service_pulled_id "$svc" "$state" || true)
+        if [[ -z "$pulled" || "$now" != "$pulled" ]]; then
+          echo "pantry update: ${svc} is still running the previous image" >&2
+          note_failed "$svc"
+        fi
+      fi
       continue
     fi
     if ! service_changed "$state" "$svc"; then
@@ -1189,25 +1238,34 @@ tunnel_connect_failed() {
 # substitution would drop that exit code. PUBLIC_HOST is the value compose
 # interpolates into Caddyfile.tunnel.
 tunnel_probe_curl() {
-  local dest="$1" host ip="10.77.77.3"
+  local dest="$1" host ip="10.77.77.3" code
   TUNNEL_PROBE_RC=0
+  TUNNEL_HTTP_CODE=""
   : > "$dest"
   host=$(publish_env_value PUBLIC_HOST)
   if [[ -z "$host" ]]; then
     TUNNEL_PROBE_RC=6
     return 0
   fi
-  curl -sS --max-time 5 --resolve "${host}:80:${ip}" "http://${host}/api/build" >"$dest" 2>"${dest}.err" || TUNNEL_PROBE_RC=$?
+  code=$(curl -sS -o "$dest" -w '%{http_code}' --max-time 5 --resolve "${host}:80:${ip}" "http://${host}/api/build" 2>"${dest}.err") || TUNNEL_PROBE_RC=$?
+  TUNNEL_HTTP_CODE=$(one_line "$code")
   if [[ -s "${dest}.err" ]]; then
     cat "${dest}.err" >&2
   fi
 }
 
+# tunnel_http_ok is true when curl returned a 2xx response.
+tunnel_http_ok() {
+  [[ "$TUNNEL_PROBE_RC" -eq 0 ]] || return 1
+  [[ "$TUNNEL_HTTP_CODE" =~ ^2[0-9][0-9]$ ]]
+}
+
 # remember_tunnel_reachability probes the stack that is still running,
 # before recreate. A later refusal or hang is ignored only when this
-# probe could not connect either. Curl 0 also marks the proxy reachable.
+# probe could not connect either. The proxy counts as passed only when
+# the reply is 2xx and its commit is the running pantry revision.
 remember_tunnel_reachability() {
-  local state="$1"
+  local state="$1" body commit rev id
   TUNNEL_REACHABLE=0
   [[ "$mode" == tunnel ]] || return 0
   publish_auth_present || return 0
@@ -1217,7 +1275,14 @@ remember_tunnel_reachability() {
   if ! tunnel_connect_failed "$TUNNEL_PROBE_RC"; then
     TUNNEL_REACHABLE=1
   fi
-  if [[ "$TUNNEL_PROBE_RC" -eq 0 ]]; then
+  body=$(<"$state/tunnel-pre.body")
+  id=$(running_field pantry 2 "$state")
+  rev=""
+  if [[ -n "$id" ]]; then
+    rev=$(image_revision "$id" || true)
+  fi
+  commit=$(json_string_field "$body" commit)
+  if tunnel_http_ok && [[ -n "$rev" && "$commit" == "$rev" ]]; then
     PROXY_REACHABLE=1
   fi
 }
@@ -1260,6 +1325,10 @@ probe_tunnel_listener() {
     echo "pantry update: caddy-tunnel probe of http://${host}/api/build failed (curl ${TUNNEL_PROBE_RC})" >&2
     return 1
   fi
+  if ! tunnel_http_ok; then
+    echo "pantry update: caddy-tunnel probe of http://${host}/api/build failed (HTTP ${TUNNEL_HTTP_CODE:-<none>})" >&2
+    return 1
+  fi
   commit=$(json_string_field "$body" commit)
   ref=$(service_ref pantry "$state")
   revision=""
@@ -1284,6 +1353,24 @@ probe_caddy() {
   [[ "$mode" == acme ]] || return 0
   echo "pantry update: checking https://${host}/api/build through Caddy"
   curl -sf --max-time 10 --resolve "${host}:443:127.0.0.1" "https://${host}/api/build" >/dev/null
+}
+
+# probe_public_proxy checks the proxy, then once more after a short delay.
+# One transient failure must not reject a pantry image that just passed.
+probe_public_proxy() {
+  local state="$1" delay
+  if probe_caddy "$state"; then
+    return 0
+  fi
+  delay=${PANTRY_UPDATE_PROBE_RETRY_SECONDS:-3}
+  if [[ ! "$delay" =~ ^[0-9]+$ ]]; then
+    delay=3
+  fi
+  echo "pantry update: proxy probe failed; retrying in ${delay}s" >&2
+  if [[ "$delay" -gt 0 ]]; then
+    sleep "$delay"
+  fi
+  probe_caddy "$state"
 }
 
 clear_state() {
@@ -1448,6 +1535,7 @@ apply_compose() {
   if "${compose[@]}" up -d; then
     up_ok=1
   fi
+  rewrite_sidecar_marker clear
   PANTRY_VERIFIED=0
   FAILED_SERVICES=""
   containers_ok=0
@@ -1473,17 +1561,17 @@ apply_compose() {
     fi
   fi
   if [[ "$PANTRY_VERIFIED" -eq 1 && "$containers_ok" -eq 1 ]]; then
-    if probe_caddy "$state"; then
+    if probe_public_proxy "$state"; then
       caddy_ok=1
     else
       proxy=$(proxy_compose_service)
       if service_changed "$state" "$proxy"; then
         note_failed "$proxy"
-      elif [[ "$PROXY_REACHABLE" -eq 1 ]] && service_changed "$state" pantry; then
+      elif [[ "$PROXY_REACHABLE" -eq 1 ]] && service_changed "$state" pantry && proxy_container_steady "$state" "$proxy"; then
         echo "<4>pantry update: warning: ${proxy} was reachable before recreate and failed after; rejecting pantry" >&2
         note_failed pantry
       else
-        warn_unchanged "$proxy" "probe failed and its image did not change"
+        warn_unchanged "$proxy" "probe failed and its image did not change" 1
         caddy_ok=1
       fi
     fi
