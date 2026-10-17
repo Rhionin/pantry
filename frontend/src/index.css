@@ -409,6 +409,46 @@ code {
   outline-offset: 2px;
 }
 
+/* In-app scan alert. Amber is the attention color already used for low
+   stock, so a toast that replaces a system notification reads as something
+   waiting, not as a second brand accent. */
+.scan-alert-toast {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.scan-alert-toast-body {
+  margin: 0;
+}
+
+.scan-alert-toast-open {
+  margin: 0;
+  min-height: 32px;
+  padding: 6px 12px;
+  border: 0;
+  border-radius: var(--mantine-radius-sm);
+  background: var(--stock-low);
+  color: #1c1406;
+  font: inherit;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  line-height: 1.2;
+  cursor: pointer;
+}
+
+.scan-alert-toast-open:focus-visible {
+  outline: 2px solid var(--mantine-color-text);
+  outline-offset: 2px;
+}
+
+@media (hover: hover) {
+  .scan-alert-toast-open:hover {
+    background: #d97706;
+  }
+}
+
 @media (hover: hover) {
   .scan-alert-retry:hover {
     background: var(--mantine-color-gray-0);

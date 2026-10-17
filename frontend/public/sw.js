@@ -1,7 +1,9 @@
-// Scan alerts while Stockbot is closed. The page registers this file at the
-// site root so a click can open the scan queue. The server sends a compact
-// JSON payload: a short title, a body naming the count and the first item
-// names, and a url on this origin. A path that is not on this origin is ignored.
+// Scan alerts while Stockbot is closed or hidden. The page registers this
+// file at the site root so a click can open the scan queue. The server sends
+// a compact JSON payload: a short title, a body naming the count and the
+// first item names, and a url on this origin. A path that is not on this
+// origin is ignored. A visible window gets an in-app toast instead of a
+// system notification.
 
 self.addEventListener('push', (event) => {
   const payload = readPayload(event);
@@ -16,8 +18,57 @@ self.addEventListener('push', (event) => {
   if (payload.tag !== '') {
     options.tag = payload.tag;
   }
-  event.waitUntil(self.registration.showNotification(title, options));
+  event.waitUntil(presentAlert(title, options));
 });
+
+// The push subscription is userVisibleOnly. Chrome accepts a skipped
+// showNotification when a window of this origin is already visible, and
+// otherwise may show a generic notice or stop delivering silent pushes.
+// matchAll is limited to this origin, including windows this worker does
+// not control yet. The hostname stored on the subscription decides whether
+// the push arrives; it does not change which windows are in this list.
+function shouldSuppressSystemNotification(clients) {
+  if (clients == null || typeof clients[Symbol.iterator] !== 'function') return false;
+  for (const client of clients) {
+    if (!client || typeof client !== 'object') continue;
+    if (client.visibilityState === 'visible' || client.focused === true) return true;
+  }
+  return false;
+}
+
+async function presentAlert(title, options) {
+  let windows = [];
+  try {
+    windows = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+  } catch {
+    windows = [];
+  }
+  if (!shouldSuppressSystemNotification(windows)) {
+    await self.registration.showNotification(title, options);
+    return;
+  }
+  const message = {
+    type: 'pantry-scan-alert-toast',
+    title,
+    body: typeof options.body === 'string' ? options.body : '',
+    tag: typeof options.tag === 'string' ? options.tag : '',
+    url: options.data && typeof options.data.url === 'string' ? options.data.url : '',
+  };
+  let delivered = false;
+  for (const client of windows) {
+    if (!shouldSuppressSystemNotification([client])) continue;
+    if (typeof client.postMessage !== 'function') continue;
+    try {
+      client.postMessage(message);
+      delivered = true;
+    } catch {
+      // A client can be closing. Another open window can still show the toast.
+    }
+  }
+  // Nothing on screen took the toast. A system notification still satisfies
+  // userVisibleOnly, which a silent push would not.
+  if (!delivered) await self.registration.showNotification(title, options);
+}
 
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
