@@ -42,27 +42,63 @@ publish_mode_from_env() {
   printf 'none'
 }
 
+# compose_project_name is the Compose project. The directory name is the
+# project (/opt/pantry -> pantry) unless COMPOSE_PROJECT_NAME is set.
+# PANTRY_TEST_PROJECT_PREFIX is a test-only override.
+compose_project_name() {
+  local name
+  if [[ -n "${PANTRY_TEST_PROJECT_PREFIX:-}" ]]; then
+    printf '%s' "$PANTRY_TEST_PROJECT_PREFIX"
+    return 0
+  fi
+  if [[ -n "${COMPOSE_PROJECT_NAME:-}" ]]; then
+    printf '%s' "$COMPOSE_PROJECT_NAME"
+    return 0
+  fi
+  name=$(basename "${PANTRY_DIR:-/opt/pantry}")
+  printf '%s' "$name"
+}
+
+# publish_removal_names prints "<project>-caddy" and "<project>-cloudflared".
+# A PANTRY_DIR other than /opt/pantry returns 1 and prints nothing, so a
+# fixture run cannot delete the household's containers. Tests that need the
+# removal set PANTRY_TEST_PROJECT_PREFIX.
+publish_removal_names() {
+  local project
+  if [[ "${PANTRY_DIR:-/opt/pantry}" != /opt/pantry && -z "${PANTRY_TEST_PROJECT_PREFIX:-}" ]]; then
+    echo "publish containers were not removed because PANTRY_DIR is not /opt/pantry" >&2
+    return 1
+  fi
+  project=$(compose_project_name)
+  printf '%s\n' "${project}-caddy" "${project}-cloudflared"
+}
+
 # drop_other_publish_containers MODE removes the proxy that belongs to the
-# other mode. Both modes use the container name pantry-caddy, and Compose
+# other mode. Both modes use the container name <project>-caddy, and Compose
 # will not replace a container labeled for the other service.
 drop_other_publish_containers() {
-  local mode="$1" svc
-  svc=$(docker inspect -f '{{index .Config.Labels "com.docker.compose.service"}}' pantry-caddy 2>/dev/null || true)
+  local mode="$1" names caddy_name cloud_name svc
+  if ! names=$(publish_removal_names); then
+    return 0
+  fi
+  caddy_name=$(printf '%s\n' "$names" | head -n 1)
+  cloud_name=$(printf '%s\n' "$names" | tail -n 1)
+  svc=$(docker inspect -f '{{index .Config.Labels "com.docker.compose.service"}}' "$caddy_name" 2>/dev/null || true)
   svc=${svc//$'\r'/}
   svc=${svc//$'\n'/}
   if [[ "$mode" == tunnel && "$svc" == caddy ]]; then
     echo "[info] Removing the port-forward proxy so nothing listens on ports 80 or 443"
-    docker rm -f pantry-caddy >/dev/null
+    docker rm -f "$caddy_name" >/dev/null
   elif [[ "$mode" != tunnel && "$svc" == caddy-tunnel ]]; then
     echo "[info] Removing the tunnel proxy so Caddy can listen on ports 80 and 443"
-    docker rm -f pantry-caddy >/dev/null
+    docker rm -f "$caddy_name" >/dev/null
   fi
   if [[ "$mode" != tunnel ]]; then
-    docker rm -f pantry-cloudflared >/dev/null 2>&1 || true
+    docker rm -f "$cloud_name" >/dev/null 2>&1 || true
   fi
 }
 
-# drop_stale_cloudflared removes pantry-cloudflared when a later
+# drop_stale_cloudflared removes <project>-cloudflared when a later
 # `compose up` would not place it at 10.77.77.2.
 #
 # Compose recreates cf-tunnel when the IPAM config changes, so a network
@@ -73,27 +109,31 @@ drop_other_publish_containers() {
 # 10.77.77.2 is left alone. If inspect cannot show an address, a running
 # container is left alone rather than interrupting a live tunnel.
 drop_stale_cloudflared() {
-  local running ips
-  running=$(docker inspect -f '{{.State.Running}}' pantry-cloudflared 2>/dev/null || true)
+  local names cloud_name running ips
+  if ! names=$(publish_removal_names); then
+    return 0
+  fi
+  cloud_name=$(printf '%s\n' "$names" | tail -n 1)
+  running=$(docker inspect -f '{{.State.Running}}' "$cloud_name" 2>/dev/null || true)
   running=${running//$'\r'/}
   running=${running//$'\n'/}
   if [[ -z "$running" ]]; then
     return 0
   fi
   if [[ "$running" == true ]]; then
-    ips=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{"\n"}}{{end}}' pantry-cloudflared 2>/dev/null || true)
+    ips=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{"\n"}}{{end}}' "$cloud_name" 2>/dev/null || true)
     if printf '%s\n' "$ips" | grep -qx '10.77.77.2'; then
       return 0
     fi
     if ! printf '%s\n' "$ips" | grep -q '^[0-9]'; then
       return 0
     fi
-    echo "[info] Removing pantry-cloudflared so it can take 10.77.77.2"
-    docker rm -f pantry-cloudflared >/dev/null
+    echo "[info] Removing ${cloud_name} so it can take 10.77.77.2"
+    docker rm -f "$cloud_name" >/dev/null
     return 0
   fi
-  echo "[info] Removing pantry-cloudflared left from a failed start so it can take 10.77.77.2"
-  docker rm -f pantry-cloudflared >/dev/null
+  echo "[info] Removing ${cloud_name} left from a failed start so it can take 10.77.77.2"
+  docker rm -f "$cloud_name" >/dev/null
 }
 
 # grocy_compose_suffix prints the extra compose arguments that start

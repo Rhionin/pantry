@@ -169,6 +169,30 @@ func main() {
 	// SQLite is single-writer; limit to one connection to avoid SQLITE_BUSY.
 	sqlDB.SetMaxOpenConns(1)
 
+	// Bind before migrations. /health is 503 {"status":"migrating"} until the
+	// real handler is installed, and /api/build is already this binary.
+	// ReadHeaderTimeout closes a connection that never sends headers.
+	// WriteTimeout is left unset so a live /api/events stream is not cut off.
+	gate := newBootGate()
+	ln, err := net.Listen("tcp", addr)
+	if err != nil {
+		log.Fatalf("listen: %v", err)
+	}
+	srv := &http.Server{
+		Handler:           gate,
+		ReadHeaderTimeout: 10 * time.Second,
+		IdleTimeout:       120 * time.Second,
+		MaxHeaderBytes:    1 << 16,
+	}
+	serveErr := make(chan error, 1)
+	go func() {
+		serveErr <- srv.Serve(ln)
+	}()
+	log.Printf("listening on %s", addr)
+	if warning := unauthenticatedListenWarning(addr); warning != "" {
+		log.Print(warning)
+	}
+
 	if err := app.RunMigrations(sqlDB); err != nil {
 		log.Fatalf("run migrations: %v", err)
 	}
@@ -262,6 +286,7 @@ func main() {
 	}
 	opts = append(opts, server.WithHouseholdAuth(loadHouseholdAuth()))
 	handler, scanQueue := server.NewHandler(catalog, lookupService, refresher, sqlDB, opts...)
+	gate.use(handler)
 
 	if listenerOK {
 		listener.Queue = scanQueue
@@ -271,20 +296,7 @@ func main() {
 		go listener.Run(context.Background())
 	}
 
-	log.Printf("listening on %s", addr)
-	if warning := unauthenticatedListenWarning(addr); warning != "" {
-		log.Print(warning)
-	}
-	// ReadHeaderTimeout closes a connection that never sends headers.
-	// WriteTimeout is left unset so a live /api/events stream is not cut off.
-	srv := &http.Server{
-		Addr:              addr,
-		Handler:           handler,
-		ReadHeaderTimeout: 10 * time.Second,
-		IdleTimeout:       120 * time.Second,
-		MaxHeaderBytes:    1 << 16,
-	}
-	if err := srv.ListenAndServe(); err != nil {
+	if err := <-serveErr; err != nil && err != http.ErrServerClosed {
 		log.Fatalf("listen: %v", err)
 	}
 }

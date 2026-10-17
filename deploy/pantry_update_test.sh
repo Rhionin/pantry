@@ -32,17 +32,24 @@ if [[ -n "${SEQUENCE_LOG:-}" ]]; then
 fi
 
 tsv_col() {
-  local key="$1" col="$2" svc ref run_id run_dig pull_id pull_dig revision
-  while IFS=$'\t' read -r svc ref run_id run_dig pull_id pull_dig revision || [[ -n "$svc" ]]; do
+  local key="$1" col="$2" svc ref run_id run_dig pull_id pull_dig revision run_revision
+  while IFS=$'\t' read -r svc ref run_id run_dig pull_id pull_dig revision run_revision || [[ -n "$svc" ]]; do
     [[ -z "$svc" || "$svc" == \#* ]] && continue
-    if [[ "$key" == "$svc" || "$key" == "cid-$svc" || "$key" == "$ref" || "$key" == "$run_id" || "$key" == "$pull_id" ]]; then
+    if [[ "$key" == "$svc" || "$key" == "cid-$svc" || "$key" == "$ref" || "$key" == "$run_id" || "$key" == "$pull_id" || "$key" == "$run_dig" || "$key" == "$pull_dig" ]]; then
       case "$col" in
         ref) printf '%s' "$ref" ;;
         run_id) printf '%s' "$run_id" ;;
         run_dig) printf '%s' "$run_dig" ;;
         pull_id) printf '%s' "$pull_id" ;;
         pull_dig) printf '%s' "$pull_dig" ;;
-        revision) printf '%s' "$revision" ;;
+        revision)
+          if [[ -n "$run_revision" && ( "$key" == "$run_id" || "$key" == "$run_dig" || "$key" == "cid-$svc" ) ]]; then
+            printf '%s' "$run_revision"
+          else
+            printf '%s' "$revision"
+          fi
+          ;;
+        run_revision) printf '%s' "$run_revision" ;;
         *) return 1 ;;
       esac
       return 0
@@ -105,11 +112,24 @@ if [[ "$1" == rm ]]; then
   exit 0
 fi
 
+if [[ "$1" == logs ]]; then
+  printf '%s\n' "${STUB_CONTAINER_LOGS:-wrote backup: /data/pantry-pre-targets-20261017.db}"
+  exit 0
+fi
+
+if [[ "$1" == info ]]; then
+  exit 0
+fi
+
 if [[ "$1" == inspect ]]; then
   format=$(format_arg "$@")
   target=${*: -1}
   if [[ "$format" == *com.docker.compose.service* ]]; then
     exit 1
+  fi
+  if [[ "$format" == *State.Status* ]]; then
+    printf '%s %s\n' "${STUB_CONTAINER_STATUS:-running}" "${STUB_RESTART_COUNT:-0}"
+    exit 0
   fi
   if [[ "$format" == *State.Running* ]]; then
     name=${target#cid-}
@@ -142,8 +162,13 @@ if [[ "$1" == tag ]]; then
     fi
   done < "${STUB_IMAGES:?}"
   if [[ -z "$found_id" ]]; then
-    echo "stub docker tag: unknown source ${src}" >&2
-    exit 1
+    if [[ "$src" == sha256:* || "$src" == *@sha256:* ]]; then
+      found_id=$src
+      found_dig=$src
+    else
+      echo "stub docker tag: unknown source ${src}" >&2
+      exit 1
+    fi
   fi
   set_tag "$dest" "$found_id" "$found_dig"
   exit 0
@@ -197,20 +222,12 @@ fi
 
 if [[ "$1" == compose ]]; then
   joined="$*"
-  if [[ "$joined" == *" config "* && "$joined" == *"--format"* ]]; then
-    python3 - "${STUB_IMAGES:?}" << 'PY'
-import json, sys
-services = {}
-with open(sys.argv[1]) as fh:
-    for line in fh:
-        line = line.rstrip("\n")
-        if not line or line.startswith("#"):
-            continue
-        parts = line.split("\t")
-        services[parts[0]] = {"image": parts[1]}
-json.dump({"services": services}, sys.stdout)
-PY
-    printf '\n'
+  if [[ "$joined" == *" config"* ]]; then
+    printf 'services:\n'
+    while IFS=$'\t' read -r svc ref run_id run_dig pull_id pull_dig revision run_revision || [[ -n "${svc:-}" ]]; do
+      [[ -z "${svc:-}" || "$svc" == \#* ]] && continue
+      printf '  %s:\n    image: %s\n' "$svc" "$ref"
+    done < "${STUB_IMAGES:?}"
     exit 0
   fi
   if [[ "$joined" == *" pull" || "$joined" == *" pull "* ]]; then
@@ -234,7 +251,10 @@ PY
       fi
       prev=$arg
     done
-    exit 0
+    exit "${STUB_ROLLBACK_RC:-0}"
+  fi
+  if [[ "$joined" == *" up "* || "$joined" == *" up" ]]; then
+    exit "${STUB_UP_RC:-0}"
   fi
   exit 0
 fi
@@ -254,12 +274,38 @@ for arg in "$@"; do
     http://*|https://*) url=$arg ;;
   esac
 done
+rollback_phase=0
+if [[ -n "${DOCKER_LOG:-}" && -f "$DOCKER_LOG" ]] && grep -q -- '--pull never' "$DOCKER_LOG"; then
+  rollback_phase=1
+fi
 if [[ "$url" == *"/health"* ]]; then
+  if [[ "$rollback_phase" -eq 1 ]]; then
+    [[ "${STUB_ROLLBACK_HEALTH_RC:-0}" -eq 0 ]] || exit "$STUB_ROLLBACK_HEALTH_RC"
+    printf '%s' "${STUB_ROLLBACK_HEALTH_BODY-{\"status\":\"ok\"}}"
+    exit 0
+  fi
+  if [[ -n "${STUB_HEALTH_QUEUE:-}" && -s "$STUB_HEALTH_QUEUE" ]]; then
+    body=$(head -n 1 "$STUB_HEALTH_QUEUE")
+    tail -n +2 "$STUB_HEALTH_QUEUE" > "${STUB_HEALTH_QUEUE}.next"
+    mv "${STUB_HEALTH_QUEUE}.next" "$STUB_HEALTH_QUEUE"
+    printf '%s' "$body"
+    exit 0
+  fi
   [[ "${STUB_HEALTH_RC:-0}" -eq 0 ]] || exit "$STUB_HEALTH_RC"
   printf '%s' "${STUB_HEALTH_BODY-}"
   exit 0
 fi
 if [[ "$url" == *"/api/build"* ]]; then
+  if [[ "$rollback_phase" -eq 1 ]]; then
+    [[ "${STUB_ROLLBACK_BUILD_RC:-0}" -eq 0 ]] || exit "$STUB_ROLLBACK_BUILD_RC"
+    if [[ -n "${STUB_ROLLBACK_BUILD_BODY:-}" ]]; then
+      printf '%s' "$STUB_ROLLBACK_BUILD_BODY"
+    else
+      rev=$(awk -F '\t' '$1 == "pantry" { print ($8 != "" ? $8 : $7); exit }' "${STUB_IMAGES:?}")
+      printf '{"commit":"%s"}' "$rev"
+    fi
+    exit 0
+  fi
   [[ "${STUB_BUILD_RC:-0}" -eq 0 ]] || exit "$STUB_BUILD_RC"
   printf '%s' "${STUB_BUILD_BODY-}"
   exit 0
@@ -321,10 +367,22 @@ run_update() {
     STUB_HEALTH_RC="${STUB_HEALTH_RC:-0}" \
     STUB_BUILD_BODY="${STUB_BUILD_BODY-}" \
     STUB_BUILD_RC="${STUB_BUILD_RC:-0}" \
+    STUB_HEALTH_QUEUE="${STUB_HEALTH_QUEUE:-}" \
+    STUB_UP_RC="${STUB_UP_RC:-0}" \
+    STUB_ROLLBACK_RC="${STUB_ROLLBACK_RC:-0}" \
+    STUB_ROLLBACK_HEALTH_RC="${STUB_ROLLBACK_HEALTH_RC:-0}" \
+    STUB_ROLLBACK_HEALTH_BODY="${STUB_ROLLBACK_HEALTH_BODY:-}" \
+    STUB_ROLLBACK_BUILD_BODY="${STUB_ROLLBACK_BUILD_BODY:-}" \
+    STUB_CONTAINER_STATUS="${STUB_CONTAINER_STATUS:-running}" \
+    STUB_RESTART_COUNT="${STUB_RESTART_COUNT:-0}" \
+    STUB_CONTAINER_LOGS="${STUB_CONTAINER_LOGS:-}" \
     PANTRY_DIR="$pantry" \
     PANTRY_SETUP_SKIP_ROOT=1 \
+    PANTRY_TEST_PROJECT_PREFIX="${PANTRY_TEST_PROJECT_PREFIX:-}" \
     PANTRY_UPDATE_HEALTH_TIMEOUT="${PANTRY_UPDATE_HEALTH_TIMEOUT:-0}" \
     PANTRY_UPDATE_HEALTH_INTERVAL="${PANTRY_UPDATE_HEALTH_INTERVAL:-1}" \
+    PANTRY_UPDATE_MIGRATION_TIMEOUT="${PANTRY_UPDATE_MIGRATION_TIMEOUT:-600}" \
+    PANTRY_UPDATE_MIN_FREE_KIB="${PANTRY_UPDATE_MIN_FREE_KIB:-65536}" \
     PATH="$bin:$PATH" \
     bash "$UPDATE" >"$out" 2>"$err"
   LAST_RC=$?
@@ -386,6 +444,8 @@ lack "$LAST_DOCKER" "--pull never" "healthy run does not re-pin"
 have "$LAST_CURL" "http://127.0.0.1:8080/health" "healthy run polls the host port health endpoint"
 have "$LAST_CURL" "http://127.0.0.1:8080/api/build" "healthy run polls /api/build"
 lack "$LAST_CURL" "stockbot.rhionin.com" "healthy run does not use the public hostname"
+lack "$LAST_DOCKER" "rm -f pantry-caddy" "a fixture pantry dir does not remove pantry-caddy"
+lack "$LAST_DOCKER" "rm -f pantry-cloudflared" "a fixture pantry dir does not remove pantry-cloudflared"
 env_unchanged "$healthy"
 [[ ! -e "$healthy/.update-rejected-digest" ]] || fail "healthy run recorded a rejected digest"
 record_line=$(line_of "$LAST_DOCKER" "sha256:runpantry")
@@ -442,7 +502,6 @@ have "$LAST_OUT" "pantry update: re-pinning caddy to caddy@sha256:oldcaddy" "mis
 have "$LAST_DOCKER" "--pull never" "mismatch starts the previous image without pulling"
 have "$LAST_DOCKER" "image: ghcr.io/rhionin/pantry@sha256:oldpantry" "mismatch override pins the pantry digest"
 have "$LAST_DOCKER" "image: caddy@sha256:oldcaddy" "mismatch override pins the caddy digest"
-lack "$LAST_OUT" "pantry update: healthy, running commit" "mismatch does not keep the new image"
 lack "$LAST_OUT" "pantry update: finished" "mismatch does not report success"
 have "$LAST_DOCKER" "tag ghcr.io/rhionin/pantry@sha256:oldpantry ghcr.io/rhionin/pantry:latest" "rollback retags the pantry ref to the good digest"
 have "$LAST_DOCKER" "tag caddy@sha256:oldcaddy caddy:2.11.7-alpine" "rollback retags a changed sidecar ref"
@@ -457,14 +516,18 @@ rollback_up=$(line_of "$LAST_SEQUENCE" "--pull never")
 probed=$(line_of "$LAST_SEQUENCE" "curl ")
 [[ -n "$forward_up" && -n "$probed" && "$forward_up" -lt "$probed" ]] || fail "mismatch polled health before the new image was started"
 [[ -n "$probed" && -n "$rollback_up" && "$probed" -lt "$rollback_up" ]] || fail "mismatch re-pinned before the health check failed"
+checked_again=$(printf '%s\n' "$LAST_SEQUENCE" | awk -v n="$rollback_up" 'NR > n && /curl / { print NR; exit }')
+[[ -n "$checked_again" ]] || fail "rollback was not health-checked"
 
 # The next minute pulls the same bad remote digest, does not start it, and
 # leaves the local tag on the good digest. The restored tag must not make
-# this look like "images unchanged".
+# this look like "images unchanged". A digest that was already rejected
+# exits 0 with one line instead of failing every minute.
 run_update "$mismatch"
-[[ "$LAST_RC" -ne 0 ]] || fail "rejected digest should stay failed: $LAST_OUT"
-have "$LAST_OUT" "was already rolled back; leaving the previous image running." "second run leaves the previous image"
-have "$LAST_OUT" "pantry-pre-*.db" "second run still names the manual snapshot path"
+[[ "$LAST_RC" -eq 0 ]] || fail "rejected digest should exit 0: $LAST_OUT"
+have "$LAST_OUT" "skipping rejected ghcr.io/rhionin/pantry@sha256:newpantry" "second run skips the rejected digest"
+lack "$LAST_OUT" "PANTRY UPDATE FAILED" "second run does not repeat the failure banner"
+lack "$LAST_OUT" "was already rolled back" "second run does not use the old failure banner"
 have "$LAST_DOCKER" " pull" "second run still pulls the remote digest"
 lack "$LAST_OUT" "images unchanged" "retagged local tag is not treated as the remote image"
 lack "$LAST_DOCKER" " up " "second run does not recreate containers"
@@ -515,5 +578,166 @@ lack "$LAST_OUT" "pantry update: finished" "unhealthy rollback does not report s
 env_unchanged "$unhealthy"
 unset STUB_HEALTH_BODY STUB_BUILD_BODY STUB_HEALTH_RC STUB_BUILD_RC
 
-rm -rf "$healthy" "$noop" "$mismatch" "$unhealthy"
+# A caddy-only change that fails to start must not reject the pantry digest
+# that was already running.
+caddy_only=$(mktemp -d)
+prepare_pantry "$caddy_only"
+write_images "$caddy_only/images.tsv" \
+  sha256:runpantry ghcr.io/rhionin/pantry@sha256:oldpantry \
+  sha256:newcaddy caddy@sha256:newcaddy
+STUB_UP_RC=1
+run_update "$caddy_only"
+[[ "$LAST_RC" -ne 0 ]] || fail "caddy-only up failure should exit non-zero: $LAST_OUT"
+have "$(cat "$caddy_only/.update-rejected-digest")" "caddy@sha256:newcaddy" "caddy-only failure rejects the caddy digest"
+lack "$(cat "$caddy_only/.update-rejected-digest")" "oldpantry" "caddy-only failure does not reject the running pantry digest"
+lack "$(cat "$caddy_only/.update-rejected-digest")" "newpantry" "caddy-only failure does not invent a pantry digest"
+unset STUB_UP_RC
+
+# Rollback that does not start records nothing and says both images are down.
+rollback_fail=$(mktemp -d)
+prepare_pantry "$rollback_fail"
+write_images "$rollback_fail/images.tsv" \
+  sha256:newpantry ghcr.io/rhionin/pantry@sha256:newpantry \
+  sha256:newcaddy caddy@sha256:newcaddy
+STUB_HEALTH_RC=1
+STUB_BUILD_RC=1
+STUB_ROLLBACK_RC=1
+run_update "$rollback_fail"
+[[ "$LAST_RC" -ne 0 ]] || fail "failed rollback should exit non-zero: $LAST_OUT"
+have "$LAST_OUT" "BOTH IMAGES DOWN" "failed rollback names both images"
+[[ ! -e "$rollback_fail/.update-rejected-digest" ]] || fail "failed rollback recorded a digest: $(cat "$rollback_fail/.update-rejected-digest")"
+unset STUB_HEALTH_RC STUB_BUILD_RC STUB_ROLLBACK_RC
+
+# A pantry image with no revision label is never started.
+unlabeled=$(mktemp -d)
+prepare_pantry "$unlabeled"
+write_images "$unlabeled/images.tsv" \
+  sha256:newpantry ghcr.io/rhionin/pantry@sha256:newpantry \
+  sha256:runcaddy caddy@sha256:oldcaddy
+awk -F '\t' 'BEGIN { OFS = "\t" } $1 == "pantry" { $7 = ""; $8 = "" } { print }' \
+  "$unlabeled/images.tsv" > "$unlabeled/images.tsv.next"
+mv "$unlabeled/images.tsv.next" "$unlabeled/images.tsv"
+run_update "$unlabeled"
+[[ "$LAST_RC" -ne 0 ]] || fail "missing label should exit non-zero: $LAST_OUT"
+lack "$LAST_SEQUENCE" " up -d" "missing label must not run compose up"
+lack "$LAST_SEQUENCE" "--pull never" "missing label must not start a rollback"
+have "$LAST_OUT" "not starting it" "missing label says the image was not started"
+have "$(cat "$unlabeled/.update-rejected-digest")" "ghcr.io/rhionin/pantry@sha256:newpantry" "missing label rejects the new pantry digest"
+
+# Health becomes ok on the third poll. Timeout 0 would stop after the first.
+polled=$(mktemp -d)
+prepare_pantry "$polled"
+write_images "$polled/images.tsv" \
+  sha256:newpantry ghcr.io/rhionin/pantry@sha256:newpantry \
+  sha256:newcaddy caddy@sha256:newcaddy
+printf '%s\n' '{"status":"starting"}' '{"status":"starting"}' > "$polled/health.queue"
+STUB_HEALTH_QUEUE="$polled/health.queue"
+STUB_HEALTH_BODY='{"status":"ok"}'
+STUB_BUILD_BODY="{\"commit\":\"${NEW_COMMIT}\"}"
+PANTRY_UPDATE_HEALTH_TIMEOUT=30
+PANTRY_UPDATE_HEALTH_INTERVAL=0
+PANTRY_TEST_PROJECT_PREFIX=fixture
+run_update "$polled"
+[[ "$LAST_RC" -eq 0 ]] || fail "health that recovers should exit 0: $LAST_OUT"
+have "$LAST_OUT" "pantry update: healthy, running commit ${NEW_COMMIT}" "recovered health is kept"
+lack "$LAST_OUT" "PANTRY UPDATE FAILED" "recovered health does not roll back"
+health_polls=$(printf '%s\n' "$LAST_CURL" | grep -c '/health' || true)
+[[ "$health_polls" -ge 3 ]] || fail "health loop ran ${health_polls} polls, want at least 3"
+have "$LAST_DOCKER" "rm -f fixture-cloudflared" "test project prefix derives the cloudflared name"
+lack "$LAST_DOCKER" "rm -f pantry-cloudflared" "test project prefix does not remove pantry-cloudflared"
+unset STUB_HEALTH_QUEUE STUB_HEALTH_BODY STUB_BUILD_BODY PANTRY_UPDATE_HEALTH_TIMEOUT PANTRY_UPDATE_HEALTH_INTERVAL PANTRY_TEST_PROJECT_PREFIX
+
+# /health reports migrating twice, then ok. Timeout 0 must not give up on the first 503.
+migrating=$(mktemp -d)
+prepare_pantry "$migrating"
+write_images "$migrating/images.tsv" \
+  sha256:newpantry ghcr.io/rhionin/pantry@sha256:newpantry \
+  sha256:runcaddy caddy@sha256:oldcaddy
+printf '%s\n' '{"status":"migrating"}' '{"status":"migrating"}' > "$migrating/health.queue"
+STUB_HEALTH_QUEUE="$migrating/health.queue"
+STUB_HEALTH_BODY='{"status":"ok"}'
+STUB_BUILD_BODY="{\"commit\":\"${NEW_COMMIT}\"}"
+PANTRY_UPDATE_HEALTH_TIMEOUT=0
+PANTRY_UPDATE_HEALTH_INTERVAL=0
+run_update "$migrating"
+[[ "$LAST_RC" -eq 0 ]] || fail "migrating health should exit 0: $LAST_OUT"
+have "$LAST_OUT" "migrations still running" "migrating status keeps the wait going"
+have "$LAST_OUT" "pantry update: healthy, running commit ${NEW_COMMIT}" "migrating wait then succeeds"
+lack "$LAST_DOCKER" "--pull never" "migrating wait does not roll back"
+unset STUB_HEALTH_QUEUE STUB_HEALTH_BODY STUB_BUILD_BODY PANTRY_UPDATE_HEALTH_TIMEOUT PANTRY_UPDATE_HEALTH_INTERVAL
+
+# A pending marker means the previous run died after up. Images look unchanged,
+# but the health check still runs and a failure rolls back to the saved pin.
+pending=$(mktemp -d)
+prepare_pantry "$pending"
+write_images "$pending/images.tsv" \
+  sha256:runpantry ghcr.io/rhionin/pantry@sha256:oldpantry \
+  sha256:runcaddy caddy@sha256:oldcaddy
+printf '%s\n' $'pantry\tghcr.io/rhionin/pantry@sha256:previous\tghcr.io/rhionin/pantry@sha256:oldpantry' > "$pending/.update-pending"
+STUB_HEALTH_RC=1
+STUB_BUILD_RC=1
+run_update "$pending"
+[[ "$LAST_RC" -ne 0 ]] || fail "pending unhealthy deploy should exit non-zero: $LAST_OUT"
+lack "$LAST_OUT" "images unchanged" "pending marker is not treated as a no-op"
+have "$LAST_DOCKER" "image: ghcr.io/rhionin/pantry@sha256:previous" "pending failure re-pins the saved digest"
+have "$LAST_OUT" "previous deploy was not confirmed" "pending marker is resumed"
+unset STUB_HEALTH_RC STUB_BUILD_RC
+
+# An exited container fails the forward wait without sitting out the timeout.
+exited=$(mktemp -d)
+prepare_pantry "$exited"
+write_images "$exited/images.tsv" \
+  sha256:newpantry ghcr.io/rhionin/pantry@sha256:newpantry \
+  sha256:runcaddy caddy@sha256:oldcaddy
+STUB_CONTAINER_STATUS=exited
+STUB_HEALTH_BODY='{"status":"ok"}'
+STUB_BUILD_BODY="{\"commit\":\"${NEW_COMMIT}\"}"
+PANTRY_UPDATE_HEALTH_TIMEOUT=30
+PANTRY_UPDATE_HEALTH_INTERVAL=0
+run_update "$exited"
+[[ "$LAST_RC" -ne 0 ]] || fail "exited container should exit non-zero: $LAST_OUT"
+have "$LAST_OUT" "pantry container is exited" "exited container fails fast"
+have "$LAST_DOCKER" "--pull never" "exited container rolls back"
+unset STUB_CONTAINER_STATUS STUB_HEALTH_BODY STUB_BUILD_BODY PANTRY_UPDATE_HEALTH_TIMEOUT PANTRY_UPDATE_HEALTH_INTERVAL
+
+# The public proxy is checked through Caddy after the LAN health check.
+proxied=$(mktemp -d)
+prepare_pantry "$proxied"
+printf '%s\n' 'basic_auth bcrypt Pantry {' '}' > "$proxied/auth.caddy"
+cat > "$proxied/.env" << 'EOF'
+HOST_PORT=8080
+PUBLIC_HOST=stockbot.example
+PANTRY_IMAGE_TAG=latest
+PANTRY_SESSION_SECRET=test-secret
+VAPID_PUBLIC_KEY=test-public
+VAPID_PRIVATE_KEY=test-private
+VAPID_SUBJECT=mailto:pantry@localhost
+EOF
+cp "$proxied/.env" "$proxied/.env.orig"
+write_images "$proxied/images.tsv" \
+  sha256:newpantry ghcr.io/rhionin/pantry@sha256:newpantry \
+  sha256:newcaddy caddy@sha256:newcaddy
+STUB_HEALTH_BODY='{"status":"ok"}'
+STUB_BUILD_BODY="{\"commit\":\"${NEW_COMMIT}\"}"
+run_update "$proxied"
+[[ "$LAST_RC" -eq 0 ]] || fail "caddy probe should exit 0: $LAST_OUT"
+have "$LAST_CURL" "--resolve stockbot.example:443:127.0.0.1" "caddy probe uses --resolve"
+have "$LAST_CURL" "https://stockbot.example/api/build" "caddy probe requests /api/build"
+env_unchanged "$proxied"
+unset STUB_HEALTH_BODY STUB_BUILD_BODY
+
+# Not enough free space skips the deploy before any container is recreated.
+full_disk=$(mktemp -d)
+prepare_pantry "$full_disk"
+write_images "$full_disk/images.tsv" \
+  sha256:newpantry ghcr.io/rhionin/pantry@sha256:newpantry \
+  sha256:newcaddy caddy@sha256:newcaddy
+PANTRY_UPDATE_MIN_FREE_KIB=999999999999
+run_update "$full_disk"
+[[ "$LAST_RC" -ne 0 ]] || fail "low disk should exit non-zero: $LAST_OUT"
+have "$LAST_OUT" "KiB free" "low disk names the free space"
+lack "$LAST_SEQUENCE" " up -d" "low disk does not start containers"
+unset PANTRY_UPDATE_MIN_FREE_KIB
+
+rm -rf "$healthy" "$noop" "$mismatch" "$unhealthy" "$caddy_only" "$rollback_fail" "$unlabeled" "$polled" "$migrating" "$pending" "$exited" "$proxied" "$full_disk"
 echo "pantry_update_test ok"

@@ -23,29 +23,53 @@
 # The timer fires every minute, and recreating a healthy stack each time
 # would drop the scanner session for nothing.
 #
-# When an image does change, the new pantry container is kept only if
-# GET /health is ok and GET /api/build's commit equals the image label
-# org.opencontainers.image.revision (see the Dockerfile). Both are read on
-# 127.0.0.1:$HOST_PORT. The public hostname asks for the household password
-# on /health, so a check there would look like a failed deploy.
+# When an image does change, the pantry revision label is read before
+# anything is recreated. An image without org.opencontainers.image.revision
+# is not started. The new containers are kept only if GET /health is ok and
+# GET /api/build's commit equals that label. While /health reports
+# "migrating", the wait continues up to PANTRY_UPDATE_MIGRATION_TIMEOUT
+# (default 10 minutes). The short timeout (PANTRY_UPDATE_HEALTH_TIMEOUT,
+# default 90 seconds) uses /proc/uptime, because the Pi has no RTC. Both
+# URLs are read on 127.0.0.1:$HOST_PORT. /health on the public hostname asks
+# for the household password, so that URL is not the LAN check. When the
+# public proxy is part of this update, /api/build is also requested through
+# Caddy.
 #
-# On timeout or a mismatch, each service that had a running image is
-# re-pinned to that digest and started with --pull never. The local tag
-# compose uses (ghcr.io/rhionin/pantry:$PANTRY_IMAGE_TAG, and the same for
-# any other service whose digest changed) is moved back to that previous
-# digest. A later manual `docker compose up -d` or setup.sh would otherwise
-# start the rejected image with no health check. .env is not rewritten.
+# .update-pending is written before `up`. If this process stops after that
+# and before a verdict, the next run checks health again and rolls back if
+# the check fails.
+#
+# On timeout, a compose failure, or a commit mismatch, each service that
+# was running is re-pinned to its previous digest and started with --pull
+# never. That rollback is health-checked. If it does not become healthy the
+# log says BOTH IMAGES DOWN. The local tag compose uses
+# (ghcr.io/rhionin/pantry:$PANTRY_IMAGE_TAG, and the same for any other
+# service whose digest changed) is moved back to the previous digest. A
+# later manual compose up or setup.sh would otherwise start the
+# rejected image with no health check. .env is not rewritten.
 # PANTRY_IMAGE_TAG and the setup last-known-good sha (#152) stay whatever
-# they already were. The rejected digest is recorded so the next minute
-# does not start that same image again. Comparison happens after pull, so
-# the restored local tag is not treated as the remote image: a new digest
-# is still deployed, and the rejected one is still skipped.
+# they already were. Only a service whose image actually changed is recorded
+# in .update-rejected-digest, as "service<TAB>digest". The next run that
+# still sees one of those digests exits 0 after a one-line skip. Comparison
+# happens after pull, so the restored local tag is not treated as the remote
+# image: a new digest is still deployed, and the rejected one is still skipped.
 #
 # Re-pinning the image does not undo a migration. The migration runner is
 # not transactional (#249). This script does not copy pantry-pre-*.db back
-# over the database.
+# over the database. Logs from the rejected pantry container are saved in
+# the pantry directory before the rollback removes that container.
+#
+# Service images come from `docker compose config`. python3 is not required.
 
 set -euo pipefail
+
+UPDATE_STATE=""
+cleanup_update_state() {
+  if [[ -n "${UPDATE_STATE:-}" ]]; then
+    rm -rf "$UPDATE_STATE"
+  fi
+}
+trap cleanup_update_state EXIT
 
 PANTRY_DIR=${PANTRY_DIR:-/opt/pantry}
 cd "$PANTRY_DIR"
@@ -131,24 +155,32 @@ trigger_digest() {
 }
 
 # compose_service_images prints "service<TAB>image" for the compose command
-# this update will actually run (profiles included).
+# this update will actually run (profiles included). `docker compose config`
+# is YAML; python3 is not required.
 compose_service_images() {
-  local json
-  if ! command -v python3 >/dev/null 2>&1; then
-    echo "pantry update: python3 is required to read the compose service images" >&2
-    return 1
-  fi
-  json=$("${compose[@]}" config --format json) || return 1
-  printf '%s' "$json" | python3 -c '
-import json, sys
-doc = json.load(sys.stdin)
-services = doc.get("services") or {}
-for name, svc in services.items():
-    image = ""
-    if isinstance(svc, dict):
-        image = svc.get("image") or ""
-    sys.stdout.write("%s\t%s\n" % (name, image))
-'
+  local config svc image
+  config=$("${compose[@]}" config) || return 1
+  while IFS=$'\t' read -r svc image; do
+    [[ -z "$svc" ]] && continue
+    image=${image#\"}
+    image=${image%\"}
+    image=${image#\'}
+    image=${image%\'}
+    printf '%s\t%s\n' "$svc" "$image"
+  done < <(printf '%s\n' "$config" | awk '
+    /^services:/ { in_s = 1; next }
+    in_s && /^[^ #]/ { in_s = 0 }
+    in_s && /^  [^ ].*:[[:space:]]*$/ {
+      svc = $1
+      sub(/:$/, "", svc)
+      next
+    }
+    in_s && /^    image:[[:space:]]/ {
+      img = $0
+      sub(/^    image:[[:space:]]+/, "", img)
+      if (svc != "") print svc "\t" img
+    }
+  ')
 }
 
 image_repo_name() {
@@ -258,49 +290,120 @@ images_unchanged() {
   [[ "$any" -eq 1 ]]
 }
 
-pantry_desired_digest() {
-  local state="$1" ref digest
-  ref=$(awk -F '\t' '$1 == "pantry" { print $2; exit }' "$state/refs.tsv")
+service_ref() {
+  awk -F '\t' -v s="$1" '$1 == s { print $2; exit }' "$2/refs.tsv"
+}
+
+running_field() {
+  awk -F '\t' -v s="$1" -v col="$2" '$1 == s { print $col; exit }' "$3/running.tsv"
+}
+
+service_pulled_id() {
+  local ref id
+  ref=$(service_ref "$1" "$2")
+  [[ -n "$ref" ]] || return 1
+  id=$(docker image inspect -f '{{.Id}}' "$ref" 2>/dev/null || true)
+  id=$(one_line "$id")
+  [[ -n "$id" ]] || return 1
+  printf '%s' "$id"
+}
+
+service_changed() {
+  local running_id pulled
+  running_id=$(running_field "$2" 2 "$1")
+  pulled=$(service_pulled_id "$2" "$1" || true)
+  [[ -n "$pulled" && "$pulled" != "$running_id" ]]
+}
+
+service_desired_digest() {
+  local ref digest id
+  ref=$(service_ref "$2" "$1")
   [[ -n "$ref" ]] || return 0
-  digest=$(image_repo_digest "$ref" "$ref")
-  if [[ -z "$digest" ]]; then
-    digest=$(docker image inspect -f '{{.Id}}' "$ref" 2>/dev/null || true)
-    digest=$(one_line "$digest")
+  id=$(service_pulled_id "$2" "$1" || true)
+  if [[ -n "$id" ]]; then
+    digest=$(image_repo_digest "$id" "$ref")
+  fi
+  if [[ -z "${digest:-}" ]]; then
+    digest=$id
   fi
   printf '%s' "$digest"
 }
 
+image_revision() {
+  local revision
+  revision=$(docker image inspect -f '{{index .Config.Labels "org.opencontainers.image.revision"}}' "$1" 2>/dev/null || true)
+  revision=$(one_line "$revision")
+  if [[ -z "$revision" || "$revision" == "<no value>" ]]; then
+    return 1
+  fi
+  printf '%s' "$revision"
+}
+
+# digest_was_rejected SERVICE DIGEST is true when that pair was recorded.
+# A legacy line with only the digest still matches.
 digest_was_rejected() {
-  local digest="$1" file="$PANTRY_DIR/.update-rejected-digest" line
+  local svc="$1" digest="$2" file="$PANTRY_DIR/.update-rejected-digest" line got_svc got_digest
   [[ -n "$digest" && -f "$file" ]] || return 1
   while IFS= read -r line || [[ -n "$line" ]]; do
     [[ -z "$line" || "$line" == \#* ]] && continue
-    [[ "$line" == "$digest" ]] && return 0
+    if [[ "$line" != *$'\t'* ]]; then
+      [[ "$line" == "$digest" ]] && return 0
+      continue
+    fi
+    got_svc=${line%%$'\t'*}
+    got_digest=${line#*$'\t'}
+    [[ "$got_svc" == "$svc" && "$got_digest" == "$digest" ]] && return 0
   done < "$file"
   return 1
 }
 
 remember_rejected_digest() {
-  local digest="$1" file="$PANTRY_DIR/.update-rejected-digest"
-  [[ -n "$digest" ]] || return 0
-  if digest_was_rejected "$digest"; then
+  local svc="$1" digest="$2" file="$PANTRY_DIR/.update-rejected-digest"
+  if [[ -z "$svc" || -z "$digest" ]]; then
+    return 0
+  fi
+  if digest_was_rejected "$svc" "$digest"; then
     return 0
   fi
   if [[ ! -f "$file" ]]; then
-    printf '%s\n' '# Image digests rolled back by pantry-update.sh. Not a setup last-known-good sha.' > "$file" || return 1
+    if ! printf '%s\n' '# Image digests rolled back by pantry-update.sh, one service per line. Not a setup last-known-good sha.' > "$file"; then
+      echo "PANTRY UPDATE FAILED: could not write ${file}; rejected ${svc} digest ${digest} was not recorded" >&2
+      return 1
+    fi
   fi
-  printf '%s\n' "$digest" >> "$file"
+  if ! printf '%s\t%s\n' "$svc" "$digest" >> "$file"; then
+    echo "PANTRY UPDATE FAILED: could not record rejected ${svc} digest ${digest} in ${file}" >&2
+    return 1
+  fi
+  echo "pantry update: recorded rejected ${svc} digest ${digest}" >&2
 }
 
-log_already_rejected() {
-  cat >&2 <<EOF
-================================================================
-PANTRY UPDATE FAILED: image ${1} was already rolled back; leaving the previous image running.
-This script will not start that digest again. A newer image with a different digest will still be tried.
-Delete that line from ${PANTRY_DIR}/.update-rejected-digest only when you mean to retry it.
-A database migration that already ran is still applied. This script does not restore pantry-pre-*.db snapshots in /data.
-================================================================
-EOF
+# skip_rejected_changes returns 0 when a service that changed is already rejected.
+skip_rejected_changes() {
+  local state="$1" svc running_id previous desired found=1
+  while IFS=$'\t' read -r svc running_id previous; do
+    [[ -z "$svc" ]] && continue
+    service_changed "$state" "$svc" || continue
+    desired=$(service_desired_digest "$state" "$svc")
+    if digest_was_rejected "$svc" "$desired"; then
+      echo "pantry update: skipping rejected ${desired}" >&2
+      found=0
+    fi
+  done < "$state/running.tsv"
+  return "$found"
+}
+
+record_changed_rejections() {
+  local state="$1" svc running_id previous desired failed=0
+  while IFS=$'\t' read -r svc running_id previous; do
+    [[ -z "$svc" ]] && continue
+    service_changed "$state" "$svc" || continue
+    desired=$(service_desired_digest "$state" "$svc")
+    if ! remember_rejected_digest "$svc" "$desired"; then
+      failed=1
+    fi
+  done < "$state/running.tsv"
+  [[ "$failed" -eq 0 ]]
 }
 
 log_rollback_banner() {
@@ -327,41 +430,129 @@ health_is_ok() {
   [[ "$1" =~ \"status\"[[:space:]]*:[[:space:]]*\"ok\" ]]
 }
 
+health_is_migrating() {
+  [[ "$1" =~ \"status\"[[:space:]]*:[[:space:]]*\"migrating\" ]]
+}
+
+# mono_seconds is seconds since boot. SECONDS follows the wall clock, and a
+# Pi without an RTC can step that clock when NTP starts.
+mono_seconds() {
+  if [[ -r /proc/uptime ]]; then
+    awk '{printf "%d\n", $1}' /proc/uptime
+    return 0
+  fi
+  printf '%s\n' "${SECONDS:-0}"
+}
+
+container_state() {
+  local cid line
+  cid=$("${compose[@]}" ps -aq "$1" 2>/dev/null | head -n 1 || true)
+  cid=$(one_line "$cid")
+  [[ -n "$cid" ]] || return 1
+  line=$(docker inspect -f '{{.State.Status}} {{.RestartCount}}' "$cid" 2>/dev/null || true)
+  line=$(one_line "$line")
+  [[ -n "$line" ]] || return 1
+  printf '%s' "$line"
+}
+
+# pantry_container_failed BASELINE is true when pantry has exited, is
+# restarting, or its RestartCount has risen.
+pantry_container_failed() {
+  local baseline="$1" line status restarts
+  line=$(container_state pantry || true)
+  if [[ -z "$line" ]]; then
+    echo "pantry update: pantry container is missing" >&2
+    return 0
+  fi
+  status=${line%% *}
+  restarts=${line##* }
+  if [[ "$status" == exited || "$status" == restarting || "$status" == dead ]]; then
+    echo "pantry update: pantry container is ${status}" >&2
+    return 0
+  fi
+  if [[ "$restarts" =~ ^[0-9]+$ && "$baseline" =~ ^[0-9]+$ && "$restarts" -gt "$baseline" ]]; then
+    echo "pantry update: pantry container restarted (${baseline} -> ${restarts})" >&2
+    return 0
+  fi
+  return 1
+}
+
+# wait_for_expected_build STATE [REVISION]
+# A second argument, even an empty one, is the commit to expect. Empty means
+# /health ok is enough (the previous image had no revision label). With one
+# argument the commit is the pantry image's current label.
 wait_for_expected_build() {
-  local state="$1" ref revision host_port timeout interval deadline health build commit
-  ref=$(awk -F '\t' '$1 == "pantry" { print $2; exit }' "$state/refs.tsv")
+  local state="$1" supplied=0 revision="" ref host_port timeout interval migr_cap
+  local start now short_deadline hard_deadline health build commit baseline line
+  if [[ "$#" -ge 2 ]]; then
+    supplied=1
+    revision=$2
+  fi
+  ref=$(service_ref pantry "$state")
   if [[ -z "$ref" ]]; then
     echo "pantry update: compose project has no pantry service" >&2
     return 1
   fi
-  revision=$(docker image inspect -f '{{index .Config.Labels "org.opencontainers.image.revision"}}' "$ref" 2>/dev/null || true)
-  revision=$(one_line "$revision")
-  if [[ -z "$revision" || "$revision" == "<no value>" ]]; then
-    echo "pantry update: ${ref} has no org.opencontainers.image.revision label" >&2
-    return 1
+  if [[ "$supplied" -eq 0 ]]; then
+    revision=$(image_revision "$ref" || true)
+    if [[ -z "$revision" ]]; then
+      echo "pantry update: ${ref} has no org.opencontainers.image.revision label" >&2
+      return 1
+    fi
   fi
   host_port=$(publish_env_value HOST_PORT)
   host_port=${host_port:-8080}
   timeout=${PANTRY_UPDATE_HEALTH_TIMEOUT:-90}
   interval=${PANTRY_UPDATE_HEALTH_INTERVAL:-2}
-  echo "pantry update: waiting for /health and /api/build commit ${revision} on 127.0.0.1:${host_port}"
+  migr_cap=${PANTRY_UPDATE_MIGRATION_TIMEOUT:-600}
+  if [[ -n "$revision" ]]; then
+    echo "pantry update: waiting for /health and /api/build commit ${revision} on 127.0.0.1:${host_port}"
+  else
+    echo "pantry update: waiting for /health on 127.0.0.1:${host_port}"
+  fi
+  start=$(mono_seconds)
+  short_deadline=$((start + timeout))
+  hard_deadline=$((start + migr_cap))
+  line=$(container_state pantry || true)
+  baseline=${line##* }
+  [[ "$baseline" =~ ^[0-9]+$ ]] || baseline=0
   health=""
   build=""
-  deadline=$((SECONDS + timeout))
   while true; do
-    health=$(curl -sf --max-time 5 "http://127.0.0.1:${host_port}/health" 2>/dev/null || true)
-    build=$(curl -sf --max-time 5 "http://127.0.0.1:${host_port}/api/build" 2>/dev/null || true)
-    commit=$(json_string_field "$build" commit)
-    if health_is_ok "$health" && [[ -n "$commit" && "$commit" == "$revision" ]]; then
-      echo "pantry update: healthy, running commit ${commit}"
-      return 0
+    if pantry_container_failed "$baseline"; then
+      return 1
     fi
-    if [[ "$timeout" -le 0 || "$SECONDS" -ge "$deadline" ]]; then
+    # curl -f hides the body of a 503, which is how /health reports migrating.
+    health=$(curl -sS --max-time 5 "http://127.0.0.1:${host_port}/health" 2>/dev/null || true)
+    if health_is_migrating "$health"; then
+      now=$(mono_seconds)
+      if [[ "$now" -ge "$hard_deadline" ]]; then
+        echo "pantry update: still migrating after ${migr_cap}s" >&2
+        return 1
+      fi
+      echo "pantry update: migrations still running"
+      sleep "$interval"
+      continue
+    fi
+    build=$(curl -sS --max-time 5 "http://127.0.0.1:${host_port}/api/build" 2>/dev/null || true)
+    commit=$(json_string_field "$build" commit)
+    if health_is_ok "$health"; then
+      if [[ -z "$revision" || ( -n "$commit" && "$commit" == "$revision" ) ]]; then
+        if [[ -n "$commit" ]]; then
+          echo "pantry update: healthy, running commit ${commit}"
+        else
+          echo "pantry update: healthy"
+        fi
+        return 0
+      fi
+    fi
+    now=$(mono_seconds)
+    if [[ "$timeout" -le 0 || "$now" -ge "$short_deadline" ]]; then
       break
     fi
     sleep "$interval"
   done
-  echo "pantry update: health check timed out after ${timeout}s (wanted commit ${revision})" >&2
+  echo "pantry update: health check timed out after ${timeout}s (wanted commit ${revision:-<any>})" >&2
   echo "pantry update: last /health: ${health:-<none>}" >&2
   echo "pantry update: last /api/build: ${build:-<none>}" >&2
   return 1
@@ -399,22 +590,109 @@ restore_local_tags() {
   done < "$state/running.tsv"
 }
 
-# rollback_images re-pins every service that had an image before the pull.
-# The pin is a compose override so .env and PANTRY_IMAGE_TAG stay put.
-rollback_images() {
-  local state="$1" override svc running_id digest pin any=0
-  override=$(mktemp)
-  printf 'services:\n' > "$override"
+free_kib() {
+  df -Pk "$1" 2>/dev/null | awk 'NR==2 { print $4 }'
+}
+
+ensure_free_space() {
+  local min path free root
+  min=${PANTRY_UPDATE_MIN_FREE_KIB:-65536}
+  for path in "$PANTRY_DIR" /tmp; do
+    free=$(free_kib "$path" || true)
+    if [[ -z "$free" || ! "$free" =~ ^[0-9]+$ ]]; then
+      echo "PANTRY UPDATE FAILED: could not read free space on ${path}" >&2
+      return 1
+    fi
+    if [[ "$free" -lt "$min" ]]; then
+      echo "PANTRY UPDATE FAILED: ${path} has ${free} KiB free; need at least ${min} before deploying" >&2
+      return 1
+    fi
+  done
+  root=$(docker info -f '{{.DockerRootDir}}' 2>/dev/null || true)
+  root=$(one_line "$root")
+  if [[ -n "$root" && -d "$root" ]]; then
+    free=$(free_kib "$root" || true)
+    if [[ -n "$free" && "$free" =~ ^[0-9]+$ && "$free" -lt "$min" ]]; then
+      echo "PANTRY UPDATE FAILED: docker root ${root} has ${free} KiB free; need at least ${min} before deploying" >&2
+      return 1
+    fi
+  fi
+}
+
+save_rejected_logs() {
+  local cid dest
+  cid=$("${compose[@]}" ps -aq pantry 2>/dev/null | head -n 1 || true)
+  cid=$(one_line "$cid")
+  dest="$PANTRY_DIR/update-rejected-pantry.log"
+  if [[ -z "$cid" ]]; then
+    echo "pantry update: no pantry container to capture logs from" >&2
+    return 0
+  fi
+  if docker logs --tail 300 "$cid" >"$dest" 2>&1; then
+    echo "pantry update: saved rejected container logs to ${dest}" >&2
+  else
+    echo "PANTRY UPDATE FAILED: could not save container logs to ${dest}" >&2
+  fi
+}
+
+newest_snapshot_path() {
+  local log="$PANTRY_DIR/update-rejected-pantry.log" path newest=""
+  [[ -f "$log" ]] || return 0
+  while IFS= read -r path; do
+    [[ -n "$path" ]] && newest=$path
+  done < <(grep -oE '/data/pantry-pre-[^[:space:]]+\.db' "$log" | sort || true)
+  printf '%s' "$newest"
+}
+
+log_both_down() {
+  cat >&2 <<'EOF'
+================================================================
+BOTH IMAGES DOWN
+The new image failed and the previous image did not become healthy.
+The site may be unreachable. This script does not restore the database.
+================================================================
+EOF
+}
+
+write_pin_override() {
+  local pins="$1" override="$2" svc pin rest any=0
+  if ! printf 'services:\n' > "$override"; then
+    return 1
+  fi
+  while IFS=$'\t' read -r svc pin rest; do
+    [[ -z "$svc" || "$svc" == \#* ]] && continue
+    [[ -z "$pin" ]] && continue
+    any=1
+    printf '  %s:\n    image: %s\n' "$svc" "$pin" >> "$override"
+    echo "pantry update: re-pinning ${svc} to ${pin}" >&2
+  done < "$pins"
+  [[ "$any" -eq 1 ]]
+}
+
+pins_from_running() {
+  local state="$1" dest="$2" svc running_id digest pin
+  : > "$dest"
   while IFS=$'\t' read -r svc running_id digest; do
     [[ -z "$svc" ]] && continue
     pin=$digest
     [[ -z "$pin" ]] && pin=$running_id
     [[ -z "$pin" ]] && continue
-    any=1
-    printf '  %s:\n    image: %s\n' "$svc" "$pin" >> "$override"
-    echo "pantry update: re-pinning ${svc} to ${pin}" >&2
+    printf '%s\t%s\n' "$svc" "$pin" >> "$dest"
   done < "$state/running.tsv"
-  if [[ "$any" -ne 1 ]]; then
+}
+
+# rollback_to_pins STATE PINS
+# Returns 0 when the previous image is healthy, 2 when it started but is not
+# healthy, and 1 when it did not start. Callers record a rejection only for
+# 0 and 2.
+rollback_to_pins() {
+  local state="$1" pins="$2" override snap old_pin old_rev
+  override=$(mktemp) || {
+    echo "PANTRY UPDATE FAILED: could not create a rollback override file" >&2
+    log_both_down
+    return 1
+  }
+  if ! write_pin_override "$pins" "$override"; then
     cat >&2 <<'EOF'
 ================================================================
 PANTRY UPDATE FAILED: no previous image digest was recorded, so the new image was left in place.
@@ -423,49 +701,234 @@ Automatic pre-migration snapshots, when one was taken, are files named pantry-pr
 Restoring one of those over /data/pantry.db is a manual step. This script does not restore the database.
 ================================================================
 EOF
+    log_both_down
     rm -f "$override"
     return 1
   fi
+  save_rejected_logs
   log_rollback_banner
+  snap=$(newest_snapshot_path || true)
+  if [[ -n "$snap" ]]; then
+    echo "Newest pre-migration snapshot in the rejected container log: ${snap}" >&2
+  else
+    echo "No pantry-pre-*.db path was found in the rejected container log." >&2
+  fi
   if ! "${compose[@]}" -f "$override" up -d --pull never; then
     echo "PANTRY UPDATE FAILED: could not start the previous image." >&2
+    log_both_down
     rm -f "$override"
     return 1
   fi
   rm -f "$override"
+  old_pin=$(awk -F '\t' '$1 == "pantry" { print $2; exit }' "$pins")
+  old_rev=""
+  if [[ -n "$old_pin" ]]; then
+    old_rev=$(image_revision "$old_pin" || true)
+  fi
+  if ! wait_for_expected_build "$state" "$old_rev"; then
+    log_both_down
+    return 2
+  fi
+  return 0
+}
+
+write_pending() {
+  local state="$1" tmp svc running_id previous desired pin
+  tmp=$(mktemp "${PANTRY_DIR}/.update-pending.XXXXXX") || {
+    echo "PANTRY UPDATE FAILED: could not create the pending-update marker" >&2
+    return 1
+  }
+  while IFS=$'\t' read -r svc running_id previous; do
+    [[ -z "$svc" ]] && continue
+    desired=$(service_desired_digest "$state" "$svc")
+    pin=$previous
+    [[ -z "$pin" ]] && pin=$running_id
+    printf '%s\t%s\t%s\n' "$svc" "$pin" "$desired"
+  done < "$state/running.tsv" > "$tmp"
+  if ! mv "$tmp" "$PANTRY_DIR/.update-pending"; then
+    echo "PANTRY UPDATE FAILED: could not write ${PANTRY_DIR}/.update-pending" >&2
+    rm -f "$tmp"
+    return 1
+  fi
+}
+
+# deploy_was_started is true when a service's running digest is the digest
+# .update-pending said we were deploying, and that digest is not the previous one.
+deploy_was_started() {
+  local state="$1" svc pin desired current
+  [[ -f "$PANTRY_DIR/.update-pending" ]] || return 1
+  while IFS=$'\t' read -r svc pin desired; do
+    [[ -z "$svc" || "$svc" == \#* ]] && continue
+    [[ -n "$desired" && "$desired" != "$pin" ]] || continue
+    current=$(running_field "$svc" 3 "$state")
+    if [[ "$current" == "$desired" ]]; then
+      return 0
+    fi
+  done < "$PANTRY_DIR/.update-pending"
+  return 1
+}
+
+record_pending_rejections() {
+  local svc pin desired failed=0
+  while IFS=$'\t' read -r svc pin desired; do
+    [[ -z "$svc" || "$svc" == \#* ]] && continue
+    [[ -n "$desired" && "$desired" != "$pin" ]] || continue
+    if ! remember_rejected_digest "$svc" "$desired"; then
+      failed=1
+    fi
+  done < "$PANTRY_DIR/.update-pending"
+  [[ "$failed" -eq 0 ]]
+}
+
+retag_pins() {
+  local file="$1" state="$2" svc pin desired ref
+  while IFS=$'\t' read -r svc pin desired; do
+    [[ -z "$svc" || "$svc" == \#* ]] && continue
+    ref=$(service_ref "$svc" "$state")
+    [[ -z "$ref" || "$ref" == *@sha256:* || -z "$pin" ]] && continue
+    if ! docker tag "$pin" "$ref"; then
+      echo "pantry update: could not retag ${ref} to ${pin}" >&2
+      return 1
+    fi
+    echo "pantry update: retagged ${ref} to ${pin}" >&2
+  done < "$file"
+}
+
+confirm_recreated() {
+  local state="$1" svc image line status
+  while IFS=$'\t' read -r svc image; do
+    [[ -z "$svc" ]] && continue
+    line=$(container_state "$svc" || true)
+    status=${line%% *}
+    if [[ "$status" != running ]]; then
+      echo "pantry update: ${svc} is not running (${status:-missing})" >&2
+      return 1
+    fi
+  done < "$state/refs.tsv"
+}
+
+probe_caddy() {
+  local host have_auth=0
+  host=$(publish_env_value PUBLIC_HOST)
+  [[ "$mode" == acme && -n "$host" ]] || return 0
+  if [[ -f /opt/pantry/auth.caddy ]]; then
+    have_auth=1
+  elif [[ "$PANTRY_DIR" != /opt/pantry && -f "$PANTRY_DIR/auth.caddy" ]]; then
+    have_auth=1
+  fi
+  [[ "$have_auth" -eq 1 ]] || return 0
+  echo "pantry update: checking https://${host}/api/build through Caddy"
+  curl -sf --max-time 10 --resolve "${host}:443:127.0.0.1" "https://${host}/api/build" >/dev/null
+}
+
+clear_state() {
+  if [[ -n "${UPDATE_STATE:-}" ]]; then
+    rm -rf "$UPDATE_STATE"
+    UPDATE_STATE=""
+  fi
+}
+
+finish_rollback() {
+  local state="$1" pins="$2" rc=0
+  rollback_to_pins "$state" "$pins" || rc=$?
+  if [[ "$rc" -eq 0 || "$rc" -eq 2 ]]; then
+    # Record while the local tag still names the image that failed. Retagging
+    # first would make that digest look like the one already running.
+    if [[ "$pins" == "$PANTRY_DIR/.update-pending" ]]; then
+      if ! record_pending_rejections; then
+        echo "PANTRY UPDATE FAILED: could not record a rejected digest; the next run may try that image again" >&2
+      fi
+      if ! retag_pins "$pins" "$state"; then
+        echo "pantry update: the previous container is running, but the local tag still names the rejected image. A manual docker compose up would start it." >&2
+      fi
+    else
+      if ! record_changed_rejections "$state"; then
+        echo "PANTRY UPDATE FAILED: could not record a rejected digest; the next run may try that image again" >&2
+      fi
+      if ! restore_local_tags "$state"; then
+        echo "pantry update: the previous container is running, but the local tag still names the rejected image. A manual docker compose up would start it." >&2
+      fi
+    fi
+    rm -f "$PANTRY_DIR/.update-pending"
+  else
+    echo "pantry update: previous image did not start; the next run will try this image again" >&2
+  fi
 }
 
 apply_compose() {
-  local state desired up_ok
-  state=$(mktemp -d)
+  local state up_ok ref pins desired
+  UPDATE_STATE=$(mktemp -d) || {
+    echo "PANTRY UPDATE FAILED: could not create a temp directory" >&2
+    return 1
+  }
+  state=$UPDATE_STATE
   if ! record_running_images "$state"; then
-    rm -rf "$state"
+    clear_state
     return 1
   fi
 
   "${compose[@]}" pull
 
+  if [[ -f "$PANTRY_DIR/.update-pending" ]]; then
+    if deploy_was_started "$state"; then
+      echo "pantry update: previous deploy was not confirmed; checking health"
+      if wait_for_expected_build "$state"; then
+        rm -f "$PANTRY_DIR/.update-pending"
+        echo "pantry update: pending deploy is healthy"
+      else
+        echo "pantry update: pending deploy failed the health check" >&2
+        finish_rollback "$state" "$PANTRY_DIR/.update-pending"
+        clear_state
+        exit 1
+      fi
+    else
+      echo "pantry update: pending marker was left before the new image started"
+      rm -f "$PANTRY_DIR/.update-pending"
+    fi
+  fi
+
   if images_unchanged "$state"; then
     echo "pantry update: images unchanged"
-    rm -rf "$state"
+    clear_state
     return 0
   fi
 
-  desired=$(pantry_desired_digest "$state")
-  if digest_was_rejected "$desired"; then
-    # Pull moved the local tag onto this digest. Point it back at the
-    # running image so the skip does not leave :latest on the bad image.
+  if skip_rejected_changes "$state"; then
     if ! restore_local_tags "$state"; then
       echo "pantry update: could not point the local image tag back at the previous digest." >&2
     fi
-    log_already_rejected "$desired"
-    rm -rf "$state"
+    clear_state
+    return 0
+  fi
+
+  ref=$(service_ref pantry "$state")
+  if ! image_revision "$ref" >/dev/null; then
+    echo "pantry update: ${ref} has no org.opencontainers.image.revision label; not starting it" >&2
+    if service_changed "$state" pantry; then
+      desired=$(service_desired_digest "$state" pantry)
+      if ! remember_rejected_digest pantry "$desired"; then
+        echo "PANTRY UPDATE FAILED: could not record the rejected digest ${desired}" >&2
+      fi
+    fi
+    if ! restore_local_tags "$state"; then
+      echo "pantry update: could not point the local image tag back at the previous digest." >&2
+    fi
+    clear_state
+    exit 1
+  fi
+
+  if ! ensure_free_space; then
+    clear_state
+    exit 1
+  fi
+  if ! write_pending "$state"; then
+    clear_state
     exit 1
   fi
 
   # After a successful pull, drop a container left from the other mode so
-  # the name pantry-caddy can be recreated on this path. A tunnel token with
-  # no password file leaves whatever is already running alone.
+  # the proxy name can be recreated on this path. A tunnel token with no
+  # password file leaves whatever is already running alone.
   if [[ "$mode" != tunnel || -f "$PANTRY_DIR/auth.caddy" ]]; then
     drop_other_publish_containers "$mode"
   fi
@@ -476,24 +939,24 @@ apply_compose() {
   if "${compose[@]}" up -d; then
     up_ok=1
   fi
-  if [[ "$up_ok" -eq 1 ]] && wait_for_expected_build "$state"; then
-    rm -rf "$state"
+  if [[ "$up_ok" -eq 1 ]] && wait_for_expected_build "$state" && confirm_recreated "$state" && probe_caddy; then
+    rm -f "$PANTRY_DIR/.update-pending"
+    clear_state
     return 0
   fi
   if [[ "$up_ok" -ne 1 ]]; then
     echo "pantry update: docker compose up failed" >&2
   fi
-  if rollback_images "$state"; then
-    if ! restore_local_tags "$state"; then
-      echo "pantry update: the previous container is running, but the local tag still names the rejected image. A manual docker compose up would start it." >&2
-    fi
-    if ! remember_rejected_digest "$desired"; then
-      echo "pantry update: could not record the rejected digest; the next run may try this image again" >&2
-    fi
-  else
-    echo "pantry update: previous image did not start; the next run will try this image again" >&2
-  fi
-  rm -rf "$state"
+  pins=$(mktemp) || {
+    echo "PANTRY UPDATE FAILED: could not create a rollback pin file" >&2
+    log_both_down
+    clear_state
+    exit 1
+  }
+  pins_from_running "$state" "$pins"
+  finish_rollback "$state" "$pins"
+  rm -f "$pins"
+  clear_state
   exit 1
 }
 
