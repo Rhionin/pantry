@@ -8,6 +8,9 @@ const articleLabels = (page: Page) =>
   page.locator('.scan-page-queue article').evaluateAll((nodes) =>
     nodes.map((node) => node.getAttribute('aria-label')))
 
+// Other specs in this run share the database, so older cards may sit below.
+const topTwo = async (page: Page) => (await articleLabels(page))?.slice(0, 2) ?? []
+
 test('rescanning an open card flashes it and moves it to the top, including after reload', async ({ page, request }) => {
   test.setTimeout(90_000)
   for (const item of [first, second]) {
@@ -23,7 +26,7 @@ test('rescanning an open card flashes it and moves it to the top, including afte
   await resetToStockIn(page)
   await scanBarcode(page, first.barcode)
   await scanBarcode(page, second.barcode)
-  await expect.poll(() => articleLabels(page)).toEqual([
+  await expect.poll(() => topTwo(page)).toEqual([
     `Scan ${second.barcode}`,
     `Scan ${first.barcode}`,
   ])
@@ -31,16 +34,16 @@ test('rescanning an open card flashes it and moves it to the top, including afte
   const rescanned = page.getByRole('article', { name: `Scan ${first.barcode}`, exact: true })
   await scanBarcode(page, first.barcode)
   await expect.poll(async () => {
-    const labels = await articleLabels(page)
+    const labels = await topTwo(page)
     const className = (await rescanned.getAttribute('class')) ?? ''
     const flashing = /scan-entry-card--(?:just-captured|changed-animated)/.test(className)
-    return labels?.join(',') === `Scan ${first.barcode},Scan ${second.barcode}` && flashing
+    return labels.join(',') === `Scan ${first.barcode},Scan ${second.barcode}` && flashing
   }).toBe(true)
-  await expect(rescanned.getByLabelText('Unit count')).toHaveValue('2')
+  await expect(rescanned.getByRole('textbox', { name: 'Unit count' })).toHaveValue('2')
 
   await page.reload()
   await resetToStockIn(page)
-  await expect.poll(() => articleLabels(page)).toEqual([
+  await expect.poll(() => topTwo(page)).toEqual([
     `Scan ${first.barcode}`,
     `Scan ${second.barcode}`,
   ])
