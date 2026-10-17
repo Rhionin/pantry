@@ -324,7 +324,7 @@ describe('push while a Stockbot window is open', () => {
     url: '/',
   };
 
-  it('posts a toast to each visible window and skips the system notification', async () => {
+  it('skips the system notification when a window is visible or focused', async () => {
     const trace: TraceCall[] = [];
     const hidden = fakeClient(`${origin}/history`, trace, undefined, { visibilityState: 'hidden', focused: false });
     const inventory = fakeClient(`${origin}/inventory`, trace, undefined, { visibilityState: 'visible', focused: false });
@@ -338,23 +338,7 @@ describe('push while a Stockbot window is open', () => {
       op: 'matchAll',
       options: { type: 'window', includeUncontrolled: true },
     });
-    expect(trace.filter((call) => call.op === 'postMessage')).toEqual([
-      {
-        op: 'postMessage',
-        client: `${origin}/inventory`,
-        url: `${origin}/`,
-        type: 'pantry-scan-alert-toast',
-        title: 'Scan failed',
-      },
-      {
-        op: 'postMessage',
-        client: `${origin}/`,
-        url: `${origin}/`,
-        type: 'pantry-scan-alert-toast',
-        title: 'Scan failed',
-      },
-    ]);
-    expect(trace.some((call) => call.client === hidden.url && call.op === 'postMessage')).toBe(false);
+    expect(trace.some((call) => call.op === 'postMessage')).toBe(false);
   });
 
   it('shows the system notification when every window is hidden', async () => {
@@ -366,30 +350,13 @@ describe('push while a Stockbot window is open', () => {
 
     expect(worker.shown.current?.title).toBe('Scan failed');
     expect(worker.shown.current?.options.data?.url).toBe(`${origin}/`);
-    expect(trace.some((call) => call.type === 'pantry-scan-alert-toast')).toBe(false);
+    expect(trace.some((call) => call.op === 'postMessage')).toBe(false);
   });
 
   it('shows the system notification when no window is open', async () => {
     const worker = loadWorker([]);
     await push(worker, { ...payload, title: '' });
     expect(worker.shown.current?.title).toBe('Stockbot');
-  });
-
-  it('shows the system notification when a visible window cannot take the toast', async () => {
-    const trace: TraceCall[] = [];
-    const visible = fakeClient(`${origin}/inventory`, trace, undefined, {
-      visibilityState: 'visible',
-      focused: true,
-      postMessage() {
-        throw new Error('closing');
-      },
-    });
-    const worker = loadWorker([visible], trace);
-
-    await push(worker, payload);
-
-    expect(worker.shown.current?.title).toBe('Scan failed');
-    expect(trace.some((call) => call.op === 'postMessage')).toBe(false);
   });
 
   it('shows the system notification when listing windows fails', async () => {

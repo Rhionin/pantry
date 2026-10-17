@@ -24,7 +24,6 @@ func TestServiceWorkerShowsTheScanQueue(t *testing.T) {
 		"absoluteAlertURL",
 		"chooseNotificationClient",
 		"shouldSuppressSystemNotification",
-		"pantry-scan-alert-toast",
 		"visibilityState",
 		"includeUncontrolled: true",
 		"client.navigate",

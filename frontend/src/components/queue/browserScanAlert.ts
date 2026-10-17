@@ -31,7 +31,7 @@ export function showScanAlert(notice: AttentionNotice, onClick: () => void): voi
   // The device switch gates every alert, including the in-page fallback.
   // A stored push subscription delivers the same alert through the service
   // worker. That worker shows a system notification only when no Stockbot
-  // window is visible; a visible window gets an in-app toast instead.
+  // window is visible. A visible window already lists the new scans.
   // This page notification is the fallback when the browser cannot subscribe.
   if (!scanAlertsPreferred()) return;
   if (backgroundAlertsEnabled()) return;

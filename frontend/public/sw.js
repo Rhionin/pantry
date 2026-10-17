@@ -2,8 +2,8 @@
 // file at the site root so a click can open the scan queue. The server sends
 // a compact JSON payload: a short title, a body naming the count and the
 // first item names, and a url on this origin. A path that is not on this
-// origin is ignored. A visible window gets an in-app toast instead of a
-// system notification.
+// origin is ignored. A visible window already shows the new scans, so this
+// worker skips the system notification.
 
 self.addEventListener('push', (event) => {
   const payload = readPayload(event);
@@ -43,31 +43,11 @@ async function presentAlert(title, options) {
   } catch {
     windows = [];
   }
-  if (!shouldSuppressSystemNotification(windows)) {
-    await self.registration.showNotification(title, options);
-    return;
-  }
-  const message = {
-    type: 'pantry-scan-alert-toast',
-    title,
-    body: typeof options.body === 'string' ? options.body : '',
-    tag: typeof options.tag === 'string' ? options.tag : '',
-    url: options.data && typeof options.data.url === 'string' ? options.data.url : '',
-  };
-  let delivered = false;
-  for (const client of windows) {
-    if (!shouldSuppressSystemNotification([client])) continue;
-    if (typeof client.postMessage !== 'function') continue;
-    try {
-      client.postMessage(message);
-      delivered = true;
-    } catch {
-      // A client can be closing. Another open window can still show the toast.
-    }
-  }
-  // Nothing on screen took the toast. A system notification still satisfies
-  // userVisibleOnly, which a silent push would not.
-  if (!delivered) await self.registration.showNotification(title, options);
+  // The open queue already lists the new scans. Skip the system notification
+  // only then. userVisibleOnly still requires showNotification when no
+  // Stockbot window is visible.
+  if (shouldSuppressSystemNotification(windows)) return;
+  await self.registration.showNotification(title, options);
 }
 
 self.addEventListener('notificationclick', (event) => {

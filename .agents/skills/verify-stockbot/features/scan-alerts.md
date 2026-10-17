@@ -58,16 +58,11 @@ repeats the permission step with VAPID keys in the environment and a normal
 Chrome profile. An incognito window cannot subscribe. When the subscription
 is stored, the status says alerts arrive even when Stockbot is closed.
 
-`scripts/drive-visible-scan-alert.mjs` delivers one push while Inventory is
-open. The alert is a toast under the header, not a system notification.
-**Open the scan queue** selects Stock in. A wide window keeps that toast
-under the shorter header, and the header links stay clickable.
-
 ## Gotchas
 
 - A browser that stores a push subscription gets the same three alerts from
-  the server. While a Stockbot window is visible, the alert is an in-app toast.
-  A hidden or closed window still gets the system notification. The page
+  the server when no Stockbot window is visible. A visible window skips the
+  system notification; the queue already shows the new scans. The page
   notification is the fallback when that subscription is not available, and it
   still needs the tab.
 - A browser with no Notification API shows "This browser cannot show
