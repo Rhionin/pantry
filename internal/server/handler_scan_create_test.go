@@ -1,8 +1,10 @@
 package server
 
 import (
+	"encoding/json"
 	"net/http"
 	"testing"
+	"time"
 )
 
 // TestScanCreateHandlerLookupOutcomes locks in the found/not-found behavior of
@@ -217,9 +219,127 @@ func TestScanCreateHandler_MergeBehavior(t *testing.T) {
 				},
 			),
 		},
+		{
+			name: "rescanning an older card makes it the most recently scanned",
+			httpExchange: httpExchange{
+				method:         "POST",
+				path:           "/api/scans",
+				body:           `{"barcode":"444555666777","userId":"user-scan-reorder","direction":"stock_in"}`,
+				expectedStatus: http.StatusCreated,
+			},
+			afterRequest: exchanges(
+				httpExchange{
+					method:         "POST",
+					path:           "/api/scans",
+					body:           `{"barcode":"555666777888","userId":"user-scan-reorder","direction":"stock_in"}`,
+					expectedStatus: http.StatusCreated,
+				},
+				httpExchange{
+					method:         "POST",
+					path:           "/api/scans",
+					body:           `{"barcode":"444555666777","userId":"user-scan-reorder","direction":"stock_in"}`,
+					expectedStatus: http.StatusCreated,
+					assertions: []assertion{
+						{path: "$.unitCount", value: float64(2)},
+						{path: "$.barcode", value: "444555666777"},
+					},
+				},
+				httpExchange{
+					method:         "GET",
+					path:           "/api/scans",
+					query:          map[string]string{"userId": "user-scan-reorder", "status": "flagged"},
+					expectedStatus: http.StatusOK,
+					assertions: []assertion{
+						{path: "$[0].barcode", value: "555666777888"},
+						{path: "$[0].unitCount", value: float64(1)},
+						{path: "$[1].barcode", value: "444555666777"},
+						{path: "$[1].unitCount", value: float64(2)},
+					},
+				},
+			),
+		},
 	}
 
 	runHandlerTests(t, tests)
+}
+
+// TestScanCreateHandler_RescanSortsWithNewestScans is the HTTP contract for a
+// repeat scan of an item already on the queue. GET /api/scans lists oldest
+// scanned_at first; the UI sorts that same column newest-first. After oats,
+// milk, then oats again, oats is last in the list (first on screen) and its
+// scannedAt is later than milk's, which is what a reload and every SSE client
+// order by.
+func TestScanCreateHandler_RescanSortsWithNewestScans(t *testing.T) {
+	const userID = "user-rescan-order"
+	tests := []handlerTestCase{
+		{
+			name: "rescanning an open item moves it to the newest scanned_at",
+			setup: func(env testEnv) {
+				setupProductWithBarcode("prod-rescan-oats", "Rescan Oats", "Grocery", "810000000001")(env)
+				setupProductWithBarcode("prod-rescan-milk", "Rescan Milk", "Grocery", "810000000002")(env)
+			},
+			httpExchange: httpExchange{
+				method:         "POST",
+				path:           "/api/scans",
+				body:           `{"barcode":"810000000001","userId":"user-rescan-order","direction":"stock_in"}`,
+				expectedStatus: http.StatusCreated,
+			},
+			afterRequest: func(env testEnv) {
+				handler := stagedCartHandler(env)
+				var first scanRowJSON
+				if err := json.NewDecoder(env.Res.Body).Decode(&first); err != nil {
+					env.T.Fatalf("decode first scan: %v", err)
+				}
+
+				milkBody := exchangeJSON(env.T, handler, http.MethodPost, "/api/scans",
+					`{"barcode":"810000000002","userId":"user-rescan-order","direction":"stock_in"}`, http.StatusCreated)
+				var milk scanRowJSON
+				if err := json.Unmarshal(milkBody, &milk); err != nil {
+					env.T.Fatalf("decode milk scan: %v", err)
+				}
+
+				oatsBody := exchangeJSON(env.T, handler, http.MethodPost, "/api/scans",
+					`{"barcode":"810000000001","userId":"user-rescan-order","direction":"stock_in"}`, http.StatusCreated)
+				var oats scanRowJSON
+				if err := json.Unmarshal(oatsBody, &oats); err != nil {
+					env.T.Fatalf("decode oats rescan: %v", err)
+				}
+				if oats.ID != first.ID {
+					env.T.Fatalf("rescan id: want merged %s, got %s", first.ID, oats.ID)
+				}
+				if oats.UnitCount != 2 {
+					env.T.Fatalf("rescan unitCount: want 2, got %d", oats.UnitCount)
+				}
+				if !oats.ScannedAt.After(milk.ScannedAt) || !oats.ScannedAt.After(first.ScannedAt) {
+					env.T.Fatalf("rescan scannedAt %s should be after milk %s and first oats %s", oats.ScannedAt, milk.ScannedAt, first.ScannedAt)
+				}
+
+				listBody := exchangeJSON(env.T, handler, http.MethodGet, "/api/scans?userId="+userID+"&status=pending", "", http.StatusOK)
+				var listed []scanRowJSON
+				if err := json.Unmarshal(listBody, &listed); err != nil {
+					env.T.Fatalf("decode scan list: %v", err)
+				}
+				if len(listed) != 2 {
+					env.T.Fatalf("want 2 pending scans, got %d", len(listed))
+				}
+				if listed[0].Barcode != "810000000002" || listed[1].Barcode != "810000000001" {
+					env.T.Fatalf("oldest-first list: want milk then rescanned oats, got %s then %s", listed[0].Barcode, listed[1].Barcode)
+				}
+				if listed[1].ID != oats.ID || listed[1].UnitCount != 2 || !listed[1].ScannedAt.Equal(oats.ScannedAt) {
+					env.T.Fatalf("reloaded oats: want id %s unitCount 2 scannedAt %s, got %+v", oats.ID, oats.ScannedAt, listed[1])
+				}
+			},
+		},
+	}
+
+	runHandlerTests(t, tests)
+}
+
+type scanRowJSON struct {
+	ID        string    `json:"id"`
+	Barcode   string    `json:"barcode"`
+	ScannedAt time.Time `json:"scannedAt"`
+	UnitCount int       `json:"unitCount"`
 }
 
 func TestScanCreateHandler_QRPayloadSkipsLookup(t *testing.T) {

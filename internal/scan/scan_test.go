@@ -804,8 +804,9 @@ func TestNewEntryFromLookup(t *testing.T) {
 // It encodes the EXPECTED behavior for a repeat scan of the same
 // user/barcode/direction while the first entry is still open (pending or
 // flagged): the repeat scan should merge into the existing entry - unit
-// count incremented, scanned_at left unchanged, no second row - rather than
-// create a new one.
+// count incremented, scanned_at moved to the later scan, no second row -
+// rather than create a new one. The later scanned_at is what puts the card
+// back at the top of a newest-first queue.
 //
 // CreateScanEntry currently has no merge-or-create check, so it
 // unconditionally inserts a new row for every call. These assertions
@@ -847,7 +848,7 @@ func TestCreateScanEntry_BugCondition_RepeatScanMergesIntoExisting(t *testing.T)
 			status: scan.Flagged,
 		},
 		{
-			name: "original scan timestamp is preserved on merge, not replaced by the rescan time",
+			name: "rescan time replaces the original scan time so the card sorts as the most recent",
 			first: scan.ScanEntry{
 				UserID: "user-1", Barcode: "555555555555", ScannedAt: t0,
 				Direction: ptrScanDirection(scan.StockOut), UnitCount: 1, Status: scan.Pending,
@@ -883,8 +884,8 @@ func TestCreateScanEntry_BugCondition_RepeatScanMergesIntoExisting(t *testing.T)
 			if entries[0].UnitCount != 2 {
 				t.Errorf("UnitCount: want 2 (merged), got %d", entries[0].UnitCount)
 			}
-			if !entries[0].ScannedAt.Equal(t0) {
-				t.Errorf("ScannedAt: want original scan time %v preserved, got %v", t0, entries[0].ScannedAt)
+			if !entries[0].ScannedAt.Equal(t1) {
+				t.Errorf("ScannedAt: want rescan time %v, got %v", t1, entries[0].ScannedAt)
 			}
 		})
 	}
@@ -1351,5 +1352,168 @@ func TestCreateScanEntry_MergePublishesOneEventPerCall(t *testing.T) {
 	}
 	if broadcaster.scanEvents[1].UnitCount != first.UnitCount+1 {
 		t.Errorf("second published event UnitCount: want %d (first UnitCount %d + 1), got %d", first.UnitCount+1, first.UnitCount, broadcaster.scanEvents[1].UnitCount)
+	}
+	if !broadcaster.scanEvents[1].ScannedAt.Equal(second.ScannedAt) || !broadcaster.scanEvents[1].ScannedAt.Equal(now.Add(time.Minute)) {
+		t.Errorf("second published event ScannedAt: want rescan time %v, got %v", second.ScannedAt, broadcaster.scanEvents[1].ScannedAt)
+	}
+}
+
+// TestCreateScanEntry_RescanBecomesMostRecent lists two open cards and
+// rescans the older one. scanned_at is the queue's activity time, so the
+// rescanned card is the newest row. The live event carries that same time,
+// and an older incoming timestamp does not move the card backward.
+func TestCreateScanEntry_RescanBecomesMostRecent(t *testing.T) {
+	queue, _ := newTestQueue(t)
+	ctx := context.Background()
+	t0 := time.Now().Add(-2 * time.Minute).UTC().Truncate(time.Millisecond)
+	t1 := t0.Add(time.Minute)
+	t2 := t0.Add(2 * time.Minute)
+
+	broadcaster := &fakeBroadcaster{}
+	queue.Broadcaster = broadcaster
+
+	older, err := queue.CreateScanEntry(ctx, scan.ScanEntry{
+		UserID: "user-1", Barcode: "111111111111", ScannedAt: t0,
+		Direction: ptrScanDirection(scan.StockIn), UnitCount: 1, Status: scan.Pending,
+	})
+	if err != nil {
+		t.Fatalf("CreateScanEntry (older): %v", err)
+	}
+	if _, err := queue.CreateScanEntry(ctx, scan.ScanEntry{
+		UserID: "user-1", Barcode: "222222222222", ScannedAt: t1,
+		Direction: ptrScanDirection(scan.StockIn), UnitCount: 1, Status: scan.Pending,
+	}); err != nil {
+		t.Fatalf("CreateScanEntry (newer): %v", err)
+	}
+
+	rescanned, err := queue.CreateScanEntry(ctx, scan.ScanEntry{
+		UserID: "user-1", Barcode: "111111111111", ScannedAt: t2,
+		Direction: ptrScanDirection(scan.StockIn), UnitCount: 1, Status: scan.Pending,
+	})
+	if err != nil {
+		t.Fatalf("CreateScanEntry (rescan): %v", err)
+	}
+	if rescanned.ID != older.ID {
+		t.Fatalf("rescan id: want %s, got %s", older.ID, rescanned.ID)
+	}
+	if rescanned.UnitCount != 2 {
+		t.Errorf("UnitCount: want 2, got %d", rescanned.UnitCount)
+	}
+	if !rescanned.ScannedAt.Equal(t2) {
+		t.Errorf("ScannedAt: want %v, got %v", t2, rescanned.ScannedAt)
+	}
+
+	entries, err := queue.ListScanEntries(ctx, "user-1", scan.Pending)
+	if err != nil {
+		t.Fatalf("ListScanEntries: %v", err)
+	}
+	if len(entries) != 2 {
+		t.Fatalf("want 2 entries, got %d", len(entries))
+	}
+	// The list is oldest-activity first. The rescanned card is last, which
+	// is the top of the newest-first queue.
+	if entries[0].Barcode != "222222222222" || entries[1].Barcode != "111111111111" {
+		t.Errorf("order by last scan: want 222 then 111, got %s then %s", entries[0].Barcode, entries[1].Barcode)
+	}
+
+	published := broadcaster.scanEvents[len(broadcaster.scanEvents)-1]
+	if published.ID != older.ID || !published.ScannedAt.Equal(t2) || published.UnitCount != 2 {
+		t.Errorf("published rescan: want id %s at %v with count 2, got %+v", older.ID, t2, published)
+	}
+
+	held, err := queue.CreateScanEntry(ctx, scan.ScanEntry{
+		UserID: "user-1", Barcode: "111111111111", ScannedAt: t0,
+		Direction: ptrScanDirection(scan.StockIn), UnitCount: 1, Status: scan.Pending,
+	})
+	if err != nil {
+		t.Fatalf("CreateScanEntry (older timestamp): %v", err)
+	}
+	if !held.ScannedAt.Equal(t2) {
+		t.Errorf("older rescan timestamp: want scanned_at held at %v, got %v", t2, held.ScannedAt)
+	}
+	if held.UnitCount != 3 {
+		t.Errorf("UnitCount after older timestamp: want 3, got %d", held.UnitCount)
+	}
+}
+
+// TestCreateScanEntry_RescanSortsWithNewestScans locks in that a repeat scan
+// of an open card moves scanned_at to that scan. ListScanEntries returns
+// oldest-first by scanned_at; the queue UI sorts the same column newest-first.
+// After the rescan the older barcode is last in the list (first on screen)
+// and the published event carries the new time, so a reload and a live
+// client agree. An older incoming timestamp does not pull the card backward.
+func TestCreateScanEntry_RescanSortsWithNewestScans(t *testing.T) {
+	queue, _ := newTestQueue(t)
+	ctx := context.Background()
+	t0 := time.Now().UTC().Truncate(time.Millisecond)
+	t1 := t0.Add(2 * time.Minute)
+	t2 := t0.Add(4 * time.Minute)
+
+	broadcaster := &fakeBroadcaster{}
+	queue.Broadcaster = broadcaster
+
+	older, err := queue.CreateScanEntry(ctx, scan.ScanEntry{
+		UserID: "user-1", Barcode: "800000000001", ScannedAt: t0,
+		Direction: ptrScanDirection(scan.StockIn), UnitCount: 1, Status: scan.Pending,
+	})
+	if err != nil {
+		t.Fatalf("CreateScanEntry (older barcode): %v", err)
+	}
+	if _, err := queue.CreateScanEntry(ctx, scan.ScanEntry{
+		UserID: "user-1", Barcode: "800000000002", ScannedAt: t1,
+		Direction: ptrScanDirection(scan.StockIn), UnitCount: 1, Status: scan.Pending,
+	}); err != nil {
+		t.Fatalf("CreateScanEntry (newer barcode): %v", err)
+	}
+
+	rescanned, err := queue.CreateScanEntry(ctx, scan.ScanEntry{
+		UserID: "user-1", Barcode: "800000000001", ScannedAt: t2,
+		Direction: ptrScanDirection(scan.StockIn), UnitCount: 1, Status: scan.Pending,
+	})
+	if err != nil {
+		t.Fatalf("CreateScanEntry (rescan): %v", err)
+	}
+	if rescanned.ID != older.ID {
+		t.Fatalf("expected rescan to merge into %s, got %s", older.ID, rescanned.ID)
+	}
+	if rescanned.UnitCount != 2 {
+		t.Errorf("UnitCount: want 2, got %d", rescanned.UnitCount)
+	}
+	if !rescanned.ScannedAt.Equal(t2) {
+		t.Errorf("ScannedAt: want rescan time %v, got %v", t2, rescanned.ScannedAt)
+	}
+
+	entries, err := queue.ListScanEntries(ctx, "user-1", scan.Pending)
+	if err != nil {
+		t.Fatalf("ListScanEntries: %v", err)
+	}
+	if len(entries) != 2 {
+		t.Fatalf("want 2 entries, got %d: %+v", len(entries), entries)
+	}
+	if entries[0].Barcode != "800000000002" || entries[1].Barcode != "800000000001" {
+		t.Fatalf("oldest-first list: want newer barcode then rescanned barcode, got %s then %s", entries[0].Barcode, entries[1].Barcode)
+	}
+	if !entries[1].ScannedAt.Equal(t2) {
+		t.Errorf("listed rescanned ScannedAt: want %v, got %v", t2, entries[1].ScannedAt)
+	}
+
+	published := broadcaster.scanEvents[len(broadcaster.scanEvents)-1]
+	if published.ID != older.ID || published.UnitCount != 2 || !published.ScannedAt.Equal(t2) {
+		t.Errorf("published rescan: want id %s unitCount 2 scannedAt %v, got id %s unitCount %d scannedAt %v",
+			older.ID, t2, published.ID, published.UnitCount, published.ScannedAt)
+	}
+
+	stayed, err := queue.CreateScanEntry(ctx, scan.ScanEntry{
+		UserID: "user-1", Barcode: "800000000001", ScannedAt: t0,
+		Direction: ptrScanDirection(scan.StockIn), UnitCount: 1, Status: scan.Pending,
+	})
+	if err != nil {
+		t.Fatalf("CreateScanEntry (older rescan): %v", err)
+	}
+	if !stayed.ScannedAt.Equal(t2) {
+		t.Errorf("older rescan moved scanned_at backward: want %v, got %v", t2, stayed.ScannedAt)
+	}
+	if stayed.UnitCount != 3 {
+		t.Errorf("UnitCount after older rescan: want 3, got %d", stayed.UnitCount)
 	}
 }
