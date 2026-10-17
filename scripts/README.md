@@ -73,7 +73,7 @@ A line with code and a trailing comment counts. A `//` inside a string on that s
 
 `vi.fn(` is the web mock count (the call with the parenthesis). `rapid.Check(` and `fc.assert(`, `.prop(`, `fc.property(` are the property-test counts. Go sleeps are `time.Sleep(`. Assertions per 100 test lines use `t.Error` / `t.Fatal` (and the f variants), `assert.` / `require.`, and web `expect(`.
 
-`.github/workflows/test-metrics.yml` runs this on pull requests (one sticky comment, base versus head), and on a weekly schedule plus `workflow_dispatch` (the metrics JSON is uploaded as an artifact). The workflow is not `ci.yml`, and a failure there does not fail the build.
+`.github/workflows/test-metrics.yml` runs this on pull requests (one sticky comment) and on a weekly schedule plus `workflow_dispatch` (the metrics JSON is uploaded as an artifact). On a pull request the head tree is the merge commit and the base tree is that commit's first parent, so other commits that landed on the base branch are not part of the delta. The workflow is not `ci.yml`, and a failure there does not fail the build.
 
 ## Usage Guidelines
 
