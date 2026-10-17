@@ -20,6 +20,12 @@ const restockChangeMigration = "013_group_restock.sql"
 // targetsChangeMigration copies legacy restock rows into item targets.
 const targetsChangeMigration = "019_restock_targets.sql"
 
+// shelveChangeMigration hides wiped items until the next stock-in.
+// The column, the trigger, and the schema_migrations row commit together.
+// A partial apply would leave the column behind, and the next startup
+// would fail with "duplicate column name: shelved".
+const shelveChangeMigration = "020_shelve_wiped_items.sql"
+
 // snapshotShoppingDB runs once, immediately before shoppingChangeMigration.
 // Tests replace it to simulate a backup that cannot be written.
 var snapshotShoppingDB = writePreGroupsBackup
