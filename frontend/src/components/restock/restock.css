@@ -6,10 +6,12 @@
   border-color: var(--mantine-color-gray-3);
 }
 
-.restock-target,
-.restock-card,
-.restock-settings {
-  --mantine-color-dimmed: var(--mantine-color-gray-7);
+.restock-settings h2 {
+  color: var(--mantine-color-text);
+}
+
+.restock-stop-title {
+  color: var(--mantine-color-text);
 }
 
 .restock-target,
@@ -252,12 +254,6 @@
 
 .restock-toast {
   border-left: 4px solid var(--mantine-color-teal-6);
-}
-
-:where([data-mantine-color-scheme='dark']) .restock-target,
-:where([data-mantine-color-scheme='dark']) .restock-card,
-:where([data-mantine-color-scheme='dark']) .restock-settings {
-  --mantine-color-dimmed: var(--mantine-color-gray-4);
 }
 
 :where([data-mantine-color-scheme='dark']) .restock-settings .mantine-Button-root[data-variant='subtle'],

@@ -132,8 +132,20 @@ test('don\'t restock removes the shopping row and keeps it off after reload', as
   await expect(page.getByRole('row').filter({ hasText: productName })).toHaveCount(0)
 })
 
+async function expectToken(target: Locator, token: string) {
+  const colors = await target.evaluate((el, name) => {
+    const probe = document.createElement('span')
+    probe.style.color = `var(${name})`
+    document.body.appendChild(probe)
+    const tokenColor = getComputedStyle(probe).color
+    probe.remove()
+    return { color: getComputedStyle(el).color, tokenColor }
+  }, token)
+  expect(colors.color, token).toBe(colors.tokenColor)
+}
+
 test('restock headings follow the app theme when the OS scheme differs', async ({ page, request }) => {
-  test.setTimeout(120_000)
+  test.setTimeout(180_000)
   const themeBarcode = '210000240111'
   const themeName = 'Theme oats'
   await createKnownProduct(request, {
@@ -161,12 +173,32 @@ test('restock headings follow the app theme when the OS scheme differs', async (
   })
   expect(added.ok()).toBe(true)
 
-  for (const [os, app] of [['light', 'dark'], ['dark', 'light']] as const) {
+  await page.route('**/api/providers', async (route) => {
+    if (route.request().method() !== 'GET') {
+      await route.continue()
+      return
+    }
+    const response = await route.fetch()
+    const rows = await response.json() as { credentialsConfigured?: boolean; connectionState?: string }[]
+    if (Array.isArray(rows)) {
+      for (const row of rows) {
+        row.credentialsConfigured = true
+        row.connectionState = 'connected'
+      }
+    }
+    await route.fulfill({ response, json: rows })
+  })
+
+  for (const [os, app] of [['light', 'light'], ['dark', 'dark'], ['light', 'dark'], ['dark', 'light']] as const) {
     await page.goto('/settings')
     await applySchemes(page, os, app)
-    await expect(page.getByRole('heading', { name: 'Restock targets' })).toBeVisible()
-    await expect(page.getByRole('heading', { name: 'Categories' })).toBeVisible()
+    const restockHeading = page.getByRole('heading', { name: 'Restock targets' })
+    const categoriesHeading = page.getByRole('heading', { name: 'Categories' })
+    await expect(restockHeading).toBeVisible()
+    await expect(categoriesHeading).toBeVisible()
     await expectContrast(page, '.restock-settings h2')
+    await expectToken(restockHeading, '--mantine-color-text')
+    await expectToken(categoriesHeading, '--mantine-color-text')
     const link = page.locator('.restock-row .name a').first()
     await expect(link).toBeVisible()
     await expectContrast(page, '.restock-row .name a')
@@ -195,12 +227,20 @@ test('restock headings follow the app theme when the OS scheme differs', async (
       const settled = style.transform === 'none' || style.transform === 'matrix(1, 0, 0, 1, 0, 0)'
       return opacity >= 0.99 && settled
     })
+    const dialogTitle = dialog.getByRole('heading', { name: 'Stop restocking Produce?' })
     await expectContrast(page, '[role="dialog"] h2')
-    await expect(dialog.locator('.restock-stop-after', { hasText: '0' })).toBeVisible()
+    await expectToken(dialogTitle, '--mantine-color-text')
+    const stoppedAt = dialog.locator('.restock-stop-after', { hasText: '0' })
+    await expect(stoppedAt).toBeVisible()
     await expectContrast(page, '.restock-stop-after')
+    await expectToken(stoppedAt, '--mantine-color-text')
     await page.keyboard.press('Escape')
 
     await page.goto('/shopping')
+    const cartNote = page.getByText('This forgets what was already sent and clears checked-off lines.')
+    await expect(cartNote).toBeVisible()
+    await expectContrast(page, '.cart-reset-note')
+    await expectToken(cartNote, '--mantine-color-dimmed')
     await page.getByRole('button', { name: /the list$/ }).click()
     await expect(page.getByRole('heading', { name: 'Add an item' })).toBeVisible()
     await expectContrast(page, 'form h2')

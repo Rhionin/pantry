@@ -16,7 +16,7 @@ export function StopDialog({
   onConfirm: () => void;
 }) {
   return (
-    <Modal opened={opened} onClose={onClose} title={preview?.title ?? ''} size="lg">
+    <Modal opened={opened} onClose={onClose} title={preview?.title ?? ''} size="lg" classNames={{ title: 'restock-stop-title' }}>
       {preview && (
         <Stack gap="sm">
           <Text size="sm" c="dimmed">{preview.body}</Text>

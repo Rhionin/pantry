@@ -70,6 +70,10 @@
   background: rgba(239, 68, 68, 0.16);
 }
 
+.cart-reset-note {
+  color: var(--mantine-color-dimmed);
+}
+
 .stock-note--full {
   color: var(--stock-full-ink);
 }
