@@ -232,6 +232,11 @@ export async function ensurePushSubscription(): Promise<PushSubscribeResult> {
       return fail('empty-vapid', error);
     }
     try {
+      // Chrome rejects userVisibleOnly: false. A push that displays nothing
+      // can be replaced by a generic "site updated in the background" notice
+      // and, after repeated silent pushes, dropped. The service worker still
+      // calls showNotification unless a Stockbot window is already visible,
+      // which Chrome counts as the user-visible result.
       subscription = await pushManager.subscribe({
         userVisibleOnly: true,
         applicationServerKey: applicationKey,

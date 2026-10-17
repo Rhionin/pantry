@@ -23,6 +23,8 @@ func TestServiceWorkerShowsTheScanQueue(t *testing.T) {
 		"alertPath",
 		"absoluteAlertURL",
 		"chooseNotificationClient",
+		"shouldSuppressSystemNotification",
+		"visibilityState",
 		"includeUncontrolled: true",
 		"client.navigate",
 		"requireInteraction: true",
