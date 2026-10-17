@@ -259,7 +259,7 @@ func removeBarcode(p *Product, barcode string) {
 
 func attachItems(ctx context.Context, db *sql.DB, byID map[string]*Product) error {
 	rows, err := db.QueryContext(ctx, `
-		SELECT product_id, target_quantity FROM items WHERE user_id = ?`, householdUser)
+		SELECT product_id, target_quantity FROM items WHERE user_id = ? AND shelved = 0`, householdUser)
 	if err != nil {
 		return err
 	}
@@ -345,7 +345,7 @@ func attachItemTargets(ctx context.Context, db *sql.DB, byProduct map[string]*Pr
 		SELECT i.product_id, t.kind, t.value
 		FROM item_targets t
 		JOIN items i ON i.id = t.item_id AND i.user_id = t.household_id
-		WHERE t.household_id = ?`, householdUser)
+		WHERE t.household_id = ? AND i.shelved = 0`, householdUser)
 	if err != nil {
 		return err
 	}
@@ -397,7 +397,7 @@ func loadInstances(ctx context.Context, db *sql.DB) ([]Instance, error) {
 		SELECT ii.id, i.product_id, ii.stock_in_at, ii.expires_at, COALESCE(ii.stock_move_id, '')
 		FROM item_instances ii
 		JOIN items i ON i.id = ii.item_id
-		WHERE i.user_id = ? AND ii.removed_at IS NULL
+		WHERE i.user_id = ? AND i.shelved = 0 AND ii.removed_at IS NULL
 		ORDER BY ii.stock_in_at, ii.id`, householdUser)
 	if err != nil {
 		return nil, err
@@ -427,7 +427,7 @@ func loadRemovals(ctx context.Context, db *sql.DB) ([]Removal, error) {
 		       ii.stock_in_at, ii.expires_at
 		FROM item_instances ii
 		JOIN items i ON i.id = ii.item_id
-		WHERE i.user_id = ? AND ii.removed_at IS NOT NULL
+		WHERE i.user_id = ? AND i.shelved = 0 AND ii.removed_at IS NOT NULL
 		ORDER BY ii.id`, householdUser)
 	if err != nil {
 		return nil, err
@@ -455,7 +455,7 @@ func loadMoves(ctx context.Context, db *sql.DB) ([]Move, error) {
 		SELECT m.id, m.item_id, m.product_id, m.direction, m.quantity, m.at, m.source
 		FROM stock_moves m
 		JOIN items i ON i.id = m.item_id
-		WHERE i.user_id = ?
+		WHERE i.user_id = ? AND i.shelved = 0
 		ORDER BY m.at, m.id`, householdUser)
 	if err != nil {
 		return nil, err
@@ -478,7 +478,7 @@ func loadShopping(ctx context.Context, db *sql.DB) ([]ShoppingLine, error) {
 		SELECT s.id, i.product_id, COALESCE(s.group_id, ''), s.quantity, s.source
 		FROM shopping_list_items s
 		JOIN items i ON i.id = s.item_id
-		WHERE s.user_id = ? AND s.purchased_at IS NULL AND s.quantity > 0
+		WHERE s.user_id = ? AND i.shelved = 0 AND s.purchased_at IS NULL AND s.quantity > 0
 		ORDER BY s.created_at, s.id`, householdUser)
 	if err != nil {
 		return nil, err

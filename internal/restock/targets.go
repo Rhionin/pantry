@@ -977,7 +977,7 @@ func loadItems(ctx context.Context, q Queryer, household string) (map[string]*lo
 		JOIN products p ON p.id = i.product_id
 		LEFT JOIN product_group_members m ON m.product_id = i.product_id
 		LEFT JOIN product_groups g ON g.id = m.group_id AND g.user_id = i.user_id
-		WHERE i.user_id = ?
+		WHERE i.user_id = ? AND i.shelved = 0
 		ORDER BY p.name, i.id`, household)
 	if err != nil {
 		return nil, fmt.Errorf("could not read restock targets")

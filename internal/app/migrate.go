@@ -84,10 +84,12 @@ func RunMigrations(db *sql.DB) error {
 		}
 		sqlText := prepareMigrationSQL(name, string(sqlBytes))
 
-		// 019 rebuilds tables and copies rows. VACUUM INTO cannot run inside a
-		// transaction, so the snapshot above stays outside, and the file plus
-		// its schema_migrations row commit together.
-		if name == targetsChangeMigration {
+		// 019 rebuilds tables and 020 adds the shelved column and its trigger.
+		// VACUUM INTO cannot run inside a transaction, so the snapshot above
+		// stays outside. Each of these files plus its schema_migrations row
+		// commit together, so a failure leaves neither the schema change nor
+		// a recorded migration.
+		if name == targetsChangeMigration || name == shelveChangeMigration {
 			if err := applyMigrationTx(db, name, sqlText); err != nil {
 				return fmt.Errorf("apply migration %q: %w", name, err)
 			}

@@ -107,3 +107,86 @@ func TestBuildPrefersItemTargets(t *testing.T) {
 		t.Fatalf("category zero resolves to noRestock: %+v", salt)
 	}
 }
+
+func TestBuildSkipsShelvedItems(t *testing.T) {
+	conn, err := sql.Open("sqlite", ":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { conn.Close() })
+	if err := app.RunMigrations(conn); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := conn.Exec(`
+		INSERT INTO products (id, name) VALUES ('milk', 'Milk'), ('bread', 'Bread');
+		INSERT INTO items (id, user_id, product_id, target_quantity) VALUES
+			('item-milk', 'user-1', 'milk', 4),
+			('item-bread', 'user-1', 'bread', 2);
+		INSERT INTO item_targets (household_id, item_id, kind, value) VALUES
+			('user-1', 'item-milk', 'amount', 4),
+			('user-1', 'item-bread', 'amount', 2);
+		INSERT INTO item_instances (id, item_id, stock_in_at) VALUES
+			('inst-milk', 'item-milk', '2026-01-01'),
+			('inst-milk-out', 'item-milk', '2026-01-02'),
+			('inst-bread', 'item-bread', '2026-01-01');
+		UPDATE item_instances SET removed_at = '2026-01-03', removal_reason = 'consumed' WHERE id = 'inst-milk-out';
+		INSERT INTO stock_moves (id, item_id, product_id, direction, quantity, at, source) VALUES
+			('move-milk', 'item-milk', 'milk', 'in', 1, '2026-01-01', 'scan'),
+			('move-bread', 'item-bread', 'bread', 'in', 1, '2026-01-01', 'scan');
+		INSERT INTO shopping_list_items (id, user_id, item_id, quantity, source) VALUES
+			('shop-milk', 'user-1', 'item-milk', 1, 'manual'),
+			('shop-bread', 'user-1', 'item-bread', 1, 'manual');
+		UPDATE items SET shelved = 1 WHERE id = 'item-milk';
+	`); err != nil {
+		t.Fatal(err)
+	}
+
+	snap, err := Build(context.Background(), conn, time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	byID := map[string]Product{}
+	for _, product := range snap.Products {
+		byID[product.ID] = product
+	}
+	if _, ok := byID["milk"]; !ok {
+		t.Fatal("shelving removed the product from the catalog")
+	}
+	milk := byID["milk"]
+	if milk.TargetQuantity != nil || milk.NoRestock {
+		t.Fatalf("shelved item still carries a restock target: %+v", milk)
+	}
+	bread := byID["bread"]
+	if bread.TargetQuantity == nil || *bread.TargetQuantity != 2 || bread.NoRestock {
+		t.Fatalf("unshelved item: %+v", bread)
+	}
+	for _, inst := range snap.Instances {
+		if inst.ProductID == "milk" {
+			t.Fatalf("shelved instance: %+v", snap.Instances)
+		}
+	}
+	if len(snap.Instances) != 1 || snap.Instances[0].ProductID != "bread" {
+		t.Fatalf("instances: %+v", snap.Instances)
+	}
+	for _, rm := range snap.Removals {
+		if rm.ProductID == "milk" {
+			t.Fatalf("shelved removal: %+v", snap.Removals)
+		}
+	}
+	for _, move := range snap.Moves {
+		if move.ProductID == "milk" {
+			t.Fatalf("shelved move: %+v", snap.Moves)
+		}
+	}
+	if len(snap.Moves) != 1 || snap.Moves[0].ProductID != "bread" {
+		t.Fatalf("moves: %+v", snap.Moves)
+	}
+	for _, line := range snap.ShoppingList {
+		if line.ProductID == "milk" {
+			t.Fatalf("shelved shopping line: %+v", snap.ShoppingList)
+		}
+	}
+	if len(snap.ShoppingList) != 1 || snap.ShoppingList[0].ProductID != "bread" {
+		t.Fatalf("shopping: %+v", snap.ShoppingList)
+	}
+}

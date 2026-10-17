@@ -328,6 +328,69 @@ VALUES ('user-1', 'missing', 'nope', 1);
 	}
 }
 
+func TestShelveMigrationFailureRollsBackAndRetriesCleanly(t *testing.T) {
+	orig := prepareMigrationSQL
+	t.Cleanup(func() { prepareMigrationSQL = orig })
+	prepareMigrationSQL = func(name, sqlText string) string {
+		if name != shelveChangeMigration {
+			return sqlText
+		}
+		return sqlText + `
+SELECT * FROM shelve_migration_should_not_exist;
+`
+	}
+
+	conn := openFileDB(t, filepath.Join(t.TempDir(), "pantry.db"))
+	err := RunMigrations(conn)
+	if err == nil || !strings.Contains(err.Error(), shelveChangeMigration) {
+		t.Fatalf("RunMigrations err = %v", err)
+	}
+
+	var recorded int
+	if err := conn.QueryRow(`SELECT COUNT(*) FROM schema_migrations WHERE filename = ?`, shelveChangeMigration).Scan(&recorded); err != nil {
+		t.Fatal(err)
+	}
+	if recorded != 0 {
+		t.Fatalf("020 recorded after a partial failure: %d", recorded)
+	}
+	var last string
+	if err := conn.QueryRow(`SELECT filename FROM schema_migrations ORDER BY filename DESC LIMIT 1`).Scan(&last); err != nil {
+		t.Fatal(err)
+	}
+	if last != targetsChangeMigration {
+		t.Fatalf("database advanced past 019: %s", last)
+	}
+	if columnExists(t, conn, "items", "shelved") {
+		t.Fatal("shelved column remained after rollback")
+	}
+	if triggerExists(t, conn, "unshelve_item_on_stock_in") {
+		t.Fatal("unshelve trigger remained after rollback")
+	}
+	if !columnExists(t, conn, "items", "user_id") {
+		t.Fatal("earlier items table rolled back")
+	}
+
+	prepareMigrationSQL = orig
+	if err := RunMigrations(conn); err != nil {
+		t.Fatalf("next startup: %v", err)
+	}
+	if err := conn.QueryRow(`SELECT COUNT(*) FROM schema_migrations WHERE filename = ?`, shelveChangeMigration).Scan(&recorded); err != nil {
+		t.Fatal(err)
+	}
+	if recorded != 1 {
+		t.Fatalf("020 recorded on retry: %d", recorded)
+	}
+	if !columnExists(t, conn, "items", "shelved") {
+		t.Fatal("retry did not add shelved")
+	}
+	if !triggerExists(t, conn, "unshelve_item_on_stock_in") {
+		t.Fatal("retry did not add the unshelve trigger")
+	}
+	if err := RunMigrations(conn); err != nil {
+		t.Fatalf("startup after 020: %v", err)
+	}
+}
+
 func openFileDB(t *testing.T, path string) *sql.DB {
 	t.Helper()
 	conn, err := sql.Open("sqlite", path)
@@ -371,6 +434,19 @@ func columnExists(t *testing.T, conn *sql.DB, table, column string) bool {
 		t.Fatal(err)
 	}
 	return false
+}
+
+func triggerExists(t *testing.T, conn *sql.DB, name string) bool {
+	t.Helper()
+	var got string
+	err := conn.QueryRow(`SELECT name FROM sqlite_master WHERE type = 'trigger' AND name = ?`, name).Scan(&got)
+	if err == sql.ErrNoRows {
+		return false
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	return true
 }
 
 func tableExists(t *testing.T, conn *sql.DB, table string) bool {
