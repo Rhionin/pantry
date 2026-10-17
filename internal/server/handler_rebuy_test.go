@@ -19,7 +19,13 @@ func TestRebuyAfterStockInAndUseAgain(t *testing.T) {
 		httpExchange: httpExchange{method: "POST", path: "/api/shopping-list/fill", expectedStatus: http.StatusOK,
 			assertions: []assertion{{path: "$[0].itemId", value: "item-cyc"}, {path: "$[0].note", value: "replacing 1 you used"}}},
 		afterRequest: func(env testEnv) {
-			if _, err := env.DB.Exec(`UPDATE shopping_list_items SET purchased_at = ? WHERE item_id = 'item-cyc'`, now.Add(-90*time.Minute)); err != nil {
+			handler := handlerFromEnv(env)
+			before := shopLineByItem(shoppingLines(env.T, handler), "item-cyc")
+			if before == nil || before.ID == "" {
+				env.T.Fatal("setup: Cycle was not on the list")
+			}
+			boughtID := before.ID
+			if _, err := env.DB.Exec(`UPDATE shopping_list_items SET purchased_at = ? WHERE id = ?`, now.Add(-90*time.Minute), boughtID); err != nil {
 				env.T.Fatal(err)
 			}
 			insertStockIn(env.T, env.DB, "prod-cyc", now.Add(-60*time.Minute))
@@ -28,12 +34,12 @@ func TestRebuyAfterStockInAndUseAgain(t *testing.T) {
 				assertions: []assertion{{path: "$[0]", absent: true}}})(env)
 			insertConsumptionEvent(env.T, env.DB, "ce-cyc-2", "item-cyc", now.Add(-30*time.Minute))
 			exchanges(fill)(env)
-			var open, bought int
-			env.DB.QueryRow(`SELECT COUNT(*) FROM shopping_list_items WHERE item_id='item-cyc' AND purchased_at IS NULL`).Scan(&open)
-			env.DB.QueryRow(`SELECT COUNT(*) FROM shopping_list_items WHERE item_id='item-cyc' AND purchased_at IS NOT NULL`).Scan(&bought)
-			if open != 1 {
-				env.T.Fatalf("used again after restock, but no open shopping line (open=%d purchased=%d)", open, bought)
+			lines := shoppingLines(env.T, handler)
+			line := shopLineByItem(lines, "item-cyc")
+			if line == nil || line.ID == boughtID || line.Note != "replacing 1 you used" || line.Quantity != 1 {
+				env.T.Fatalf("used again after restock, but no open shopping line: %+v", lines)
 			}
+			assertBoughtLineCleared(env.T, handler, boughtID)
 		},
 	}})
 }
