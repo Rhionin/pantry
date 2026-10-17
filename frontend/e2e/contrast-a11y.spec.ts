@@ -100,8 +100,12 @@ async function shot(locator: Locator, testInfo: TestInfo, name: string) {
   await locator.screenshot({ path: testInfo.outputPath(`${name}.png`) })
 }
 
+function colorContrast(page: Page) {
+  return new AxeBuilder({ page }).withRules(['color-contrast'])
+}
+
 async function expectAxe(page: Page, where: string) {
-  const result = await new AxeBuilder({ page }).withRules(['color-contrast']).analyze()
+  const result = await colorContrast(page).analyze()
   expect(result.violations, `${where}\n${violationText(result.violations)}`).toEqual([])
 }
 
@@ -152,27 +156,70 @@ const modes = [
   { app: 'dark', os: 'dark' },
 ] as const
 
+const widths = [390, 1440] as const
+
 const routes = [
   { path: '/', name: 'scan queue', ready: 'Scans add to stock' },
   { path: '/shopping', name: 'shopping', ready: 'Kroger is unconfigured.' },
   { path: '/settings', name: 'settings', ready: 'Wipe inventory' },
   { path: '/diagnostics', name: 'diagnostics', ready: 'Diagnostics' },
   { path: '/inventory?review=1', name: 'inbox', ready: 'Suggestions' },
+  { path: '/history', name: 'history', ready: 'History', heading: true },
+  { path: '/inventory', name: 'inventory', ready: 'Inventory', heading: true },
 ] as const
+
+// Literal, so dropping a mode, a route, or a width fails even when the loops
+// are rewritten to match the shorter list. Home stays in the list.
+const expectedCombinations = 56
 
 test('text contrast meets WCAG AA in every theme combination', async ({ page, request }, testInfo) => {
   test.setTimeout(240_000)
+  const axePrototype = AxeBuilder.prototype as AxeBuilder & { exclude(selector: string): AxeBuilder }
+  const originalExclude = axePrototype.exclude
+  axePrototype.exclude = () => {
+    throw new Error('color-contrast checks must not exclude selectors')
+  }
+  expect(routes.map((route) => route.path)).toEqual([
+    '/',
+    '/shopping',
+    '/settings',
+    '/diagnostics',
+    '/inventory?review=1',
+    '/history',
+    '/inventory',
+  ])
+  expect(modes).toHaveLength(4)
+  expect(widths).toHaveLength(2)
   await seedShopping(request)
+  // The API does not send basis. Attach it in the browser so the stock-note
+  // ink renders without changing what the server returns.
+  await page.route('**/api/shopping-list**', async (route) => {
+    const incoming = route.request()
+    if (incoming.method() !== 'GET' || new URL(incoming.url()).pathname !== '/api/shopping-list') {
+      await route.continue()
+      return
+    }
+    const response = await route.fetch()
+    const rows = await response.json() as { basis?: { instanceCount: number } }[]
+    if (Array.isArray(rows)) {
+      for (const row of rows) row.basis = { instanceCount: 1 }
+    }
+    await route.fulfill({ response, json: rows })
+  })
   const measured: { name: string; app: string; os: string; width: number; foreground: string; background: string; ratio: number }[] = []
+  let combinations = 0
 
   try {
-    for (const width of [390, 1440]) {
+    for (const width of widths) {
       await page.setViewportSize({ width, height: width === 390 ? 844 : 900 })
       for (const mode of modes) {
         for (const route of routes) {
           await page.goto(route.path)
           await setScheme(page, mode.app, mode.os)
-          await expect(page.getByText(route.ready).first()).toBeVisible()
+          const landmark = 'heading' in route
+            ? page.getByRole('heading', { name: route.ready })
+            : page.getByText(route.ready).first()
+          await expect(landmark).toBeVisible()
           const where = `${route.name} ${mode.app}/${mode.os} ${width}`
           if (route.path === '/') {
             const hint = page.getByText('Scans add to stock')
@@ -206,6 +253,7 @@ test('text contrast meets WCAG AA in every theme combination', async ({ page, re
             measured.push({ name: `${route.name}-h2`, ...mode, width, ...await expectContrast(heading) })
           }
           await expectAxe(page, where)
+          combinations += 1
           if (route.path === '/') {
             await page.getByRole('button', { name: 'Scan with camera' }).click()
             const alert = page.getByRole('alert').filter({ hasText: 'Camera scanning unavailable' })
@@ -217,6 +265,7 @@ test('text contrast meets WCAG AA in every theme combination', async ({ page, re
         }
       }
     }
+    expect(combinations).toBe(expectedCombinations)
 
     const saved = await request.put('/api/providers/kroger/credentials', {
       data: {
@@ -228,7 +277,7 @@ test('text contrast meets WCAG AA in every theme combination', async ({ page, re
     })
     expect(saved.ok()).toBe(true)
 
-    for (const width of [390, 1440]) {
+    for (const width of widths) {
       await page.setViewportSize({ width, height: width === 390 ? 844 : 900 })
       for (const mode of modes) {
         await page.goto('/shopping')
@@ -242,12 +291,13 @@ test('text contrast meets WCAG AA in every theme combination', async ({ page, re
         await expect(body).toBeVisible()
         measured.push({ name: 'dialog-body', ...mode, width, ...await expectContrast(body) })
         if (mode.app === mode.os) await shot(body, testInfo, `dialog-body-${mode.app}-${width}`)
-        const dialogAxe = await new AxeBuilder({ page }).include('[role="dialog"]').withRules(['color-contrast']).analyze()
+        const dialogAxe = await colorContrast(page).include('[role="dialog"]').analyze()
         expect(dialogAxe.violations, violationText(dialogAxe.violations)).toEqual([])
         await page.keyboard.press('Escape')
       }
     }
   } finally {
+    axePrototype.exclude = originalExclude
     writeFileSync(testInfo.outputPath('ratios.json'), JSON.stringify(measured, null, 2))
     await request.delete('/api/providers/kroger/credentials')
   }

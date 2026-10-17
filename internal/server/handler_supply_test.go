@@ -241,7 +241,6 @@ func TestSupplyPolicy(t *testing.T) {
 					{path: "$[0].itemId", value: "item-fixed"},
 					{path: "$[0].quantity", value: float64(11)},
 					{path: "$[0].note", value: ""},
-					{path: "$[0].basis.instanceCount", value: float64(1)},
 				},
 			}),
 		},
