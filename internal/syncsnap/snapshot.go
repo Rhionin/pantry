@@ -124,6 +124,9 @@ func Build(ctx context.Context, db *sql.DB, now time.Time) (Snapshot, error) {
 	if err := attachMembers(ctx, db, byID, groupByID); err != nil {
 		return Snapshot{}, err
 	}
+	if err := attachItemTargets(ctx, db, byID); err != nil {
+		return Snapshot{}, err
+	}
 	for i := range products {
 		title := ""
 		if g := groupByID[products[i].GroupID]; g != nil {
@@ -325,7 +328,44 @@ func attachMembers(ctx context.Context, db *sql.DB, products map[string]*Product
 		}
 		if p := products[productID]; p != nil {
 			p.GroupID = groupID
-			p.NoRestock = noRestock == 1
+			if noRestock == 1 {
+				p.NoRestock = true
+			}
+		}
+	}
+	return rows.Err()
+}
+
+// attachItemTargets prefers the household item target over the older
+// target_quantity column and the member flag. An amount becomes the fixed
+// count. A value of 0 means don't restock.
+func attachItemTargets(ctx context.Context, db *sql.DB, byProduct map[string]*Product) error {
+	rows, err := db.QueryContext(ctx, `
+		SELECT i.product_id, t.kind, t.value
+		FROM item_targets t
+		JOIN items i ON i.id = t.item_id AND i.user_id = t.household_id
+		WHERE t.household_id = ?`, householdUser)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var productID, kind string
+		var value float64
+		if err := rows.Scan(&productID, &kind, &value); err != nil {
+			return err
+		}
+		p := byProduct[productID]
+		if p == nil {
+			continue
+		}
+		if value == 0 {
+			p.NoRestock = true
+			continue
+		}
+		if kind == "amount" {
+			n := int(value)
+			p.TargetQuantity = &n
 		}
 	}
 	return rows.Err()

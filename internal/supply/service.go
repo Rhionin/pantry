@@ -7,6 +7,7 @@ import (
 	"sort"
 	"time"
 
+	"github.com/Rhionin/stockbot/internal/restock"
 	"github.com/Rhionin/stockbot/internal/shopping"
 )
 
@@ -152,6 +153,9 @@ type Fact struct {
 	GroupBase      float64
 	GroupDimension string
 	Deal           *shopping.Deal
+	// Resolved is set by the loader. The zero Level keeps the older plan path
+	// for tests that build facts by hand.
+	Resolved restock.Resolution
 }
 
 // LineSource names why a shopping line exists.
@@ -307,6 +311,75 @@ func (s *Service) Wipe(ctx context.Context, phrase string) error {
 }
 
 func plan(now time.Time, phase Phase, account Months, facts []Fact) []Line {
+	for _, fact := range facts {
+		if fact.Resolved.Level != "" {
+			return planResolved(now, phase, account, facts)
+		}
+	}
+	return planLegacy(now, phase, account, facts)
+}
+
+func planResolved(now time.Time, phase Phase, account Months, facts []Fact) []Line {
+	lines := make([]Line, 0)
+	pools := map[string][]Fact{}
+	var solos []Fact
+	for _, fact := range facts {
+		if fact.Manual != nil {
+			if *fact.Manual > 0 {
+				lines = append(lines, Line{
+					Product: fact.Product,
+					Buy:     *fact.Manual,
+					Source:  SourceManual,
+				})
+			}
+			continue
+		}
+		if fact.Resolved.Level == restock.LevelGroup && fact.Group != "" {
+			pools[string(fact.Group)] = append(pools[string(fact.Group)], fact)
+			continue
+		}
+		if fact.Resolved.Target.Value == 0 {
+			continue
+		}
+		solos = append(solos, withResolvedOverride(fact))
+	}
+	if !phase.isOpening() {
+		for _, members := range pools {
+			if len(members) == 0 || members[0].Resolved.Target.Value == 0 {
+				continue
+			}
+			if line, ok := planProductGroup(now, phase, account, members); ok {
+				lines = append(lines, line)
+			}
+		}
+		for _, fact := range solos {
+			if line, ok := planGroup(now, phase, account, []Fact{fact}); ok {
+				lines = append(lines, line)
+			}
+		}
+	}
+	sort.Slice(lines, func(i, j int) bool {
+		return lines[i].Product < lines[j].Product
+	})
+	return lines
+}
+
+func withResolvedOverride(fact Fact) Fact {
+	target := fact.Resolved.Target
+	switch {
+	case target.Kind == restock.KindMonths && target.Value > 0:
+		if override, err := Window(Months(int(target.Value))); err == nil {
+			fact.Override = override
+		}
+	case target.Kind == restock.KindAmount && target.Value > 0:
+		if override, err := Quantity(Units(int(target.Value))); err == nil {
+			fact.Override = override
+		}
+	}
+	return fact
+}
+
+func planLegacy(now time.Time, phase Phase, account Months, facts []Fact) []Line {
 	lines := make([]Line, 0)
 	groups := map[string][]Fact{}
 	for _, fact := range facts {

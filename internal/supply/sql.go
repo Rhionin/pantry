@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Rhionin/stockbot/internal/restock"
 	"github.com/Rhionin/stockbot/internal/shopping"
 )
 
@@ -179,6 +180,9 @@ func wipeHousehold(ctx context.Context, db *sql.DB) error {
 		`DELETE FROM item_instances WHERE item_id IN (SELECT id FROM items WHERE user_id = ?)`,
 		`DELETE FROM stock_in_events WHERE product_id IN (SELECT product_id FROM items WHERE user_id = ?)`,
 		`DELETE FROM stock_moves WHERE item_id IN (SELECT id FROM items WHERE user_id = ?)`,
+		`DELETE FROM item_targets WHERE item_id IN (SELECT id FROM items WHERE user_id = ?)`,
+		`DELETE FROM item_categories WHERE item_id IN (SELECT id FROM items WHERE user_id = ?)`,
+		`DELETE FROM category_suggestion_dismissals WHERE item_id IN (SELECT id FROM items WHERE user_id = ?)`,
 		`DELETE FROM items WHERE user_id = ?`,
 	}
 	for _, query := range statements {
@@ -269,6 +273,9 @@ func loadFacts(ctx context.Context, tx *sql.Tx, phase Phase) ([]Fact, error) {
 	if err := attachOverrides(ctx, tx, facts); err != nil {
 		return nil, err
 	}
+	if err := attachResolved(ctx, tx, facts); err != nil {
+		return nil, err
+	}
 	if err := attachManuals(ctx, tx, facts); err != nil {
 		return nil, err
 	}
@@ -286,6 +293,29 @@ func loadFacts(ctx context.Context, tx *sql.Tx, phase Phase) ([]Fact, error) {
 		out = append(out, *facts[id])
 	}
 	return out, nil
+}
+
+func attachResolved(ctx context.Context, tx *sql.Tx, facts map[ProductID]*Fact) error {
+	snap, err := restock.Load(ctx, tx, restock.HouseholdID)
+	if err != nil {
+		return err
+	}
+	byItem := map[string]restock.ItemView{}
+	for _, item := range snap.Items {
+		byItem[item.ItemID] = item
+	}
+	for _, fact := range facts {
+		view, ok := byItem[fact.ItemID]
+		if !ok {
+			continue
+		}
+		fact.Resolved = restock.Resolution{
+			Target: view.Target,
+			Level:  view.Level,
+			Name:   view.LevelName,
+		}
+	}
+	return nil
 }
 
 func attachOverrides(ctx context.Context, tx *sql.Tx, facts map[ProductID]*Fact) error {

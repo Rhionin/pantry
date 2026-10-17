@@ -4,7 +4,7 @@ import {
   ActionIcon, Alert, Anchor, Button, Group, Loader, Menu, Modal, Stack, Text, TextInput, Tooltip,
 } from '@mantine/core';
 import {
-  addGroupMembers, getGroup, getInventoryList, getProduct, getSupplySettings, listGroups, listProducts, removeGroupMember, renameGroup, setGroupTarget, setMemberRestock,
+  addGroupMembers, getGroup, getInventoryList, getProduct, getSupplySettings, listGroups, listProducts, previewGroupTarget, removeGroupMember, renameGroup, setGroupTarget, setMemberRestock,
 } from '../../api/client';
 import type { GroupTarget, ProductDetail, ProductGroup } from '../../types';
 import { AddToGroup } from './AddToGroup';
@@ -15,7 +15,9 @@ import {
 } from './copy';
 import { RulePicker } from './RulePicker';
 import { restockNote } from './restock';
+import { StopDialog } from '../restock/StopDialog';
 import { Seesaw } from './Seesaw';
+import type { RestockPreview } from '../../restock/types';
 import { seesawView, stockMeter, type SeesawDraft } from './seesaw';
 import { groupStock } from '../../stockState';
 import '../history/history.css';
@@ -117,6 +119,7 @@ export const GroupDetailPage = () => {
   const [renaming, setRenaming] = useState(false);
   const [moving, setMoving] = useState('');
   const [draft, setDraft] = useState<SeesawDraft | null>(null);
+  const [groupPreview, setGroupPreview] = useState<RestockPreview | null>(null);
   const [adding, setAdding] = useState(false);
   const [candidates, setCandidates] = useState<AddCandidate[]>([]);
   const [ruleOpen, setRuleOpen] = useState(false);
@@ -270,6 +273,16 @@ export const GroupDetailPage = () => {
                 onDraft={setDraft}
                 onSave={saveTarget}
               />
+              <Button
+                size="xs"
+                variant="subtle"
+                mt="xs"
+                onClick={() => {
+                  void previewGroupTarget(group.id, { kind: 'months', value: 0 }).then(setGroupPreview);
+                }}
+              >
+                Don't restock this group…
+              </Button>
             </div>
             <div className="bin-copy">
               <div className="rule-block">
@@ -374,6 +387,18 @@ export const GroupDetailPage = () => {
           )}
         </>
       )}
+      <StopDialog
+        opened={groupPreview !== null}
+        preview={groupPreview}
+        onClose={() => setGroupPreview(null)}
+        onConfirm={() => {
+          if (!group) return;
+          void setGroupTarget(group.id, { windowMonths: 0 }).then(() => {
+            setGroupPreview(null);
+            void load();
+          });
+        }}
+      />
     </Stack>
   );
 };

@@ -176,7 +176,8 @@ func TestShoppingListUsesGroups(t *testing.T) {
 			setup: func(env testEnv) {
 				createItemViaStockIn(env.T, env.DB, env.ProductStore, "user-1", "prod-a", "Can A", "item-a")
 				createItemViaStockIn(env.T, env.DB, env.ProductStore, "user-1", "prod-b", "Can B", "item-b")
-				if _, err := group.NewGroups(env.DB).Create(env.T.Context(), "Cut green beans", []string{"prod-a", "prod-b"}, nil); err != nil {
+				months := 3
+				if _, err := group.NewGroups(env.DB).Create(env.T.Context(), "Cut green beans", []string{"prod-a", "prod-b"}, &group.TargetInput{Window: &months}); err != nil {
 					env.T.Fatal(err)
 				}
 				started := time.Now().UTC().Add(-60 * 24 * time.Hour)
@@ -194,6 +195,47 @@ func TestShoppingListUsesGroups(t *testing.T) {
 					{path: "$[1]", absent: true},
 				},
 				bodyContains: []string{"Some sizes aren't known, so this counts items."},
+			},
+		},
+		{
+			name: "a group with no target plans each item on its own",
+			setup: func(env testEnv) {
+				createItemViaStockIn(env.T, env.DB, env.ProductStore, "user-1", "prod-a", "Can A", "item-a")
+				createItemViaStockIn(env.T, env.DB, env.ProductStore, "user-1", "prod-b", "Can B", "item-b")
+				if _, err := group.NewGroups(env.DB).Create(env.T.Context(), "Cut green beans", []string{"prod-a", "prod-b"}, nil); err != nil {
+					env.T.Fatal(err)
+				}
+				started := time.Now().UTC().Add(-60 * 24 * time.Hour)
+				beginUsing(env.T, env.DB, started)
+				insertStockIn(env.T, env.DB, "prod-a", started.Add(24*time.Hour))
+				insertConsumptionEvent(env.T, env.DB, "out-1", "item-a", started.Add(20*24*time.Hour))
+				insertConsumptionEvent(env.T, env.DB, "out-2", "item-a", started.Add(50*24*time.Hour))
+			},
+			httpExchange: httpExchange{
+				method:         "POST",
+				path:           "/api/shopping-list/fill",
+				expectedStatus: http.StatusOK,
+			},
+			afterRequest: func(env testEnv) {
+				handler := stagedCartHandler(env)
+				body := exchangeJSON(env.T, handler, http.MethodGet, "/api/shopping-list", ``, http.StatusOK)
+				var rows []struct {
+					ItemID string `json:"itemId"`
+					Group  *struct {
+						Name string `json:"name"`
+					} `json:"group"`
+				}
+				if err := json.Unmarshal(body, &rows); err != nil {
+					env.T.Fatal(err)
+				}
+				if len(rows) == 0 {
+					env.T.Fatal("expected each item to be planned on its own")
+				}
+				for _, row := range rows {
+					if row.Group != nil {
+						env.T.Fatalf("a group with no target must not pool: %s", body)
+					}
+				}
 			},
 		},
 		{
