@@ -111,6 +111,38 @@ func TestUpgradeRestockTargetsFrom018(t *testing.T) {
 	}
 }
 
+func TestUpgradeIgnoresSupplyMonthsOutsideOneToTwelve(t *testing.T) {
+	for _, raw := range []string{"0", "abc", "13", "4.5"} {
+		t.Run(raw, func(t *testing.T) {
+			conn, err := sql.Open("sqlite", ":memory:")
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { conn.Close() })
+			if err := applyMigrationsExcept(conn, "019_restock_targets.sql"); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := conn.Exec(`INSERT INTO app_settings (key, value) VALUES ('supply_months', ?)`, raw); err != nil {
+				t.Fatal(err)
+			}
+			sqlBytes, err := migrationsFS.ReadFile("migrations/019_restock_targets.sql")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := conn.Exec(string(sqlBytes)); err != nil {
+				t.Fatalf("019: %v", err)
+			}
+			var count int
+			if err := conn.QueryRow(`SELECT COUNT(*) FROM app_settings WHERE key IN ('supply_target_kind', 'supply_target_value')`).Scan(&count); err != nil {
+				t.Fatal(err)
+			}
+			if count != 0 {
+				t.Fatalf("supply_months %q was copied into %d household default keys", raw, count)
+			}
+		})
+	}
+}
+
 func applyMigrationsExcept(db *sql.DB, skip string) error {
 	if _, err := db.Exec(`CREATE TABLE IF NOT EXISTS schema_migrations (
 		filename TEXT PRIMARY KEY,

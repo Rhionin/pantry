@@ -953,15 +953,8 @@ func TestWipe_ClearsOneUsersStockAndLeavesProductLookup(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ListItems user-1: %v", err)
 	}
-	if len(wiped) != 1 {
-		t.Fatalf("user-1 items after wipe: got %d, want 1", len(wiped))
-	}
-	wipedInstances, err := pantry.ListItemInstances(ctx, wiped[0].ID)
-	if err != nil {
-		t.Fatalf("ListItemInstances user-1: %v", err)
-	}
-	if len(wipedInstances) != 0 {
-		t.Fatalf("user-1 instances after wipe: got %d, want 0", len(wipedInstances))
+	if len(wiped) != 0 {
+		t.Fatalf("user-1 items after wipe: got %d, want 0", len(wiped))
 	}
 
 	kept, err := pantry.ListItems(ctx, "user-2")

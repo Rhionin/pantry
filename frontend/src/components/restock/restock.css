@@ -1,3 +1,11 @@
+.restock-card .mantine-Checkbox-input:not(:checked) {
+  border-color: var(--mantine-color-gray-7);
+}
+
+:where([data-mantine-color-scheme='dark']) .restock-card .mantine-Checkbox-input:not(:checked) {
+  border-color: var(--mantine-color-gray-3);
+}
+
 .restock-target,
 .restock-card,
 .restock-settings {

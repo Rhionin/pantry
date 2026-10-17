@@ -147,7 +147,7 @@ func (r *Pantry) ListItems(ctx context.Context, userID string) ([]Item, error) {
 			p.id, p.name, COALESCE(p.category, ''), COALESCE(p.unit_of_measure, ''), COALESCE(p.image_url, ''), COALESCE(p.external_source, '')
 		FROM items i
 		JOIN products p ON p.id = i.product_id
-		WHERE i.user_id = ?
+		WHERE i.user_id = ? AND i.shelved = 0
 		ORDER BY p.name`,
 		userID,
 	)

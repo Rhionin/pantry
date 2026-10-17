@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io/fs"
 	"log"
+	"path/filepath"
 	"sort"
 	"strings"
 )
@@ -28,6 +29,12 @@ func RunMigrations(db *sql.DB) error {
 		applied_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 	)`); err != nil {
 		return fmt.Errorf("create schema_migrations table: %w", err)
+	}
+
+	// Leftover snapshot temps can hold credentials from a killed migration.
+	// Removing them does not depend on a migration still being pending.
+	if path, err := sqliteMainPath(db); err == nil && path != "" && path != ":memory:" {
+		removeSnapshotTemps(filepath.Dir(path))
 	}
 
 	entries, err := fs.ReadDir(migrationsFS, "migrations")

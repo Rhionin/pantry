@@ -360,6 +360,10 @@ func planResolved(now time.Time, phase Phase, account Months, facts []Fact) []Li
 				lines = append(lines, line)
 			}
 		}
+	} else {
+		// Wipe clears the start date, so the household is opening again, but a
+		// saved item amount has to shop as soon as that product is stocked in.
+		lines = append(lines, openingAmountLines(now, phase, account, pools, solos)...)
 	}
 	sort.Slice(lines, func(i, j int) bool {
 		return lines[i].Product < lines[j].Product
@@ -371,6 +375,28 @@ func planResolved(now time.Time, phase Phase, account Months, facts []Fact) []Li
 // group itself sets nothing. An item target above 0 is planned on its own.
 // An item target of 0 stays in the pool so its stock still counts, and it is
 // not the product the group buys.
+func openingAmountLines(now time.Time, phase Phase, account Months, pools map[string][]Fact, solos []Fact) []Line {
+	var lines []Line
+	planAmount := func(fact Fact) {
+		if fact.Resolved.Level != restock.LevelItem || fact.Resolved.Target.Kind != restock.KindAmount || fact.Resolved.Target.Value <= 0 {
+			return
+		}
+		if line, ok := planGroup(now, phase, account, []Fact{fact}); ok {
+			lines = append(lines, line)
+		}
+	}
+	for _, members := range pools {
+		_, alone := splitResolvedGroup(members)
+		for _, fact := range alone {
+			planAmount(fact)
+		}
+	}
+	for _, fact := range solos {
+		planAmount(fact)
+	}
+	return lines
+}
+
 func splitResolvedGroup(members []Fact) (pooled []Fact, solos []Fact) {
 	for _, member := range members {
 		if member.Resolved.Level == restock.LevelItem && member.Resolved.Target.Value > 0 {
