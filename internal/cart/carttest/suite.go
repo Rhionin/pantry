@@ -1,7 +1,6 @@
 package carttest
 
 import (
-	"database/sql"
 	"testing"
 
 	"github.com/Rhionin/stockbot/internal/app"

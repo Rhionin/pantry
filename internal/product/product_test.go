@@ -2,7 +2,6 @@ package product_test
 
 import (
 	"context"
-	"database/sql"
 	"testing"
 	"time"
 

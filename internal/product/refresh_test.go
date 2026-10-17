@@ -2,7 +2,6 @@ package product
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 	"runtime"
 	"sync"

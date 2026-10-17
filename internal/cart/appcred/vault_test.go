@@ -2,7 +2,6 @@ package appcred
 
 import (
 	"context"
-	"database/sql"
 	"testing"
 
 	"github.com/Rhionin/stockbot/internal/app"

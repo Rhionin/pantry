@@ -2,7 +2,6 @@ package shopping_test
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"testing"
 

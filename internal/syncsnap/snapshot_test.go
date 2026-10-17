@@ -2,7 +2,6 @@ package syncsnap
 
 import (
 	"context"
-	"database/sql"
 	"testing"
 	"time"
 

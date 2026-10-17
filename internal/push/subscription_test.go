@@ -3,7 +3,6 @@ package push
 import (
 	"bytes"
 	"context"
-	"database/sql"
 	"log"
 	"net/http"
 	"os"
