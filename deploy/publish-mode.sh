@@ -59,6 +59,47 @@ compose_project_name() {
   printf '%s' "$name"
 }
 
+# publish_container SERVICE is the container_name from the compose files.
+# Those names follow the compose project: pantry, pantry-caddy, pantry-cloudflared
+# when the project is pantry.
+publish_container() {
+  local project
+  project=$(compose_project_name)
+  case "$1" in
+    pantry) printf '%s' "$project" ;;
+    caddy|caddy-tunnel) printf '%s' "${project}-caddy" ;;
+    cloudflared) printf '%s' "${project}-cloudflared" ;;
+    *) printf '%s' "${project}-$1" ;;
+  esac
+}
+
+# publish_container_label prints NAME's compose project label, or nothing
+# when the container is absent.
+publish_container_label() {
+  local label
+  label=$(docker inspect -f '{{index .Config.Labels "com.docker.compose.project"}}' "$1" 2>/dev/null || true)
+  label=${label//$'\r'/}
+  label=${label//$'\n'/}
+  printf '%s' "$label"
+}
+
+# remove_project_container runs docker rm only when the compose project matches.
+# An absent container is a no-op. A container that only shares the name is left
+# alone and named in the log.
+remove_project_container() {
+  local name="$1" project label
+  project=$(compose_project_name)
+  label=$(publish_container_label "$name")
+  if [[ -z "$label" ]]; then
+    return 0
+  fi
+  if [[ "$label" != "$project" ]]; then
+    echo "[info] Not removing ${name}; its compose project is not ${project}" >&2
+    return 0
+  fi
+  docker rm -f "$name"
+}
+
 # publish_removal_names prints "<project>-caddy" and "<project>-cloudflared".
 # A PANTRY_DIR other than /opt/pantry returns 1 and prints nothing, so a
 # fixture run cannot delete the household's containers. Tests that need the
@@ -88,13 +129,13 @@ drop_other_publish_containers() {
   svc=${svc//$'\n'/}
   if [[ "$mode" == tunnel && "$svc" == caddy ]]; then
     echo "[info] Removing the port-forward proxy so nothing listens on ports 80 or 443"
-    docker rm -f "$caddy_name" >/dev/null
+    remove_project_container "$caddy_name" >/dev/null
   elif [[ "$mode" != tunnel && "$svc" == caddy-tunnel ]]; then
     echo "[info] Removing the tunnel proxy so Caddy can listen on ports 80 and 443"
-    docker rm -f "$caddy_name" >/dev/null
+    remove_project_container "$caddy_name" >/dev/null
   fi
   if [[ "$mode" != tunnel ]]; then
-    docker rm -f "$cloud_name" >/dev/null 2>&1 || true
+    remove_project_container "$cloud_name" >/dev/null || true
   fi
 }
 
@@ -129,11 +170,11 @@ drop_stale_cloudflared() {
       return 0
     fi
     echo "[info] Removing ${cloud_name} so it can take 10.77.77.2"
-    docker rm -f "$cloud_name" >/dev/null
+    remove_project_container "$cloud_name" >/dev/null
     return 0
   fi
   echo "[info] Removing ${cloud_name} left from a failed start so it can take 10.77.77.2"
-  docker rm -f "$cloud_name" >/dev/null
+  remove_project_container "$cloud_name" >/dev/null
 }
 
 # grocy_compose_suffix prints the extra compose arguments that start
