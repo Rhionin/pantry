@@ -20,19 +20,21 @@ import (
 func TestRefillBeforeStockInDoesNotDuplicateTheBoughtLine(t *testing.T) {
 	handler, env := setupTestWithDB(t)
 	now := time.Now().UTC()
-	buyReplacement(t, handler, env, now)
+	boughtID := buyReplacement(t, handler, env, now)
 
 	again := fillShopping(t, handler)
-	open, purchased := shoppingRowCounts(t, env, "item-cyc")
-	if len(again) != 0 || open != 0 || purchased != 1 {
-		t.Fatalf("refill before stock-in duplicated the bought line: list=%+v open=%d purchased=%d", again, open, purchased)
+	if len(again) != 0 {
+		t.Fatalf("refill before stock-in duplicated the bought line: %+v", again)
+	}
+	if !boughtLineRemains(t, handler, boughtID) {
+		t.Fatal("refill before stock-in dropped the bought line")
 	}
 }
 
 func TestUseBuyStockInUseAgainComesBack(t *testing.T) {
 	handler, env := setupTestWithDB(t)
 	now := time.Now().UTC()
-	buyReplacement(t, handler, env, now)
+	boughtID := buyReplacement(t, handler, env, now)
 
 	// The purchase is waiting to be stocked in. A stock-in after that
 	// purchase ends the protection; the next use has to come back.
@@ -43,33 +45,29 @@ func TestUseBuyStockInUseAgainComesBack(t *testing.T) {
 	insertConsumptionEvent(t, env.DB, "ce-cyc-2", "item-cyc", now.Add(-5*time.Minute))
 	fillShopping(t, handler)
 
-	open, purchased := shoppingRowCounts(t, env, "item-cyc")
-	if open != 1 || purchased != 0 {
-		t.Fatalf("used again after restock, but the bought line was not cleaned up into a new list line (open=%d purchased=%d)", open, purchased)
-	}
 	lines := shoppingLines(t, handler)
 	line := shopLineByItem(lines, "item-cyc")
-	if line == nil || line.Note != "replacing 1 you used" || line.Quantity != 1 {
-		t.Fatalf("used again after restock, list = %+v", lines)
+	if line == nil || line.ID == boughtID || line.Note != "replacing 1 you used" || line.Quantity != 1 {
+		t.Fatalf("used again after restock, but the bought line was not cleaned up into a new list line: %+v", lines)
 	}
+	assertBoughtLineCleared(t, handler, boughtID)
 }
 
 func TestStartingANewCartEndsTheBoughtLine(t *testing.T) {
 	handler, env := setupTestWithDB(t)
 	now := time.Now().UTC()
-	buyReplacement(t, handler, env, now)
+	boughtID := buyReplacement(t, handler, env, now)
 	registerOpenAndKroger(env)
 
 	exchangeJSON(t, handler, http.MethodPost, "/api/providers/"+openProvider+"/ledger/reset", ``, http.StatusCreated)
 	fillShopping(t, handler)
 
-	open, purchased := shoppingRowCounts(t, env, "item-cyc")
-	if open != 1 || purchased != 0 {
-		t.Fatalf("starting a new cart left the bought line in place (open=%d purchased=%d); a new trip ends that protection", open, purchased)
+	lines := shoppingLines(t, handler)
+	line := shopLineByItem(lines, "item-cyc")
+	if line == nil || line.ID == boughtID || line.Note != "replacing 1 you used" || line.Quantity != 1 {
+		t.Fatalf("starting a new cart left the bought line in place; a new trip ends that protection: %+v", lines)
 	}
-	if line := shopLineByItem(shoppingLines(t, handler), "item-cyc"); line == nil || line.Note != "replacing 1 you used" {
-		t.Fatalf("starting a new cart did not plan Cycle again: %+v", shoppingLines(t, handler))
-	}
+	assertBoughtLineCleared(t, handler, boughtID)
 }
 
 func TestClearingTheBoughtLineLetsTheNextListPlanIt(t *testing.T) {
@@ -80,13 +78,12 @@ func TestClearingTheBoughtLineLetsTheNextListPlanIt(t *testing.T) {
 	exchangeJSON(t, handler, http.MethodDelete, "/api/shopping-list/items/"+boughtID, ``, http.StatusOK)
 	fillShopping(t, handler)
 
-	open, purchased := shoppingRowCounts(t, env, "item-cyc")
-	if open != 1 || purchased != 0 {
-		t.Fatalf("clearing the bought line left Cycle off the next list (open=%d purchased=%d)", open, purchased)
+	lines := shoppingLines(t, handler)
+	line := shopLineByItem(lines, "item-cyc")
+	if line == nil || line.ID == boughtID || line.Note != "replacing 1 you used" || line.Quantity != 1 {
+		t.Fatalf("clearing the bought line left Cycle off the next list: %+v", lines)
 	}
-	if line := shopLineByItem(shoppingLines(t, handler), "item-cyc"); line == nil || line.Note != "replacing 1 you used" {
-		t.Fatalf("clearing the list did not plan Cycle again: %+v", shoppingLines(t, handler))
-	}
+	assertBoughtLineCleared(t, handler, boughtID)
 }
 
 func TestWipeEmptiesInventoryAndSuggestsNone(t *testing.T) {
@@ -202,15 +199,42 @@ func seedWipedMilk(t *testing.T, handler http.Handler, env testEnv) {
 	exchangeJSON(t, handler, http.MethodPut, "/api/groups/group-milk/target", `{"windowMonths":6}`, http.StatusOK)
 }
 
-func shoppingRowCounts(t *testing.T, env testEnv, itemID string) (open, purchased int) {
+// boughtLineRemains reports whether that shopping line is still the bought
+// row. The active list hides purchased lines, so the check is the line's own
+// response: it answers with this id and a purchased time.
+func boughtLineRemains(t *testing.T, handler http.Handler, id string) bool {
 	t.Helper()
-	if err := env.DB.QueryRow(`SELECT COUNT(*) FROM shopping_list_items WHERE item_id = ? AND purchased_at IS NULL`, itemID).Scan(&open); err != nil {
-		t.Fatal(err)
+	status, body := callJSON(handler, http.MethodPatch, "/api/shopping-list/items/"+id, `{"purchased":true}`)
+	if status == http.StatusNotFound {
+		return false
 	}
-	if err := env.DB.QueryRow(`SELECT COUNT(*) FROM shopping_list_items WHERE item_id = ? AND purchased_at IS NOT NULL`, itemID).Scan(&purchased); err != nil {
-		t.Fatal(err)
+	if status != http.StatusOK {
+		t.Fatalf("bought line %s: status %d body %s", id, status, body)
 	}
-	return open, purchased
+	var row struct {
+		ID          string  `json:"id"`
+		PurchasedAt *string `json:"purchasedAt"`
+	}
+	if err := json.Unmarshal(body, &row); err != nil {
+		t.Fatalf("bought line %s: %v body %s", id, err, body)
+	}
+	return row.ID == id && row.PurchasedAt != nil
+}
+
+func assertBoughtLineCleared(t *testing.T, handler http.Handler, id string) {
+	t.Helper()
+	if shoppingLineStatus(t, handler, id) != http.StatusNotFound {
+		t.Fatalf("bought line %s was not cleaned up", id)
+	}
+}
+
+func shoppingLineStatus(t *testing.T, handler http.Handler, id string) int {
+	t.Helper()
+	status, body := callJSON(handler, http.MethodPatch, "/api/shopping-list/items/"+id, `{"purchased":true}`)
+	if status != http.StatusOK && status != http.StatusNotFound {
+		t.Fatalf("shopping line %s: status %d body %s", id, status, body)
+	}
+	return status
 }
 
 type inventoryRow struct {
