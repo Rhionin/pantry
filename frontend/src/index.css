@@ -412,6 +412,24 @@ code {
 /* In-app scan alert. Amber is the attention color already used for low
    stock, so a toast that replaces a system notification reads as something
    waiting, not as a second brand accent. */
+/* The phone header is 112px and the wide header is 56px. The default
+   top-center stack sits on those links. Drop only this alert below the
+   header, and let clicks on the gap reach the links. */
+.mantine-Notifications-root[data-position='top-center']:has(.scan-alert-toast) {
+  top: 120px;
+  pointer-events: none;
+}
+
+.scan-alert-toast-host {
+  pointer-events: auto;
+}
+
+@media (min-width: 48em) {
+  .mantine-Notifications-root[data-position='top-center']:has(.scan-alert-toast) {
+    top: 64px;
+  }
+}
+
 .scan-alert-toast {
   display: flex;
   flex-direction: column;

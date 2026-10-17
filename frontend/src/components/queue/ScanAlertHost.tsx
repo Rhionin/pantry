@@ -43,6 +43,7 @@ function showForegroundAlert(alert: ForegroundAlert, onOpen: () => void): void {
     color: 'amber' as const,
     autoClose: false as const,
     position: 'top-center' as const,
+    className: 'scan-alert-toast-host',
   };
   if (tag !== '' && notificationsStore.getState().notifications.some((item) => item.id === tag)) {
     notifications.update({ ...data, id: tag });
