@@ -39,10 +39,13 @@ jobs:
       contents: read
       actions: write
     steps:
+      # pull_request defaults to the merge commit (refs/pull/N/merge), so the
+      # head report is this PR applied to the current base, not the branch tip
+      # the base has already moved past. schedule and workflow_dispatch check
+      # out the branch SHA.
       - name: Checkout the tree to measure
         uses: actions/checkout@v7
         with:
-          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
           path: repo
           fetch-depth: 1
 
@@ -119,10 +122,11 @@ jobs:
           fetch-depth: 1
 
       # The base commit does not have this script until the change is merged.
-      - name: Checkout the script from the pull request
+      # Use the same merge commit Metrics (head) runs, not the branch tip.
+      - name: Checkout the script from the merge commit
         uses: actions/checkout@v7
         with:
-          ref: ${{ github.event.pull_request.head.sha }}
+          ref: refs/pull/${{ github.event.pull_request.number }}/merge
           path: tooling
           fetch-depth: 1
 
@@ -193,10 +197,11 @@ jobs:
       pull-requests: write
       issues: write
     steps:
-      - name: Checkout head and base
+      # Same merge commit Metrics (head) measured, so flag C line numbers
+      # match the report. The branch tip is the wrong tree once master has moved.
+      - name: Checkout the merge commit
         uses: actions/checkout@v7
         with:
-          ref: ${{ github.event.pull_request.head.sha }}
           path: head
           fetch-depth: 1
 
