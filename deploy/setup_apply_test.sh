@@ -182,19 +182,36 @@ run_setup() {
   rm -rf "$work"
 }
 
+# grep -q stops at the first match. Under pipefail a pipe then dies with
+# SIGPIPE, so have fails and lack passes even when the text is there.
 have() {
   local haystack="$1" needle="$2" label="$3"
-  if ! printf '%s\n' "$haystack" | grep -q -F -- "$needle"; then
+  if ! grep -q -F -- "$needle" <<<"$haystack"; then
     fail "$label (missing $needle)"
   fi
 }
 
 lack() {
   local haystack="$1" needle="$2" label="$3"
-  if printf '%s\n' "$haystack" | grep -q -F -- "$needle"; then
+  if grep -q -F -- "$needle" <<<"$haystack"; then
     fail "$label (unexpected $needle)"
   fi
 }
+
+# The match is the first of tens of thousands of lines, which is when the old
+# pipe helper lost the writer. Fifty tries is enough for that helper to fail
+# on every run. pipefail is already on for this file.
+assert_have_lack_large_input() {
+  local large n
+  large=$(awk 'BEGIN { print "NEEDLE-PRESENT"; for (i = 1; i <= 40000; i++) print "padding" }')
+  for ((n = 1; n <= 50; n++)); do
+    have "$large" "NEEDLE-PRESENT" "large input contains the needle"
+    if (lack "$large" "NEEDLE-PRESENT" "large input must report the needle") 2>/dev/null; then
+      fail "lack passed on large input that contains the needle (try $n)"
+    fi
+  done
+}
+assert_have_lack_large_input
 
 write_env() {
   local pantry="$1"
