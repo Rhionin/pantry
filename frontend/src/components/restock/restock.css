@@ -1,10 +1,23 @@
 .restock-target,
+.restock-card,
+.restock-settings {
+  --mantine-color-dimmed: var(--mantine-color-gray-7);
+}
+
+.restock-target,
 .restock-card {
   border: 1px solid var(--mantine-color-default-border);
   border-radius: 6px;
   padding: 12px;
   background: var(--mantine-color-body);
   color: var(--mantine-color-text);
+}
+
+.restock-settings .mantine-Button-root[data-variant='subtle'],
+.restock-target .mantine-Button-root[data-variant='subtle'],
+.restock-card .mantine-Button-root[data-variant='subtle'] {
+  --button-color: var(--mantine-color-teal-9);
+  color: var(--mantine-color-teal-9);
 }
 
 .restock-kicker {
@@ -220,6 +233,19 @@
 
 .restock-toast {
   border-left: 4px solid var(--mantine-color-teal-6);
+}
+
+:where([data-mantine-color-scheme='dark']) .restock-target,
+:where([data-mantine-color-scheme='dark']) .restock-card,
+:where([data-mantine-color-scheme='dark']) .restock-settings {
+  --mantine-color-dimmed: var(--mantine-color-gray-4);
+}
+
+:where([data-mantine-color-scheme='dark']) .restock-settings .mantine-Button-root[data-variant='subtle'],
+:where([data-mantine-color-scheme='dark']) .restock-target .mantine-Button-root[data-variant='subtle'],
+:where([data-mantine-color-scheme='dark']) .restock-card .mantine-Button-root[data-variant='subtle'] {
+  --button-color: var(--mantine-color-teal-2);
+  color: var(--mantine-color-teal-2);
 }
 
 :where([data-mantine-color-scheme='dark']) .restock-target,
