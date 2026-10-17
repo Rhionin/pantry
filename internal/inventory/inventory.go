@@ -398,6 +398,7 @@ func (r *Pantry) publishInventoryEvent(ctx context.Context, itemID string) {
 }
 
 // GetItem returns the item with the given ID, or nil if no such item exists.
+// A wiped (shelved) item is hidden from ListItems and still returned here.
 func (r *Pantry) GetItem(ctx context.Context, itemID string) (*Item, error) {
 	return r.getItemByID(ctx, itemID)
 }

@@ -12,9 +12,9 @@ import (
 
 // Purchased-row lifecycle and wipe visibility from the restock rulings on
 // #231 and #240. A checked-off row blocks an identical line only until that
-// product is stocked in after the purchase, a new cart is started, or the
-// line is cleared. A wipe empties the inventory list and does not shop for
-// what it removed; the saved item target is in effect again once that
+// product is stocked in at or after the line was added, a new cart is started,
+// or the line is cleared. A wipe empties the inventory list and does not shop
+// for what it removed; the saved item target is in effect again once that
 // product is stocked in.
 
 func TestRefillBeforeStockInDoesNotDuplicateTheBoughtLine(t *testing.T) {
@@ -36,13 +36,15 @@ func TestUseBuyStockInUseAgainComesBack(t *testing.T) {
 	now := time.Now().UTC()
 	boughtID := buyReplacement(t, handler, env, now)
 
-	// The purchase is waiting to be stocked in. A stock-in after that
-	// purchase ends the protection; the next use has to come back.
-	insertStockIn(t, env.DB, "prod-cyc", now.Add(-10*time.Minute))
+	// The purchase is waiting to be stocked in. A stock-in at or after the
+	// line was added ends the protection; the next use has to come back.
+	// now is earlier than that added time, because fill creates the line.
+	stockedAt := time.Now().UTC().Add(time.Second)
+	insertStockIn(t, env.DB, "prod-cyc", stockedAt)
 	if lines := fillShopping(t, handler); len(lines) != 0 {
 		t.Fatalf("stock-in of the purchase put Cycle back on the list before it was used again: %+v", lines)
 	}
-	insertConsumptionEvent(t, env.DB, "ce-cyc-2", "item-cyc", now.Add(-5*time.Minute))
+	insertConsumptionEvent(t, env.DB, "ce-cyc-2", "item-cyc", stockedAt.Add(time.Second))
 	fillShopping(t, handler)
 
 	lines := shoppingLines(t, handler)

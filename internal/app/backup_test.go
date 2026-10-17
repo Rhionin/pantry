@@ -166,7 +166,11 @@ func TestShoppingBackupFailureStopsMigration(t *testing.T) {
 func TestSnapshotIgnoresALeftoverTempFile(t *testing.T) {
 	dir := t.TempDir()
 	leftover := filepath.Join(dir, ".pantry-pre-targets-crash.db.tmp")
+	journal := filepath.Join(dir, ".pantry-pre-targets-crash.db.tmp-journal")
 	if err := os.WriteFile(leftover, []byte("partial"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(journal, []byte("journal"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	conn := openFileDB(t, filepath.Join(dir, "pantry.db"))
@@ -182,6 +186,9 @@ func TestSnapshotIgnoresALeftoverTempFile(t *testing.T) {
 	}
 	if _, err := os.Stat(leftover); !os.IsNotExist(err) {
 		t.Fatalf("leftover temp still present: %v", err)
+	}
+	if _, err := os.Stat(journal); !os.IsNotExist(err) {
+		t.Fatalf("leftover journal still present: %v", err)
 	}
 	temps, err := filepath.Glob(filepath.Join(dir, ".pantry-pre-targets-*.db.tmp"))
 	if err != nil {
@@ -203,6 +210,57 @@ func TestSnapshotIgnoresALeftoverTempFile(t *testing.T) {
 	}
 	if len(raw) < 16 || string(raw[:15]) != "SQLite format 3" {
 		t.Fatal("snapshot is not a complete database")
+	}
+}
+
+func TestStartupRemovesLeftoverSnapshotTemps(t *testing.T) {
+	dir := t.TempDir()
+	conn := openFileDB(t, filepath.Join(dir, "pantry.db"))
+	if err := RunMigrations(conn); err != nil {
+		t.Fatalf("RunMigrations: %v", err)
+	}
+	leftovers := []string{
+		filepath.Join(dir, ".pantry-pre-groups-old.db.tmp"),
+		filepath.Join(dir, ".pantry-pre-restock-old.db.tmp-journal"),
+		filepath.Join(dir, ".pantry-pre-targets-old.db.tmp-journal"),
+	}
+	for _, path := range leftovers {
+		if err := os.WriteFile(path, []byte("partial"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := RunMigrations(conn); err != nil {
+		t.Fatalf("startup: %v", err)
+	}
+	for _, path := range leftovers {
+		if _, err := os.Stat(path); !os.IsNotExist(err) {
+			t.Fatalf("startup left %s: %v", path, err)
+		}
+	}
+}
+
+func TestSnapshotWriteRemovesLeftoverTemps(t *testing.T) {
+	dir := t.TempDir()
+	conn := openFileDB(t, filepath.Join(dir, "pantry.db"))
+	if err := RunMigrations(conn); err != nil {
+		t.Fatalf("RunMigrations: %v", err)
+	}
+	leftovers := []string{
+		filepath.Join(dir, ".pantry-pre-targets-again.db.tmp"),
+		filepath.Join(dir, ".pantry-pre-targets-again.db.tmp-journal"),
+	}
+	for _, path := range leftovers {
+		if err := os.WriteFile(path, []byte("partial"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := writePreTargetsBackup(conn); err != nil {
+		t.Fatal(err)
+	}
+	for _, path := range leftovers {
+		if _, err := os.Stat(path); !os.IsNotExist(err) {
+			t.Fatalf("snapshot write left %s: %v", path, err)
+		}
 	}
 }
 

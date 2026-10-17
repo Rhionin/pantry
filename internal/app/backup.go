@@ -97,7 +97,14 @@ func writeSnapshot(db *sql.DB, spec snapshotSpec) error {
 	name := spec.prefix + "-" + time.Now().UTC().Format("20060102T150405Z") + ".db"
 	dest := filepath.Join(dir, name)
 	temp := filepath.Join(dir, "."+name+".tmp")
-	if _, err := db.Exec(`VACUUM INTO ?`, temp); err != nil {
+	// VACUUM INTO creates the file itself. A private umask makes that
+	// creation 0600, so a kill during the copy does not leave a
+	// world-readable pantry. The chmod below covers a platform that
+	// ignores umask.
+	if err := withPrivateFiles(func() error {
+		_, err := db.Exec(`VACUUM INTO ?`, temp)
+		return err
+	}); err != nil {
 		_ = os.Remove(temp)
 		return fmt.Errorf("%s: %w", spec.fail, err)
 	}
@@ -124,12 +131,17 @@ func writeSnapshot(db *sql.DB, spec snapshotSpec) error {
 
 func removeSnapshotTemps(dir string) {
 	for _, prefix := range []string{"pantry-pre-groups", "pantry-pre-restock", "pantry-pre-targets"} {
-		matches, err := filepath.Glob(filepath.Join(dir, "."+prefix+"-*.db.tmp"))
-		if err != nil {
-			continue
-		}
-		for _, match := range matches {
-			_ = os.Remove(match)
+		for _, pattern := range []string{
+			"." + prefix + "-*.db.tmp",
+			"." + prefix + "-*.db.tmp-journal",
+		} {
+			matches, err := filepath.Glob(filepath.Join(dir, pattern))
+			if err != nil {
+				continue
+			}
+			for _, match := range matches {
+				_ = os.Remove(match)
+			}
 		}
 	}
 }

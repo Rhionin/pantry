@@ -28,11 +28,14 @@ func TestRebuyAfterStockInAndUseAgain(t *testing.T) {
 			if _, err := env.DB.Exec(`UPDATE shopping_list_items SET purchased_at = ? WHERE id = ?`, now.Add(-90*time.Minute), boughtID); err != nil {
 				env.T.Fatal(err)
 			}
-			insertStockIn(env.T, env.DB, "prod-cyc", now.Add(-60*time.Minute))
+			// now is earlier than the line's added time. The stock-in has to
+			// land on or after that added time to finish the purchase.
+			stockedAt := time.Now().UTC().Add(time.Second)
+			insertStockIn(env.T, env.DB, "prod-cyc", stockedAt)
 			exchanges(fill)(env)
 			exchanges(httpExchange{method: "GET", path: "/api/shopping-list", expectedStatus: http.StatusOK,
 				assertions: []assertion{{path: "$[0]", absent: true}}})(env)
-			insertConsumptionEvent(env.T, env.DB, "ce-cyc-2", "item-cyc", now.Add(-30*time.Minute))
+			insertConsumptionEvent(env.T, env.DB, "ce-cyc-2", "item-cyc", stockedAt.Add(time.Second))
 			exchanges(fill)(env)
 			lines := shoppingLines(env.T, handler)
 			line := shopLineByItem(lines, "item-cyc")
