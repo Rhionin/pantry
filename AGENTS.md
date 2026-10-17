@@ -104,3 +104,5 @@ Playwright MCP is the `playwright` server in `.cursor/mcp.json`. The server comm
 ## Cursor Cloud specific instructions
 
 Go coverage is `./scripts/test-coverage.sh` (needs `bc` and the Go version in `go.mod`). Frontend checks from `frontend/` are `npm test` (`vitest --run`), `npm run lint`, and `npx tsc -b`. `npm ci` installs frontend dependencies. The Cloud Agent image is `.cursor/Dockerfile`, referenced by `.cursor/environment.json`.
+
+On boot, `.cursor/start.sh` starts the API with `go run ./cmd/server` on `:8080` and the Vite dev server on `http://127.0.0.1:5173`. Logs are `/tmp/pantry/api.log` and `/tmp/pantry/ui.log`. If those ports already respond, the script leaves the existing processes in place. Go and Node are on `/usr/local/go/bin` and `/usr/local/bin`; the login shell may hide them behind another `node` earlier in `PATH`, and both scripts put those directories first.

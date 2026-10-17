@@ -11,8 +11,11 @@ RUN apt-get update \
         bc \
         xz-utils \
         sudo \
+        tmux \
     && rm -rf /var/lib/apt/lists/* \
-    && useradd --create-home --shell /bin/bash ubuntu \
+    && if ! id -u ubuntu >/dev/null 2>&1; then \
+         useradd --create-home --shell /bin/bash ubuntu; \
+       fi \
     && echo 'ubuntu ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/ubuntu \
     && chmod 0440 /etc/sudoers.d/ubuntu
 
