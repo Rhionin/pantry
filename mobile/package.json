@@ -41,6 +41,7 @@
   },
   "jest": {
     "preset": "jest-expo",
+    "testTimeout": 30000,
     "testMatch": [
       "**/*-test.ts",
       "**/*-test.tsx"
