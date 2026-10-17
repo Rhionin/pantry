@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/Rhionin/stockbot/internal/shopping"
@@ -349,10 +350,15 @@ func attachManuals(ctx context.Context, tx *sql.Tx, facts map[ProductID]*Fact) e
 }
 
 func attachEvents(ctx context.Context, tx *sql.Tx, facts map[ProductID]*Fact, started time.Time) error {
+	// The sqlite driver stores each instant as a zone-specific string
+	// ("2006-01-02 15:04:05 -0700 MST"). A SQL comparison of those strings
+	// is alphabetical, so a Denver evening sorts before the UTC morning of
+	// the same instant and a use after opening disappears from the plan.
+	// Load the rows and compare the parsed instants.
 	ins, err := tx.QueryContext(ctx, `
 		SELECT product_id, at FROM stock_in_events
-		WHERE at > ? AND product_id IN (SELECT product_id FROM items WHERE user_id = ?)
-		ORDER BY product_id, at`, started, householdUser)
+		WHERE product_id IN (SELECT product_id FROM items WHERE user_id = ?)
+		ORDER BY product_id, at`, householdUser)
 	if err != nil {
 		return fmt.Errorf("could not read supply: %w", err)
 	}
@@ -362,6 +368,9 @@ func attachEvents(ctx context.Context, tx *sql.Tx, facts map[ProductID]*Fact, st
 		var at time.Time
 		if err := ins.Scan(&id, &at); err != nil {
 			return fmt.Errorf("could not read supply: %w", err)
+		}
+		if !at.After(started) {
+			continue
 		}
 		if fact := facts[ProductID(id)]; fact != nil {
 			fact.StockIns = append(fact.StockIns, at.UTC())
@@ -378,8 +387,8 @@ func attachEvents(ctx context.Context, tx *sql.Tx, facts map[ProductID]*Fact, st
 		SELECT i.product_id, c.consumed_at
 		FROM consumption_events c
 		JOIN items i ON i.id = c.item_id
-		WHERE i.user_id = ? AND c.consumed_at > ?
-		ORDER BY i.product_id, c.consumed_at`, householdUser, started)
+		WHERE i.user_id = ?
+		ORDER BY i.product_id, c.consumed_at`, householdUser)
 	if err != nil {
 		return fmt.Errorf("could not read supply: %w", err)
 	}
@@ -389,6 +398,9 @@ func attachEvents(ctx context.Context, tx *sql.Tx, facts map[ProductID]*Fact, st
 		var at time.Time
 		if err := outs.Scan(&id, &at); err != nil {
 			return fmt.Errorf("could not read supply: %w", err)
+		}
+		if !at.After(started) {
+			continue
 		}
 		if fact := facts[ProductID(id)]; fact != nil {
 			fact.StockOuts = append(fact.StockOuts, Withdrawal{At: at.UTC(), Qty: 1})
@@ -487,6 +499,7 @@ func attachGroupSignals(ctx context.Context, tx *sql.Tx, facts map[ProductID]*Fa
 }
 
 func parseSQLiteTime(raw string) (time.Time, error) {
+	raw = stripMonotonic(raw)
 	layouts := []string{
 		time.RFC3339Nano,
 		time.RFC3339,
@@ -521,4 +534,14 @@ func shoppingDeal(itemID, label string, noted time.Time, price, regular sql.Null
 
 type queryer interface {
 	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
+}
+
+// stripMonotonic drops the " m=+1.234" suffix time.Time.String appends when
+// the value still carries a monotonic clock reading. The sqlite driver writes
+// that string as-is, and an aggregate such as MAX returns it as plain text.
+func stripMonotonic(raw string) string {
+	if i := strings.Index(raw, " m="); i >= 0 {
+		return raw[:i]
+	}
+	return raw
 }
