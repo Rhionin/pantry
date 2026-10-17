@@ -64,7 +64,9 @@ if [[ "$mode" == tunnel ]]; then
     compose+=(-f "$PANTRY_DIR/docker-compose.tunnel.yml" --profile tunnel)
   fi
 elif [[ "$mode" == acme ]]; then
-  if [[ -f "$PANTRY_DIR/auth.caddy" ]]; then
+  # -f /opt/pantry/auth.caddy is the production gate. A fixture sets
+  # PANTRY_DIR somewhere else and is checked only then.
+  if [[ -f /opt/pantry/auth.caddy || ( "$PANTRY_DIR" != /opt/pantry && -f "$PANTRY_DIR/auth.caddy" ) ]]; then
     compose+=(--profile public)
   else
     echo "PUBLIC_HOST is set but ${PANTRY_DIR}/auth.caddy is missing; leaving the public proxy stopped. Run: sudo ./setup.sh" >&2
