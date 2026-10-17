@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import { MantineProvider } from '@mantine/core';
 import { CameraScanner, type CameraScannerProps } from './CameraScanner';
 import { RESCAN_COOLDOWN_MS } from './cameraAccess';
@@ -11,6 +11,19 @@ function renderScanner(props: CameraScannerProps) {
       <CameraScanner {...props} />
     </MantineProvider>,
   );
+}
+
+function setPageVisibility(state: DocumentVisibilityState) {
+  Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => state });
+  Object.defineProperty(document, 'hidden', { configurable: true, get: () => state === 'hidden' });
+}
+
+// A restart calls getUserMedia on a microtask. Waiting past that still finishes
+// well before the scan loop's interval, so a missing reopen is visible.
+async function settleCameraRestart() {
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 40));
+  });
 }
 
 function installSecureCamera(getUserMedia: ReturnType<typeof vi.fn>) {
@@ -36,6 +49,7 @@ describe('CameraScanner', () => {
     Object.defineProperty(window, 'isSecureContext', { configurable: true, value: originalSecure });
     vi.unstubAllGlobals();
     vi.restoreAllMocks();
+    setPageVisibility('visible');
   });
 
   it('stays closed until the user opts in, and does not request a camera', () => {
@@ -290,6 +304,121 @@ describe('CameraScanner', () => {
       });
       expect(polygon).toHaveAttribute('points', '10,20 80,20 80,50 10,50');
       expect(container.querySelector('.camera-preview-boxes')).toHaveAttribute('viewBox', '0 0 200 100');
+    });
+
+    it('stops every camera track when the page is hidden and opens a new stream when visible', async () => {
+      const stops = [vi.fn(), vi.fn()];
+      getUserMedia.mockResolvedValue({
+        getTracks: () => stops.map((stopTrack) => ({ stop: stopTrack })),
+      } as unknown as MediaStream);
+      renderScanner({ onScan: vi.fn(), createDecoder: async () => decoderReturning([]) });
+
+      fireEvent.click(screen.getByRole('button', { name: 'Scan with camera' }));
+      expect(await screen.findByLabelText('Camera preview')).toBeInTheDocument();
+      expect(getUserMedia).toHaveBeenCalledTimes(1);
+
+      act(() => {
+        setPageVisibility('hidden');
+        document.dispatchEvent(new Event('visibilitychange'));
+      });
+
+      expect(stops[0]).toHaveBeenCalled();
+      expect(stops[1]).toHaveBeenCalled();
+
+      act(() => {
+        setPageVisibility('visible');
+        document.dispatchEvent(new Event('visibilitychange'));
+      });
+
+      await vi.waitFor(() => expect(getUserMedia).toHaveBeenCalledTimes(2));
+    });
+
+    it('stops the camera tracks on pagehide and restarts them when the page is visible again', async () => {
+      renderScanner({ onScan: vi.fn(), createDecoder: async () => decoderReturning([]) });
+
+      fireEvent.click(screen.getByRole('button', { name: 'Scan with camera' }));
+      expect(await screen.findByLabelText('Camera preview')).toBeInTheDocument();
+
+      act(() => {
+        window.dispatchEvent(new Event('pagehide'));
+      });
+
+      expect(stop).toHaveBeenCalled();
+
+      act(() => {
+        setPageVisibility('visible');
+        document.dispatchEvent(new Event('visibilitychange'));
+      });
+
+      await vi.waitFor(() => expect(getUserMedia).toHaveBeenCalledTimes(2));
+    });
+
+    it('does not open the camera when a stopped scan is hidden and shown', async () => {
+      renderScanner({ onScan: vi.fn(), createDecoder: async () => decoderReturning([]) });
+
+      fireEvent.click(screen.getByRole('button', { name: 'Scan with camera' }));
+      expect(await screen.findByLabelText('Camera preview')).toBeInTheDocument();
+      fireEvent.click(screen.getByRole('button', { name: 'Stop camera' }));
+      const opens = getUserMedia.mock.calls.length;
+
+      act(() => {
+        setPageVisibility('hidden');
+        document.dispatchEvent(new Event('visibilitychange'));
+        window.dispatchEvent(new Event('pagehide'));
+        setPageVisibility('visible');
+        document.dispatchEvent(new Event('visibilitychange'));
+      });
+      await settleCameraRestart();
+
+      expect(getUserMedia).toHaveBeenCalledTimes(opens);
+      expect(screen.getByRole('button', { name: 'Scan with camera' })).toBeInTheDocument();
+    });
+
+    it('does not restart the camera if the user stops scanning while the page is hidden', async () => {
+      renderScanner({ onScan: vi.fn(), createDecoder: async () => decoderReturning([]) });
+
+      fireEvent.click(screen.getByRole('button', { name: 'Scan with camera' }));
+      expect(await screen.findByLabelText('Camera preview')).toBeInTheDocument();
+
+      act(() => {
+        setPageVisibility('hidden');
+        document.dispatchEvent(new Event('visibilitychange'));
+      });
+      expect(stop).toHaveBeenCalled();
+      const opens = getUserMedia.mock.calls.length;
+
+      fireEvent.click(screen.getByRole('button', { name: 'Stop camera' }));
+      act(() => {
+        setPageVisibility('visible');
+        document.dispatchEvent(new Event('visibilitychange'));
+      });
+      await settleCameraRestart();
+
+      expect(getUserMedia).toHaveBeenCalledTimes(opens);
+      expect(screen.getByRole('button', { name: 'Scan with camera' })).toBeInTheDocument();
+    });
+
+    it('does not reopen the camera after unmount when the page is shown again', async () => {
+      const { unmount } = renderScanner({
+        onScan: vi.fn(),
+        createDecoder: async () => decoderReturning([]),
+      });
+
+      fireEvent.click(screen.getByRole('button', { name: 'Scan with camera' }));
+      expect(await screen.findByLabelText('Camera preview')).toBeInTheDocument();
+      unmount();
+      const opens = getUserMedia.mock.calls.length;
+
+      act(() => {
+        setPageVisibility('hidden');
+        document.dispatchEvent(new Event('visibilitychange'));
+        window.dispatchEvent(new Event('pagehide'));
+        setPageVisibility('visible');
+        document.dispatchEvent(new Event('visibilitychange'));
+      });
+      await settleCameraRestart();
+
+      expect(getUserMedia).toHaveBeenCalledTimes(opens);
     });
 
     it('sizes the picture from a wrapper so a phone can still see the queue', async () => {
